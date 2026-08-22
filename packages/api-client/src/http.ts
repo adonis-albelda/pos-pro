@@ -81,6 +81,8 @@ export interface ApiClientOptions {
   getToken: () => string | null | undefined | Promise<string | null | undefined>;
   /** Called after a 401 response, before the ApiError is thrown — e.g. clear a stored session. */
   onUnauthorized?: () => void | Promise<void>;
+  /** Sent on every request, e.g. `{ "X-App-Version": "1.4.0" }` from a mobile terminal — so a support request can start from what's actually installed, not what the store lists as current. */
+  extraHeaders?: Record<string, string>;
 }
 
 function buildQueryString(query: RequestOptions["query"]): string {
@@ -106,11 +108,13 @@ export class ApiClient {
   private readonly baseUrl: string;
   private readonly getToken: ApiClientOptions["getToken"];
   private readonly onUnauthorized: ApiClientOptions["onUnauthorized"];
+  private readonly extraHeaders: Record<string, string>;
 
   constructor(options: ApiClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
     this.getToken = options.getToken;
     this.onUnauthorized = options.onUnauthorized;
+    this.extraHeaders = options.extraHeaders ?? {};
   }
 
   async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -118,6 +122,7 @@ export class ApiClient {
     const token = await this.getToken();
 
     const headers: Record<string, string> = {
+      ...this.extraHeaders,
       Accept: "application/json",
     };
     if (body !== undefined) headers["Content-Type"] = "application/json";
@@ -164,7 +169,7 @@ export class ApiClient {
   async postMultipart<T>(path: string, formData: FormData): Promise<T> {
     const token = await this.getToken();
 
-    const headers: Record<string, string> = { Accept: "application/json" };
+    const headers: Record<string, string> = { ...this.extraHeaders, Accept: "application/json" };
     if (token) headers.Authorization = `Bearer ${token}`;
 
     const response = await fetch(`${this.baseUrl}${path}`, {

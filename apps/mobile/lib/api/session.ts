@@ -8,7 +8,7 @@ import {
   getEnrolledCompanyId,
   setEnrolledCompanyId,
 } from "@/lib/device";
-import { apiUrl, createScopedClient } from "./client";
+import { apiUrl, createScopedClient, VERSION_HEADERS } from "./client";
 
 const SESSION_TOKEN_KEY = "double-a.session-token";
 
@@ -30,7 +30,7 @@ async function clearSessionToken(): Promise<void> {
  * nothing that fires on reconnect.
  */
 export function getApiClient(): ApiClient {
-  return new ApiClient({ baseUrl: apiUrl(), getToken: () => getSessionToken() });
+  return new ApiClient({ baseUrl: apiUrl(), getToken: () => getSessionToken(), extraHeaders: VERSION_HEADERS });
 }
 
 export async function isEnrolled(): Promise<boolean> {

@@ -23,6 +23,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react-native";
+import { APP_VERSION } from "@/lib/api/client";
 import { useSession } from "@/lib/session";
 import { useStoreSettings } from "@/lib/store";
 import { Button } from "@/components/ui";
@@ -271,6 +272,9 @@ export function AccountDrawer({
             onPress={endShift}
           />
 
+          <Text style={{ fontSize: fontSize.caption, color: color.inkMuted, textAlign: "center" }}>
+            Version {APP_VERSION}
+          </Text>
           <Text style={{ fontSize: fontSize.caption, color: color.inkMuted, textAlign: "center" }}>
             Copyright © 2026 PROPos - All Rights Reserved.
           </Text>
