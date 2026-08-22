@@ -6,9 +6,12 @@ import {
   Text,
   TextInput,
   View,
+  type TextInputProps,
 } from "react-native";
 import { useMutation } from "@tanstack/react-query";
 import {
+  Eye,
+  EyeOff,
   KeyRound,
   Pencil,
   Shield,
@@ -56,6 +59,45 @@ const fieldStyle = {
   paddingHorizontal: space.md,
   color: color.ink,
 } as const;
+
+/** Same box `fieldStyle` draws, with a reveal toggle so a mistyped password/PIN can be checked before saving. */
+function MaskedField(props: TextInputProps) {
+  const [revealed, setRevealed] = useState(false);
+
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        minHeight: fieldStyle.minHeight,
+        borderWidth: fieldStyle.borderWidth,
+        borderColor: fieldStyle.borderColor,
+        borderRadius: fieldStyle.borderRadius,
+        paddingLeft: space.md,
+      }}
+    >
+      <TextInput
+        {...props}
+        secureTextEntry={!revealed}
+        placeholderTextColor={color.inkMuted}
+        style={{ flex: 1, minHeight: fieldStyle.minHeight, color: color.ink }}
+      />
+      <Pressable
+        onPress={() => setRevealed((value) => !value)}
+        accessibilityRole="button"
+        accessibilityLabel={revealed ? "Hide" : "Show"}
+        hitSlop={8}
+        style={{ paddingHorizontal: space.md }}
+      >
+        {revealed ? (
+          <EyeOff size={18} color={color.inkMuted} strokeWidth={2} />
+        ) : (
+          <Eye size={18} color={color.inkMuted} strokeWidth={2} />
+        )}
+      </Pressable>
+    </View>
+  );
+}
 
 export default function AdminUsersScreen() {
   const usersQuery = useUsers({ includeInactive: true });
@@ -365,13 +407,10 @@ function UserForm({
       />
 
       {!user && role === "admin" ? (
-        <TextInput
+        <MaskedField
           value={password}
           onChangeText={setPassword}
           placeholder="Password (min 8 characters)"
-          secureTextEntry
-          placeholderTextColor={color.inkMuted}
-          style={fieldStyle}
         />
       ) : null}
 
@@ -427,15 +466,12 @@ function PinForm({ user, onDone }: { user: User; onDone: () => void }) {
         4 to 6 digits. {user.name} uses this to unlock a terminal — it reaches the device on its
         next Sync or Refresh.
       </Text>
-      <TextInput
+      <MaskedField
         value={pin}
         onChangeText={setPin}
         placeholder="New PIN"
         keyboardType="number-pad"
         maxLength={6}
-        secureTextEntry
-        placeholderTextColor={color.inkMuted}
-        style={fieldStyle}
       />
       {error ? <ErrorNote>{error}</ErrorNote> : null}
       <Button

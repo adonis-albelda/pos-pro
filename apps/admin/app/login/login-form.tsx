@@ -8,6 +8,7 @@ import { LogIn, Lock, Mail } from "lucide-react";
 import { ApiError } from "@double-a/api-client";
 import { login } from "@double-a/api-client/queries";
 import { Button, ErrorNote, Field, Input } from "@/components/ui";
+import { PasswordInput } from "@/components/password-input";
 import { getBrowserBareClient, startBrowserSession } from "@/lib/api/browser-client";
 
 export function LoginForm({ next }: { next: string }) {
@@ -75,10 +76,9 @@ export function LoginForm({ next }: { next: string }) {
         />
       </Field>
       <Field label="Password">
-        <Input
+        <PasswordInput
           icon={Lock}
           name="password"
-          type="password"
           autoComplete="current-password"
           placeholder="••••••••"
           required

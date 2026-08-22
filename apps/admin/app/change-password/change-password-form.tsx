@@ -6,7 +6,8 @@ import { useMutation } from "@tanstack/react-query";
 import { Check, Lock } from "lucide-react";
 import { ApiError } from "@double-a/api-client";
 import { changePassword } from "@double-a/api-client/queries";
-import { Button, ErrorNote, Field, Input } from "@/components/ui";
+import { Button, ErrorNote, Field } from "@/components/ui";
+import { PasswordInput } from "@/components/password-input";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 
 export function ChangePasswordForm() {
@@ -53,29 +54,26 @@ export function ChangePasswordForm() {
   return (
     <form onSubmit={handleSubmit} className="mt-5 space-y-4">
       <Field label="Current password">
-        <Input
+        <PasswordInput
           icon={Lock}
           name="current_password"
-          type="password"
           autoComplete="current-password"
           required
         />
       </Field>
       <Field label="New password">
-        <Input
+        <PasswordInput
           icon={Lock}
           name="password"
-          type="password"
           autoComplete="new-password"
           minLength={8}
           required
         />
       </Field>
       <Field label="Confirm password">
-        <Input
+        <PasswordInput
           icon={Lock}
           name="confirm"
-          type="password"
           autoComplete="new-password"
           minLength={8}
           required

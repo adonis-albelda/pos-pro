@@ -11,8 +11,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePathname, useRouter } from "expo-router";
 import {
+  Building2,
   CloudUpload,
-  LayoutGrid,
   LogOut,
   Receipt,
   Settings,
@@ -40,9 +40,16 @@ const POS_TABS = [
 /**
  * Admin dashboard mode — every domain apps/admin manages, online-only (see
  * app/admin/_layout.tsx). Only ever shown to a role: "admin" cashier; a
- * plain cashier never sees this tile at all.
+ * plain cashier never sees this tile at all. Building2 (not Shield, already
+ * used for the role badge above) so this reads as "the office", not a
+ * repeat of "you are an admin".
  */
-const ADMIN_TAB = { href: "/admin", label: "Admin dashboard", icon: LayoutGrid } as const;
+const ADMIN_TAB = {
+  href: "/admin",
+  label: "Admin dashboard",
+  description: "Products, reports, users, and settings",
+  icon: Building2,
+} as const;
 
 const DRAWER_WIDTH_RATIO = 0.82;
 const DRAWER_MAX_WIDTH = 360;
@@ -178,6 +185,16 @@ export function AccountDrawer({
                 onPress={() => go(tab.href)}
               />
             ))}
+            {cashier.role === "admin" ? (
+              <DrawerTab
+                key={ADMIN_TAB.href}
+                icon={ADMIN_TAB.icon}
+                label={ADMIN_TAB.label}
+                description={ADMIN_TAB.description}
+                active={pathname === ADMIN_TAB.href}
+                onPress={() => go(ADMIN_TAB.href)}
+              />
+            ) : null}
           </View>
 
           <View style={[styles.ledgerLine, { marginVertical: space.xs }]} />
@@ -253,16 +270,6 @@ export function AccountDrawer({
 
           <View style={{ flex: 1 }} />
 
-          {/* Admin dashboard — pinned above End shift, apart from the regular POS tabs above. */}
-          {cashier.role === "admin" ? (
-            <DrawerTab
-              icon={ADMIN_TAB.icon}
-              label={ADMIN_TAB.label}
-              active={pathname === ADMIN_TAB.href}
-              onPress={() => go(ADMIN_TAB.href)}
-            />
-          ) : null}
-
           <Button
             label="End shift"
             variant="secondary"
@@ -293,15 +300,22 @@ export function AccountDrawer({
   );
 }
 
-/** One shared row style for every drawer link — POS tabs and the admin-dashboard link alike. */
+/**
+ * One shared row style for every drawer link — POS tabs and the
+ * admin-dashboard link alike. `description` is optional: a plain tab stays
+ * a single line, one with it (currently just Admin dashboard) grows to two
+ * without changing the row's own background/active/pressed styling.
+ */
 function DrawerTab({
   icon: Icon,
   label,
+  description,
   active,
   onPress,
 }: {
   icon: LucideIcon;
   label: string;
+  description?: string;
   active: boolean;
   onPress: () => void;
 }) {
@@ -309,7 +323,7 @@ function DrawerTab({
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={description ? `${label}. ${description}` : label}
       accessibilityState={{ selected: active }}
       style={({ pressed }) => ({
         minHeight: 48,
@@ -317,20 +331,34 @@ function DrawerTab({
         alignItems: "center",
         gap: space.md,
         paddingHorizontal: space.md,
+        paddingVertical: description ? space.sm : 0,
         borderRadius: 14,
         backgroundColor: active ? color.primarySoft : pressed ? color.surfacePressed : "transparent",
       })}
     >
       <Icon size={20} color={active ? color.primary : color.inkMuted} strokeWidth={active ? 2.25 : 2} />
-      <Text
-        style={{
-          fontSize: fontSize.bodyLg,
-          fontWeight: active ? "700" : "600",
-          color: active ? color.primary : color.ink,
-        }}
-      >
-        {label}
-      </Text>
+      <View style={{ flex: 1, minWidth: 0, gap: description ? 2 : 0 }}>
+        <Text
+          style={{
+            fontSize: fontSize.bodyLg,
+            fontWeight: active ? "700" : "600",
+            color: active ? color.primary : color.ink,
+          }}
+        >
+          {label}
+        </Text>
+        {description ? (
+          <Text
+            numberOfLines={1}
+            style={{
+              fontSize: fontSize.caption,
+              color: active ? color.primary : color.inkMuted,
+            }}
+          >
+            {description}
+          </Text>
+        ) : null}
+      </View>
     </Pressable>
   );
 }

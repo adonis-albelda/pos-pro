@@ -49,6 +49,7 @@
     "@babel/core": "^7.29.7",
     "@double-a/config-eslint": "workspace:*",
     "@double-a/config-typescript": "workspace:*",
+    "@expo/config-plugins": "~57.0.6",
     "@types/react": "~19.2.18"
   }
 }

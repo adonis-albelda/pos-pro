@@ -20,6 +20,7 @@ import {
   Select,
   SuccessNote,
 } from "@/components/ui";
+import { PasswordInput } from "@/components/password-input";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
 import { useInvalidateUsers } from "@/lib/query/users";
 import { saveCashier } from "./actions";
@@ -148,10 +149,9 @@ export function UserForm({
                 : "Enter this on the POS app's setup screen to connect the terminal."
             }
           >
-            <Input
+            <PasswordInput
               icon={Lock}
               name="password"
-              type="password"
               autoComplete="new-password"
               minLength={8}
               required

@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { Building2, KeyRound, Lock, Mail, UserRound } from "lucide-react";
 import { Button, ErrorNote, Field, Input } from "@/components/ui";
+import { PasswordInput } from "@/components/password-input";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
 import { createCompany } from "../../actions";
 
@@ -21,10 +22,9 @@ export function CreateCompanyForm() {
         <Input icon={Mail} name="admin_email" type="email" required />
       </Field>
       <Field label="Admin password" hint="Dashboard sign-in. They will be asked to change it on first visit.">
-        <Input
+        <PasswordInput
           icon={Lock}
           name="admin_password"
-          type="password"
           autoComplete="new-password"
           minLength={8}
           required

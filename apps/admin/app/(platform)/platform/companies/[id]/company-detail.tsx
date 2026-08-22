@@ -14,6 +14,7 @@ import {
   Td,
   Th,
 } from "@/components/ui";
+import { PasswordInput } from "@/components/password-input";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
 import { useInvalidateCompanyStats } from "@/lib/query/companies";
 import {
@@ -37,10 +38,9 @@ export function AddAdminForm({ companyId }: { companyId: string }) {
         <Input icon={Mail} name="email" type="email" required />
       </Field>
       <Field label="Password" hint="They must change it on first sign-in.">
-        <Input
+        <PasswordInput
           icon={Lock}
           name="password"
-          type="password"
           autoComplete="new-password"
           minLength={8}
           required
@@ -85,10 +85,9 @@ function ResetPasswordForm({ user, companyId }: { user: User; companyId: string 
       <input type="hidden" name="id" value={user.id} />
       <input type="hidden" name="company_id" value={companyId} />
       <Field label={`Password for ${user.name}`}>
-        <Input
+        <PasswordInput
           icon={Lock}
           name="password"
-          type="password"
           autoComplete="new-password"
           minLength={8}
           required

@@ -19,12 +19,12 @@ import {
   ErrorNote,
   Field,
   IconButton,
-  Input,
   SuccessNote,
   Table,
   Td,
   Th,
 } from "@/components/ui";
+import { PasswordInput } from "@/components/password-input";
 import { ConfirmDialog, Dialog, Sheet } from "@/components/overlay";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
 import { useInvalidateUsers } from "@/lib/query/users";
@@ -58,10 +58,9 @@ function ResetPasswordForm({
         Cashiers use a PIN — reset that from Edit instead.
       </p>
       <Field label="New password">
-        <Input
+        <PasswordInput
           icon={Lock}
           name="password"
-          type="password"
           autoComplete="new-password"
           minLength={6}
           required
