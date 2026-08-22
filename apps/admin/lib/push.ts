@@ -27,8 +27,10 @@ async function registerIfChanged(token: string): Promise<void> {
  */
 export function usePushNotifications(): void {
   useEffect(() => {
+    console.log("[push] effect mounted, configured =", isFirebaseConfigured());
     if (!isFirebaseConfigured()) return;
     if (typeof window === "undefined" || !("Notification" in window) || !("serviceWorker" in navigator)) {
+      console.log("[push] bailing: no window/Notification/serviceWorker support");
       return;
     }
 
@@ -37,31 +39,39 @@ export function usePushNotifications(): void {
     void (async () => {
       try {
         let permission = Notification.permission;
+        console.log("[push] permission =", permission);
         if (permission === "default") {
           permission = await Notification.requestPermission();
+          console.log("[push] permission after prompt =", permission);
         }
         if (permission !== "granted") return;
 
         const registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+        console.log("[push] service worker registered", registration);
         const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
+        console.log("[push] vapidKey present =", Boolean(vapidKey));
         const token = await getToken(firebaseMessaging(), {
           vapidKey,
           serviceWorkerRegistration: registration,
         });
+        console.log("[push] token obtained =", token);
         if (token) await registerIfChanged(token);
+        console.log("[push] registerIfChanged done");
 
         // Foreground messages (tab open and focused) never reach the
         // service worker — this is the only place they're seen at all.
         unsubscribeForeground = onMessage(firebaseMessaging(), (payload) => {
+          console.log("[push] onMessage fired", payload);
           const title = payload.notification?.title ?? "POSPro";
           const body = payload.notification?.body;
           if (Notification.permission === "granted") {
             new Notification(title, { body });
           }
         });
+        console.log("[push] onMessage listener attached");
       } catch (error) {
         // Best-effort — the dashboard works fine without push notifications.
-        console.error("push notification setup failed", error);
+        console.error("[push] setup failed", error);
       }
     })();
 
