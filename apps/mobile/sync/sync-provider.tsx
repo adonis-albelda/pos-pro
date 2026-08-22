@@ -10,7 +10,7 @@ import {
 import { SYNC_MESSAGES, type SyncPhase, type SyncState } from "@double-a/shared-types";
 import { getSyncMeta } from "@/db/meta";
 import { countPendingSales } from "@/db/sales";
-import { runPullOnly, runReplaceAll, runSync } from "./index";
+import { runAutoPush, runPullOnly, runReplaceAll, runSync } from "./index";
 
 interface SyncContextValue extends SyncState {
   /**
@@ -30,6 +30,7 @@ interface SyncContextValue extends SyncState {
   pullOnly: () => Promise<void>;
   replaceAll: () => Promise<void>;
   refresh: () => Promise<void>;
+  autoPush: () => Promise<void>;
 }
 
 const SyncContext = createContext<SyncContextValue | null>(null);
@@ -193,9 +194,19 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     }
   }, [refresh]);
 
+  /**
+   * Called after each sale completes, if online — see runAutoPush's own
+   * comment for the "why." Silent by design: no phase/message set, no error
+   * surfaced, just a pendingSales count that quietly drops when it works.
+   */
+  const autoPush = useCallback(async () => {
+    await runAutoPush();
+    await refresh();
+  }, [refresh]);
+
   const value = useMemo(
-    () => ({ ...state, dataVersion, pullProgress, sync, pullOnly, replaceAll, refresh }),
-    [state, dataVersion, pullProgress, sync, pullOnly, replaceAll, refresh],
+    () => ({ ...state, dataVersion, pullProgress, sync, pullOnly, replaceAll, refresh, autoPush }),
+    [state, dataVersion, pullProgress, sync, pullOnly, replaceAll, refresh, autoPush],
   );
 
   return <SyncContext.Provider value={value}>{children}</SyncContext.Provider>;

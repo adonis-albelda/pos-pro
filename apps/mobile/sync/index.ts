@@ -80,3 +80,28 @@ export async function runFirstPull(onProgress?: (percent: number) => void): Prom
   await ensureFreshSession();
   await pull({ full: true, onProgress });
 }
+
+let autoPushInFlight = false;
+
+/**
+ * Fired after each sale completes, if the device happens to be online —
+ * best-effort and silent, never blocking the sale or its receipt (CLAUDE.md
+ * §4). No pull runs here, so `lastSyncedAt` is untouched: this only shortens
+ * how long a sale sits pending, it does not replace a real Sync. Offline, or
+ * a dropped connection mid-push, just leaves the sale pending exactly as
+ * before this existed — the manual Sync button is still the fallback and
+ * still the only thing that also pulls.
+ */
+export async function runAutoPush(): Promise<void> {
+  if (autoPushInFlight) return;
+  autoPushInFlight = true;
+
+  try {
+    await ensureFreshSession();
+    await push();
+  } catch {
+    // Best-effort — no connection, or it dropped mid-push. Stays pending.
+  } finally {
+    autoPushInFlight = false;
+  }
+}

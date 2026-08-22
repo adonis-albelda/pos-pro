@@ -151,7 +151,7 @@ function stockCapFor(estimatedStock: number, allowDecimal: boolean): number {
 export default function SellScreen() {
   const router = useRouter();
   const { cashier } = useSession();
-  const { refresh, dataVersion } = useSync();
+  const { refresh, autoPush, dataVersion } = useSync();
   const { isEnabled } = useFeatureFlags();
 
   // A phone cannot hold a grid and a cart side by side, so below the compact
@@ -690,7 +690,7 @@ export default function SellScreen() {
       return;
     }
 
-    if (requiresCustomerForPayment(payment, customer.customerId)) {
+    if (requiresCustomerForPayment(payment, customer)) {
       Alert.alert("Customer needed", "Credit needs a customer — add one below.");
       return;
     }
@@ -736,10 +736,14 @@ export default function SellScreen() {
       void refresh();
 
       // Deliberately not awaited: a printer that is off or unreachable must not
-      // be able to hold up, or undo, a completed sale.
+      // be able to hold up, or undo, a completed sale. Same for the push — if
+      // this device happens to be online it quietly leaves early instead of
+      // waiting for the next manual Sync; offline, it just fails silently and
+      // the sale stays pending like it always has.
       void printReceipt(sale, cashier.name).catch((error: unknown) => {
         console.warn("Receipt did not print", error);
       });
+      void autoPush();
 
       setTimeout(() => router.push(`/pos/sale/${sale.id}`), MODAL_CLOSE_MS);
     } finally {
@@ -1207,7 +1211,7 @@ export default function SellScreen() {
               }}
             />
 
-            {requiresCustomerForPayment(payment, customer.customerId) ? (
+            {requiresCustomerForPayment(payment, customer) ? (
               <View style={{ marginTop: space.sm }}>
                 <WarningNote>Credit needs a customer — add one below.</WarningNote>
               </View>

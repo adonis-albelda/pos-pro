@@ -68,14 +68,22 @@ The mobile app has exactly one sync action:
    overwrite local rows, update `last_synced_at`. Categories, customers, and store settings
    are fetched whole every pull.
 
-There is no auto-sync on reconnect, no background sync, no real-time subscriptions on mobile.
+There is no auto-sync on reconnect, no background pull, no real-time subscriptions on mobile —
+pull only ever happens because someone pressed Sync or Refresh. The one exception: after each
+sale completes, `runAutoPush()` (`sync/index.ts`) silently fires the push step alone if the
+device happens to be online — best-effort, no phase/message shown, never blocking the sale or
+its receipt (rule 4). No pull runs there, so it never touches `last_synced_at` or claims the
+terminal is "synced" — it only shortens how long a sale sits pending. The manual Sync button
+is unchanged and still the only thing that also pulls, and still the fallback for whatever
+auto-push missed (offline, dropped connection mid-push).
 The UI must always show a "Last synced: X ago" indicator.
 
 Alongside it there is a second, pull-only **Refresh** action (`runPullOnly`), for taking a
 price or product change mid-shift without sending sales. It skips the push step deliberately;
-pending sales stay pending and still go out on the next Sync. Sync remains the only way sales
-leave the device. Both live in the `SyncBar`, which sits on the **Sync tab**, and Refresh is
-repeated on the unlock screen so a locked terminal can pull catalog before the shift starts.
+pending sales stay pending and still go out on the next Sync (or the next auto-push). Sync
+remains the only *manual* way sales leave the device. Both live in the `SyncBar`, which sits
+on the **Sync tab**, and Refresh is repeated on the unlock screen so a locked terminal can pull
+catalog before the shift starts.
 
 **Login is always live.** Admin email/password, terminal enrollment, and cashier PIN unlock
 all call Supabase — never local SQLite. `verify_pin()` checks the PIN server-side. Local

@@ -21,9 +21,16 @@ export function isPaidByDefault(method: PaymentMethod): boolean {
   return method === "cash";
 }
 
-/** Utang is meaningless without knowing who owes — a credit sale needs a real customer. */
-export function requiresCustomerForPayment(method: PaymentMethod, customerId: string | null): boolean {
-  return method === "credit" && !customerId;
+/**
+ * Credit is meaningless without knowing who owes — a credit sale needs a
+ * real customer attached. Checked the same way finishSale() itself decides
+ * whether a customer is attached (hasCustomerDetails), not customerId alone
+ * — a customer just typed in at the counter has no id yet (one is minted
+ * only at save time), so gating on customerId would reject a brand-new
+ * customer that was never picked from the dropdown.
+ */
+export function requiresCustomerForPayment(method: PaymentMethod, customer: CustomerDetails): boolean {
+  return method === "credit" && !hasCustomerDetails(customer);
 }
 export type InventoryReason =
   | "sale"
