@@ -2,7 +2,7 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getSale, listMovementsPage, listSales, listSalesPage } from "@double-a/api-client/queries";
-import type { InventoryMovement, SaleWithItems } from "@double-a/shared-types";
+import type { SaleWithItems } from "@double-a/shared-types";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 import { queryKeys } from "./keys";
 
@@ -80,41 +80,27 @@ export function useSale(id: string) {
 }
 
 /**
- * GAP: IndexInventoryMovementsController has no `reference_id` filter (see
- * queries/inventory.ts) — walks recent shop-wide movements looking for this
- * sale's, capped rather than a full unbounded scan, exactly as
- * sales/[id]/page.tsx used to do as a Server Component. A very old sale's
- * stock-effect rows may fall outside the cap and simply not show up.
+ * `IndexInventoryMovementsController` filters on `reference_id` server-side
+ * (indexed column) — one request, not a shop-wide scan. Used to walk every
+ * page of recent movements looking for this sale's, which made the sale
+ * detail page slow for any shop with real movement history.
  *
  * Key is namespaced under "sales" (not "inventory") so
  * useInvalidateSales() below catches it too — voiding a sale changes both
  * the sale and its movements.
  */
-const MOVEMENT_SCAN_CAP = 2000;
-
 export function useSaleMovements(saleId: string) {
   return useQuery({
     queryKey: ["sales", "detail", saleId, "movements"] as const,
-    queryFn: () => scanSaleMovements(saleId),
+    queryFn: async () => {
+      const result = await listMovementsPage(getBrowserApiClient(), {
+        referenceId: saleId,
+        pageSize: 200,
+      });
+      return result.movements.filter((m) => m.reason === "sale" || m.reason === "void_restore");
+    },
     enabled: Boolean(saleId),
   });
-}
-
-async function scanSaleMovements(saleId: string): Promise<InventoryMovement[]> {
-  const client = getBrowserApiClient();
-  const movements: InventoryMovement[] = [];
-  let scanned = 0;
-  for (let page = 1; scanned < MOVEMENT_SCAN_CAP; page += 1) {
-    const result = await listMovementsPage(client, { page, pageSize: 200 });
-    scanned += result.movements.length;
-    movements.push(
-      ...result.movements.filter(
-        (m) => m.referenceId === saleId && (m.reason === "sale" || m.reason === "void_restore"),
-      ),
-    );
-    if (page >= result.lastPage) break;
-  }
-  return movements;
 }
 
 /** Call after voidSaleAction/patchSaleFlagsAction (Server Actions) succeed — revalidatePath doesn't touch this cache. */

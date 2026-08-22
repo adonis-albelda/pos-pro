@@ -10,16 +10,17 @@ import { type InventoryMovementAttrs, type ProductAttrs, toInventoryMovement, to
  */
 
 /**
- * `GET /inventory/movements` (IndexInventoryMovementsController) only
- * accepts `product_id` + `per_page` — capped server-side at 200. The old
- * PostgREST `MovementFilter` also supported `productIds` (batch),
- * `referenceId`, `reasons`, and a `from`/`to` date range; none of those are
- * exposed by the Tally API, so they are dropped from the type rather than
+ * `GET /inventory/movements` (IndexInventoryMovementsController) accepts
+ * `product_id`, `reference_id` (e.g. a sale id, for its stock-effect rows),
+ * and `per_page` — capped server-side at 200. The old PostgREST
+ * `MovementFilter` also supported `productIds` (batch), `reasons`, and a
+ * `from`/`to` date range; those are still dropped from the type rather than
  * silently ignored if passed. Ask backend to extend the endpoint before
  * porting a call site that needs them.
  */
 export interface MovementFilter {
   productId?: string;
+  referenceId?: string;
 }
 
 export async function listMovementsPage(
@@ -28,6 +29,7 @@ export async function listMovementsPage(
 ): Promise<{ movements: InventoryMovement[]; total: number; lastPage: number }> {
   const page = await client.get<JsonApiPage<InventoryMovementAttrs>>("/inventory/movements", {
     product_id: options.productId,
+    reference_id: options.referenceId,
     page: options.page ?? 1,
     per_page: options.pageSize ?? 50,
   });
