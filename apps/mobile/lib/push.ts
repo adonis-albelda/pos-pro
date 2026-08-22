@@ -6,6 +6,19 @@ import { getApiClient } from "@/lib/api/session";
 
 const LAST_REGISTERED_KEY = "double-a.fcm-token-registered";
 
+// Module-level, not inside a component: without this, a notification
+// arriving while the terminal is in the foreground is received but never
+// displayed — expo-notifications doesn't show anything unless the app
+// explicitly opts in, same distinction as the web side's onMessage handler.
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
+
 function nativePlatform(): PushPlatform {
   return Platform.OS === "ios" ? "ios" : "android";
 }
@@ -28,6 +41,16 @@ async function registerIfChanged(token: string): Promise<void> {
  */
 export async function registerDevicePushToken(): Promise<void> {
   try {
+    if (Platform.OS === "android") {
+      // Required on API 26+ — without a channel, the OS silently drops the
+      // notification regardless of foreground/background state or the
+      // handler above.
+      await Notifications.setNotificationChannelAsync("default", {
+        name: "Default",
+        importance: Notifications.AndroidImportance.MAX,
+      });
+    }
+
     const { status: existing } = await Notifications.getPermissionsAsync();
     let status = existing;
     if (status !== "granted") {
@@ -37,8 +60,9 @@ export async function registerDevicePushToken(): Promise<void> {
 
     const { data: token } = await Notifications.getDevicePushTokenAsync();
     await registerIfChanged(token);
-  } catch {
+  } catch (error) {
     // Best-effort — a terminal with no push token still sells fine.
+    console.error("push token registration failed", error);
   }
 }
 

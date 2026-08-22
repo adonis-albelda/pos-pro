@@ -89,7 +89,12 @@ export default function SaleDetailPage() {
             ) : null}
           </p>
         </div>
-        {sale.status === "completed" ? <VoidSale saleId={id} /> : null}
+        {sale.status === "completed" ? (
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <VoidSale saleId={id} mode="test" />
+            <VoidSale saleId={id} />
+          </div>
+        ) : null}
       </header>
 
       <div className="flex flex-wrap gap-3">
