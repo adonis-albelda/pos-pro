@@ -59,8 +59,9 @@ export function usePushNotifications(): void {
             new Notification(title, { body });
           }
         });
-      } catch {
+      } catch (error) {
         // Best-effort — the dashboard works fine without push notifications.
+        console.error("push notification setup failed", error);
       }
     })();
 
