@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Text, View } from "react-native";
+import { ActivityIndicator, Image, Text, View } from "react-native";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -13,6 +13,9 @@ import { registerDevicePushToken, watchForPushTokenChanges } from "@/lib/push";
 import { SessionProvider } from "@/lib/session";
 import { SyncProvider } from "@/sync/sync-provider";
 import { color, space, styles } from "@/theme";
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- same asset-require pattern as setup.tsx/account-drawer.tsx; no *.png module declaration in this project
+const LOGO = require("../assets/logo.png");
 
 /**
  * Backs admin-mode screens only (app/admin/**) — the POS screens stay on
@@ -62,6 +65,12 @@ export default function RootLayout() {
     return (
       <View style={[styles.screen, { justifyContent: "center", padding: space.xl }]}>
         <PaperBackdrop />
+        <Image
+          source={LOGO}
+          style={{ width: 72, height: 72, alignSelf: "center", marginBottom: space.lg }}
+          resizeMode="contain"
+          accessibilityIgnoresInvertColors
+        />
         <Text style={styles.subheading}>This terminal could not start</Text>
         <Text style={[styles.muted, { marginTop: space.sm }]}>{error}</Text>
       </View>
@@ -72,6 +81,12 @@ export default function RootLayout() {
     return (
       <View style={[styles.screen, { justifyContent: "center", alignItems: "center" }]}>
         <PaperBackdrop />
+        <Image
+          source={LOGO}
+          style={{ width: 96, height: 96, marginBottom: space.xl }}
+          resizeMode="contain"
+          accessibilityIgnoresInvertColors
+        />
         <ActivityIndicator color={color.primary} />
       </View>
     );
