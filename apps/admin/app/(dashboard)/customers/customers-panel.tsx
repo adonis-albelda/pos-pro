@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { ChevronRight, Pencil, Users } from "lucide-react";
 import type { Customer } from "@double-a/shared-types";
-import { Badge, Card, EmptyState, IconButton, Table, Td, Th } from "@/components/ui";
+import { Badge, Card, EmptyState, IconButton, Money, Table, Td, Th } from "@/components/ui";
 import { Sheet } from "@/components/overlay";
 import { Pagination, RecordToolbar } from "@/components/record-list";
 import { CustomerForm } from "./customer-form";
@@ -13,6 +13,7 @@ import { CustomerForm } from "./customer-form";
 export function CustomersPanel({
   customers,
   saleCounts,
+  balances,
   query,
   page,
   pageCount,
@@ -21,6 +22,7 @@ export function CustomersPanel({
 }: {
   customers: Customer[];
   saleCounts: Record<string, number>;
+  balances: Record<string, number>;
   query: string;
   page: number;
   pageCount: number;
@@ -59,17 +61,26 @@ export function CustomersPanel({
                 <Th>Contact</Th>
                 <Th>Address</Th>
                 <Th numeric>Sales</Th>
+                <Th numeric>Balance owed</Th>
                 <Th />
               </tr>
             </thead>
             <tbody>
-              {customers.map((customer) => (
+              {customers.map((customer) => {
+                const balance = balances[customer.id] ?? 0;
+                return (
                 <tr key={customer.id}>
                   <Td className="font-medium">{customer.name}</Td>
                   <Td className="num text-ink-muted">{customer.contact ?? "—"}</Td>
                   <Td className="text-ink-muted">{customer.address ?? "—"}</Td>
                   <Td numeric>
                     <Badge tone="neutral">{saleCounts[customer.id] ?? 0}</Badge>
+                  </Td>
+                  <Td numeric>
+                    <Money
+                      value={balance}
+                      className={balance > 0 ? "font-semibold text-warning-ink" : "text-ink-muted"}
+                    />
                   </Td>
                   <Td>
                     <div className="flex justify-end gap-1">
@@ -89,7 +100,8 @@ export function CustomersPanel({
                     </div>
                   </Td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </Table>
         )}

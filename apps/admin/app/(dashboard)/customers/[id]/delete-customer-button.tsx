@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { ErrorNote } from "@/components/ui";
 import { ConfirmDialog } from "@/components/overlay";
 import { useInvalidateCustomers } from "@/lib/query/customers";
 import { removeCustomer } from "../actions";
@@ -14,27 +15,41 @@ export function DeleteCustomerButton({
 }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
   const invalidate = useInvalidateCustomers();
 
   function confirm() {
     const form = new FormData();
     form.set("id", customerId);
     startTransition(async () => {
-      await removeCustomer(form);
+      const result = await removeCustomer(form);
+      if (result.error) {
+        setError(result.error);
+        setOpen(false);
+        return;
+      }
       invalidate();
       setOpen(false);
     });
   }
 
   return (
-    <>
+    <div className="text-right">
       <button
         type="button"
         className="text-body text-danger hover:underline"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          setError(null);
+          setOpen(true);
+        }}
       >
         Delete customer
       </button>
+      {error ? (
+        <div className="mt-2">
+          <ErrorNote>{error}</ErrorNote>
+        </div>
+      ) : null}
       <ConfirmDialog
         open={open}
         onClose={() => setOpen(false)}
@@ -44,6 +59,6 @@ export function DeleteCustomerButton({
         description={`${customerName} will be removed. Sales keep the name already printed on them. This cannot be undone.`}
         confirmLabel="Delete customer"
       />
-    </>
+    </div>
   );
 }

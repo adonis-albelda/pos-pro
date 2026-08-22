@@ -111,7 +111,9 @@ export default function SaleDetailPage() {
         >
           {sale.paymentMethod ?? "payment not recorded"}
         </Badge>
-        {sale.isPaid ? (
+        {sale.paymentMethod === "credit" ? (
+          <Badge tone="neutral">Utang — see customer balance</Badge>
+        ) : sale.isPaid ? (
           <Badge tone="success">Paid</Badge>
         ) : (
           <Badge tone="warning">Unpaid</Badge>
@@ -125,13 +127,22 @@ export default function SaleDetailPage() {
         </Badge>
       </div>
 
-      {sale.status === "completed" ? (
+      {sale.status === "completed" && sale.paymentMethod !== "credit" ? (
         <SaleFlags
           saleId={id}
           isPaid={sale.isPaid}
           fulfillment={sale.fulfillment}
           deliveryCompleted={sale.deliveryCompleted}
         />
+      ) : null}
+
+      {sale.status === "completed" && sale.paymentMethod === "credit" && sale.customerId ? (
+        <Link
+          href={`/customers/${sale.customerId}` as Route}
+          className="inline-flex w-fit items-center gap-1 text-body text-primary hover:underline"
+        >
+          See customer balance
+        </Link>
       ) : null}
 
       {/* Absent on most sales, and absent from the page rather than shown empty:

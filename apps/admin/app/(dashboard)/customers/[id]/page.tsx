@@ -4,29 +4,33 @@ import type { Route } from "next";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Receipt, UserRound } from "lucide-react";
+import { ArrowLeft, HandCoins, Receipt, UserRound } from "lucide-react";
 import { formatMoney } from "@double-a/shared-types";
 import { listSales } from "@double-a/api-client/queries";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 import { queryKeys } from "@/lib/query/keys";
-import { useCustomer } from "@/lib/query/customers";
+import { useCustomer, useCustomerBalance, useCustomerPayments } from "@/lib/query/customers";
 import {
   Badge,
   Card,
   CardHeader,
   EmptyState,
   Money,
+  StatCard,
   Table,
   Td,
   Th,
 } from "@/components/ui";
 import { CustomerForm } from "../customer-form";
 import { DeleteCustomerButton } from "./delete-customer-button";
+import { RecordCustomerPaymentForm } from "./record-customer-payment-form";
 
 export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
 
   const customerQuery = useCustomer(id);
+  const balanceQuery = useCustomerBalance(id);
+  const paymentsQuery = useCustomerPayments(id);
 
   // GAP: `IndexSalesController` caps `per_page` at 200 server-side and
   // `listSales` only fetches page 1 (see queries/sales.ts) — a customer with
@@ -38,7 +42,7 @@ export default function CustomerDetailPage() {
     enabled: Boolean(id),
   });
 
-  if (customerQuery.isPending || salesQuery.isPending) {
+  if (customerQuery.isPending || salesQuery.isPending || balanceQuery.isPending) {
     return (
       <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>
     );
@@ -67,6 +71,8 @@ export default function CustomerDetailPage() {
   const revenue = sales
     .filter((sale) => sale.status === "completed")
     .reduce((sum, sale) => sum + sale.totalAmount, 0);
+  const balance = balanceQuery.data ?? 0;
+  const payments = paymentsQuery.data ?? [];
 
   return (
     <div className="space-y-6">
@@ -89,6 +95,58 @@ export default function CustomerDetailPage() {
         </div>
         <DeleteCustomerButton customerId={id} customerName={customer.name} />
       </header>
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard
+          icon={HandCoins}
+          label="Utang balance"
+          value={formatMoney(balance)}
+          hint="Across unpaid credit sales"
+          tone={balance > 0 ? "warning" : "neutral"}
+        />
+      </div>
+
+      <Card>
+        <CardHeader
+          icon={HandCoins}
+          title="Record a payment"
+          description="A lump sum against this customer's tab — not tied to one specific sale."
+        />
+        <div className="px-4 py-5 sm:px-6">
+          <RecordCustomerPaymentForm customerId={id} />
+        </div>
+      </Card>
+
+      {payments.length > 0 ? (
+        <Card>
+          <CardHeader icon={Receipt} title="Payment history" />
+          <Table>
+            <thead>
+              <tr>
+                <Th>When</Th>
+                <Th>Note</Th>
+                <Th numeric>Amount</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {payments.map((payment) => (
+                <tr key={payment.id}>
+                  <Td>
+                    {new Date(payment.paidAt).toLocaleString("en-PH", {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    })}
+                  </Td>
+                  <Td>{payment.note ?? "—"}</Td>
+                  <Td numeric>
+                    <Money value={payment.amount} />
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader icon={UserRound} title="Details" />
@@ -140,7 +198,9 @@ export default function CustomerDetailPage() {
                       : ""}
                   </Td>
                   <Td>
-                    {sale.isPaid ? (
+                    {sale.paymentMethod === "credit" ? (
+                      <span className="text-caption text-ink-muted">See balance ↑</span>
+                    ) : sale.isPaid ? (
                       <Badge tone="success">Paid</Badge>
                     ) : (
                       <Badge tone="warning">Unpaid</Badge>

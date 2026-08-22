@@ -3,6 +3,8 @@ import type {
   Company,
   CompanyStats,
   Customer,
+  CustomerOpenSale,
+  CustomerPayment,
   Expense,
   Fulfillment,
   InventoryMovement,
@@ -111,6 +113,48 @@ export function toCustomer(resource: JsonApiResource<CustomerAttrs>): Customer {
     address: a.address,
     contact: a.contact,
     updatedAt: a.updated_at ?? "",
+  };
+}
+
+/** Plain JsonResource (CustomerPaymentResource), not JSON:API — same shape as PurchaseOrderPaymentResource's sibling. */
+export interface CustomerPaymentJson {
+  id: string;
+  customer_id: string;
+  amount: number;
+  paid_at: string | null;
+  recorded_by: string | null;
+  note: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export function toCustomerPayment(json: CustomerPaymentJson): CustomerPayment {
+  return {
+    id: json.id,
+    customerId: json.customer_id,
+    amount: Number(json.amount),
+    paidAt: json.paid_at ?? "",
+    recordedBy: json.recorded_by,
+    note: json.note,
+    createdAt: json.created_at ?? "",
+    updatedAt: json.updated_at ?? "",
+  };
+}
+
+/** Plain array response from CustomerOpenSalesController — a FIFO display preview, not a resource. */
+export interface CustomerOpenSaleJson {
+  sale_id: string;
+  created_at: string;
+  total_amount: number;
+  amount_open: number;
+}
+
+export function toCustomerOpenSale(json: CustomerOpenSaleJson): CustomerOpenSale {
+  return {
+    saleId: json.sale_id,
+    createdAt: json.created_at,
+    totalAmount: Number(json.total_amount),
+    amountOpen: Number(json.amount_open),
   };
 }
 

@@ -23,6 +23,7 @@ import {
   ChevronRight,
   CreditCard,
   FolderTree,
+  HandCoins,
   Info,
   MapPin,
   Mic,
@@ -57,6 +58,7 @@ import {
   normaliseCustomerDetails,
   priceForQuantity,
   QUANTITY_DECIMALS,
+  requiresCustomerForPayment,
   roundMoney,
   timeAgo,
   type CartLine,
@@ -117,6 +119,7 @@ const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: LucideIcon }
   { value: "cash", label: "Cash", icon: Banknote },
   { value: "gcash", label: "GCash", icon: Smartphone },
   { value: "card", label: "Card", icon: CreditCard },
+  { value: "credit", label: "Utang", icon: HandCoins },
 ];
 
 const FULFILLMENT_OPTIONS: { value: Fulfillment; label: string; icon?: LucideIcon }[] = [
@@ -687,6 +690,11 @@ export default function SellScreen() {
       return;
     }
 
+    if (requiresCustomerForPayment(payment, customer.customerId)) {
+      Alert.alert("Customer needed", "Utang needs a customer — add one below.");
+      return;
+    }
+
     setSaving(true);
     try {
       let saleCustomer = normaliseCustomerDetails(customer);
@@ -1191,8 +1199,19 @@ export default function SellScreen() {
             <CustomerButton
               customer={customer}
               onPress={() => setEditingCustomer(true)}
-              onClear={() => setCustomer(NO_CUSTOMER)}
+              onClear={() => {
+                setCustomer(NO_CUSTOMER);
+                // No customer left to owe utang to — fall back to cash
+                // rather than leaving Credit selected with nothing behind it.
+                if (payment === "credit") setPayment("cash");
+              }}
             />
+
+            {requiresCustomerForPayment(payment, customer.customerId) ? (
+              <View style={{ marginTop: space.sm }}>
+                <WarningNote>Utang needs a customer — add one below.</WarningNote>
+              </View>
+            ) : null}
 
             {oversellRisk ? (
               <View style={{ marginTop: space.sm }}>

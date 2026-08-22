@@ -1,6 +1,13 @@
-import type { Customer } from "@double-a/shared-types";
+import type { Customer, CustomerOpenSale, CustomerPayment } from "@double-a/shared-types";
 import { ApiError, type ApiClient, type JsonApiResource } from "../http";
-import { type CustomerAttrs, toCustomer } from "../mappers";
+import {
+  type CustomerAttrs,
+  type CustomerOpenSaleJson,
+  type CustomerPaymentJson,
+  toCustomer,
+  toCustomerOpenSale,
+  toCustomerPayment,
+} from "../mappers";
 
 export interface CustomerInput {
   /**
@@ -98,4 +105,57 @@ export async function bulkCreateCustomers(client: ApiClient, rows: CustomerInput
   for (const row of rows) {
     await createCustomer(client, row);
   }
+}
+
+/**
+ * Utang balance — sum(unpaid credit sales) minus sum(payments), computed
+ * live server-side (CustomerBalanceQuery). A query, never a stored column,
+ * same shape as `supplierBalance`.
+ */
+export async function customerBalance(client: ApiClient, customerId: string): Promise<number> {
+  const { data } = await client.get<{ data: { customer_id: string; balance: number } }>(
+    `/customers/${customerId}/balance`,
+  );
+  return Number(data.balance);
+}
+
+/**
+ * Every customer who currently owes utang, company-wide — one real grouped
+ * query server-side (`GET /customers/credit/outstanding`), NOT the
+ * N-parallel-calls pattern `listSupplierBalances` uses.
+ */
+export async function listCustomerBalances(client: ApiClient): Promise<Record<string, number>> {
+  const { data } = await client.get<{ data: Record<string, number> }>("/customers/credit/outstanding");
+  return data;
+}
+
+/** FIFO preview only — which of a customer's credit sales are still open, oldest first. Never a stored allocation. */
+export async function listCustomerOpenSales(client: ApiClient, customerId: string): Promise<CustomerOpenSale[]> {
+  const { data } = await client.get<{ data: CustomerOpenSaleJson[] }>(`/customers/${customerId}/open-sales`);
+  return data.map(toCustomerOpenSale);
+}
+
+export async function listCustomerPayments(client: ApiClient, customerId: string): Promise<CustomerPayment[]> {
+  const { data } = await client.get<{ data: CustomerPaymentJson[] }>(`/customers/${customerId}/payments`);
+  return data.map(toCustomerPayment);
+}
+
+export interface RecordCustomerPaymentInput {
+  amount: number;
+  paidAt?: string;
+  note?: string | null;
+}
+
+/** `Idempotency-Key` required — a retried "record ₱500" request (flaky connection at the counter) must never double-record. */
+export async function recordCustomerPayment(
+  client: ApiClient,
+  customerId: string,
+  input: RecordCustomerPaymentInput,
+): Promise<CustomerPayment> {
+  const { data } = await client.post<{ data: CustomerPaymentJson }>(
+    `/customers/${customerId}/payments`,
+    { amount: input.amount, paid_at: input.paidAt ?? null, note: input.note ?? null },
+    { idempotent: true },
+  );
+  return toCustomerPayment(data);
 }

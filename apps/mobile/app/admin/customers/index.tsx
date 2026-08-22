@@ -1,20 +1,24 @@
 import { useMemo, useState } from "react";
-import { FlatList, Text, TextInput, View } from "react-native";
+import { FlatList, Pressable, Text, TextInput, View } from "react-native";
+import { useRouter } from "expo-router";
 import { useMutation } from "@tanstack/react-query";
-import { Pencil, Trash2, UserPlus, UserRound } from "lucide-react-native";
+import { ChevronRight, Pencil, Trash2, UserPlus, UserRound } from "lucide-react-native";
 import type { Customer } from "@double-a/shared-types";
 import { CUSTOMER_FIELD_MAX_LENGTH, normaliseCustomerDetails } from "@double-a/shared-types";
 import { createCustomer, deleteCustomer, updateCustomer } from "@double-a/api-client/queries";
 import { getAdminApiClient, getApiClient } from "@/lib/api/session";
 import { useCustomers, useInvalidateCustomers } from "@/lib/query/customers";
-import { Button, EmptyState, ErrorNote, IconButton } from "@/components/ui";
+import { useCustomerBalances } from "@/lib/query/customer-payments";
+import { Button, EmptyState, ErrorNote, IconButton, Money } from "@/components/ui";
 import { BottomSheet } from "@/components/bottom-sheet";
 import { LoadingState } from "@/components/loading-state";
 import { WaveBackdrop } from "@/components/wave-backdrop";
 import { color, fontSize, radius, space } from "@/theme";
 
 export default function AdminCustomersScreen() {
+  const router = useRouter();
   const customersQuery = useCustomers();
+  const balancesQuery = useCustomerBalances();
   const invalidate = useInvalidateCustomers();
 
   const [query, setQuery] = useState("");
@@ -84,36 +88,48 @@ export default function AdminCustomersScreen() {
           data={filtered}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ padding: space.md, gap: space.xs }}
-          renderItem={({ item }) => (
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: space.sm,
-                padding: space.md,
-                borderRadius: radius.sm,
-                borderWidth: 1,
-                borderColor: color.border,
-                backgroundColor: color.surface,
-              }}
-            >
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ fontSize: fontSize.body, fontWeight: "600", color: color.ink }}>
-                  {item.name}
-                </Text>
-                <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
-                  {[item.contact, item.address].filter(Boolean).join(" · ") || "No contact on file"}
-                </Text>
-              </View>
-              <IconButton icon={Pencil} label="Edit" onPress={() => setEditing(item)} />
-              <IconButton
-                icon={Trash2}
-                label="Delete"
-                tone="danger"
-                onPress={() => remove.mutate(item.id)}
-              />
-            </View>
-          )}
+          renderItem={({ item }) => {
+            const balance = balancesQuery.data?.[item.id] ?? 0;
+
+            return (
+              <Pressable
+                onPress={() => router.push(`/admin/customers/${item.id}`)}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: space.sm,
+                  padding: space.md,
+                  borderRadius: radius.sm,
+                  borderWidth: 1,
+                  borderColor: color.border,
+                  backgroundColor: color.surface,
+                }}
+              >
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ fontSize: fontSize.body, fontWeight: "600", color: color.ink }}>
+                    {item.name}
+                  </Text>
+                  <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
+                    {[item.contact, item.address].filter(Boolean).join(" · ") || "No contact on file"}
+                  </Text>
+                  {balance > 0 ? (
+                    <Money
+                      value={balance}
+                      style={{ fontSize: fontSize.caption, color: color.warningInk, fontWeight: "600" }}
+                    />
+                  ) : null}
+                </View>
+                <IconButton icon={Pencil} label="Edit" onPress={() => setEditing(item)} />
+                <IconButton
+                  icon={Trash2}
+                  label="Delete"
+                  tone="danger"
+                  onPress={() => remove.mutate(item.id)}
+                />
+                <ChevronRight size={18} color={color.inkMuted} />
+              </Pressable>
+            );
+          }}
         />
       )}
 

@@ -1,9 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { ApiError } from "@double-a/api-client";
 import {
   createCustomer,
   deleteCustomer,
+  recordCustomerPayment,
   updateCustomer,
 } from "@double-a/api-client/queries";
 import {
@@ -57,9 +59,51 @@ export async function saveCustomer(
   return { error: null, ok: true };
 }
 
-export async function removeCustomer(formData: FormData): Promise<void> {
+/**
+ * Returns a result object rather than throwing — an uncaught Server Action
+ * error only crosses to the client as a generic message, and this needs the
+ * specific "outstanding balance" / "payment history" reason
+ * DestroyCustomerController sends back (see CLAUDE.md's utang ledger).
+ */
+export async function removeCustomer(formData: FormData): Promise<{ error: string | null }> {
   const id = String(formData.get("id") ?? "");
   const client = getAuthedClient();
-  await deleteCustomer(client, id);
+
+  try {
+    await deleteCustomer(client, id);
+  } catch (error) {
+    if (error instanceof ApiError && error.isValidation) {
+      return { error: error.errors?.customer?.[0] ?? "Could not delete this customer." };
+    }
+    return { error: error instanceof Error ? error.message : "Could not delete this customer." };
+  }
+
   revalidateCustomerViews();
+  return { error: null };
+}
+
+export async function recordCustomerPaymentAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const customerId = String(formData.get("customer_id") ?? "");
+  const amount = Number(formData.get("amount"));
+  const note = String(formData.get("note") ?? "").trim();
+
+  if (!amount || amount <= 0) {
+    return { error: "Enter an amount greater than zero.", ok: false };
+  }
+
+  try {
+    await recordCustomerPayment(getAuthedClient(), customerId, {
+      amount,
+      note: note ? note : null,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return { error: `Could not record this payment: ${message}`, ok: false };
+  }
+
+  revalidateCustomerViews(customerId);
+  return { error: null, ok: true };
 }

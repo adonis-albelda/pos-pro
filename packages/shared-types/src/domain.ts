@@ -8,7 +8,7 @@
 import { roundMoney } from "./money";
 
 export type UserRole = "cashier" | "admin" | "device" | "superadmin";
-export type PaymentMethod = "cash" | "gcash" | "card" | "other";
+export type PaymentMethod = "cash" | "gcash" | "card" | "other" | "credit";
 export type SaleStatus = "completed" | "voided" | "refunded";
 /** How the customer takes the goods. Default pickup — delivery is opt-in. */
 export type Fulfillment = "pickup" | "delivery";
@@ -19,6 +19,11 @@ export type Fulfillment = "pickup" | "delivery";
  */
 export function isPaidByDefault(method: PaymentMethod): boolean {
   return method === "cash";
+}
+
+/** Utang is meaningless without knowing who owes — a credit sale needs a real customer. */
+export function requiresCustomerForPayment(method: PaymentMethod, customerId: string | null): boolean {
+  return method === "credit" && !customerId;
 }
 export type InventoryReason =
   | "sale"
@@ -345,6 +350,30 @@ export interface Customer {
   address: string | null;
   contact: string | null;
   updatedAt: string;
+}
+
+/**
+ * A running-ledger payment against a customer's outstanding credit sales —
+ * never tied to one specific sale. See CustomerBalanceQuery (Laravel):
+ * balance is always sum(unpaid credit sales) - sum(payments), computed live.
+ */
+export interface CustomerPayment {
+  id: string;
+  customerId: string;
+  amount: number;
+  paidAt: string;
+  recordedBy: string | null;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** One of a customer's credit sales still open after a FIFO walk of their payments — a display preview, never a stored allocation. */
+export interface CustomerOpenSale {
+  saleId: string;
+  createdAt: string;
+  totalAmount: number;
+  amountOpen: number;
 }
 
 /**
