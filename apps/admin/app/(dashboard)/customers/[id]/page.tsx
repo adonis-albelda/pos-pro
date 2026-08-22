@@ -99,7 +99,7 @@ export default function CustomerDetailPage() {
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard
           icon={HandCoins}
-          label="Utang balance"
+          label="Credit balance"
           value={formatMoney(balance)}
           hint="Across unpaid credit sales"
           tone={balance > 0 ? "warning" : "neutral"}

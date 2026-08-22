@@ -4,13 +4,13 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { User } from "@double-a/shared-types";
 import { ApiError } from "@double-a/api-client";
-import { enrollDevice, login, logout } from "@double-a/api-client/queries";
+import { login } from "@double-a/api-client/queries";
 import { getSyncMeta, markFirstPullSkipped } from "@/db/meta";
 import { countLocalProducts } from "@/db/products";
 import { getDeviceId, getDeviceLabel, setDeviceLabel, getEnrolledCompanyId, setEnrolledCompanyId } from "@/lib/device";
 import { resetLocalData } from "@/db";
 import { useLayout } from "@/lib/layout";
-import { createBareClient, createScopedClient } from "@/lib/api/client";
+import { createBareClient } from "@/lib/api/client";
 import { isEnrolled, setSessionToken, unenrollTerminal } from "@/lib/api/session";
 import { registerDevicePushToken } from "@/lib/push";
 import { runFirstPull } from "@/sync";
@@ -127,22 +127,11 @@ export default function SetupScreen() {
         return;
       }
 
-      // An admin's own login can mint a fresh, independently revocable,
-      // non-expiring device token (EnrollDeviceController) instead of
-      // persisting the admin's own credentials on the tablet — the same
-      // separation CLAUDE.md draws between "admin email/password" and
-      // "terminal enrollment." A pre-existing Terminal (device-role)
-      // account has nothing to escalate to (enrollDevice requires an admin
-      // caller), so its own login token is persisted directly instead.
-      let sessionToken = signedIn.token;
-      if (profile.role === "admin") {
-        const adminClient = createScopedClient(signedIn.token);
-        const enrolled = await enrollDevice(adminClient, deviceName);
-        sessionToken = enrolled.token;
-        await logout(adminClient).catch(() => {
-          // Best-effort: the device now has its own token either way.
-        });
-      }
+      // Terminal (device-role) accounts are created in web admin only
+      // (Users page) — mobile setup never mints one. An admin logging in
+      // here just persists their own login token directly, same as a
+      // pre-existing Terminal account's.
+      const sessionToken = signedIn.token;
 
       const storedCompany = await getEnrolledCompanyId();
       if (storedCompany && storedCompany !== profile.companyId) {

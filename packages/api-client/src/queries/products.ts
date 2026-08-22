@@ -174,22 +174,20 @@ export async function findProductIdsMatching(
 }
 
 /**
- * GAP: no `category_id` aggregate endpoint on the Tally API (the old query
- * used a Postgres GROUP BY). This pulls the full catalogue client-side to
- * count it, same cost as `listProducts`. Fine for a shop-sized catalogue;
- * ask backend for a real aggregate if this gets slow.
+ * One grouped query server-side (`GET /categories/product-counts`) — used
+ * to walk the entire catalogue client-side just to tally this (same cost as
+ * `listProducts`), which made the categories page slow for any shop-sized
+ * catalogue. Same `is_active` semantics as `listProductsPage`: omitting
+ * the param (includeInactive: true) counts both active and inactive.
  */
 export async function countProductsByCategory(
   client: ApiClient,
   options: { includeInactive?: boolean } = {},
 ): Promise<Record<string, number>> {
-  const products = await listProducts(client, options);
-  const counts: Record<string, number> = {};
-  for (const product of products) {
-    if (!product.categoryId) continue;
-    counts[product.categoryId] = (counts[product.categoryId] ?? 0) + 1;
-  }
-  return counts;
+  const { data } = await client.get<{ data: Record<string, number> }>("/categories/product-counts", {
+    is_active: options.includeInactive ? undefined : true,
+  });
+  return data;
 }
 
 export async function getProduct(client: ApiClient, id: string): Promise<Product | null> {

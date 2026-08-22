@@ -119,7 +119,7 @@ const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: LucideIcon }
   { value: "cash", label: "Cash", icon: Banknote },
   { value: "gcash", label: "GCash", icon: Smartphone },
   { value: "card", label: "Card", icon: CreditCard },
-  { value: "credit", label: "Utang", icon: HandCoins },
+  { value: "credit", label: "Credit", icon: HandCoins },
 ];
 
 const FULFILLMENT_OPTIONS: { value: Fulfillment; label: string; icon?: LucideIcon }[] = [
@@ -691,7 +691,7 @@ export default function SellScreen() {
     }
 
     if (requiresCustomerForPayment(payment, customer.customerId)) {
-      Alert.alert("Customer needed", "Utang needs a customer — add one below.");
+      Alert.alert("Customer needed", "Credit needs a customer — add one below.");
       return;
     }
 
@@ -1209,7 +1209,7 @@ export default function SellScreen() {
 
             {requiresCustomerForPayment(payment, customer.customerId) ? (
               <View style={{ marginTop: space.sm }}>
-                <WarningNote>Utang needs a customer — add one below.</WarningNote>
+                <WarningNote>Credit needs a customer — add one below.</WarningNote>
               </View>
             ) : null}
 

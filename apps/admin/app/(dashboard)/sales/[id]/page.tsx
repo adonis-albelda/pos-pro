@@ -112,7 +112,7 @@ export default function SaleDetailPage() {
           {sale.paymentMethod ?? "payment not recorded"}
         </Badge>
         {sale.paymentMethod === "credit" ? (
-          <Badge tone="neutral">Utang — see customer balance</Badge>
+          <Badge tone="neutral">Credit — see customer balance</Badge>
         ) : sale.isPaid ? (
           <Badge tone="success">Paid</Badge>
         ) : (

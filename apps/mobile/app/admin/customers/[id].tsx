@@ -61,7 +61,7 @@ export default function AdminCustomerDetailScreen() {
           <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm, marginBottom: space.sm }}>
             <HandCoins size={16} color={color.primary} strokeWidth={2} />
             <Text style={{ fontSize: fontSize.body, fontWeight: "700", color: color.ink }}>
-              Utang balance
+              Credit balance
             </Text>
           </View>
           <Money
