@@ -64,35 +64,26 @@ export interface MovementTotals {
 }
 
 /**
- * Totals across every movement matching `productId` (the only filter the
- * endpoint supports — see `MovementFilter`). Walks pages client-side since
- * there is no aggregate endpoint; `cap` bounds the walk the same way the old
- * query's `.limit(cap)` did.
+ * `GET /inventory/movements/totals` (`MovementTotalsController`) — one SQL
+ * aggregate, not a client-side walk of every movement page. Used to scan up
+ * to 20,000 rows shop-wide whenever no product was focused, on every visit
+ * to the Movements tab. `cap` is accepted for call-site compatibility but no
+ * longer meaningful — a real aggregate has nothing to cap.
  */
 export async function sumMovements(
   client: ApiClient,
   options: MovementFilter & { cap?: number } = {},
 ): Promise<MovementTotals> {
-  const cap = options.cap ?? 20000;
-  const pageSize = 200;
-  let stockIn = 0;
-  let stockOut = 0;
-  let count = 0;
-  let page = 1;
+  const { data } = await client.get<{
+    data: { stock_in: number; stock_out: number; net: number; count: number };
+  }>("/inventory/movements/totals", { product_id: options.productId });
 
-  for (;;) {
-    const result = await listMovementsPage(client, { productId: options.productId, page, pageSize });
-    for (const movement of result.movements) {
-      if (count >= cap) break;
-      if (movement.changeQuantity > 0) stockIn += movement.changeQuantity;
-      else stockOut += -movement.changeQuantity;
-      count += 1;
-    }
-    if (count >= cap || page >= result.lastPage) break;
-    page += 1;
-  }
-
-  return { stockIn, stockOut, net: stockIn - stockOut, count };
+  return {
+    stockIn: Number(data.stock_in),
+    stockOut: Number(data.stock_out),
+    net: Number(data.net),
+    count: data.count,
+  };
 }
 
 /**

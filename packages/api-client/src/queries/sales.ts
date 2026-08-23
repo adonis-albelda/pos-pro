@@ -13,18 +13,25 @@ import { type SaleAttrs, toSaleWithItems } from "../mappers";
  */
 
 /**
- * GAP: the old PostgREST `SalesFilter` also supported `from`/`to` (a date
- * range), `userId`, `deviceId`, `fulfillment`, `isPaid`, `deliveryOpen`, and
- * an arbitrary `limit`. `IndexSalesController` only accepts `customer_id` and
- * `status`, paginated (`per_page`, capped server-side at 200). A caller
- * needing date-ranged reports or the Delivery tab's "open deliveries on this
- * terminal" view (fulfillment=delivery, delivery_completed=false,
- * status=completed) has to filter client-side over `status=completed`
- * results, or ask backend to extend the endpoint.
+ * `IndexSalesController` filters on `customer_id`, `status`, `user_id`,
+ * `device_id`, and a `from`/`to` created_at range — all server-side.
+ *
+ * GAP: the old PostgREST `SalesFilter` also supported `fulfillment`,
+ * `isPaid`, and `deliveryOpen`. Those three still have no server-side
+ * equivalent — the Delivery tab's "open deliveries on this terminal" view
+ * (fulfillment=delivery, delivery_completed=false, status=completed) still
+ * has to filter client-side over `status=completed` results, or ask
+ * backend to extend the endpoint further.
  */
 export interface SalesFilter {
   customerId?: string;
   status?: string;
+  userId?: string;
+  deviceId?: string;
+  /** ISO timestamp, inclusive lower bound on created_at. */
+  from?: string;
+  /** ISO timestamp, inclusive upper bound on created_at. */
+  to?: string;
   page?: number;
   pageSize?: number;
 }
@@ -36,6 +43,10 @@ export async function listSalesPage(
   const page = await client.get<JsonApiPage<SaleAttrs>>("/sales", {
     customer_id: filter.customerId,
     status: filter.status,
+    user_id: filter.userId,
+    device_id: filter.deviceId,
+    from: filter.from,
+    to: filter.to,
     page: filter.page ?? 1,
     per_page: filter.pageSize ?? 50,
   });

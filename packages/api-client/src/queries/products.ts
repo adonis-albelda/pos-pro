@@ -148,19 +148,22 @@ export async function listProductsByIds(client: ApiClient, ids: string[]): Promi
 
 /**
  * No server-side id-search endpoint — walks the search-filtered listing
- * client-side. Fine for admin's typeahead-sized result sets.
+ * client-side. Fine for admin's typeahead-sized result sets; `cap` is a
+ * safety net against a broad search term matching most of the catalogue,
+ * not a limit this is expected to hit in normal use.
  */
 export async function findProductIdsMatching(
   client: ApiClient,
   q: string,
-  options: { includeInactive?: boolean } = {},
+  options: { includeInactive?: boolean; cap?: number } = {},
 ): Promise<string[]> {
   const needle = q.trim();
   if (!needle) return [];
 
+  const cap = options.cap ?? 2000;
   const ids: string[] = [];
   let page = 1;
-  for (;;) {
+  for (; ids.length < cap; page += 1) {
     const result = await listProductsPage(client, {
       q: needle,
       page,
@@ -168,9 +171,9 @@ export async function findProductIdsMatching(
       includeInactive: options.includeInactive,
     });
     ids.push(...result.products.map((p) => p.id));
-    if (page >= result.lastPage) return ids;
-    page += 1;
+    if (page >= result.lastPage) break;
   }
+  return ids;
 }
 
 /**

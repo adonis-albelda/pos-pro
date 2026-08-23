@@ -7,13 +7,13 @@ import { getBrowserApiClient } from "@/lib/api/browser-client";
 import { queryKeys } from "./keys";
 
 /**
- * GAP: IndexSalesController only accepts customer_id/status (see
- * queries/sales.ts) — from/to/userId/deviceId filters are applied
- * client-side by walking paginated listSalesPage results, capped, exactly
- * as sales/page.tsx used to do as a Server Component. Cashier-name joins
+ * IndexSalesController filters customer_id/status/user_id/device_id/
+ * from/to server-side now — every row `listSalesPage` returns is already a
+ * match, so this only paginates (up to 300 rows, a few real pages) rather
+ * than scanning the whole table looking for matches. Cashier-name joins
  * stay the caller's job (useUsers()), same as before.
  */
-const SALES_SCAN_CAP = 2000;
+const SALES_LIST_CAP = 300;
 
 export interface SalesListFilter {
   from?: string;
@@ -26,34 +26,28 @@ export interface SalesListFilter {
 export function useSalesList(filter: SalesListFilter = {}) {
   return useQuery({
     queryKey: queryKeys.sales.list({ ...filter }),
-    queryFn: () => scanSales(filter),
+    queryFn: () => fetchSales(filter),
   });
 }
 
-async function scanSales(filter: SalesListFilter): Promise<SaleWithItems[]> {
+async function fetchSales(filter: SalesListFilter): Promise<SaleWithItems[]> {
   const client = getBrowserApiClient();
   const from = filter.from ? new Date(filter.from).toISOString() : undefined;
   const to = filter.to ? new Date(`${filter.to}T23:59:59`).toISOString() : undefined;
 
   const sales: SaleWithItems[] = [];
-  let scanned = 0;
-  for (let apiPage = 1; scanned < SALES_SCAN_CAP; apiPage += 1) {
+  for (let apiPage = 1; sales.length < SALES_LIST_CAP; apiPage += 1) {
     const result = await listSalesPage(client, {
       status: filter.status || undefined,
+      userId: filter.userId || undefined,
+      deviceId: filter.deviceId || undefined,
+      from,
+      to,
       page: apiPage,
       pageSize: 200,
     });
-    scanned += result.sales.length;
-    sales.push(
-      ...result.sales.filter((sale) => {
-        if (from && sale.createdAt < from) return false;
-        if (to && sale.createdAt > to) return false;
-        if (filter.userId && sale.userId !== filter.userId) return false;
-        if (filter.deviceId && sale.deviceId !== filter.deviceId) return false;
-        return true;
-      }),
-    );
-    if (apiPage >= result.lastPage || sales.length >= 300) break;
+    sales.push(...result.sales);
+    if (apiPage >= result.lastPage) break;
   }
   return sales;
 }

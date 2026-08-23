@@ -3,7 +3,6 @@ import {
   type PurchaseOrderItem,
   type PurchaseOrderPayment,
   type PurchaseOrderStatus,
-  purchaseOrderBalance,
   roundMoney,
 } from "@double-a/shared-types";
 import { ApiError, type ApiClient, type JsonApiPage, type JsonApiResource } from "../http";
@@ -15,6 +14,7 @@ import {
   toPurchaseOrderPayment,
   toPurchaseOrderWithLines,
 } from "../mappers";
+import { listSupplierBalances } from "./suppliers";
 
 export type PurchaseOrderWithLines = PurchaseOrder & {
   items: PurchaseOrderItem[];
@@ -362,26 +362,15 @@ export async function countOpenPurchaseOrders(client: ApiClient): Promise<number
 }
 
 /**
- * GAP: no aggregate endpoint (the old query summed unpaid
- * `purchase_order_payments` server-side via a join, excluding cancelled
- * POs). Walks every purchase order page — payments already come nested on
- * each PO — and sums unpaid terms client-side with `purchaseOrderBalance`,
- * skipping cancelled orders. Fine for a shop-sized PO history; ask backend
- * for a real aggregate if this gets slow.
+ * `GET /suppliers/balances` (`IndexSupplierBalancesController`) already
+ * sums unpaid `purchase_order_payments` across non-cancelled POs, grouped
+ * by supplier, in one query — the exact same definition this used to
+ * rebuild by walking every purchase order page and summing client-side.
+ * One call instead of N; this fires on every dashboard-home visit.
  */
 export async function sumSupplierBalance(client: ApiClient): Promise<number> {
-  let total = 0;
-  let page = 1;
-  for (;;) {
-    const result = await listPurchaseOrdersPage(client, { page, pageSize: 200 });
-    for (const po of result.purchaseOrders) {
-      if (po.status === "cancelled") continue;
-      total += purchaseOrderBalance(po.payments);
-    }
-    if (page >= result.lastPage) break;
-    page += 1;
-  }
-  return roundMoney(total);
+  const balances = await listSupplierBalances(client);
+  return roundMoney(Object.values(balances).reduce((sum, balance) => sum + balance, 0));
 }
 
 export interface UpcomingSupplierPayment {
