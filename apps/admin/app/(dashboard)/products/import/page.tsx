@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import { ArrowLeft, Download, FileUp, TableProperties } from "lucide-react";
 import { ButtonLink, Card, CardHeader, PageHeader, Table, Td, Th } from "@/components/ui";

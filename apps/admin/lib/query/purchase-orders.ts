@@ -54,31 +54,23 @@ export function useSupplierBalanceTotal() {
 }
 
 /**
- * GAP: IndexInventoryMovementsController has no `reference_id` filter (see
- * queries/inventory.ts) — walks recent shop-wide movements looking for this
- * order's, capped rather than a full unbounded scan. Key is namespaced under
- * "purchase-orders" (not "inventory") so useInvalidatePurchaseOrders() below
- * catches it too — receiving a line changes both the PO and its movements.
+ * IndexInventoryMovementsController does support `reference_id` — one
+ * filtered call, not a shop-wide page walk. `reason` isn't a server filter,
+ * but a purchase order's own reference_id already scopes this to a handful
+ * of rows, so filtering "restock" out of that tiny set client-side is cheap.
+ * Key is namespaced under "purchase-orders" (not "inventory") so
+ * useInvalidatePurchaseOrders() below catches it too — receiving a line
+ * changes both the PO and its movements.
  */
 export function usePurchaseOrderMovements(purchaseOrderId: string) {
   return useQuery({
     queryKey: ["purchase-orders", "detail", purchaseOrderId, "movements"] as const,
     queryFn: async () => {
-      const client = getBrowserApiClient();
-      const MOVEMENT_SCAN_CAP = 2000;
-      const movements: InventoryMovement[] = [];
-      let scanned = 0;
-      for (let page = 1; scanned < MOVEMENT_SCAN_CAP; page += 1) {
-        const result = await listMovementsPage(client, { page, pageSize: 200 });
-        scanned += result.movements.length;
-        movements.push(
-          ...result.movements.filter(
-            (m) => m.referenceId === purchaseOrderId && m.reason === "restock",
-          ),
-        );
-        if (page >= result.lastPage) break;
-      }
-      return movements;
+      const result = await listMovementsPage(getBrowserApiClient(), {
+        referenceId: purchaseOrderId,
+        pageSize: 200,
+      });
+      return result.movements.filter((m: InventoryMovement) => m.reason === "restock");
     },
     enabled: Boolean(purchaseOrderId),
   });
