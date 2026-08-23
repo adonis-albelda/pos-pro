@@ -32,6 +32,7 @@ import {
   Pencil,
   Phone,
   Plus,
+  ScanBarcode,
   Search,
   ShoppingCart,
   Smartphone,
@@ -91,6 +92,7 @@ import { useSession } from "@/lib/session";
 import { printReceipt } from "@/printing/receipt";
 import { useSync } from "@/sync/sync-provider";
 import { BottomSheet } from "@/components/bottom-sheet";
+import { BarcodeScanModal } from "@/components/barcode-scan-modal";
 import { CategoryDialog, type CategoryFilter } from "@/components/category-tabs";
 import { LoadingState } from "@/components/loading-state";
 import { ProductTile } from "@/components/product-tile";
@@ -208,6 +210,7 @@ export default function SellScreen() {
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [voiceSearchOpen, setVoiceSearchOpen] = useState(false);
   const [voiceVocabulary, setVoiceVocabulary] = useState<string[]>([]);
+  const [barcodeScanOpen, setBarcodeScanOpen] = useState(false);
 
   /** Product names, fetched fresh each time the mic opens — biases recognition toward this shop's actual catalogue. */
   function openVoiceSearch() {
@@ -827,6 +830,17 @@ export default function SellScreen() {
               <Mic size={20} color={color.onPrimary} strokeWidth={2} />
             </Pressable>
           ) : null}
+          {isEnabled("barcode_scan") ? (
+            <Pressable
+              onPress={() => setBarcodeScanOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Scan a barcode"
+              hitSlop={4}
+              style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}
+            >
+              <ScanBarcode size={20} color={color.onPrimary} strokeWidth={2} />
+            </Pressable>
+          ) : null}
         </View>
 
         {/* Hidden while searching: the results already ignore the filter, so a
@@ -1333,6 +1347,12 @@ export default function SellScreen() {
         onClose={() => setVoiceSearchOpen(false)}
         onResult={(text) => setSearch(text)}
         contextualStrings={voiceVocabulary}
+      />
+
+      <BarcodeScanModal
+        open={barcodeScanOpen}
+        onClose={() => setBarcodeScanOpen(false)}
+        onResult={(code) => setSearch(code)}
       />
     </View>
   );

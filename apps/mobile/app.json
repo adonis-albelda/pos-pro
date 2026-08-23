@@ -31,7 +31,8 @@
         "android.permission.BLUETOOTH_ADMIN",
         "android.permission.BLUETOOTH_CONNECT",
         "android.permission.BLUETOOTH_SCAN",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.CAMERA"
       ]
     },
     "plugins": [
@@ -45,6 +46,12 @@
         {
           "microphonePermission": "Used to search products by voice.",
           "speechRecognitionPermission": "Used to search products by voice."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Used to scan a product's barcode."
         }
       ]
     ],
