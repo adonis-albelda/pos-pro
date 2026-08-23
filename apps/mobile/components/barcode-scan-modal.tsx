@@ -5,7 +5,11 @@ import { ScanLine, TriangleAlert, X } from "lucide-react-native";
 import { Button } from "@/components/ui";
 import { color, fontSize, radius, space } from "@/theme";
 
-/** Retail product barcodes — no QR/aztec/pdf417/datamatrix, those aren't what a shelf label carries. */
+/**
+ * Retail barcodes, plus qr — the admin Product QR/barcode label sheet
+ * (apps/admin/.../product-qr) can print either, and both just encode the
+ * plain SKU string. No aztec/pdf417/datamatrix — nothing here prints those.
+ */
 const BARCODE_TYPES = [
   "ean13",
   "ean8",
@@ -16,13 +20,14 @@ const BARCODE_TYPES = [
   "code93",
   "codabar",
   "itf14",
+  "qr",
 ] as const;
 
 /**
- * Camera barcode scan for the product search box — beside the mic icon.
- * One scan, one result: the moment a barcode reads, this fires onResult and
- * closes itself, same as VoiceSearchModal's one-shot shape. A native module
- * (expo-camera) — this terminal's dev client must be rebuilt (`expo
+ * Camera scan (barcode or QR) for the product search box — beside the mic
+ * icon. One scan, one result: the moment a code reads, this fires onResult
+ * and closes itself, same as VoiceSearchModal's one-shot shape. A native
+ * module (expo-camera) — this terminal's dev client must be rebuilt (`expo
  * prebuild` + a fresh EAS/dev-client build) before this works on device,
  * same as the voice-search/printer/bluetooth modules already here.
  */
@@ -101,7 +106,7 @@ export function BarcodeScanModal({
                   color: color.onPrimary,
                 }}
               >
-                Point the camera at a barcode
+                Point the camera at a barcode or QR code
               </Text>
             </View>
           </>
@@ -128,7 +133,7 @@ export function BarcodeScanModal({
               <TriangleAlert size={36} color={color.dangerInk} strokeWidth={2} />
             </View>
             <Text style={{ fontSize: fontSize.headingSm, fontWeight: "700", color: color.onPrimary }}>
-              Scan a barcode
+              Scan a barcode or QR code
             </Text>
             <Text
               style={{
@@ -138,7 +143,7 @@ export function BarcodeScanModal({
               }}
             >
               {canAskAgain
-                ? "Needs camera access to scan a barcode."
+                ? "Needs camera access to scan a barcode or QR code."
                 : "Camera access is off for this app. Turn it on in Settings."}
             </Text>
             {canAskAgain ? (

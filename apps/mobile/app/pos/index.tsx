@@ -834,7 +834,7 @@ export default function SellScreen() {
             <Pressable
               onPress={() => setBarcodeScanOpen(true)}
               accessibilityRole="button"
-              accessibilityLabel="Scan a barcode"
+              accessibilityLabel="Scan a barcode or QR code"
               hitSlop={4}
               style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}
             >

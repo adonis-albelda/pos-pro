@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import QRCode from "qrcode";
+import JsBarcode from "jsbarcode";
 import { CheckSquare, Printer, QrCode, Search, Square, X } from "lucide-react";
 import {
   Button,
@@ -113,7 +114,10 @@ function cellScale(count: number, maxSkuLen: number): {
 
 const MAX_COPIES = 48;
 
+type CodeType = "qr" | "barcode";
+
 export function ProductQrPanel({ products }: { products: QrProduct[] }) {
+  const [codeType, setCodeType] = useState<CodeType>("qr");
   const [paper, setPaper] = useState<PaperSize>("a4");
   const [sizeMode, setSizeMode] = useState<SizeMode>("md");
   const [query, setQuery] = useState("");
@@ -196,17 +200,41 @@ export function ProductQrPanel({ products }: { products: QrProduct[] }) {
     async function build() {
       setBusy(true);
       const next: Record<string, string> = {};
-      // One QR per distinct product on the page; copies reuse the same image.
-      await Promise.all(
-        selectedProducts.map(async (product) => {
-          next[product.id] = await QRCode.toDataURL(product.sku, {
-            errorCorrectionLevel: "M",
-            margin: 1,
-            width: scale.qrWidth,
-            color: { dark: "#1a1a1a", light: "#ffffff" },
-          });
-        }),
-      );
+      // One code per distinct product on the page; copies reuse the same image.
+      if (codeType === "qr") {
+        await Promise.all(
+          selectedProducts.map(async (product) => {
+            next[product.id] = await QRCode.toDataURL(product.sku, {
+              errorCorrectionLevel: "M",
+              margin: 1,
+              width: scale.qrWidth,
+              color: { dark: "#1a1a1a", light: "#ffffff" },
+            });
+          }),
+        );
+      } else {
+        // CODE128, not EAN/UPC — a SKU is an arbitrary alphanumeric string,
+        // not a fixed-length numeric retail code. Text is rendered
+        // separately below the image already, so displayValue stays off.
+        for (const product of selectedProducts) {
+          const canvas = document.createElement("canvas");
+          try {
+            JsBarcode(canvas, product.sku, {
+              format: "CODE128",
+              width: 2,
+              height: scale.qrWidth * 0.45,
+              margin: 4,
+              displayValue: false,
+              background: "#ffffff",
+              lineColor: "#1a1a1a",
+            });
+            next[product.id] = canvas.toDataURL();
+          } catch {
+            // A SKU with characters CODE128 can't encode — skip it rather
+            // than crash the whole sheet; the cell shows "…" instead.
+          }
+        }
+      }
       if (!cancelled) {
         setCodes(next);
         setBusy(false);
@@ -217,7 +245,7 @@ export function ProductQrPanel({ products }: { products: QrProduct[] }) {
     return () => {
       cancelled = true;
     };
-  }, [selectedProducts, scale.qrWidth]);
+  }, [selectedProducts, scale.qrWidth, codeType]);
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -286,7 +314,16 @@ export function ProductQrPanel({ products }: { products: QrProduct[] }) {
           title="Pick products"
           description="Search by name or SKU, filter by category, then choose how many labels of each."
         />
-        <div className="grid gap-4 px-4 py-5 sm:grid-cols-2 lg:grid-cols-4 sm:px-6">
+        <div className="grid gap-4 px-4 py-5 sm:grid-cols-2 lg:grid-cols-5 sm:px-6">
+          <Field label="Code type" hint="What gets printed on each label.">
+            <Select
+              value={codeType}
+              onChange={(event) => setCodeType(event.target.value as CodeType)}
+            >
+              <option value="qr">QR code</option>
+              <option value="barcode">Barcode (CODE128)</option>
+            </Select>
+          </Field>
           <Field label="Search" hint="Matches product name or SKU.">
             <Input
               icon={Search}
@@ -481,7 +518,7 @@ export function ProductQrPanel({ products }: { products: QrProduct[] }) {
                     {codes[label.id] ? (
                       <img
                         src={codes[label.id]}
-                        alt={`QR for ${label.sku}`}
+                        alt={`${codeType === "qr" ? "QR code" : "Barcode"} for ${label.sku}`}
                         className="h-auto w-[78%] object-contain"
                         style={{ maxHeight: scale.qrMax }}
                       />

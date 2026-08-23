@@ -5,6 +5,7 @@ import {
   countProducts,
   getProductStats,
   listBelowReorder,
+  listProductLabels,
   listProductsPage,
   type ListProductsPageOptions,
 } from "@double-a/api-client/queries";
@@ -51,6 +52,14 @@ export function useProductCount(options: { includeInactive?: boolean } = {}) {
   return useQuery({
     queryKey: queryKeys.products.count(options),
     queryFn: () => countProducts(getBrowserApiClient(), options),
+  });
+}
+
+/** Lean id/sku/name/category list for every active SKU'd product — the Product QR/barcode label sheet, one call instead of a whole-catalogue walk. */
+export function useProductLabels() {
+  return useQuery({
+    queryKey: [...queryKeys.products.all, "labels"] as const,
+    queryFn: () => listProductLabels(getBrowserApiClient()),
   });
 }
 

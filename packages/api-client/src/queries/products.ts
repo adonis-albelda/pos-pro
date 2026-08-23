@@ -313,3 +313,32 @@ export async function listBelowReorder(client: ApiClient): Promise<Product[]> {
   );
   return data.map(toProduct);
 }
+
+export interface ProductLabel {
+  id: string;
+  sku: string;
+  name: string;
+  category: string | null;
+  categoryId: string | null;
+}
+
+/**
+ * `GET /products/labels` (`ProductLabelsController`) — one lean, unpaginated
+ * query for every active SKU'd product, built for the QR/barcode label
+ * sheet. Replaced walking IndexProductsController's full paginated
+ * ProductResource across every page, which fetched every column on every
+ * product and tripped the rate limiter on a real catalogue.
+ */
+export async function listProductLabels(client: ApiClient): Promise<ProductLabel[]> {
+  const { data } = await client.get<{
+    data: { id: string; sku: string; name: string; category: string | null; category_id: string | null }[];
+  }>("/products/labels");
+
+  return data.map((row) => ({
+    id: row.id,
+    sku: row.sku,
+    name: row.name,
+    category: row.category,
+    categoryId: row.category_id,
+  }));
+}
