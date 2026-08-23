@@ -1,14 +1,14 @@
+"use client";
+
 import Link from "next/link";
 import { ArrowLeft, Camera } from "lucide-react";
-import { listCategories } from "@double-a/api-client/queries";
-import { PageHeader } from "@/components/ui";
+import { Card, PageHeader } from "@/components/ui";
 import { toCategoryOptions } from "@/lib/category-options";
-import { getAuthedClient } from "@/lib/api/session";
+import { useCategories } from "@/lib/query/categories";
 import { FromPhotoPanel } from "./from-photo-panel";
 
-export default async function FromPhotoPage() {
-  const client = getAuthedClient();
-  const categories = await listCategories(client, { includeInactive: true });
+export default function FromPhotoPage() {
+  const categoriesQuery = useCategories({ includeInactive: true });
 
   return (
     <div className="space-y-6">
@@ -26,7 +26,11 @@ export default async function FromPhotoPage() {
         Back to products
       </Link>
 
-      <FromPhotoPanel categories={toCategoryOptions(categories)} />
+      {categoriesQuery.isPending ? (
+        <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>
+      ) : (
+        <FromPhotoPanel categories={toCategoryOptions(categoriesQuery.data ?? [])} />
+      )}
     </div>
   );
 }

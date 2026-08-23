@@ -5,6 +5,11 @@
  * having to guess the other's key shape.
  */
 export const queryKeys = {
+  /** The signed-in user, client-side — backs AdminGate's isShopAdmin() check. */
+  session: {
+    all: ["session"] as const,
+    me: () => ["session", "me"] as const,
+  },
   categories: {
     all: ["categories"] as const,
     list: (params?: Record<string, unknown>) => ["categories", "list", params] as const,
