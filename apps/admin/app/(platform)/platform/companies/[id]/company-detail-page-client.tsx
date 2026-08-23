@@ -52,7 +52,11 @@ export function CompanyDetailPageClient({
         }
       />
 
-      <CompanyControls companyId={companyId} isActive={stats.isActive} />
+      <CompanyControls
+        companyId={companyId}
+        isActive={stats.isActive}
+        invoiceNumberMode={stats.invoiceNumberMode}
+      />
 
       <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
         <StatCard icon={Package} label="Products" value={String(stats.productCount)} />

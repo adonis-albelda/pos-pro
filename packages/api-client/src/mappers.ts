@@ -219,6 +219,9 @@ export interface StoreSettingAttrs {
   address: string | null;
   phone: string | null;
   receipt_footer: string | null;
+  invoice_prefix: string | null;
+  invoice_digits: number | null;
+  invoice_next_number: number | null;
   updated_at: string | null;
 }
 
@@ -230,6 +233,9 @@ export function toStoreSettings(resource: JsonApiResource<StoreSettingAttrs>): S
     address: a.address,
     phone: a.phone,
     receiptFooter: a.receipt_footer,
+    invoicePrefix: a.invoice_prefix,
+    invoiceDigits: a.invoice_digits ?? 6,
+    invoiceNextNumber: a.invoice_next_number ?? 1,
     updatedAt: a.updated_at ?? "",
   };
 }
@@ -299,6 +305,7 @@ export function toSaleItem(json: SaleItemJson, saleId: string): SaleItem {
 }
 
 export interface SaleAttrs {
+  invoice_number?: string | null;
   user_id: string | null;
   customer_id: string | null;
   total_amount: number;
@@ -323,6 +330,7 @@ export function toSale(resource: JsonApiResource<SaleAttrs>): Sale {
   const a = resource.attributes;
   return {
     id: resource.id,
+    invoiceNumber: a.invoice_number ?? null,
     userId: a.user_id,
     totalAmount: Number(a.total_amount),
     discountAmount: Number(a.discount_amount ?? 0),
@@ -503,6 +511,7 @@ export function toInventoryMovement(resource: JsonApiResource<InventoryMovementA
 export interface CompanyAttrs {
   name: string;
   is_active: boolean;
+  invoice_number_mode?: string | null;
   created_at: string | null;
 }
 
@@ -512,6 +521,7 @@ export function toCompany(resource: JsonApiResource<CompanyAttrs>): Company {
     id: resource.id,
     name: a.name,
     isActive: a.is_active,
+    invoiceNumberMode: a.invoice_number_mode === "incremental" ? "incremental" : "random",
     createdAt: a.created_at ?? "",
   };
 }

@@ -14,6 +14,8 @@ export type SyncPhase =
 export interface PushResult {
   salesPushed: number;
   itemsPushed: number;
+  /** Sale id -> server-assigned invoice number, for sales this push created. */
+  invoiceNumbers: Record<string, string>;
 }
 
 export interface PullResult {

@@ -12,6 +12,7 @@ import {
   openCompany as apiOpenCompany,
   resetUserPassword,
   resetUserPin,
+  setCompanyInvoiceMode,
   updateCompany,
 } from "@double-a/api-client/queries";
 import type { FormState } from "@/lib/form-state";
@@ -147,6 +148,17 @@ export async function setCompanyActive(formData: FormData): Promise<void> {
   await updateCompany(client, companyId, { isActive });
 
   revalidatePath("/platform");
+  revalidatePath(`/platform/companies/${companyId}`);
+}
+
+export async function setInvoiceMode(formData: FormData): Promise<void> {
+  const { client } = await requireSuperadmin();
+  const companyId = String(formData.get("company_id") ?? "");
+  const mode = String(formData.get("mode") ?? "");
+  if (!companyId || (mode !== "incremental" && mode !== "random")) return;
+
+  await setCompanyInvoiceMode(client, companyId, mode);
+
   revalidatePath(`/platform/companies/${companyId}`);
 }
 

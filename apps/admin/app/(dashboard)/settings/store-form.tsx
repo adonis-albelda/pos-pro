@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { Check, ImageOff, MapPin, Phone, Store } from "lucide-react";
+import { Check, Hash, ImageOff, MapPin, Phone, Store } from "lucide-react";
 import { storeInitial, type StoreSettings } from "@double-a/shared-types";
 import {
   Button,
@@ -19,6 +19,10 @@ import { saveStoreSettings } from "./actions";
 export function StoreForm({ settings }: { settings: StoreSettings }) {
   const [state, action, pending] = useActionState(saveStoreSettings, EMPTY_FORM_STATE);
   const invalidate = useInvalidateSettings();
+
+  const [invoicePrefix, setInvoicePrefix] = useState(settings.invoicePrefix ?? "");
+  const [invoiceDigits, setInvoiceDigits] = useState(settings.invoiceDigits);
+  const invoicePreview = `${invoicePrefix ? `${invoicePrefix}-` : ""}${"0".repeat(Math.max(invoiceDigits - 1, 0))}1`;
 
   useEffect(() => {
     if (state.ok) invalidate();
@@ -111,6 +115,44 @@ export function StoreForm({ settings }: { settings: StoreSettings }) {
           placeholder="Thank you. No return, no exchange without receipt."
         />
       </Field>
+
+      <div className="space-y-2 rounded-md border border-border p-4">
+        <p className="text-body-sm font-medium text-ink">Invoice numbering</p>
+        <p className="text-caption text-ink-muted">
+          Every completed sale gets a sequential number in this format. Preview: {" "}
+          <span className="font-mono">{invoicePreview}</span>
+        </p>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Field label="Prefix" hint="Optional, e.g. JH.">
+            <Input
+              icon={Hash}
+              name="invoice_prefix"
+              value={invoicePrefix}
+              onChange={(event) => setInvoicePrefix(event.currentTarget.value)}
+              placeholder="JH"
+              maxLength={8}
+            />
+          </Field>
+          <Field label="Digits" hint="Padded with leading zeros.">
+            <Input
+              type="number"
+              name="invoice_digits"
+              min={1}
+              max={12}
+              value={invoiceDigits}
+              onChange={(event) => setInvoiceDigits(Number(event.currentTarget.value) || 1)}
+            />
+          </Field>
+          <Field label="Next number" hint="Bumped automatically after each sale.">
+            <Input
+              type="number"
+              name="invoice_next_number"
+              min={1}
+              defaultValue={settings.invoiceNextNumber}
+            />
+          </Field>
+        </div>
+      </div>
 
       {state.error ? <ErrorNote>{state.error}</ErrorNote> : null}
       {state.ok ? (

@@ -89,7 +89,7 @@ export default function AdminSaleDetailScreen() {
 
       <View style={{ gap: space.xs }}>
         <Text style={{ fontSize: fontSize.headingSm, fontWeight: "700", color: color.ink }}>
-          Sale <Text style={styles.numeric}>{id.slice(0, 8)}</Text>
+          Sale <Text style={styles.numeric}>{sale.invoiceNumber ?? id.slice(0, 8)}</Text>
         </Text>
         <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>{soldAt}</Text>
         {sale.deviceId ? (

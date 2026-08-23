@@ -140,6 +140,12 @@ export interface StoreSettings {
   phone: string | null;
   /** Printed under the total. Null keeps the receipt's built-in footer. */
   receiptFooter: string | null;
+  /** e.g. "JH" in "JH-000001". Null prints just the padded number. */
+  invoicePrefix: string | null;
+  /** How many digits the sequential part pads to. */
+  invoiceDigits: number;
+  /** Next number AssignInvoiceNumber will hand out — editable in settings. */
+  invoiceNextNumber: number;
   updatedAt: string;
 }
 
@@ -153,8 +159,16 @@ export const DEFAULT_STORE_SETTINGS: StoreSettings = {
   address: null,
   phone: null,
   receiptFooter: null,
+  invoicePrefix: null,
+  invoiceDigits: 6,
+  invoiceNextNumber: 1,
   updatedAt: "",
 };
+
+/** What an offline-printed receipt shows in place of a server-assigned number. */
+export function pendingInvoiceLabel(prefix: string | null): string {
+  return prefix ? `${prefix}-pending` : "pending";
+}
 
 /** The letter drawn in the logo well when there is no image to show. */
 export function storeInitial(name: string): string {
@@ -224,10 +238,14 @@ export interface User {
 }
 
 /** A tenant the platform superadmin creates. Shop identity still lives in store_settings. */
+export type InvoiceNumberMode = "incremental" | "random";
+
 export interface Company {
   id: string;
   name: string;
   isActive: boolean;
+  /** Superadmin-only dial — see AssignInvoiceNumber. Defaults to "random" for a new company. */
+  invoiceNumberMode: InvoiceNumberMode;
   createdAt: string;
 }
 
@@ -465,6 +483,12 @@ export function hasCustomerDetails(details: CustomerDetails): boolean {
 export interface Sale {
   /** Generated on-device at creation time so offline rows never collide. */
   id: string;
+  /**
+   * Server-assigned, sequential, formatted with the company's configured
+   * prefix/digits (e.g. "JH-000001"). Null until the sale has synced — a
+   * receipt printed offline shows a pending placeholder instead.
+   */
+  invoiceNumber: string | null;
   userId: string | null;
   totalAmount: number;
   /** Everything given away at the counter on this sale, as a positive number. */

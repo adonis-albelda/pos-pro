@@ -79,16 +79,19 @@ export async function push(): Promise<PushResult> {
 
   let salesPushed = 0;
   let itemsPushed = 0;
+  const invoiceNumbers: Record<string, string> = {};
 
   for (let index = 0; index < valid.length; index += BATCH_SIZE) {
     const batch = valid.slice(index, index + BATCH_SIZE);
 
-    await pushSales(client, batch);
+    const result = await pushSales(client, batch);
+    Object.assign(invoiceNumbers, result.invoiceNumbers);
 
     const syncedAt = new Date().toISOString();
     await markSalesSynced(
       batch.map((sale) => sale.id),
       syncedAt,
+      result.invoiceNumbers,
     );
 
     salesPushed += batch.length;
@@ -110,5 +113,5 @@ export async function push(): Promise<PushResult> {
     );
   }
 
-  return { salesPushed, itemsPushed };
+  return { salesPushed, itemsPushed, invoiceNumbers };
 }

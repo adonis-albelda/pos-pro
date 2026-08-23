@@ -24,6 +24,9 @@ export interface StoreSettingsInput {
   address?: string | null;
   phone?: string | null;
   receiptFooter?: string | null;
+  invoicePrefix?: string | null;
+  invoiceDigits?: number;
+  invoiceNextNumber?: number;
 }
 
 function toStoreSettingsPayload(input: StoreSettingsInput): Record<string, unknown> {
@@ -33,6 +36,9 @@ function toStoreSettingsPayload(input: StoreSettingsInput): Record<string, unkno
   if (input.address !== undefined) payload.address = input.address;
   if (input.phone !== undefined) payload.phone = input.phone;
   if (input.receiptFooter !== undefined) payload.receipt_footer = input.receiptFooter;
+  if (input.invoicePrefix !== undefined) payload.invoice_prefix = input.invoicePrefix;
+  if (input.invoiceDigits !== undefined) payload.invoice_digits = input.invoiceDigits;
+  if (input.invoiceNextNumber !== undefined) payload.invoice_next_number = input.invoiceNextNumber;
   return payload;
 }
 

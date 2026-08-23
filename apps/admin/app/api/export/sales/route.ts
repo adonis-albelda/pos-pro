@@ -45,6 +45,7 @@ export async function GET(request: Request): Promise<Response> {
       sale.items.map((item) => [
         sale.createdAt,
         sale.id,
+        sale.invoiceNumber,
         (sale.userId && cashierNameById.get(sale.userId)) ?? null,
         sale.deviceId,
         sale.paymentMethod,
@@ -67,6 +68,7 @@ export async function GET(request: Request): Promise<Response> {
       headers: [
         "sold_at",
         "sale_id",
+        "invoice_number",
         "cashier",
         "terminal",
         "payment",

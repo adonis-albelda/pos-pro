@@ -209,6 +209,9 @@ function SalesBody({
                       <span className="num font-medium text-primary group-hover:underline">
                         {soldAt}
                       </span>
+                      <span className="num mt-0.5 block text-caption text-ink-muted">
+                        {sale.invoiceNumber ?? sale.id.slice(0, 8)}
+                      </span>
                       {sale.customerName ? (
                         <span className="mt-0.5 flex items-center gap-1.5 text-caption text-ink-muted">
                           <UserRound size={12} />

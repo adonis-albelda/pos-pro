@@ -57,6 +57,16 @@ export async function saveStoreSettings(
     };
   }
 
+  const invoiceDigits = Number(formData.get("invoice_digits") ?? 6);
+  if (!Number.isInteger(invoiceDigits) || invoiceDigits < 1 || invoiceDigits > 12) {
+    return { error: "Invoice digits must be a whole number between 1 and 12.", ok: false };
+  }
+
+  const invoiceNextNumber = Number(formData.get("invoice_next_number") ?? 1);
+  if (!Number.isInteger(invoiceNextNumber) || invoiceNextNumber < 1) {
+    return { error: "Next invoice number must be a whole number of at least 1.", ok: false };
+  }
+
   const client = getAuthedClient();
 
   try {
@@ -65,6 +75,9 @@ export async function saveStoreSettings(
       address: optional(formData, "address"),
       phone: optional(formData, "phone"),
       receiptFooter: optional(formData, "receipt_footer"),
+      invoicePrefix: optional(formData, "invoice_prefix"),
+      invoiceDigits,
+      invoiceNextNumber,
       // "remove" clears the column; otherwise leave whatever is there.
       ...(removeLogo ? { logoUrl: null } : {}),
     });

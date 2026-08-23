@@ -272,6 +272,20 @@ CREATE TABLE IF NOT EXISTS receipt_layout (
 INSERT OR IGNORE INTO receipt_layout (id) VALUES (1);
 `;
 
+/**
+ * v12: server-assigned sequential invoice numbers. Null on a pending sale
+ * until push assigns one and writes it back — the receipt prints a
+ * "prefix-pending" placeholder in the meantime (see printing/receipt.ts).
+ * store_settings columns are replaced whole on every pull, like the rest of
+ * that row.
+ */
+const V12_INVOICE_NUMBERS = `
+ALTER TABLE sales ADD COLUMN invoice_number TEXT;
+ALTER TABLE store_settings ADD COLUMN invoice_prefix TEXT;
+ALTER TABLE store_settings ADD COLUMN invoice_digits INTEGER NOT NULL DEFAULT 6;
+ALTER TABLE store_settings ADD COLUMN invoice_next_number INTEGER NOT NULL DEFAULT 1;
+`;
+
 /** Ordered, append-only. Never edit a step that has shipped. */
 export const MIGRATIONS: Migration[] = [
   { version: 1, sql: V1_INITIAL },
@@ -285,6 +299,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 9, sql: V9_ALLOW_DECIMAL },
   { version: 10, sql: V10_COMPANY_ID },
   { version: 11, sql: V11_FEATURE_FLAGS },
+  { version: 12, sql: V12_INVOICE_NUMBERS },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.reduce(

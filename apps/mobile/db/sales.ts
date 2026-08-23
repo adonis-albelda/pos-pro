@@ -19,6 +19,7 @@ import { getEnrolledCompanyId } from "@/lib/device";
 
 interface SaleRow {
   id: string;
+  invoice_number: string | null;
   user_id: string | null;
   total_amount: number;
   discount_amount: number | null;
@@ -54,6 +55,7 @@ interface SaleItemRow {
 function toLocalSale(row: SaleRow): LocalSale {
   return {
     id: row.id,
+    invoiceNumber: row.invoice_number,
     userId: row.user_id,
     totalAmount: row.total_amount,
     discountAmount: row.discount_amount ?? 0,
@@ -175,6 +177,7 @@ export async function completeSale(
 
   return {
     id: saleId,
+    invoiceNumber: null,
     userId: input.userId,
     totalAmount: total,
     discountAmount: discount,
@@ -316,16 +319,28 @@ export async function countPendingSales(): Promise<number> {
 export async function markSalesSynced(
   saleIds: string[],
   syncedAt: string,
+  invoiceNumbers: Record<string, string> = {},
 ): Promise<void> {
   if (saleIds.length === 0) return;
 
+  const db = getDb();
   const placeholders = saleIds.map(() => "?").join(", ");
-  await getDb().runAsync(
-    `UPDATE sales SET sync_status = 'synced', synced_at = ?
-      WHERE id IN (${placeholders})`,
-    syncedAt,
-    ...saleIds,
-  );
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      `UPDATE sales SET sync_status = 'synced', synced_at = ?
+        WHERE id IN (${placeholders})`,
+      syncedAt,
+      ...saleIds,
+    );
+
+    for (const [saleId, invoiceNumber] of Object.entries(invoiceNumbers)) {
+      await db.runAsync(
+        "UPDATE sales SET invoice_number = ? WHERE id = ?",
+        invoiceNumber,
+        saleId,
+      );
+    }
+  });
 }
 
 export async function markSalesFailed(saleIds: string[]): Promise<void> {

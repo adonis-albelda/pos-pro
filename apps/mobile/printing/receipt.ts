@@ -4,6 +4,7 @@ import {
   DEFAULT_STORE_SETTINGS,
   RECEIPT_COLUMNS,
   hasCustomerDetails,
+  pendingInvoiceLabel,
   roundMoney,
   saleCustomer,
   type LocalSaleWithItems,
@@ -84,7 +85,7 @@ export function buildReceipt(
   }
 
   builder.line(new Date(sale.createdAt).toLocaleString());
-  builder.line(`Receipt ${sale.id.slice(0, 8).toUpperCase()}`);
+  builder.line(`Receipt ${sale.invoiceNumber ?? pendingInvoiceLabel(store.invoicePrefix)}`);
   if (layout.showCashier && options.cashierName) {
     builder.line(`Cashier: ${options.cashierName}`);
   }

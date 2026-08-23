@@ -2,7 +2,7 @@
 
 import { useActionState, useTransition } from "react";
 import { KeyRound, Lock, Mail, UserRound } from "lucide-react";
-import type { User } from "@double-a/shared-types";
+import type { InvoiceNumberMode, User } from "@double-a/shared-types";
 import {
   Badge,
   Button,
@@ -23,6 +23,7 @@ import {
   resetCompanyUserPassword,
   resetCompanyUserPin,
   setCompanyActive,
+  setInvoiceMode,
 } from "../../actions";
 
 export function AddAdminForm({ companyId }: { companyId: string }) {
@@ -207,20 +208,81 @@ function ToggleActiveButton({ companyId, isActive }: { companyId: string; isActi
   );
 }
 
+/** setInvoiceMode (Server Action) doesn't redirect — same await-then-invalidate shape as ToggleActiveButton. */
+function InvoiceModeToggle({
+  companyId,
+  mode,
+}: {
+  companyId: string;
+  mode: InvoiceNumberMode;
+}) {
+  const [pending, startTransition] = useTransition();
+  const invalidate = useInvalidateCompanyStats();
+
+  function submit(next: InvoiceNumberMode) {
+    if (next === mode) return;
+    const form = new FormData();
+    form.set("company_id", companyId);
+    form.set("mode", next);
+    startTransition(async () => {
+      await setInvoiceMode(form);
+      invalidate();
+    });
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-border p-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <p className="text-body-sm font-medium text-ink">Invoice numbers</p>
+        <p className="text-caption text-ink-muted">
+          {mode === "random"
+            ? "Random unguessable strings (e.g. JH-7K4QX2N9)."
+            : "Sequential counter (e.g. JH-000001), set by the shop admin."}
+        </p>
+      </div>
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          variant={mode === "random" ? "primary" : "secondary"}
+          size="sm"
+          loading={pending}
+          onClick={() => submit("random")}
+        >
+          Random
+        </Button>
+        <Button
+          type="button"
+          variant={mode === "incremental" ? "primary" : "secondary"}
+          size="sm"
+          loading={pending}
+          onClick={() => submit("incremental")}
+        >
+          Incremental
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function CompanyControls({
   companyId,
   isActive,
+  invoiceNumberMode,
 }: {
   companyId: string;
   isActive: boolean;
+  invoiceNumberMode: InvoiceNumberMode;
 }) {
   return (
-    <div className="flex flex-col gap-2 sm:flex-row">
-      <form action={openCompany}>
-        <input type="hidden" name="company_id" value={companyId} />
-        <Button type="submit">Open company</Button>
-      </form>
-      <ToggleActiveButton companyId={companyId} isActive={isActive} />
+    <div className="space-y-3">
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <form action={openCompany}>
+          <input type="hidden" name="company_id" value={companyId} />
+          <Button type="submit">Open company</Button>
+        </form>
+        <ToggleActiveButton companyId={companyId} isActive={isActive} />
+      </div>
+      <InvoiceModeToggle companyId={companyId} mode={invoiceNumberMode} />
     </div>
   );
 }

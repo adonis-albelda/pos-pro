@@ -213,6 +213,7 @@ export default function SettingsScreen() {
       const payload = buildReceipt(
         {
           id: "00000000-0000-4000-8000-000000000000",
+          invoiceNumber: null,
           userId: null,
           totalAmount: 123.45,
           discountAmount: 0,

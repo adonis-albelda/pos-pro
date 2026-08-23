@@ -215,6 +215,8 @@ function toPushSalePayload(sale: SaleWithItems): Record<string, unknown> {
 export interface PushSalesResult {
   /** Ids Laravel actually inserted this call — an id already on the server (a retried push) is skipped, not re-listed here. */
   createdIds: string[];
+  /** Sale id -> server-assigned invoice number, for the ids above. */
+  invoiceNumbers: Record<string, string>;
 }
 
 /**
@@ -225,13 +227,13 @@ export interface PushSalesResult {
  * triggers (stock decrement, etc.) that fired on insert.
  */
 export async function pushSales(client: ApiClient, sales: SaleWithItems[]): Promise<PushSalesResult> {
-  if (sales.length === 0) return { createdIds: [] };
-  const { data } = await client.post<DataEnvelope<{ created_ids: string[] }>>(
+  if (sales.length === 0) return { createdIds: [], invoiceNumbers: {} };
+  const { data } = await client.post<DataEnvelope<{ created_ids: string[]; invoice_numbers: Record<string, string> }>>(
     "/pos/sync/sales",
     { sales: sales.map(toPushSalePayload) },
     { idempotent: true },
   );
-  return { createdIds: data.created_ids };
+  return { createdIds: data.created_ids, invoiceNumbers: data.invoice_numbers ?? {} };
 }
 
 export interface PullSyncResult {
