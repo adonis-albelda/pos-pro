@@ -2,15 +2,11 @@
 
 import { useSearchParams } from "next/navigation";
 import { Truck } from "lucide-react";
-import type { Product, Supplier } from "@double-a/shared-types";
+import type { Supplier } from "@double-a/shared-types";
 import { matchesQuery, paginateItems, parseListQuery } from "@/lib/list-query";
 import { Card, PageHeader } from "@/components/ui";
 import { SuppliersPanel } from "./suppliers-panel";
-import {
-  useSupplierBalances,
-  useSupplierProductOptions,
-  useSuppliers,
-} from "@/lib/query/suppliers";
+import { useSupplierBalances, useSuppliers } from "@/lib/query/suppliers";
 
 export function SuppliersPageClient() {
   const searchParams = useSearchParams();
@@ -21,11 +17,9 @@ export function SuppliersPageClient() {
 
   const suppliersQuery = useSuppliers({ includeInactive: true });
   const balancesQuery = useSupplierBalances();
-  const productsQuery = useSupplierProductOptions();
 
-  const isPending =
-    suppliersQuery.isPending || balancesQuery.isPending || productsQuery.isPending;
-  const error = suppliersQuery.error ?? balancesQuery.error ?? productsQuery.error;
+  const isPending = suppliersQuery.isPending || balancesQuery.isPending;
+  const error = suppliersQuery.error ?? balancesQuery.error;
 
   return (
     <div className="space-y-6">
@@ -45,7 +39,6 @@ export function SuppliersPageClient() {
         <SuppliersBody
           suppliers={suppliersQuery.data ?? []}
           balances={balancesQuery.data ?? {}}
-          products={productsQuery.data ?? []}
           q={q}
           page={page}
         />
@@ -57,13 +50,11 @@ export function SuppliersPageClient() {
 function SuppliersBody({
   suppliers,
   balances,
-  products,
   q,
   page,
 }: {
   suppliers: Supplier[];
   balances: Record<string, number>;
-  products: Product[];
   q: string;
   page: number;
 }) {
@@ -86,7 +77,6 @@ function SuppliersBody({
       suppliers={pageItems}
       balances={balances}
       productIdsBySupplier={productIdsBySupplier}
-      products={products}
       query={q}
       page={safePage}
       pageCount={pageCount}

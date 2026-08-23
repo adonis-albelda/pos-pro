@@ -4,17 +4,17 @@ import type { Route } from "next";
 import Link from "next/link";
 import { useState } from "react";
 import { ChevronRight, Pencil, Truck } from "lucide-react";
-import type { Product, Supplier } from "@double-a/shared-types";
+import type { Supplier } from "@double-a/shared-types";
 import { Badge, Card, EmptyState, IconButton, Money, Table, Td, Th } from "@/components/ui";
 import { Sheet } from "@/components/overlay";
 import { Pagination, RecordToolbar } from "@/components/record-list";
+import { useSupplierProductOptions } from "@/lib/query/suppliers";
 import { SupplierForm } from "./supplier-form";
 
 export function SuppliersPanel({
   suppliers,
   balances,
   productIdsBySupplier,
-  products,
   query,
   page,
   pageCount,
@@ -24,7 +24,6 @@ export function SuppliersPanel({
   suppliers: Supplier[];
   balances: Record<string, number>;
   productIdsBySupplier: Record<string, string[]>;
-  products: Product[];
   query: string;
   page: number;
   pageCount: number;
@@ -33,6 +32,12 @@ export function SuppliersPanel({
 }) {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
+
+  // Only fires once a sheet that actually needs it is open — walking the
+  // whole product catalogue for a picker nobody has opened yet is what was
+  // hitting /products on every visit to this page.
+  const productsQuery = useSupplierProductOptions(creating || editing !== null);
+  const products = productsQuery.data ?? [];
 
   return (
     <>

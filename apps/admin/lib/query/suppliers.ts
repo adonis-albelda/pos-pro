@@ -59,10 +59,11 @@ export function useSupplierBalances() {
  * renamed/added elsewhere won't refresh this list until it naturally goes
  * stale or a supplier mutation invalidates the `suppliers.all` prefix.
  */
-export function useSupplierProductOptions() {
+export function useSupplierProductOptions(enabled = true) {
   return useQuery({
     queryKey: [...queryKeys.suppliers.all, "product-options"] as const,
     queryFn: () => listProducts(getBrowserApiClient(), { includeInactive: true }),
+    enabled,
   });
 }
 
