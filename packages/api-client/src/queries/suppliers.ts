@@ -137,16 +137,14 @@ export function listAllSupplierProductIds(): never {
 }
 
 /**
- * GAP: no batch/all-suppliers balance endpoint (the old query summed
- * `purchase_order_payments` across every supplier in one round trip).
- * `SupplierBalanceController` is per-supplier only, so this fans out N
- * parallel calls — fine for a shop-sized supplier list, same tradeoff as
- * `listProductsByIds` in products.ts.
+ * `GET /suppliers/balances` (`IndexSupplierBalancesController`) — one
+ * grouped query for every supplier's balance, company-wide. Replaced the
+ * old N-parallel-`supplierBalance()`-calls fan-out, which was tripping the
+ * auth-protected rate limiter on shops with more than a handful of
+ * suppliers. Only positive balances come back — a supplier owed nothing is
+ * simply absent from the map; callers already default a missing key to 0.
  */
 export async function listSupplierBalances(client: ApiClient): Promise<Record<string, number>> {
-  const suppliers = await listSuppliers(client, { includeInactive: true });
-  const balances = await Promise.all(
-    suppliers.map(async (s) => [s.id, await supplierBalance(client, s.id)] as const),
-  );
-  return Object.fromEntries(balances);
+  const { data } = await client.get<{ data: Record<string, number> }>("/suppliers/balances");
+  return data;
 }
