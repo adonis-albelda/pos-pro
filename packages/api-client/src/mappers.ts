@@ -486,11 +486,13 @@ export function toPurchaseOrderWithLines(
 
 export interface InventoryMovementAttrs {
   product_id: string;
+  product_name?: string | null;
   change_quantity: number;
   reason: string;
   reference_id: string | null;
   note: string | null;
   created_by: string | null;
+  created_by_name?: string | null;
   created_at: string | null;
 }
 
@@ -499,11 +501,13 @@ export function toInventoryMovement(resource: JsonApiResource<InventoryMovementA
   return {
     id: resource.id,
     productId: a.product_id,
+    productName: a.product_name ?? null,
     changeQuantity: Number(a.change_quantity),
     reason: a.reason as InventoryReason,
     referenceId: a.reference_id,
     note: a.note,
     createdBy: a.created_by,
+    createdByName: a.created_by_name ?? null,
     createdAt: a.created_at ?? "",
   };
 }

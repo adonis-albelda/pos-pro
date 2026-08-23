@@ -3,6 +3,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   countProducts,
+  getProductStats,
   listBelowReorder,
   listProductsPage,
   type ListProductsPageOptions,
@@ -34,6 +35,14 @@ export function useProducts(options: ListProductsPageOptions = {}) {
       const corrected = await listProductsPage(client, { ...options, page: safePage });
       return { ...corrected, page: safePage, pageCount };
     },
+  });
+}
+
+/** The Inventory page's four header stat cards — one aggregate query, not a whole-catalogue walk. */
+export function useProductStats() {
+  return useQuery({
+    queryKey: [...queryKeys.products.all, "stats"] as const,
+    queryFn: () => getProductStats(getBrowserApiClient()),
   });
 }
 

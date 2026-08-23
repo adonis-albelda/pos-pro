@@ -565,6 +565,8 @@ export interface LocalSaleWithItems extends LocalSale {
 export interface InventoryMovement {
   id: string;
   productId: string;
+  /** Embedded by the API — the product's name at read time, null if it's since been deleted. */
+  productName: string | null;
   /** Negative for sales, positive for restocks. */
   changeQuantity: number;
   reason: InventoryReason;
@@ -573,6 +575,8 @@ export interface InventoryMovement {
   note: string | null;
   /** The user who recorded it. Null for anything the POS pushed. */
   createdBy: string | null;
+  /** Embedded by the API — who recorded it, null if the account's since been removed. */
+  createdByName: string | null;
   createdAt: string;
 }
 

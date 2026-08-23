@@ -6,7 +6,6 @@ import {
   listMovementsPage,
   listOversold,
   listProducts,
-  listProductsByIds,
   sumMovements,
   type MovementFilter,
 } from "@double-a/api-client/queries";
@@ -60,16 +59,6 @@ export function useProductIdsMatching(q: string, options: { includeInactive?: bo
     queryKey: ["products", "search-ids", needle, options] as const,
     queryFn: () => findProductIdsMatching(getBrowserApiClient(), needle, options),
     enabled: needle.length > 0,
-  });
-}
-
-/** Product names for whatever ids the current page of movements (plus a focused product) referenced. */
-export function useInventoryProductNames(ids: string[]) {
-  const key = [...new Set(ids)].sort();
-  return useQuery({
-    queryKey: ["products", "by-ids", key] as const,
-    queryFn: () => listProductsByIds(getBrowserApiClient(), key),
-    enabled: key.length > 0,
   });
 }
 

@@ -34,12 +34,18 @@ function toPayload(input: Partial<ProductInput>): Record<string, unknown> {
   return payload;
 }
 
+export type ProductStockState = "attention" | "low" | "out" | "oversold" | "healthy" | "hidden";
+export type ProductSort = "stock-asc" | "stock-desc" | "short-desc" | "value-desc";
+
 export interface ListProductsPageOptions {
   q?: string;
   page?: number;
   pageSize?: number;
   includeInactive?: boolean;
   categoryId?: string;
+  /** Server-computed from stock_quantity/reorder_point/is_active — ignores `includeInactive` when given (see IndexProductsController). */
+  state?: ProductStockState;
+  sort?: ProductSort;
 }
 
 export async function listProductsPage(
@@ -49,7 +55,9 @@ export async function listProductsPage(
   const page = await client.get<JsonApiPage<ProductAttrs>>("/products", {
     search: options.q,
     category_id: options.categoryId,
-    is_active: options.includeInactive ? undefined : true,
+    is_active: options.state || options.includeInactive ? undefined : true,
+    state: options.state,
+    sort: options.sort,
     page: options.page ?? 1,
     per_page: options.pageSize ?? 25,
   });
@@ -58,6 +66,39 @@ export async function listProductsPage(
     products: page.data.map(toProduct),
     total: page.meta?.total ?? page.data.length,
     lastPage: page.meta?.last_page ?? 1,
+  };
+}
+
+export interface ProductStats {
+  tracked: number;
+  stockCost: number;
+  needsReordering: number;
+  oversold: number;
+  hidden: number;
+}
+
+/**
+ * `GET /products/stats` (`ProductStatsController`) — one aggregate query for
+ * the Inventory page's header stat cards, instead of walking the whole
+ * catalogue into the browser just to add four numbers up.
+ */
+export async function getProductStats(client: ApiClient): Promise<ProductStats> {
+  const { data } = await client.get<{
+    data: {
+      tracked: number;
+      stock_cost: number;
+      needs_reordering: number;
+      oversold: number;
+      hidden: number;
+    };
+  }>("/products/stats");
+
+  return {
+    tracked: data.tracked,
+    stockCost: Number(data.stock_cost),
+    needsReordering: data.needs_reordering,
+    oversold: data.oversold,
+    hidden: data.hidden,
   };
 }
 

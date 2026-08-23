@@ -11,19 +11,17 @@ import {
   TriangleAlert,
   Warehouse,
 } from "lucide-react";
-import { formatMoney, stockLevel } from "@double-a/shared-types";
-import { matchesQuery, paginateItems, parseListQuery } from "@/lib/list-query";
-import { toCategoryOptions, descendantIds } from "@/lib/category-options";
+import { formatMoney } from "@double-a/shared-types";
+import { DEFAULT_PAGE_SIZE } from "@/lib/list-query";
+import { toCategoryOptions } from "@/lib/category-options";
 import { resolveDayWindow } from "@/lib/date-range";
 import { Card, PageHeader, StatCard } from "@/components/ui";
 import { TabNav } from "@/components/tab-nav";
 import { isReason } from "@/lib/inventory-reasons";
 import { useCategories } from "@/lib/query/categories";
-import { useUsers } from "@/lib/query/users";
+import { useProducts, useProductStats } from "@/lib/query/products";
 import {
   useInventoryMovements,
-  useInventoryProductNames,
-  useInventoryProducts,
   useMovementTotals,
   useProductIdsMatching,
 } from "@/lib/query/inventory";
@@ -76,7 +74,8 @@ export default function InventoryPage() {
   };
 
   const tab = params.tab === "movements" ? "movements" : "stock";
-  const { q, page } = parseListQuery(params);
+  const q = (params.q ?? "").trim();
+  const page = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
   const focusedProduct = params.product;
   const state: StockState = isStockState(params.state) ? params.state : "all";
   const sort: StockSort = isStockSort(params.sort) ? params.sort : "name";
@@ -84,10 +83,25 @@ export default function InventoryPage() {
   const dayWindow = resolveDayWindow(params);
   const isMovementsTab = tab === "movements";
 
-  // Whole catalogue, needed by both tabs (header stats; Stock on hand filters
-  // it client-side; Movement history resolves a name search through it).
-  const productsQuery = useInventoryProducts({ includeInactive: true });
+  // Whole-shop figures (header stat cards, tab counts) — one aggregate query,
+  // not a walk of the entire catalogue. Independent of whatever the Stock on
+  // hand table's own filters/page happen to be.
+  const statsQuery = useProductStats();
   const categoriesQuery = useCategories({ includeInactive: true });
+
+  // Stock on hand tab only, but hooks stay unconditional — gated with
+  // `enabled` instead of a conditional call. Filtering/sorting/pagination
+  // all happen server-side now (IndexProductsController) — this fetches
+  // exactly one page of already-matching rows, not the whole catalogue.
+  const stockQuery = useProducts({
+    q: q || undefined,
+    categoryId: params.category,
+    state: state === "all" ? undefined : state,
+    sort: sort === "name" ? undefined : sort,
+    includeInactive: true,
+    page,
+    pageSize: DEFAULT_PAGE_SIZE,
+  });
 
   // Movements tab only, but hooks stay unconditional — gated with `enabled`
   // instead of a conditional call. A name search reaches inventory_movements
@@ -118,7 +132,6 @@ export default function InventoryPage() {
     { enabled: movementsEnabled },
   );
   const totalsQuery = useMovementTotals(movementFilter, { enabled: movementsEnabled });
-  const usersQuery = useUsers({ includeInactive: true });
 
   const movementPage = nothingMatches
     ? { movements: [], total: 0, lastPage: 1 }
@@ -127,27 +140,30 @@ export default function InventoryPage() {
     ? { stockIn: 0, stockOut: 0, net: 0, count: 0 }
     : (totalsQuery.data ?? { stockIn: 0, stockOut: 0, net: 0, count: 0 });
 
-  const nameIds = isMovementsTab
-    ? [...movementPage.movements.map((movement) => movement.productId), ...(focusedProduct ? [focusedProduct] : [])]
-    : [];
-  const namesQuery = useInventoryProductNames(nameIds);
+  // InventoryMovementResource embeds product_name/created_by_name directly —
+  // no separate product/user lookup needed to label a row anymore.
+  const productNames: Record<string, string> = {};
+  const userNames: Record<string, string> = {};
+  for (const movement of movementPage.movements) {
+    if (movement.productName) productNames[movement.productId] = movement.productName;
+    if (movement.createdBy && movement.createdByName) {
+      userNames[movement.createdBy] = movement.createdByName;
+    }
+  }
 
   const movementsTabPending =
     isMovementsTab &&
-    (searchIdsPending ||
-      (movementsEnabled && (movementsQuery.isPending || totalsQuery.isPending)) ||
-      usersQuery.isPending ||
-      (nameIds.length > 0 && namesQuery.isPending));
+    (searchIdsPending || (movementsEnabled && (movementsQuery.isPending || totalsQuery.isPending)));
   const movementsTabError =
     isMovementsTab &&
-    (searchIdsQuery.isError ||
-      (movementsEnabled && (movementsQuery.isError || totalsQuery.isError)) ||
-      usersQuery.isError ||
-      (nameIds.length > 0 && namesQuery.isError));
+    (searchIdsQuery.isError || (movementsEnabled && (movementsQuery.isError || totalsQuery.isError)));
 
-  const pending = productsQuery.isPending || categoriesQuery.isPending || movementsTabPending;
-  const isError = productsQuery.isError || categoriesQuery.isError || movementsTabError;
-  const firstError = [productsQuery, categoriesQuery, movementsQuery, totalsQuery, searchIdsQuery, usersQuery, namesQuery]
+  const stockTabPending = !isMovementsTab && stockQuery.isPending;
+  const stockTabError = !isMovementsTab && stockQuery.isError;
+
+  const pending = statsQuery.isPending || categoriesQuery.isPending || stockTabPending || movementsTabPending;
+  const isError = statsQuery.isError || categoriesQuery.isError || stockTabError || movementsTabError;
+  const firstError = [statsQuery, categoriesQuery, stockQuery, movementsQuery, totalsQuery, searchIdsQuery]
     .map((q2) => q2.error)
     .find((error) => error instanceof Error);
 
@@ -179,30 +195,22 @@ export default function InventoryPage() {
     );
   }
 
-  const products = productsQuery.data ?? [];
+  const stats = statsQuery.data ?? {
+    tracked: 0,
+    stockCost: 0,
+    needsReordering: 0,
+    oversold: 0,
+    hidden: 0,
+  };
   const categories = categoriesQuery.data ?? [];
   const categoryOptions = toCategoryOptions(categories);
-
-  // Whole-shop figures: what is on the shelves right now, not what the current
-  // filter happens to show.
-  const sellable = products.filter((product) => product.isActive);
-  const stockCost = sellable.reduce(
-    (sum, product) => sum + product.costPrice * Math.max(0, product.stockQuantity),
-    0,
-  );
-  const attention = sellable.filter((product) => {
-    const level = stockLevel(product.stockQuantity, product.reorderPoint);
-    return level === "low" || level === "out";
-  }).length;
-  const oversold = sellable.filter((product) => product.stockQuantity < 0).length;
-  const hidden = products.length - sellable.length;
 
   const tabs = [
     {
       key: "stock",
       label: "Stock on hand",
       icon: Warehouse,
-      count: sellable.length,
+      count: stats.tracked,
       href: buildHref({
         tab: "stock",
         q,
@@ -227,9 +235,6 @@ export default function InventoryPage() {
   ];
 
   if (tab === "movements") {
-    const userNames = Object.fromEntries((usersQuery.data ?? []).map((user) => [user.id, user.name]));
-    const productNames = Object.fromEntries((namesQuery.data ?? []).map((product) => [product.id, product.name]));
-
     return (
       <div className="space-y-6">
         {header}
@@ -283,63 +288,7 @@ export default function InventoryPage() {
     );
   }
 
-  // Picking a category takes everything filed under it, children included, and
-  // matches on ids — the path text on a product outlives the category itself.
-  const categoryScope = params.category
-    ? descendantIds(categoryOptions, params.category)
-    : null;
-
-  const filtered = products
-    .filter((product) => matchesQuery([product.name, product.sku, product.barcode], q))
-    .filter((product) => {
-      if (!categoryScope) return true;
-      return product.categoryId ? categoryScope.has(product.categoryId) : false;
-    })
-    .filter((product) => {
-      const level = stockLevel(product.stockQuantity, product.reorderPoint);
-      switch (state) {
-        case "attention":
-          return product.isActive && (level === "low" || level === "out");
-        case "low":
-          return level === "low";
-        case "out":
-          return level === "out";
-        case "oversold":
-          return product.stockQuantity < 0;
-        case "healthy":
-          return level === "healthy";
-        case "hidden":
-          return !product.isActive;
-        default:
-          return true;
-      }
-    });
-
-  const sorted = [...filtered].sort((a, b) => {
-    switch (sort) {
-      case "stock-asc":
-        return a.stockQuantity - b.stockQuantity || a.name.localeCompare(b.name);
-      case "stock-desc":
-        return b.stockQuantity - a.stockQuantity || a.name.localeCompare(b.name);
-      case "short-desc":
-        return (
-          b.reorderPoint - b.stockQuantity - (a.reorderPoint - a.stockQuantity) ||
-          a.name.localeCompare(b.name)
-        );
-      case "value-desc":
-        return (
-          b.costPrice * b.stockQuantity - a.costPrice * a.stockQuantity ||
-          a.name.localeCompare(b.name)
-        );
-      default:
-        return a.name.localeCompare(b.name);
-    }
-  });
-
-  const { pageItems, page: safePage, pageCount, total, pageSize } = paginateItems(
-    sorted,
-    page,
-  );
+  const stockPage = stockQuery.data ?? { products: [], total: 0, pageCount: 1, page: 1 };
 
   return (
     <div className="space-y-6">
@@ -350,43 +299,43 @@ export default function InventoryPage() {
         <StatCard
           icon={Warehouse}
           label="Products tracked"
-          value={String(sellable.length)}
-          hint={hidden > 0 ? `${hidden} hidden from terminals` : "All visible to terminals"}
+          value={String(stats.tracked)}
+          hint={stats.hidden > 0 ? `${stats.hidden} hidden from terminals` : "All visible to terminals"}
         />
         <StatCard
           icon={Boxes}
           label="Stock at cost"
-          value={formatMoney(stockCost)}
+          value={formatMoney(stats.stockCost)}
           hint="Money sitting on the shelves"
           tone="primary"
         />
         <StatCard
           icon={PackageSearch}
           label="Needs reordering"
-          value={String(attention)}
+          value={String(stats.needsReordering)}
           hint="At or below its reorder point"
-          tone={attention > 0 ? "warning" : "success"}
+          tone={stats.needsReordering > 0 ? "warning" : "success"}
         />
         <StatCard
           icon={TriangleAlert}
           label="Oversold"
-          value={String(oversold)}
+          value={String(stats.oversold)}
           hint="Negative stock to correct"
-          tone={oversold > 0 ? "danger" : "success"}
+          tone={stats.oversold > 0 ? "danger" : "success"}
         />
       </div>
 
       <StockPanel
-        products={pageItems}
+        products={stockPage.products}
         categories={categoryOptions}
         query={q}
         state={state}
         sort={sort}
         category={params.category}
-        page={safePage}
-        pageCount={pageCount}
-        total={total}
-        pageSize={pageSize}
+        page={stockPage.page}
+        pageCount={stockPage.pageCount}
+        total={stockPage.total}
+        pageSize={DEFAULT_PAGE_SIZE}
         focusedProduct={focusedProduct}
       />
     </div>
