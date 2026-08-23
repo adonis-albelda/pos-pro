@@ -29,7 +29,20 @@ export default async function proxy(request: NextRequest) {
       });
       user = await me(client);
     } catch (error) {
-      if (!(error instanceof ApiError && (error.isUnauthenticated || error.isForbidden))) throw error;
+      // A 401/403 genuinely means "not signed in" — user stays null and the
+      // redirect logic below runs as normal. Anything else (a network blip,
+      // a transient 500 from the API, a timeout) is not something middleware
+      // should crash the whole app over — this runs on every navigation,
+      // before any React tree exists, so a thrown error here never reaches
+      // error.tsx/global-error.tsx at all; it was surfacing as a raw,
+      // unstyled "Internal Server Error" on whatever page the user happened
+      // to be navigating to when the API hiccuped. Let the request through
+      // un-gated instead — the page's own data fetching hits the same API
+      // call again and, if it's still failing, surfaces a normal in-page
+      // error our error boundaries do catch.
+      if (!(error instanceof ApiError && (error.isUnauthenticated || error.isForbidden))) {
+        return NextResponse.next({ request });
+      }
     }
   }
 

@@ -2,11 +2,8 @@
 
 import { ErrorFallback } from "@/components/error-fallback";
 
-/**
- * Root-level catch — everything not under (dashboard) or (platform),
- * mainly /login and /change-password.
- */
-export default function Error({
+/** Catches a crash anywhere under the shop dashboard, including (dashboard)/layout.tsx itself. */
+export default function DashboardError({
   error,
   reset,
 }: {

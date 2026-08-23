@@ -2,6 +2,7 @@ import { getStoreSettings } from "@double-a/api-client/queries";
 import { getAuthedClient, getCurrentUser } from "@/lib/api/session";
 import { ClassicShell } from "@/components/classic-shell";
 import { DashboardShell } from "@/components/dashboard-shell";
+import { HydrateStoreSettings } from "@/components/hydrate-store-settings";
 import { ImpersonationBanner } from "@/components/impersonation-banner";
 import { PushNotificationRegistrar } from "@/components/push-notification-registrar";
 import { getUiMode } from "@/lib/ui-mode";
@@ -35,6 +36,7 @@ export default async function DashboardLayout({
 
   const contentWithPush = (
     <>
+      <HydrateStoreSettings store={store} />
       <PushNotificationRegistrar />
       {content}
     </>
