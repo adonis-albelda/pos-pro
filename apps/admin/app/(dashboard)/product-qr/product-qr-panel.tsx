@@ -3,7 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import QRCode from "qrcode";
 import JsBarcode from "jsbarcode";
-import { CheckSquare, Printer, QrCode, Search, Square, X } from "lucide-react";
+import {
+  CheckSquare,
+  ChevronLeft,
+  ChevronRight,
+  Printer,
+  QrCode,
+  Search,
+  Square,
+  X,
+} from "lucide-react";
 import {
   Button,
   Card,
@@ -116,58 +125,54 @@ const MAX_COPIES = 48;
 
 type CodeType = "qr" | "barcode";
 
-export function ProductQrPanel({ products }: { products: QrProduct[] }) {
+export function ProductQrPanel({
+  products,
+  categories,
+  query,
+  onQueryChange,
+  categoryId,
+  onCategoryChange,
+  page,
+  pageCount,
+  total,
+  onPageChange,
+  pageLoading,
+}: {
+  products: QrProduct[];
+  categories: { id: string; label: string }[];
+  query: string;
+  onQueryChange: (query: string) => void;
+  categoryId: string;
+  onCategoryChange: (categoryId: string) => void;
+  page: number;
+  pageCount: number;
+  total: number;
+  onPageChange: (page: number) => void;
+  pageLoading: boolean;
+}) {
   const [codeType, setCodeType] = useState<CodeType>("qr");
   const [paper, setPaper] = useState<PaperSize>("a4");
   const [sizeMode, setSizeMode] = useState<SizeMode>("md");
-  const [query, setQuery] = useState("");
-  const [categoryId, setCategoryId] = useState<string>("all");
-  // id -> number of copies. Presence of a key means the product is selected.
-  const [selected, setSelected] = useState<Record<string, number>>({});
+  // id -> sku + number of copies. Captured at selection time rather than
+  // joined back against `products` — that's only the current page, and a
+  // selection made on an earlier page must survive paging forward.
+  const [selected, setSelected] = useState<Record<string, { sku: string; copies: number }>>({});
   const [codes, setCodes] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
 
-  /** Distinct categories present on the SKU'd products, for the batch filter. */
-  const categories = useMemo(() => {
-    const seen = new Map<string, string>();
-    for (const product of products) {
-      if (product.categoryId && !seen.has(product.categoryId)) {
-        seen.set(product.categoryId, product.category ?? "—");
-      }
-    }
-    return [...seen.entries()]
-      .map(([id, label]) => ({ id, label }))
-      .sort((a, b) => a.label.localeCompare(b.label));
-  }, [products]);
+  const selectedIds = useMemo(() => Object.keys(selected), [selected]);
 
-  const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return products.filter((product) => {
-      if (categoryId !== "all" && product.categoryId !== categoryId) return false;
-      if (!needle) return true;
-      return (
-        product.name.toLowerCase().includes(needle) ||
-        product.sku.toLowerCase().includes(needle)
-      );
-    });
-  }, [products, query, categoryId]);
-
-  const selectedProducts = useMemo(
-    () => products.filter((product) => selected[product.id] !== undefined),
-    [products, selected],
-  );
-
-  /** Flatten each selected product into its copies, in product order. */
+  /** Flatten each selected product into its copies, in selection order. */
   const labels = useMemo(() => {
     const out: { key: string; id: string; sku: string }[] = [];
-    for (const product of selectedProducts) {
-      const copies = Math.max(1, selected[product.id] ?? 1);
+    for (const [id, entry] of Object.entries(selected)) {
+      const copies = Math.max(1, entry.copies);
       for (let i = 0; i < copies; i += 1) {
-        out.push({ key: `${product.id}#${i}`, id: product.id, sku: product.sku });
+        out.push({ key: `${id}#${i}`, id, sku: entry.sku });
       }
     }
     return out;
-  }, [selectedProducts, selected]);
+  }, [selected]);
 
   const overflow = labels.length > MAX_LABELS;
   const pageLabels = overflow ? labels.slice(0, MAX_LABELS) : labels;
@@ -200,13 +205,18 @@ export function ProductQrPanel({ products }: { products: QrProduct[] }) {
     async function build() {
       setBusy(true);
       const next: Record<string, string> = {};
-      // One code per distinct product on the page; copies reuse the same image.
+      const entries = Object.entries(selected);
+      // One code per distinct product; copies reuse the same image.
       if (codeType === "qr") {
         await Promise.all(
-          selectedProducts.map(async (product) => {
-            next[product.id] = await QRCode.toDataURL(product.sku, {
+          entries.map(async ([id, entry]) => {
+            next[id] = await QRCode.toDataURL(entry.sku, {
               errorCorrectionLevel: "M",
-              margin: 1,
+              // 4-module quiet zone (the spec minimum) — at margin:1 the
+              // code printed almost edge-to-edge and a camera scanner
+              // (MLKit) couldn't lock onto it reliably; a barcode's own
+              // margin:4 quiet zone right below is why that one scans fine.
+              margin: 4,
               width: scale.qrWidth,
               color: { dark: "#1a1a1a", light: "#ffffff" },
             });
@@ -216,10 +226,10 @@ export function ProductQrPanel({ products }: { products: QrProduct[] }) {
         // CODE128, not EAN/UPC — a SKU is an arbitrary alphanumeric string,
         // not a fixed-length numeric retail code. Text is rendered
         // separately below the image already, so displayValue stays off.
-        for (const product of selectedProducts) {
+        for (const [id, entry] of entries) {
           const canvas = document.createElement("canvas");
           try {
-            JsBarcode(canvas, product.sku, {
+            JsBarcode(canvas, entry.sku, {
               format: "CODE128",
               width: 2,
               height: scale.qrWidth * 0.45,
@@ -228,7 +238,7 @@ export function ProductQrPanel({ products }: { products: QrProduct[] }) {
               background: "#ffffff",
               lineColor: "#1a1a1a",
             });
-            next[product.id] = canvas.toDataURL();
+            next[id] = canvas.toDataURL();
           } catch {
             // A SKU with characters CODE128 can't encode — skip it rather
             // than crash the whole sheet; the cell shows "…" instead.
@@ -245,27 +255,33 @@ export function ProductQrPanel({ products }: { products: QrProduct[] }) {
     return () => {
       cancelled = true;
     };
-  }, [selectedProducts, scale.qrWidth, codeType]);
+  }, [selected, scale.qrWidth, codeType]);
 
-  function toggle(id: string) {
+  function toggle(product: QrProduct) {
     setSelected((prev) => {
       const next = { ...prev };
-      if (next[id] !== undefined) delete next[id];
-      else next[id] = 1;
+      if (next[product.id] !== undefined) delete next[product.id];
+      else next[product.id] = { sku: product.sku, copies: 1 };
       return next;
     });
   }
 
   function setCopies(id: string, value: number) {
     const copies = Math.min(MAX_COPIES, Math.max(1, value || 1));
-    setSelected((prev) => ({ ...prev, [id]: copies }));
+    setSelected((prev) => {
+      const entry = prev[id];
+      if (!entry) return prev;
+      return { ...prev, [id]: { ...entry, copies } };
+    });
   }
 
-  function selectAllFiltered() {
+  function selectAllOnPage() {
     setSelected((prev) => {
       const next = { ...prev };
-      for (const product of filtered) {
-        if (next[product.id] === undefined) next[product.id] = 1;
+      for (const product of products) {
+        if (next[product.id] === undefined) {
+          next[product.id] = { sku: product.sku, copies: 1 };
+        }
       }
       return next;
     });
@@ -279,7 +295,7 @@ export function ProductQrPanel({ products }: { products: QrProduct[] }) {
     window.print();
   }
 
-  const selectedCount = selectedProducts.length;
+  const selectedCount = selectedIds.length;
 
   return (
     <>
@@ -330,13 +346,13 @@ export function ProductQrPanel({ products }: { products: QrProduct[] }) {
               type="search"
               placeholder="Name or SKU…"
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => onQueryChange(event.target.value)}
             />
           </Field>
           <Field label="Category" hint="Filter to one batch, or all.">
             <Select
               value={categoryId}
-              onChange={(event) => setCategoryId(event.target.value)}
+              onChange={(event) => onCategoryChange(event.target.value)}
             >
               <option value="all">All categories</option>
               {categories.map((category) => (
@@ -373,10 +389,10 @@ export function ProductQrPanel({ products }: { products: QrProduct[] }) {
             type="button"
             variant="ghost"
             icon={CheckSquare}
-            onClick={selectAllFiltered}
-            disabled={filtered.length === 0}
+            onClick={selectAllOnPage}
+            disabled={products.length === 0}
           >
-            Select all ({filtered.length})
+            Select all on page ({products.length})
           </Button>
           <Button
             type="button"
@@ -393,7 +409,7 @@ export function ProductQrPanel({ products }: { products: QrProduct[] }) {
         </div>
 
         <div className="max-h-80 overflow-y-auto border-t border-border">
-          {filtered.length === 0 ? (
+          {products.length === 0 ? (
             <div className="px-4 py-8 sm:px-6">
               <EmptyState
                 icon={Search}
@@ -403,7 +419,7 @@ export function ProductQrPanel({ products }: { products: QrProduct[] }) {
             </div>
           ) : (
             <ul className="divide-y divide-border">
-              {filtered.map((product) => {
+              {products.map((product) => {
                 const isSelected = selected[product.id] !== undefined;
                 return (
                   <li
@@ -412,7 +428,7 @@ export function ProductQrPanel({ products }: { products: QrProduct[] }) {
                   >
                     <button
                       type="button"
-                      onClick={() => toggle(product.id)}
+                      onClick={() => toggle(product)}
                       className="flex flex-1 items-center gap-3 text-left"
                     >
                       {isSelected ? (
@@ -437,7 +453,7 @@ export function ProductQrPanel({ products }: { products: QrProduct[] }) {
                           type="number"
                           min={1}
                           max={MAX_COPIES}
-                          value={selected[product.id]}
+                          value={selected[product.id]?.copies ?? 1}
                           onChange={(event) =>
                             setCopies(product.id, Number(event.target.value))
                           }
@@ -451,6 +467,34 @@ export function ProductQrPanel({ products }: { products: QrProduct[] }) {
             </ul>
           )}
         </div>
+
+        {pageCount > 1 ? (
+          <div className="flex items-center justify-between gap-3 border-t border-border px-4 py-3 sm:px-6">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              icon={ChevronLeft}
+              onClick={() => onPageChange(page - 1)}
+              disabled={page <= 1 || pageLoading}
+            >
+              Previous
+            </Button>
+            <span className="text-caption text-ink-muted">
+              Page {page} of {pageCount} · {total} products
+            </span>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              icon={ChevronRight}
+              onClick={() => onPageChange(page + 1)}
+              disabled={page >= pageCount || pageLoading}
+            >
+              Next
+            </Button>
+          </div>
+        ) : null}
 
         <div className="flex flex-wrap items-center gap-3 border-t border-border px-4 py-4 sm:px-6">
           <Button

@@ -324,21 +324,35 @@ export interface ProductLabel {
 
 /**
  * `GET /products/labels` (`ProductLabelsController`) — one lean, unpaginated
- * query for every active SKU'd product, built for the QR/barcode label
- * sheet. Replaced walking IndexProductsController's full paginated
- * ProductResource across every page, which fetched every column on every
- * product and tripped the rate limiter on a real catalogue.
+ * query for the QR/barcode label sheet's own picker list, paginated and
+ * searchable server-side — not a walk of IndexProductsController's full
+ * paginated ProductResource across every page (the original fix), and not
+ * an unpaginated single-shot fetch of the whole catalogue either (what this
+ * replaced next) — that was still one big JSON payload on a real shop.
  */
-export async function listProductLabels(client: ApiClient): Promise<ProductLabel[]> {
-  const { data } = await client.get<{
+export async function listProductLabelsPage(
+  client: ApiClient,
+  options: { q?: string; categoryId?: string; page?: number; pageSize?: number } = {},
+): Promise<{ labels: ProductLabel[]; total: number; lastPage: number }> {
+  const { data, meta } = await client.get<{
     data: { id: string; sku: string; name: string; category: string | null; category_id: string | null }[];
-  }>("/products/labels");
+    meta: { total: number; last_page: number };
+  }>("/products/labels", {
+    search: options.q,
+    category_id: options.categoryId,
+    page: options.page ?? 1,
+    per_page: options.pageSize ?? 50,
+  });
 
-  return data.map((row) => ({
-    id: row.id,
-    sku: row.sku,
-    name: row.name,
-    category: row.category,
-    categoryId: row.category_id,
-  }));
+  return {
+    labels: data.map((row) => ({
+      id: row.id,
+      sku: row.sku,
+      name: row.name,
+      category: row.category,
+      categoryId: row.category_id,
+    })),
+    total: meta.total,
+    lastPage: meta.last_page,
+  };
 }

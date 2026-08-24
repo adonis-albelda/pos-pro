@@ -113,3 +113,12 @@ export async function setUserPin(client: ApiClient, id: string, pin: string): Pr
   const { data } = await client.put<{ data: JsonApiResource<UserAttrs> }>(`/users/${id}/pin`, { pin });
   return toUser(data);
 }
+
+/**
+ * `GET /users/count` (`UserCountController`) — one count query, not the
+ * full `listUsers()` payload fetched just to read `.length`.
+ */
+export async function countUsers(client: ApiClient): Promise<number> {
+  const { data } = await client.get<{ data: { count: number } }>("/users/count");
+  return data.count;
+}

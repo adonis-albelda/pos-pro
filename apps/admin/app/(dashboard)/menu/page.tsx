@@ -5,7 +5,7 @@ import { NAV_ITEMS } from "@/lib/nav";
 import { Card } from "@/components/ui";
 import { useStoreSettings } from "@/lib/query/settings";
 import { useProductCount } from "@/lib/query/products";
-import { useUsers } from "@/lib/query/users";
+import { useUserCount } from "@/lib/query/users";
 import { useFeatureFlags } from "@/lib/query/features";
 
 const TILE_STYLES: Record<string, string> = {
@@ -24,12 +24,12 @@ const TILE_STYLES: Record<string, string> = {
 export default function MenuPage() {
   const storeQuery = useStoreSettings();
   const productCountQuery = useProductCount({ includeInactive: true });
-  const usersQuery = useUsers({ includeInactive: true });
+  const userCountQuery = useUserCount();
   const { isEnabled } = useFeatureFlags();
   const tiles = NAV_ITEMS.filter((item) => !item.featureKey || isEnabled(item.featureKey));
 
-  const isPending = storeQuery.isPending || productCountQuery.isPending || usersQuery.isPending;
-  const error = storeQuery.error ?? productCountQuery.error ?? usersQuery.error;
+  const isPending = storeQuery.isPending || productCountQuery.isPending || userCountQuery.isPending;
+  const error = storeQuery.error ?? productCountQuery.error ?? userCountQuery.error;
 
   const now = new Date();
 
@@ -96,7 +96,7 @@ export default function MenuPage() {
             </div>
             <div>
               <dt className="text-ink-muted">Users on file</dt>
-              <dd className="num font-medium text-ink">{usersQuery.data?.length ?? 0}</dd>
+              <dd className="num font-medium text-ink">{userCountQuery.data ?? 0}</dd>
             </div>
             <div>
               <dt className="text-ink-muted">Data</dt>

@@ -5,7 +5,7 @@ import {
   countProducts,
   getProductStats,
   listBelowReorder,
-  listProductLabels,
+  listProductLabelsPage,
   listProductsPage,
   type ListProductsPageOptions,
 } from "@double-a/api-client/queries";
@@ -55,11 +55,13 @@ export function useProductCount(options: { includeInactive?: boolean } = {}) {
   });
 }
 
-/** Lean id/sku/name/category list for every active SKU'd product — the Product QR/barcode label sheet, one call instead of a whole-catalogue walk. */
-export function useProductLabels() {
+/** Lean, paginated, searchable id/sku/name/category picker for the Product QR/barcode label sheet. */
+export function useProductLabelsPage(
+  options: { q?: string; categoryId?: string; page?: number; pageSize?: number } = {},
+) {
   return useQuery({
-    queryKey: [...queryKeys.products.all, "labels"] as const,
-    queryFn: () => listProductLabels(getBrowserApiClient()),
+    queryKey: [...queryKeys.products.all, "labels", options] as const,
+    queryFn: () => listProductLabelsPage(getBrowserApiClient(), options),
   });
 }
 

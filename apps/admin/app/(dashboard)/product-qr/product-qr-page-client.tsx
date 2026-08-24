@@ -1,27 +1,50 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { QrCode } from "lucide-react";
 import { Card, EmptyState, PageHeader } from "@/components/ui";
 import { ProductQrPanel } from "./product-qr-panel";
-import { useProductLabels } from "@/lib/query/products";
+import { useCategories } from "@/lib/query/categories";
+import { useProductLabelsPage } from "@/lib/query/products";
+import { toCategoryOptions } from "@/lib/category-options";
+
+const PAGE_SIZE = 50;
 
 export function ProductQrPageClient() {
-  const labelsQuery = useProductLabels();
+  const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [categoryId, setCategoryId] = useState("all");
+  const [page, setPage] = useState(1);
 
-  const withSku = useMemo(
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedQuery(query.trim()), 250);
+    return () => clearTimeout(handle);
+  }, [query]);
+
+  // Any filter change starts back at page 1 — a stale page number from a
+  // wider result set would otherwise silently show an empty picker.
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedQuery, categoryId]);
+
+  const categoriesQuery = useCategories({ includeInactive: true });
+  const categories = useMemo(
     () =>
-      (labelsQuery.data ?? [])
-        .filter((product) => product.sku.trim())
-        .map((product) => ({
-          id: product.id,
-          sku: product.sku.trim(),
-          name: product.name,
-          category: product.category,
-          categoryId: product.categoryId,
-        })),
-    [labelsQuery.data],
+      toCategoryOptions(categoriesQuery.data ?? [])
+        .map((option) => ({ id: option.id, label: option.path }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [categoriesQuery.data],
   );
+
+  const labelsQuery = useProductLabelsPage({
+    q: debouncedQuery || undefined,
+    categoryId: categoryId === "all" ? undefined : categoryId,
+    page,
+    pageSize: PAGE_SIZE,
+  });
+
+  const pending = labelsQuery.isPending || categoriesQuery.isPending;
+  const error = labelsQuery.error ?? categoriesQuery.error;
 
   return (
     <div className="space-y-6">
@@ -31,15 +54,13 @@ export function ProductQrPageClient() {
         description="Print a sheet of SKU codes for the counter scanner. One page, A4 or Legal."
       />
 
-      {labelsQuery.isPending ? (
+      {pending ? (
         <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>
-      ) : labelsQuery.isError ? (
+      ) : error ? (
         <Card className="px-4 py-8 text-center text-body text-danger">
-          {labelsQuery.error instanceof Error
-            ? labelsQuery.error.message
-            : "Could not load products."}
+          {error instanceof Error ? error.message : "Could not load products."}
         </Card>
-      ) : withSku.length === 0 ? (
+      ) : (labelsQuery.data?.total ?? 0) === 0 && !debouncedQuery && categoryId === "all" ? (
         <Card>
           <EmptyState
             icon={QrCode}
@@ -48,7 +69,25 @@ export function ProductQrPageClient() {
           />
         </Card>
       ) : (
-        <ProductQrPanel products={withSku} />
+        <ProductQrPanel
+          products={(labelsQuery.data?.labels ?? []).map((product) => ({
+            id: product.id,
+            sku: product.sku,
+            name: product.name,
+            category: product.category,
+            categoryId: product.categoryId,
+          }))}
+          categories={categories}
+          query={query}
+          onQueryChange={setQuery}
+          categoryId={categoryId}
+          onCategoryChange={setCategoryId}
+          page={page}
+          pageCount={labelsQuery.data?.lastPage ?? 1}
+          total={labelsQuery.data?.total ?? 0}
+          onPageChange={setPage}
+          pageLoading={labelsQuery.isFetching}
+        />
       )}
     </div>
   );
