@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useTransition } from "react";
-import { KeyRound, Lock, Mail, UserRound } from "lucide-react";
+import { KeyRound, Lock, Mail, ShieldCheck, UserRound } from "lucide-react";
 import type { InvoiceNumberMode, User } from "@double-a/shared-types";
 import {
   Badge,
@@ -23,6 +23,7 @@ import {
   resetCompanyUserPassword,
   resetCompanyUserPin,
   setCompanyActive,
+  setCompanyUserDemoFlag,
   setInvoiceMode,
 } from "../../actions";
 
@@ -132,6 +133,28 @@ function ResetPinForm({ user, companyId }: { user: User; companyId: string }) {
   );
 }
 
+function DemoFlagForm({ user, companyId }: { user: User; companyId: string }) {
+  const [state, action, pending] = useActionState(setCompanyUserDemoFlag, EMPTY_FORM_STATE);
+
+  return (
+    <form action={action} className="flex flex-col gap-1">
+      <input type="hidden" name="id" value={user.id} />
+      <input type="hidden" name="company_id" value={companyId} />
+      <input type="hidden" name="is_demo" value={user.isDemo ? "false" : "true"} />
+      <Button
+        type="submit"
+        variant={user.isDemo ? "secondary" : "ghost"}
+        size="sm"
+        loading={pending}
+        icon={ShieldCheck}
+      >
+        {user.isDemo ? "Unflag demo" : "Flag as demo"}
+      </Button>
+      {state.error ? <ErrorNote>{state.error}</ErrorNote> : null}
+    </form>
+  );
+}
+
 export function CompanyUsers({
   companyId,
   users,
@@ -153,6 +176,7 @@ export function CompanyUsers({
               <Th>Email</Th>
               <Th>Role</Th>
               <Th>Reset</Th>
+              <Th>Demo</Th>
             </tr>
           </thead>
           <tbody>
@@ -162,6 +186,7 @@ export function CompanyUsers({
                   <div className="flex items-center gap-2">
                     {user.name}
                     {!user.isActive ? <Badge tone="danger">Inactive</Badge> : null}
+                    {user.isDemo ? <Badge tone="warning">Demo</Badge> : null}
                   </div>
                 </Td>
                 <Td>{user.email}</Td>
@@ -175,6 +200,9 @@ export function CompanyUsers({
                       <ResetPinForm user={user} companyId={companyId} />
                     ) : null}
                   </div>
+                </Td>
+                <Td>
+                  <DemoFlagForm user={user} companyId={companyId} />
                 </Td>
               </tr>
             ))}

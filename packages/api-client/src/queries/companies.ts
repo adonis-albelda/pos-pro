@@ -159,3 +159,16 @@ export async function resetUserPin(client: ApiClient, userId: string, pin: strin
   );
   return toUser(data);
 }
+
+/**
+ * Flags (or unflags) a shop user as a demo/sandbox login. The access code
+ * that gates such an account's login is generated on a separate site — this
+ * only decides which account that gate applies to.
+ */
+export async function setUserDemoFlag(client: ApiClient, userId: string, isDemo: boolean): Promise<User> {
+  const { data } = await client.patch<{ data: JsonApiResource<UserAttrs> }>(
+    `/superadmin/users/${userId}/demo-flag`,
+    { is_demo: isDemo },
+  );
+  return toUser(data);
+}

@@ -22,9 +22,9 @@ function formatRemaining(ms: number): string {
 }
 
 /**
- * Shown only for the demo@store.com account — a live countdown to when its
+ * Shown only for a user flagged `isDemo` — a live countdown to when its
  * Sanctum token actually expires server-side (LoginController forces a
- * DemoAccount::SESSION_DAYS-day token for this account regardless of the
+ * DemoAccount::SESSION_DAYS-day token for such an account regardless of the
  * app's normal session length). This banner is the UX half of that limit:
  * the real enforcement is the token itself going invalid, which any
  * subsequent API call would already 401 on — this just makes the countdown
@@ -36,7 +36,7 @@ export function DemoSessionBanner() {
   const { data: user } = useCurrentUser();
   const [remainingMs, setRemainingMs] = useState<number | null>(null);
 
-  const isDemo = user?.email === DemoAccount.EMAIL;
+  const isDemo = user?.isDemo ?? false;
 
   useEffect(() => {
     if (!isDemo) return;

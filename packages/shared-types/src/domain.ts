@@ -221,14 +221,16 @@ export const RECEIPT_PAPER_WIDTH_MM = 58;
 export const RECEIPT_PRINTER_MODEL = "PT-210" as const;
 
 /**
- * One specific sandbox login handed to prospects — mirrors
- * App\Support\DemoAccount on the Laravel side exactly (same email, same
- * session length). LoginController forces a token expiring this many days
- * out for this account regardless of the app's normal session length; the
- * admin web's DemoSessionBanner reads it here just for display copy.
+ * Any user flagged `is_demo` — mirrors App\Support\DemoAccount on the
+ * Laravel side (same session length). LoginController forces a token
+ * expiring this many days out for such an account regardless of the app's
+ * normal session length; the admin web's DemoSessionBanner reads it here
+ * just for display copy. The flag itself lives on `User.isDemo`, set by a
+ * superadmin — not tied to any particular email address. The access code
+ * that gates a demo login is computed and handed to prospects by a
+ * separate site; this app only verifies it (LoginInput.codeEmail).
  */
 export const DemoAccount = {
-  EMAIL: "demo@store.com",
   SESSION_DAYS: 2,
 } as const;
 
@@ -242,6 +244,8 @@ export interface User {
   canSell: boolean;
   /** Dashboard admin must set a new password before using the app. */
   mustChangePassword: boolean;
+  /** Superadmin-set sandbox flag — gates login behind an access code and caps record creation. */
+  isDemo: boolean;
   /** Null only for `superadmin`. Shop staff always belong to one company. */
   companyId: string | null;
   /** False when the shop account is disabled. Superadmin has no company — true. */
