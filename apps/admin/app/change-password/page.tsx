@@ -1,6 +1,4 @@
 import Image from "next/image";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { AuthBrandPanel } from "@/components/auth-brand-panel";
 import { ParticleField } from "@/components/particle-field";
 import { ChangePasswordForm } from "./change-password-form";
@@ -34,14 +32,6 @@ export default function ChangePasswordPage() {
             <div className="mt-8">
               <ChangePasswordForm />
             </div>
-
-            <Link
-              href="/"
-              className="mt-6 flex items-center justify-center gap-1.5 text-caption font-medium text-ink-muted transition-colors hover:text-ink"
-            >
-              <ArrowLeft className="size-3.5" />
-              Back to dashboard
-            </Link>
           </div>
 
           <p className="mt-8 text-center text-caption text-ink-muted">
