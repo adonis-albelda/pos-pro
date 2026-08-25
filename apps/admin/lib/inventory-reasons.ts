@@ -1,6 +1,9 @@
 import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
   PackageCheck,
   PackagePlus,
+  Replace,
   RotateCcw,
   ShoppingCart,
   SlidersHorizontal,
@@ -18,6 +21,9 @@ export const REASON_LABELS: Record<InventoryReason, string> = {
   adjustment: "Adjustment",
   oversell_correction: "Oversell correction",
   void_restore: "Sale voided",
+  replace_restore: "Item replaced",
+  transfer_out: "Transfer out",
+  transfer_in: "Transfer in",
 };
 
 export const REASON_ICONS: Record<InventoryReason, LucideIcon> = {
@@ -26,6 +32,9 @@ export const REASON_ICONS: Record<InventoryReason, LucideIcon> = {
   adjustment: SlidersHorizontal,
   oversell_correction: PackageCheck,
   void_restore: RotateCcw,
+  replace_restore: Replace,
+  transfer_out: ArrowUpFromLine,
+  transfer_in: ArrowDownToLine,
 };
 
 export const REASONS = Object.keys(REASON_LABELS) as InventoryReason[];
