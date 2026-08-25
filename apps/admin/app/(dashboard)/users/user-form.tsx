@@ -23,6 +23,7 @@ import {
 import { PasswordInput } from "@/components/password-input";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
 import { useInvalidateUsers } from "@/lib/query/users";
+import { useLocations } from "@/lib/query/locations";
 import { saveCashier } from "./actions";
 
 function successMessage(role: UserRole): string {
@@ -58,6 +59,7 @@ export function UserForm({
   const [state, action, pending] = useActionState(saveCashier, EMPTY_FORM_STATE);
   const [role, setRole] = useState<UserRole>(user?.role ?? defaultRole);
   const invalidateUsers = useInvalidateUsers();
+  const locationsQuery = useLocations({ type: "branch" });
 
   useEffect(() => {
     if (state.ok) {
@@ -70,6 +72,7 @@ export function UserForm({
 
   const RoleIcon =
     role === "admin" ? Shield : role === "device" ? Smartphone : UserRound;
+  const branches = locationsQuery.data ?? [];
 
   return (
     <form action={action} className="space-y-5">
@@ -117,6 +120,31 @@ export function UserForm({
             <option value="device">Terminal</option>
           </Select>
         </Field>
+
+        {!user && role === "device" ? (
+          <Field label="Branch" hint="Stock for this terminal comes from this branch only.">
+            <Select name="location_id" required defaultValue={branches[0]?.id ?? ""}>
+              {branches.length === 0 ? (
+                <option value="">No branches yet — add one under Locations</option>
+              ) : (
+                branches.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.name}
+                  </option>
+                ))
+              )}
+            </Select>
+          </Field>
+        ) : null}
+
+        {user?.role === "device" && user.locationId ? (
+          <Field label="Branch" hint="Bound at enrollment — change by creating a new terminal.">
+            <Input
+              value={branches.find((b) => b.id === user.locationId)?.name ?? user.locationId}
+              readOnly
+            />
+          </Field>
+        ) : null}
 
         {role === "cashier" || role === "admin" ? (
           <Field

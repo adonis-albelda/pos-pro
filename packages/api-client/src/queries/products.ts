@@ -43,6 +43,8 @@ export interface ListProductsPageOptions {
   pageSize?: number;
   includeInactive?: boolean;
   categoryId?: string;
+  /** Scope stock_quantity to one location; omit for company-wide total. */
+  locationId?: string;
   /** Server-computed from stock_quantity/reorder_point/is_active — ignores `includeInactive` when given (see IndexProductsController). */
   state?: ProductStockState;
   sort?: ProductSort;
@@ -55,6 +57,7 @@ export async function listProductsPage(
   const page = await client.get<JsonApiPage<ProductAttrs>>("/products", {
     search: options.q,
     category_id: options.categoryId,
+    location_id: options.locationId,
     is_active: options.state || options.includeInactive ? undefined : true,
     state: options.state,
     sort: options.sort,
@@ -282,11 +285,21 @@ export type AdjustStockReason = "restock" | "adjustment" | "oversell_correction"
 export async function adjustStock(
   client: ApiClient,
   id: string,
-  input: { changeQuantity: number; reason: AdjustStockReason; note?: string | null },
+  input: {
+    changeQuantity: number;
+    reason: AdjustStockReason;
+    note?: string | null;
+    locationId?: string | null;
+  },
 ): Promise<Product> {
   const { data } = await client.post<{ data: JsonApiResource<ProductAttrs> }>(
     `/products/${id}/adjust-stock`,
-    { change_quantity: input.changeQuantity, reason: input.reason, note: input.note ?? null },
+    {
+      change_quantity: input.changeQuantity,
+      reason: input.reason,
+      note: input.note ?? null,
+      location_id: input.locationId ?? undefined,
+    },
     { idempotent: true },
   );
   return toProduct(data);

@@ -77,6 +77,13 @@ export const NAV_GROUPS: NavGroup[] = [
         blurb: "Stock counts and movements",
         tone: "success",
       },
+      {
+        href: "/locations" as Route,
+        label: "Locations",
+        icon: Store,
+        blurb: "Branches, warehouses, transfers",
+        tone: "neutral",
+      },
     ],
   },
   {

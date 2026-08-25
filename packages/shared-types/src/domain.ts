@@ -37,7 +37,10 @@ export type InventoryReason =
   | "restock"
   | "adjustment"
   | "oversell_correction"
-  | "void_restore";
+  | "void_restore"
+  | "replace_restore"
+  | "transfer_out"
+  | "transfer_in";
 
 /** Local-only. Never sent to Supabase — it describes a row's push state. */
 export type SyncStatus = "pending" | "synced" | "failed";
@@ -146,6 +149,8 @@ export interface StoreSettings {
   invoiceDigits: number;
   /** Next number AssignInvoiceNumber will hand out — editable in settings. */
   invoiceNextNumber: number;
+  /** Branch these settings belong to. */
+  locationId?: string | null;
   updatedAt: string;
 }
 
@@ -249,9 +254,49 @@ export interface User {
   isDemo: boolean;
   /** Null only for `superadmin`. Shop staff always belong to one company. */
   companyId: string | null;
+  /** Branch this terminal/cashier is bound to. Null for admins and superadmin. */
+  locationId: string | null;
   /** False when the shop account is disabled. Superadmin has no company — true. */
   companyIsActive: boolean;
   updatedAt: string;
+}
+
+/** A physical place under a company that holds stock — selling branch or warehouse. */
+export type LocationType = "branch" | "warehouse";
+
+export interface Location {
+  id: string;
+  companyId: string;
+  name: string;
+  type: LocationType;
+  address: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type StockTransferStatus = "pending" | "in_transit" | "received" | "cancelled";
+
+export interface StockTransferItem {
+  id: string;
+  productId: string;
+  productName: string | null;
+  quantity: number;
+}
+
+export interface StockTransfer {
+  id: string;
+  companyId: string;
+  fromLocationId: string;
+  toLocationId: string;
+  fromLocationName: string | null;
+  toLocationName: string | null;
+  status: StockTransferStatus;
+  createdBy: string | null;
+  receivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  items: StockTransferItem[];
 }
 
 /** A tenant the platform superadmin creates. Shop identity still lives in store_settings. */
@@ -527,6 +572,8 @@ export interface Sale {
   deliveryCompleted: boolean;
   /** Stamped on push from the enrolled terminal's company. */
   companyId?: string | null;
+  /** Branch that rang up the sale — stock decrements here. */
+  locationId?: string | null;
 }
 
 /** The customer columns of a sale, as `CustomerDetails`. */
@@ -584,6 +631,8 @@ export interface InventoryMovement {
   productId: string;
   /** Embedded by the API — the product's name at read time, null if it's since been deleted. */
   productName: string | null;
+  /** Location whose balance this movement changed. */
+  locationId?: string | null;
   /** Negative for sales, positive for restocks. */
   changeQuantity: number;
   reason: InventoryReason;

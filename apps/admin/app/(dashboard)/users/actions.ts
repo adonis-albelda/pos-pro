@@ -46,6 +46,7 @@ export async function saveCashier(
   const pin = String(formData.get("pin") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const canSell = formData.get("can_sell") === "true";
+  const locationId = String(formData.get("location_id") ?? "").trim() || null;
 
   if (!name) return { error: "Name is required.", ok: false };
   if (!email) return { error: "Email is required — it identifies the person.", ok: false };
@@ -66,6 +67,9 @@ export async function saveCashier(
   }
   if (!id && role === "device" && !password) {
     return { error: "Set a password so this terminal can sign in on the POS app.", ok: false };
+  }
+  if (!id && role === "device" && !locationId) {
+    return { error: "Pick which branch this terminal sells from.", ok: false };
   }
   if (!id && password && password.length < 8) {
     return { error: "Password must be at least 8 characters.", ok: false };
@@ -94,6 +98,7 @@ export async function saveCashier(
         role: role === "admin" || role === "device" ? role : "cashier",
         password: role === "admin" || role === "device" ? password : undefined,
         canSell,
+        locationId: role === "device" ? locationId : undefined,
       });
       if (canUnlockWithPin(role) && pin) {
         await setUserPin(client, created.id, pin);

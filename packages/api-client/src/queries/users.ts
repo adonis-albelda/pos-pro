@@ -22,6 +22,8 @@ export interface CreateUserInput {
   password?: string | null;
   canSell?: boolean;
   isActive?: boolean;
+  /** Required for role "device" — branch the terminal sells from. */
+  locationId?: string | null;
 }
 
 function toCreatePayload(input: CreateUserInput): Record<string, unknown> {
@@ -33,6 +35,7 @@ function toCreatePayload(input: CreateUserInput): Record<string, unknown> {
   if (input.password !== undefined) payload.password = input.password;
   if (input.canSell !== undefined) payload.can_sell = input.canSell;
   if (input.isActive !== undefined) payload.is_active = input.isActive;
+  if (input.locationId !== undefined) payload.location_id = input.locationId;
   return payload;
 }
 

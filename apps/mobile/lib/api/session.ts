@@ -5,8 +5,10 @@ import type { User } from "@double-a/shared-types";
 import { resetLocalData } from "@/db";
 import {
   clearEnrolledCompanyId,
+  clearEnrolledLocationId,
   getEnrolledCompanyId,
   setEnrolledCompanyId,
+  setEnrolledLocationId,
 } from "@/lib/device";
 import { apiUrl, createScopedClient, VERSION_HEADERS } from "./client";
 
@@ -78,6 +80,10 @@ async function bindEnrolledCompany(profile: User): Promise<void> {
     await resetLocalData();
   }
   await setEnrolledCompanyId(profile.companyId);
+
+  if (profile.locationId) {
+    await setEnrolledLocationId(profile.locationId);
+  }
 }
 
 /**
@@ -121,6 +127,7 @@ export async function unenrollTerminal(): Promise<void> {
   }
   await clearSessionToken();
   await clearEnrolledCompanyId();
+  await clearEnrolledLocationId();
   setAdminToken(null);
 }
 

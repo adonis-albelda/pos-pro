@@ -58,6 +58,11 @@ export const queryKeys = {
     all: ["users"] as const,
     list: (params?: Record<string, unknown>) => ["users", "list", params] as const,
   },
+  locations: {
+    all: ["locations"] as const,
+    list: (params?: Record<string, unknown>) => ["locations", "list", params] as const,
+    transfers: (params?: Record<string, unknown>) => ["locations", "transfers", params] as const,
+  },
   /** Singleton row, keyed on the company — no list/detail split needed. */
   storeSettings: {
     all: ["store-settings"] as const,

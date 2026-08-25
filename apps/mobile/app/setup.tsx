@@ -7,7 +7,7 @@ import { ApiError } from "@double-a/api-client";
 import { login } from "@double-a/api-client/queries";
 import { getSyncMeta, markFirstPullSkipped } from "@/db/meta";
 import { countLocalProducts } from "@/db/products";
-import { getDeviceId, getDeviceLabel, setDeviceLabel, getEnrolledCompanyId, setEnrolledCompanyId } from "@/lib/device";
+import { getDeviceId, getDeviceLabel, setDeviceLabel, getEnrolledCompanyId, setEnrolledCompanyId, setEnrolledLocationId, getEnrolledLocationId } from "@/lib/device";
 import { resetLocalData } from "@/db";
 import { useLayout } from "@/lib/layout";
 import { createBareClient } from "@/lib/api/client";
@@ -127,6 +127,11 @@ export default function SetupScreen() {
         return;
       }
 
+      if (profile.role === "device" && !profile.locationId) {
+        setError("This terminal account is not bound to a branch. Ask admin to re-enroll it.");
+        return;
+      }
+
       // Terminal (device-role) accounts are created in web admin only
       // (Users page) — mobile setup never mints one. An admin logging in
       // here just persists their own login token directly, same as a
@@ -134,10 +139,17 @@ export default function SetupScreen() {
       const sessionToken = signedIn.token;
 
       const storedCompany = await getEnrolledCompanyId();
-      if (storedCompany && storedCompany !== profile.companyId) {
+      const storedLocation = await getEnrolledLocationId();
+      if (
+        (storedCompany && storedCompany !== profile.companyId) ||
+        (profile.locationId && storedLocation && storedLocation !== profile.locationId)
+      ) {
         await resetLocalData();
       }
       await setEnrolledCompanyId(profile.companyId);
+      if (profile.locationId) {
+        await setEnrolledLocationId(profile.locationId);
+      }
       await setSessionToken(sessionToken);
       void registerDevicePushToken();
 

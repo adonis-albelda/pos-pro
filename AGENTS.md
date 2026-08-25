@@ -99,18 +99,19 @@ return a row that was deleted, so incremental pulls would leave retired categori
 forever. The table is a few dozen rows; correctness is worth the round trip.
 
 ### 2. Inventory is event-sourced, not directly edited
-The mobile app never writes directly to a `stock_quantity` field. Offline sales are recorded
-as individual events (`sale_items` rows with client-generated UUIDs). The **local, on-device
-"available stock"** shown to the cashier is a computed estimate:
+The mobile app never writes stock balances. Offline sales are recorded as individual events
+(`sale_items` rows with client-generated UUIDs). Stock is **per location**
+(`location_inventories.quantity`); the POS only ever sees the enrolled branch's quantity.
+The **local, on-device "available stock"** shown to the cashier is a computed estimate:
 
 ```
-estimated_stock = last_synced_stock_quantity - sum(pending local sales for that product)
+estimated_stock = last_synced_branch_stock - sum(pending local sales for that product)
 ```
 
-This is a display estimate only, not a value ever written back to Supabase directly. Actual
-inventory decrements happen server-side in Supabase (via a Postgres trigger/function) when
-sale data is pushed. Oversell (two offline devices selling the last unit) is an accepted,
-known tradeoff of this design — handled by post-sync flagging, not prevented.
+This is a display estimate only, not a value ever written back to the server. Actual
+inventory decrements happen server-side when sale data is pushed (movement at
+`sale.location_id`). Oversell (two offline devices at the same branch selling the last unit)
+is an accepted, known tradeoff — handled by post-sync flagging, not prevented.
 
 ### 3. IDs are client-generated UUIDs for anything created offline
 `sales` and related records generate their `id` on-device (UUID) at creation time, not via
@@ -140,23 +141,26 @@ surfaces in the discount audit report. Selling below cost is called out as a war
 POS and as a flag on the report — never blocked.
 
 ### 8. Stock only ever moves through `inventory_movements`
-`products.stock_quantity` has exactly one writer: the `apply_inventory_movement()` trigger.
-CSV import, product forms, and the POS never write it. Opening stock, restocks, adjustments,
-and sale decrements all insert a movement row.
+`location_inventories.quantity` has exactly one writer: `InventoryMovementObserver` (Laravel).
+CSV import, product forms, and the POS never write balances. Opening stock, restocks,
+adjustments, sale decrements, voids, and transfer in/out all insert a movement row with a
+`location_id`. Inter-location moves use `stock_transfers` — stock changes only when a
+transfer is marked `received` (`transfer_out` + `transfer_in`).
 
 ### 9. Categories are a tree; `products.category` is a derived path
 The real link is `products.category_id`. A Postgres trigger keeps `products.category` filled
 with the flattened path (e.g. `Plumbing / Pipes`) so receipts, CSV exports, and the POS never
 have to walk the tree. Apps write `category_id` only.
 
-### 10. Who the shop is lives in `store_settings` — one row, admin-owned
-Name, logo, address, phone and receipt footer are a single row keyed on a boolean pinned to
-`true`, edited only under admin's Settings page. The POS pulls it whole on every sync, like the
-category tree, and never writes it. Nothing on a device may hardcode the shop name: read it
-through `useStoreSettings()`, which falls back to `DEFAULT_STORE_SETTINGS` before the first pull.
-The logo is a public URL in the `store-logos` bucket, so a terminal that has never been online
-shows the initial instead — a header must not wait on a fetch. Filtering by category is done on ids —
-the path text on a product survives the category being deleted.
+### 10. Who the shop is lives in `store_settings` — one row per branch
+Name, logo, address, phone, receipt footer, and invoice counters are keyed on
+`location_id` (branch only — warehouses skip). Edited under admin Settings (default branch)
+or per location. The POS pulls the enrolled branch's settings whole on every sync and never
+writes them. Nothing on a device may hardcode the shop name: read it through
+`useStoreSettings()`, which falls back to `DEFAULT_STORE_SETTINGS` before the first pull.
+The logo is a public URL, so a terminal that has never been online shows the initial instead —
+a header must not wait on a fetch. Filtering by category is done on ids — the path text on a
+product survives the category being deleted.
 
 ### 11. Customers are reusable records; sales still snapshot the text
 `customers` is a real table (id, name, address, contact). Devices create rows offline with client
@@ -184,17 +188,20 @@ COGS — that stays on `sale_items.unit_cost`. Never written from the POS and ne
 SQLite. Dashboard and reports **Net** = revenue − sum of expenses whose `expense_date` falls
 in the same shop-day range. Gross profit (revenue − supplier cost) stays a separate figure.
 
-### 15. Company is the isolation key (multi-tenant)
-Supabase still the source of truth. Every business row carries `company_id`. The first
-company is the pre-existing shop — tenancy migrations never delete business rows.
+### 15. Company is the isolation key (multi-tenant); locations split stock
+Every business row carries `company_id`. Under a company, `locations` (`branch` | `warehouse`)
+hold stock. Catalog/prices stay company-scoped; stock, sales, invoice counters, and terminal
+enrollment are location-scoped. The first company is the pre-existing shop — tenancy
+migrations never delete business rows. Existing companies get a backfilled `Main Branch`.
 
 `superadmin` is platform-only (`company_id` null). They create companies, assign shop
 admins, enable/disable a company (disabled blocks shop API), reset any shop user's Auth
-password or PIN, and may **Open company** (JWT `app_metadata.acting_company_id`) to use
-that shop's dashboard. Impersonation is not a second login.
+password or PIN, and may **Open company** (JWT `acting_company_id`) to use that shop's
+dashboard. Impersonation is not a second login.
 
-Shop writes never cross `company_id`. Mobile binds to the enrolled user's `company_id`
-and only pulls that company's catalog. Superadmin never enrolls a terminal.
+Shop writes never cross `company_id`. Mobile binds to the enrolled user's `company_id` **and**
+`location_id` (branch only) and only pulls that company's catalog with that branch's stock.
+Superadmin never enrolls a terminal.
 
 ---
 

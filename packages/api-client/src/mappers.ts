@@ -9,6 +9,8 @@ import type {
   Fulfillment,
   InventoryMovement,
   InventoryReason,
+  Location,
+  LocationType,
   PaymentMethod,
   Product,
   ProductUnit,
@@ -20,6 +22,8 @@ import type {
   Sale,
   SaleItem,
   SaleStatus,
+  StockTransfer,
+  StockTransferStatus,
   StoreSettings,
   Supplier,
   User,
@@ -189,6 +193,7 @@ export interface UserAttrs {
   email: string;
   role: string;
   company_id: string | null;
+  location_id?: string | null;
   company_is_active: boolean | null;
   is_active: boolean;
   can_sell: boolean;
@@ -210,6 +215,7 @@ export function toUser(resource: JsonApiResource<UserAttrs>): User {
     mustChangePassword: a.must_change_password,
     isDemo: a.is_demo,
     companyId: a.company_id ?? null,
+    locationId: a.location_id ?? null,
     companyIsActive: a.company_is_active ?? true,
     updatedAt: a.updated_at ?? "",
   };
@@ -224,6 +230,8 @@ export interface StoreSettingAttrs {
   invoice_prefix: string | null;
   invoice_digits: number | null;
   invoice_next_number: number | null;
+  location_id?: string | null;
+  company_id?: string | null;
   updated_at: string | null;
 }
 
@@ -238,6 +246,7 @@ export function toStoreSettings(resource: JsonApiResource<StoreSettingAttrs>): S
     invoicePrefix: a.invoice_prefix,
     invoiceDigits: a.invoice_digits ?? 6,
     invoiceNextNumber: a.invoice_next_number ?? 1,
+    locationId: a.location_id ?? resource.id,
     updatedAt: a.updated_at ?? "",
   };
 }
@@ -315,6 +324,7 @@ export interface SaleAttrs {
   payment_method: string | null;
   status: string;
   device_id: string | null;
+  location_id?: string | null;
   customer_name: string | null;
   customer_address: string | null;
   customer_contact: string | null;
@@ -348,6 +358,7 @@ export function toSale(resource: JsonApiResource<SaleAttrs>): Sale {
     fulfillment: (a.fulfillment as Fulfillment) ?? "pickup",
     deliveryCompleted: a.delivery_completed ?? false,
     companyId: a.company_id,
+    locationId: a.location_id ?? null,
   };
 }
 
@@ -489,6 +500,7 @@ export function toPurchaseOrderWithLines(
 export interface InventoryMovementAttrs {
   product_id: string;
   product_name?: string | null;
+  location_id?: string | null;
   change_quantity: number;
   reason: string;
   reference_id: string | null;
@@ -504,6 +516,7 @@ export function toInventoryMovement(resource: JsonApiResource<InventoryMovementA
     id: resource.id,
     productId: a.product_id,
     productName: a.product_name ?? null,
+    locationId: a.location_id ?? null,
     changeQuantity: Number(a.change_quantity),
     reason: a.reason as InventoryReason,
     referenceId: a.reference_id,
@@ -553,5 +566,71 @@ export function toCompanyStats(resource: JsonApiResource<CompanyStatsAttrs>): Co
     saleCount: a.sale_count,
     userCount: a.user_count,
     stockUnits: a.stock_units,
+  };
+}
+
+export interface LocationAttrs {
+  company_id: string;
+  name: string;
+  type: string;
+  address: string | null;
+  is_active: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export function toLocation(resource: JsonApiResource<LocationAttrs>): Location {
+  const a = resource.attributes;
+  return {
+    id: resource.id,
+    companyId: a.company_id,
+    name: a.name,
+    type: a.type as LocationType,
+    address: a.address,
+    isActive: a.is_active,
+    createdAt: a.created_at ?? "",
+    updatedAt: a.updated_at ?? "",
+  };
+}
+
+export interface StockTransferAttrs {
+  company_id: string;
+  from_location_id: string;
+  to_location_id: string;
+  from_location_name: string | null;
+  to_location_name: string | null;
+  status: string;
+  created_by: string | null;
+  received_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  items: Array<{
+    id: string;
+    product_id: string;
+    product_name: string | null;
+    quantity: number;
+  }>;
+}
+
+export function toStockTransfer(resource: JsonApiResource<StockTransferAttrs>): StockTransfer {
+  const a = resource.attributes;
+  return {
+    id: resource.id,
+    companyId: a.company_id,
+    fromLocationId: a.from_location_id,
+    toLocationId: a.to_location_id,
+    fromLocationName: a.from_location_name,
+    toLocationName: a.to_location_name,
+    status: a.status as StockTransferStatus,
+    createdBy: a.created_by,
+    receivedAt: a.received_at,
+    createdAt: a.created_at ?? "",
+    updatedAt: a.updated_at ?? "",
+    items: (a.items ?? []).map((item) => ({
+      id: item.id,
+      productId: item.product_id,
+      productName: item.product_name,
+      quantity: Number(item.quantity),
+    })),
   };
 }
