@@ -1,15 +1,24 @@
 "use client";
 
+import { Suspense } from "react";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { AuthBrandPanel } from "@/components/auth-brand-panel";
 import { ParticleField } from "@/components/particle-field";
 import { LoginForm } from "./login-form";
 
-export default function LoginPage() {
+/**
+ * useSearchParams() suspends during static prerender — must sit inside
+ * <Suspense> or the /login build fails (dashboard routes get this from
+ * (dashboard)/loading.tsx; login has no segment loading file).
+ */
+function LoginFormWithNext() {
   const searchParams = useSearchParams();
   const next = searchParams.get("next") ?? "/";
+  return <LoginForm next={next} />;
+}
 
+export default function LoginPage() {
   return (
     <main className="relative flex min-h-screen bg-paper">
       <AuthBrandPanel />
@@ -38,7 +47,9 @@ export default function LoginPage() {
             </p>
 
             <div className="mt-8">
-              <LoginForm next={next} />
+              <Suspense fallback={null}>
+                <LoginFormWithNext />
+              </Suspense>
             </div>
 
             <p className="mt-6 text-center text-caption text-ink-muted">
