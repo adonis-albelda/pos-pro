@@ -9,13 +9,15 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
 }
 
-export async function generateDemoAccessCodeAction(): Promise<{ code: string | null; error: string | null }> {
+export async function generateDemoAccessCodeAction(
+  email: string,
+): Promise<{ email: string | null; code: string | null; validForDate: string | null; error: string | null }> {
   const { client } = await requireSuperadmin();
 
   try {
-    const { code } = await generateDemoAccessCode(client);
-    return { code, error: null };
+    const result = await generateDemoAccessCode(client, email);
+    return { email: result.email, code: result.code, validForDate: result.validForDate, error: null };
   } catch (error) {
-    return { code: null, error: errorMessage(error) };
+    return { email: null, code: null, validForDate: null, error: errorMessage(error) };
   }
 }

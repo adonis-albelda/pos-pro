@@ -1,114 +1,129 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Check, Copy, KeyRound, Plus } from "lucide-react";
-import { Badge, Button, Card, CardHeader, ErrorNote, Table, Td, Th } from "@/components/ui";
+import { Check, Copy, KeyRound, Mail, Plus } from "lucide-react";
+import { Button, Card, CardHeader, ErrorNote, Field, Input, Table, Td, Th } from "@/components/ui";
 import { useDemoAccessCodes } from "@/lib/query/companies";
 import { generateDemoAccessCodeAction } from "./actions";
 
 export function DemoAccessPageClient() {
   const codesQuery = useDemoAccessCodes();
   const [pending, startTransition] = useTransition();
+  const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [justGenerated, setJustGenerated] = useState<string | null>(null);
-  const [copied, setCopied] = useState<string | null>(null);
+  const [justGenerated, setJustGenerated] = useState<{ email: string; code: string; validForDate: string } | null>(
+    null,
+  );
+  const [copied, setCopied] = useState(false);
 
-  function generate() {
+  function generate(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmed = email.trim();
+    if (!trimmed) {
+      setError("Enter the prospect's email.");
+      return;
+    }
     setError(null);
     setJustGenerated(null);
+    setCopied(false);
     startTransition(async () => {
-      const result = await generateDemoAccessCodeAction();
-      if (result.error || !result.code) {
+      const result = await generateDemoAccessCodeAction(trimmed);
+      if (result.error || !result.code || !result.email || !result.validForDate) {
         setError(result.error ?? "Could not generate a code.");
         return;
       }
-      setJustGenerated(result.code);
+      setJustGenerated({ email: result.email, code: result.code, validForDate: result.validForDate });
       void codesQuery.refetch();
     });
   }
 
   function copy(code: string) {
     void navigator.clipboard.writeText(code).then(() => {
-      setCopied(code);
-      setTimeout(() => setCopied((current) => (current === code ? null : current)), 2000);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     });
   }
 
-  const codes = codesQuery.data ?? [];
+  const redemptions = codesQuery.data ?? [];
 
   return (
     <Card>
       <CardHeader
         icon={KeyRound}
-        title="Codes"
-        description="Each code works once — send it to one prospect, then generate a new one for the next."
-        action={
-          <Button type="button" icon={Plus} loading={pending} onClick={generate}>
-            Generate code
-          </Button>
-        }
+        title="Generate a code"
+        description="Codes are computed from the prospect's email and today's date — good for one login, for that email only."
       />
 
-      <div className="px-4 py-4 sm:px-6">
+      <div className="border-b border-border px-4 py-4 sm:px-6">
+        <form onSubmit={generate} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <div className="flex-1">
+            <Field label="Prospect email">
+              <Input
+                icon={Mail}
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="prospect@example.com"
+                required
+              />
+            </Field>
+          </div>
+          <Button type="submit" icon={Plus} loading={pending}>
+            Generate code
+          </Button>
+        </form>
+
         {justGenerated ? (
-          <div className="mb-4 flex items-center justify-between gap-3 rounded-md border border-primary/30 bg-primary-tint px-4 py-3">
-            <span className="num text-body font-semibold text-ink">{justGenerated}</span>
+          <div className="mt-4 flex items-center justify-between gap-3 rounded-md border border-primary/30 bg-primary-tint px-4 py-3">
+            <div>
+              <p className="num text-body font-semibold text-ink">{justGenerated.code}</p>
+              <p className="text-caption text-ink-muted">
+                {justGenerated.email} — valid {justGenerated.validForDate} only
+              </p>
+            </div>
             <Button
               type="button"
               size="sm"
               variant="secondary"
-              icon={copied === justGenerated ? Check : Copy}
-              onClick={() => copy(justGenerated)}
+              icon={copied ? Check : Copy}
+              onClick={() => copy(justGenerated.code)}
             >
-              {copied === justGenerated ? "Copied" : "Copy"}
+              {copied ? "Copied" : "Copy"}
             </Button>
           </div>
         ) : null}
 
-        {error ? <ErrorNote>{error}</ErrorNote> : null}
+        {error ? (
+          <div className="mt-4">
+            <ErrorNote>{error}</ErrorNote>
+          </div>
+        ) : null}
+      </div>
 
+      <div className="px-4 py-4 sm:px-6">
+        <p className="mb-3 text-caption font-medium text-ink-muted">Redeemed codes</p>
         {codesQuery.isPending ? (
           <p className="text-body text-ink-muted">Loading…</p>
         ) : codesQuery.isError ? (
           <p className="text-body text-danger">
-            {codesQuery.error instanceof Error ? codesQuery.error.message : "Could not load codes."}
+            {codesQuery.error instanceof Error ? codesQuery.error.message : "Could not load redemptions."}
           </p>
-        ) : codes.length === 0 ? (
-          <p className="text-body text-ink-muted">No codes issued yet.</p>
+        ) : redemptions.length === 0 ? (
+          <p className="text-body text-ink-muted">No codes redeemed yet.</p>
         ) : (
           <Table>
             <thead>
               <tr>
-                <Th>Code</Th>
-                <Th>Status</Th>
-                <Th>Issued</Th>
-                <Th />
+                <Th>Email</Th>
+                <Th>Used</Th>
               </tr>
             </thead>
             <tbody>
-              {codes.map((code) => (
-                <tr key={code.id}>
-                  <Td className="num font-medium">{code.code}</Td>
-                  <Td>
-                    <Badge tone={code.usedAt ? "neutral" : "success"}>
-                      {code.usedAt ? "Used" : "Unused"}
-                    </Badge>
-                  </Td>
+              {redemptions.map((redemption) => (
+                <tr key={redemption.id}>
+                  <Td className="font-medium">{redemption.email}</Td>
                   <Td className="text-ink-muted">
-                    {code.createdAt ? new Date(code.createdAt).toLocaleString("en-PH") : "—"}
-                  </Td>
-                  <Td>
-                    <div className="flex justify-end">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        icon={copied === code.code ? Check : Copy}
-                        onClick={() => copy(code.code)}
-                      >
-                        {copied === code.code ? "Copied" : "Copy"}
-                      </Button>
-                    </div>
+                    {redemption.usedAt ? new Date(redemption.usedAt).toLocaleString("en-PH") : "—"}
                   </Td>
                 </tr>
               ))}

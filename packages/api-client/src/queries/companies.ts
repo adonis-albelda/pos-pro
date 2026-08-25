@@ -110,35 +110,38 @@ export async function setCompanyInvoiceMode(
 }
 
 export interface DemoAccessCode {
-  id: string;
+  email: string;
   code: string;
+  validForDate: string;
+}
+
+export interface DemoAccessRedemption {
+  id: string;
+  email: string;
   usedAt: string | null;
-  createdAt: string;
 }
 
 /**
- * Mints a one-time login code for the demo@store.com account — the
- * superadmin copies the returned code and sends it to a prospect
- * out-of-band (personal message/email). Nothing delivers it for them.
+ * Computes today's demo@store.com access code for one prospect email — a
+ * pure function server-side, nothing is written until that code is
+ * actually used to log in. The superadmin copies the returned code and
+ * sends it to the prospect out-of-band; nothing here delivers it for them.
  */
-export async function generateDemoAccessCode(client: ApiClient): Promise<DemoAccessCode> {
-  const { data } = await client.post<{ data: { code: string; created_at: string | null } }>(
-    "/superadmin/demo-access-codes",
-  );
-  return { id: data.code, code: data.code, usedAt: null, createdAt: data.created_at ?? "" };
+export async function generateDemoAccessCode(client: ApiClient, email: string): Promise<DemoAccessCode> {
+  const { data } = await client.post<{
+    data: { email: string; code: string; valid_for_date: string };
+  }>("/superadmin/demo-access-codes", { email });
+
+  return { email: data.email, code: data.code, validForDate: data.valid_for_date };
 }
 
-export async function listDemoAccessCodes(client: ApiClient): Promise<DemoAccessCode[]> {
+/** Every prospect email that has redeemed its demo access code so far. */
+export async function listDemoAccessCodes(client: ApiClient): Promise<DemoAccessRedemption[]> {
   const { data } = await client.get<{
-    data: { id: string; code: string; used_at: string | null; created_at: string | null }[];
+    data: { id: string; email: string; used_at: string | null }[];
   }>("/superadmin/demo-access-codes");
 
-  return data.map((row) => ({
-    id: row.id,
-    code: row.code,
-    usedAt: row.used_at,
-    createdAt: row.created_at ?? "",
-  }));
+  return data.map((row) => ({ id: row.id, email: row.email, usedAt: row.used_at }));
 }
 
 export async function resetUserPassword(client: ApiClient, userId: string, password: string): Promise<User> {
