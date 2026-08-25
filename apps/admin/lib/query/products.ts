@@ -1,12 +1,13 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   countProducts,
   getProductStats,
   listBelowReorder,
   listProductLabelsPage,
   listProductsPage,
+  setProductActive,
   type ListProductsPageOptions,
 } from "@double-a/api-client/queries";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
@@ -73,8 +74,24 @@ export function useBelowReorder() {
   });
 }
 
-/** Call after saveProduct/toggleProductActive (Server Actions) succeed — revalidatePath doesn't touch this cache. */
+/** Call after saveProduct (Server Action) succeeds — revalidatePath doesn't touch this cache. */
 export function useInvalidateProducts() {
   const queryClient = useQueryClient();
   return () => queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
+}
+
+/**
+ * Client-side, not a Server Action — a toggle needs its error (e.g. the
+ * demo-account 403) to reach a toast directly, which a Server Action
+ * crashing into Next's generic error boundary never did.
+ */
+export function useSetProductActive() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
+      setProductActive(getBrowserApiClient(), id, isActive),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
+    },
+  });
 }

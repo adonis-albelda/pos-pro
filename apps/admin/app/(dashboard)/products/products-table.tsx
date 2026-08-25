@@ -1,14 +1,15 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { Eye, EyeOff, Pencil } from "lucide-react";
+import { toast } from "sonner";
+import { ApiError } from "@double-a/api-client";
 import type { Product } from "@double-a/shared-types";
 import { formatPercent, marginPercent, stockLevel } from "@double-a/shared-types";
 import { Badge, IconButton, Money, Table, Td, Th } from "@/components/ui";
 import { ConfirmDialog, Sheet } from "@/components/overlay";
 import type { CategoryOption } from "@/lib/category-options";
-import { useInvalidateProducts } from "@/lib/query/products";
-import { toggleProductActive } from "./actions";
+import { useSetProductActive } from "@/lib/query/products";
 import { ProductForm } from "./product-form";
 
 export function ProductsTable({
@@ -20,19 +21,21 @@ export function ProductsTable({
 }) {
   const [editing, setEditing] = useState<Product | null>(null);
   const [hiding, setHiding] = useState<Product | null>(null);
-  const [pending, startTransition] = useTransition();
-  const invalidate = useInvalidateProducts();
+  const setActive = useSetProductActive();
 
   function confirmHide() {
     if (!hiding) return;
-    const form = new FormData();
-    form.set("id", hiding.id);
-    form.set("is_active", String(!hiding.isActive));
-    startTransition(async () => {
-      await toggleProductActive(form);
-      invalidate();
-      setHiding(null);
-    });
+    setActive.mutate(
+      { id: hiding.id, isActive: !hiding.isActive },
+      {
+        onSuccess: () => setHiding(null),
+        onError: (error) => {
+          const message =
+            error instanceof ApiError ? error.message : "Could not update this product.";
+          toast.error(message);
+        },
+      },
+    );
   }
 
   return (
@@ -137,7 +140,7 @@ export function ProductsTable({
         open={hiding !== null}
         onClose={() => setHiding(null)}
         onConfirm={confirmHide}
-        pending={pending}
+        pending={setActive.isPending}
         title={hiding?.isActive ? "Hide product?" : "Show product?"}
         description={
           hiding?.isActive

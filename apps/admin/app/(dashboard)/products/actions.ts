@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { validateProductInput } from "@double-a/shared-types";
-import { createProduct, setProductActive, updateProduct } from "@double-a/api-client/queries";
+import { createProduct, updateProduct } from "@double-a/api-client/queries";
 import { ApiError } from "@double-a/api-client";
 import type { FormState } from "@/lib/form-state";
 import { getAuthedClient } from "@/lib/api/session";
@@ -100,15 +100,4 @@ export async function saveProduct(
   revalidatePath("/inventory");
   revalidatePath("/reports");
   return { error: null, ok: true };
-}
-
-export async function toggleProductActive(formData: FormData): Promise<void> {
-  const id = String(formData.get("id") ?? "");
-  const isActive = String(formData.get("is_active") ?? "") === "true";
-
-  const client = getAuthedClient();
-  await setProductActive(client, id, isActive);
-
-  revalidatePath("/products");
-  revalidatePath("/inventory");
 }
