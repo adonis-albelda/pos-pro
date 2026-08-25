@@ -1,24 +1,21 @@
-"use client";
-
-import { Suspense } from "react";
 import Image from "next/image";
-import { useSearchParams } from "next/navigation";
 import { AuthBrandPanel } from "@/components/auth-brand-panel";
 import { ParticleField } from "@/components/particle-field";
 import { LoginForm } from "./login-form";
 
 /**
- * useSearchParams() suspends during static prerender — must sit inside
- * <Suspense> or the /login build fails (dashboard routes get this from
- * (dashboard)/loading.tsx; login has no segment loading file).
+ * Stays a Server Component shell — `searchParams` is read here so the client
+ * LoginForm never needs useSearchParams (that hook + a full-page "use client"
+ * boundary trips the root error.tsx during prerender/hydration). Auth itself
+ * is already client-side TanStack Query in login-form.tsx.
  */
-function LoginFormWithNext() {
-  const searchParams = useSearchParams();
-  const next = searchParams.get("next") ?? "/";
-  return <LoginForm next={next} />;
-}
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
+  const { next } = await searchParams;
 
-export default function LoginPage() {
   return (
     <main className="relative flex min-h-screen bg-paper">
       <AuthBrandPanel />
@@ -47,9 +44,7 @@ export default function LoginPage() {
             </p>
 
             <div className="mt-8">
-              <Suspense fallback={null}>
-                <LoginFormWithNext />
-              </Suspense>
+              <LoginForm next={next ?? "/"} />
             </div>
 
             <p className="mt-6 text-center text-caption text-ink-muted">

@@ -1,10 +1,12 @@
-"use client";
-
 import Image from "next/image";
 import { AuthBrandPanel } from "@/components/auth-brand-panel";
 import { ParticleField } from "@/components/particle-field";
 import { ChangePasswordForm } from "./change-password-form";
 
+/**
+ * Server Component shell — same reason as login/page.tsx. Form stays client
+ * (useMutation + changePassword API).
+ */
 export default function ChangePasswordPage() {
   return (
     <main className="relative flex min-h-screen bg-paper">
