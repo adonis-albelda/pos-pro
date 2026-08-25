@@ -7,6 +7,7 @@ import {
   EXPENSE_NOTE_MAX,
   roundMoney,
 } from "@double-a/shared-types";
+import { ApiError } from "@double-a/api-client";
 import {
   createExpense,
   deleteExpense,
@@ -71,6 +72,9 @@ export async function saveExpense(
       await createExpense(client, row);
     }
   } catch (error) {
+    if (error instanceof ApiError && error.isForbidden) {
+      return { error: error.message, ok: false };
+    }
     const message = error instanceof Error ? error.message : "Unknown error";
     return { error: `Could not save the expense: ${message}`, ok: false };
   }

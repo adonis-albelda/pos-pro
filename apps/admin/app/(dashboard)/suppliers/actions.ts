@@ -81,6 +81,9 @@ export async function saveSupplier(
     await setSupplierProducts(client, supplierId, productIds);
     revalidateSupplierViews(supplierId);
   } catch (error) {
+    if (error instanceof ApiError && error.isForbidden) {
+      return { error: error.message, ok: false };
+    }
     const message = error instanceof Error ? error.message : "Unknown error";
     return { error: `Could not save the supplier: ${message}`, ok: false };
   }

@@ -32,6 +32,7 @@ function describeError(error: unknown): string {
       const messages = Object.values(error.errors).flat();
       if (messages.length > 0) return messages.join(" ");
     }
+    if (error.isForbidden) return error.message;
     return `Could not save the category: ${error.message}`;
   }
   const message = error instanceof Error ? error.message : "Unknown error";

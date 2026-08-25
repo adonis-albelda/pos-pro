@@ -1,4 +1,6 @@
-import { forwardRef, type ComponentProps, type ReactNode } from "react";
+"use client";
+
+import { forwardRef, useEffect, type ComponentProps, type ReactNode } from "react";
 import type { Route } from "next";
 import Link from "next/link";
 import {
@@ -10,7 +12,18 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
+import { toast } from "sonner";
 import { formatMoney } from "@double-a/shared-types";
+
+/**
+ * The exact message EnforceDemoReadOnly (Laravel) returns on every blocked
+ * update, across every resource — every Server Action's catch block passes
+ * an ApiError's `.message` through into FormState.error unprefixed for a
+ * non-validation error, so this exact string always reaches an ErrorNote
+ * wherever a demo account gets blocked. One check here covers every
+ * resource's update form without touching each one individually.
+ */
+export const DEMO_RESTRICTED_MESSAGE = "This action is restricted for demo accounts.";
 
 function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(" ");
@@ -540,6 +553,12 @@ export function EmptyState({
 }
 
 export function ErrorNote({ children }: { children: ReactNode }) {
+  useEffect(() => {
+    if (children === DEMO_RESTRICTED_MESSAGE) {
+      toast.error(DEMO_RESTRICTED_MESSAGE);
+    }
+  }, [children]);
+
   return (
     <p className="flex items-start gap-2 rounded-sm border border-danger/40 bg-danger/8 px-3 py-2 text-body text-danger">
       <CircleAlert size={16} strokeWidth={2} className="mt-0.5 shrink-0" />

@@ -52,6 +52,9 @@ export async function saveCustomer(
       revalidateCustomerViews(created.id);
     }
   } catch (error) {
+    if (error instanceof ApiError && error.isForbidden) {
+      return { error: error.message, ok: false };
+    }
     const message = error instanceof Error ? error.message : "Unknown error";
     return { error: `Could not save the customer: ${message}`, ok: false };
   }

@@ -49,6 +49,7 @@ function describeSaveError(error: unknown): string {
     const first = Object.values(error.errors ?? {})[0]?.[0];
     if (first) return first;
   }
+  if (error instanceof ApiError && error.isForbidden) return error.message;
   const message = error instanceof Error ? error.message : "Unknown error";
   return `Could not save the product: ${message}`;
 }

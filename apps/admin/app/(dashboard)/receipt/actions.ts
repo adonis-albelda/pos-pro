@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { ApiError } from "@double-a/api-client";
 import { updateReceiptLayout } from "@double-a/api-client/queries";
 import type { FormState } from "@/lib/form-state";
 import { getAuthedClient, getCurrentUser } from "@/lib/api/session";
@@ -33,6 +34,9 @@ export async function saveReceiptLayout(
       showFooter: checked(formData, "show_footer"),
     });
   } catch (error) {
+    if (error instanceof ApiError && error.isForbidden) {
+      return { error: error.message, ok: false };
+    }
     const message = error instanceof Error ? error.message : "Unknown error";
     return { error: `Could not save the receipt layout: ${message}`, ok: false };
   }

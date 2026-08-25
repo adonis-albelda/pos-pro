@@ -100,6 +100,9 @@ export async function saveCashier(
       }
     }
   } catch (error) {
+    if (error instanceof ApiError && error.isForbidden) {
+      return { error: error.message, ok: false };
+    }
     return { error: `Could not save: ${errorMessage(error)}`, ok: false };
   }
 

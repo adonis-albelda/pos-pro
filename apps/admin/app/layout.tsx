@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Mono, Inter, Manrope } from "next/font/google";
+import { Toaster } from "sonner";
 import { CompanyIntro } from "@/components/company-intro";
 import { QueryProvider } from "@/components/query-provider";
 import "./globals.css";
@@ -32,6 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <QueryProvider>
           <CompanyIntro />
           {children}
+          <Toaster position="top-center" richColors closeButton />
         </QueryProvider>
       </body>
     </html>
