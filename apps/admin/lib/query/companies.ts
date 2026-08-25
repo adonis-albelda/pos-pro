@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { companyStats } from "@double-a/api-client/queries";
+import { companyStats, listDemoAccessCodes } from "@double-a/api-client/queries";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 import { queryKeys } from "./keys";
 
@@ -28,4 +28,13 @@ export function useCompanyStats() {
 export function useInvalidateCompanyStats() {
   const queryClient = useQueryClient();
   return () => queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
+}
+
+/** Every demo@store.com access code issued so far, newest first — refetches on mount for the same reason useCompanyStats does. */
+export function useDemoAccessCodes() {
+  return useQuery({
+    queryKey: [...queryKeys.companies.all, "demo-access-codes"] as const,
+    queryFn: () => listDemoAccessCodes(getBrowserApiClient()),
+    refetchOnMount: "always",
+  });
 }

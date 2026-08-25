@@ -2,6 +2,7 @@ import { getStoreSettings } from "@double-a/api-client/queries";
 import { getAuthedClient, getCurrentUser } from "@/lib/api/session";
 import { ClassicShell } from "@/components/classic-shell";
 import { DashboardShell } from "@/components/dashboard-shell";
+import { DemoSessionBanner } from "@/components/demo-session-banner";
 import { HydrateStoreSettings } from "@/components/hydrate-store-settings";
 import { ImpersonationBanner } from "@/components/impersonation-banner";
 import { PushNotificationRegistrar } from "@/components/push-notification-registrar";
@@ -44,28 +45,34 @@ export default async function DashboardLayout({
 
   if (mode === "classic") {
     return (
-      <ClassicShell
-        storeName={store.name}
-        storeLogoUrl={store.logoUrl}
-        userName={user?.name ?? null}
-        userEmail={user?.email ?? null}
-        mode={mode}
-      >
-        {contentWithPush}
-      </ClassicShell>
+      <>
+        <DemoSessionBanner />
+        <ClassicShell
+          storeName={store.name}
+          storeLogoUrl={store.logoUrl}
+          userName={user?.name ?? null}
+          userEmail={user?.email ?? null}
+          mode={mode}
+        >
+          {contentWithPush}
+        </ClassicShell>
+      </>
     );
   }
 
   return (
-    <DashboardShell
-      storeName={store.name}
-      storeLogoUrl={store.logoUrl}
-      userName={user?.name ?? null}
-      userEmail={user?.email ?? null}
-      initials={initials}
-      mode={mode}
-    >
-      {contentWithPush}
-    </DashboardShell>
+    <>
+      <DemoSessionBanner />
+      <DashboardShell
+        storeName={store.name}
+        storeLogoUrl={store.logoUrl}
+        userName={user?.name ?? null}
+        userEmail={user?.email ?? null}
+        initials={initials}
+        mode={mode}
+      >
+        {contentWithPush}
+      </DashboardShell>
+    </>
   );
 }

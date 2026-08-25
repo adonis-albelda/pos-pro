@@ -220,6 +220,18 @@ export const RECEIPT_COLUMNS = 32;
 export const RECEIPT_PAPER_WIDTH_MM = 58;
 export const RECEIPT_PRINTER_MODEL = "PT-210" as const;
 
+/**
+ * One specific sandbox login handed to prospects — mirrors
+ * App\Support\DemoAccount on the Laravel side exactly (same email, same
+ * session length). LoginController forces a token expiring this many days
+ * out for this account regardless of the app's normal session length; the
+ * admin web's DemoSessionBanner reads it here just for display copy.
+ */
+export const DemoAccount = {
+  EMAIL: "demo@store.com",
+  SESSION_DAYS: 2,
+} as const;
+
 export interface User {
   id: string;
   name: string;

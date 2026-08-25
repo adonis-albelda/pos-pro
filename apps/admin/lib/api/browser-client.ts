@@ -1,7 +1,12 @@
 "use client";
 
 import { ApiClient, assertApiUrl } from "@double-a/api-client";
-import { ACTING_COMPANY_COOKIE, BASE_SESSION_COOKIE, SESSION_COOKIE } from "./cookie-names";
+import {
+  ACTING_COMPANY_COOKIE,
+  BASE_SESSION_COOKIE,
+  SESSION_COOKIE,
+  SESSION_EXPIRES_AT_COOKIE,
+} from "./cookie-names";
 
 /**
  * For client components calling the Tally API straight from the browser
@@ -11,7 +16,7 @@ import { ACTING_COMPANY_COOKIE, BASE_SESSION_COOKIE, SESSION_COOKIE } from "./co
  * this can read them — see the tradeoff noted in session.ts.
  */
 
-function readCookie(name: string): string | null {
+export function readCookie(name: string): string | null {
   if (typeof document === "undefined") return null;
   const prefix = `${name}=`;
   for (const part of document.cookie.split("; ")) {
@@ -70,10 +75,16 @@ export function startBrowserSession(token: string, expiresAt: string | null): vo
   // stale acting-company marker, same as the server-side startSession(..., isNewLogin: true).
   writeCookie(BASE_SESSION_COOKIE, token, maxAge);
   deleteCookie(ACTING_COMPANY_COOKIE);
+  if (expiresAt) {
+    writeCookie(SESSION_EXPIRES_AT_COOKIE, expiresAt, maxAge);
+  } else {
+    deleteCookie(SESSION_EXPIRES_AT_COOKIE);
+  }
 }
 
 export function endBrowserSession(): void {
   deleteCookie(SESSION_COOKIE);
   deleteCookie(BASE_SESSION_COOKIE);
   deleteCookie(ACTING_COMPANY_COOKIE);
+  deleteCookie(SESSION_EXPIRES_AT_COOKIE);
 }

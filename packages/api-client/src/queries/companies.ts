@@ -109,6 +109,38 @@ export async function setCompanyInvoiceMode(
   return data.invoice_number_mode === "incremental" ? "incremental" : "random";
 }
 
+export interface DemoAccessCode {
+  id: string;
+  code: string;
+  usedAt: string | null;
+  createdAt: string;
+}
+
+/**
+ * Mints a one-time login code for the demo@store.com account — the
+ * superadmin copies the returned code and sends it to a prospect
+ * out-of-band (personal message/email). Nothing delivers it for them.
+ */
+export async function generateDemoAccessCode(client: ApiClient): Promise<DemoAccessCode> {
+  const { data } = await client.post<{ data: { code: string; created_at: string | null } }>(
+    "/superadmin/demo-access-codes",
+  );
+  return { id: data.code, code: data.code, usedAt: null, createdAt: data.created_at ?? "" };
+}
+
+export async function listDemoAccessCodes(client: ApiClient): Promise<DemoAccessCode[]> {
+  const { data } = await client.get<{
+    data: { id: string; code: string; used_at: string | null; created_at: string | null }[];
+  }>("/superadmin/demo-access-codes");
+
+  return data.map((row) => ({
+    id: row.id,
+    code: row.code,
+    usedAt: row.used_at,
+    createdAt: row.created_at ?? "",
+  }));
+}
+
 export async function resetUserPassword(client: ApiClient, userId: string, password: string): Promise<User> {
   const { data } = await client.post<{ data: JsonApiResource<UserAttrs> }>(
     `/superadmin/users/${userId}/reset-password`,

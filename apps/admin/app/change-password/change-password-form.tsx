@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { Check, Lock } from "lucide-react";
 import { ApiError } from "@double-a/api-client";
@@ -11,13 +10,21 @@ import { PasswordInput } from "@/components/password-input";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 
 export function ChangePasswordForm() {
-  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
 
   const mutation = useMutation({
     mutationFn: (input: { currentPassword: string; password: string }) =>
       changePassword(getBrowserApiClient(), input),
-    onSuccess: () => router.push("/"),
+    // A soft router.push("/") here left the user stuck on this page: the
+    // proxy middleware gates every navigation on the account's own
+    // must_change_password flag, but a client-side transition can still
+    // serve the previous RSC render of "/" out of Next's Router Cache from
+    // before the flag flipped. A hard navigation forces a real request,
+    // so middleware and every server component re-evaluate against the
+    // post-change session instead of a stale cached one.
+    onSuccess: () => {
+      window.location.href = "/";
+    },
     onError: (cause) => {
       if (cause instanceof ApiError && cause.isValidation) {
         setError(cause.errors?.current_password?.[0] ?? "That current password is incorrect.");
