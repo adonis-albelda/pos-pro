@@ -112,7 +112,9 @@ export async function setCompanyInvoiceMode(
 export interface DemoAccessRedemption {
   id: string;
   email: string;
+  code: string;
   usedAt: string | null;
+  createdAt: string | null;
 }
 
 /**
@@ -124,10 +126,16 @@ export interface DemoAccessRedemption {
  */
 export async function listDemoAccessCodes(client: ApiClient): Promise<DemoAccessRedemption[]> {
   const { data } = await client.get<{
-    data: { id: string; email: string; used_at: string | null }[];
+    data: { id: string; email: string; code: string; used_at: string | null; created_at: string | null }[];
   }>("/superadmin/demo-access-codes");
 
-  return data.map((row) => ({ id: row.id, email: row.email, usedAt: row.used_at }));
+  return data.map((row) => ({
+    id: row.id,
+    email: row.email,
+    code: row.code,
+    usedAt: row.used_at,
+    createdAt: row.created_at,
+  }));
 }
 
 export async function resetUserPassword(client: ApiClient, userId: string, password: string): Promise<User> {

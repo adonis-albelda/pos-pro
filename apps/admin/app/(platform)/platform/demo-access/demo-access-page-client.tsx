@@ -30,6 +30,8 @@ export function DemoAccessPageClient() {
             <thead>
               <tr>
                 <Th>Email</Th>
+                <Th>Code</Th>
+                <Th>Issued</Th>
                 <Th>Used</Th>
               </tr>
             </thead>
@@ -37,6 +39,10 @@ export function DemoAccessPageClient() {
               {redemptions.map((redemption) => (
                 <tr key={redemption.id}>
                   <Td className="font-medium">{redemption.email}</Td>
+                  <Td className="num">{redemption.code}</Td>
+                  <Td className="text-ink-muted">
+                    {redemption.createdAt ? new Date(redemption.createdAt).toLocaleString("en-PH") : "—"}
+                  </Td>
                   <Td className="text-ink-muted">
                     {redemption.usedAt ? new Date(redemption.usedAt).toLocaleString("en-PH") : "—"}
                   </Td>
