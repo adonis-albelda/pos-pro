@@ -6,11 +6,17 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 /**
  * One QueryClient per browser session, created inside the component (not at
  * module scope) so server rendering never shares cache/state across users —
- * standard App Router pattern. staleTime > 0 by default: admin is read-heavy
- * navigation (products, customers, suppliers... back and forth), and every
- * write path already calls queryClient.invalidateQueries() on success (see
- * lib/query/*), so a stale-while-fine default doesn't hide a change you just
- * made — it only skips a redundant refetch on data nothing touched.
+ * standard App Router pattern. staleTime is long by default: admin is
+ * read-heavy navigation (products, customers, suppliers... back and forth),
+ * and every write path already calls queryClient.invalidateQueries() on
+ * success (see lib/query/*), so nothing here can hide a change you just
+ * made — a long staleTime only skips a redundant refetch on data nothing
+ * touched, e.g. revisiting the products page a few minutes later still
+ * shows the cached page instantly with zero network request. gcTime is
+ * set well past staleTime so a query isn't evicted from memory (forcing a
+ * real refetch) just for being unmounted a few minutes between visits —
+ * individual hooks (see lib/query/features.ts, session.ts) still override
+ * staleTime downward where it's deliberately shorter than this default.
  */
 export function QueryProvider({ children }: { children: ReactNode }) {
   const [client] = useState(
@@ -18,7 +24,8 @@ export function QueryProvider({ children }: { children: ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 30_000,
+            staleTime: 5 * 60_000,
+            gcTime: 30 * 60_000,
             refetchOnWindowFocus: false,
           },
         },
