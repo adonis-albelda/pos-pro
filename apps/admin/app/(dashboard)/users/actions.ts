@@ -128,15 +128,6 @@ export async function resetUserPassword(
   };
 }
 
-/** Floor staff: unlock still works; completing a sale does not. */
-export async function toggleUserCanSell(formData: FormData): Promise<void> {
-  const id = String(formData.get("id") ?? "");
-  const canSell = String(formData.get("can_sell") ?? "") === "true";
-
-  await updateUser(getAuthedClient(), id, { canSell });
-  revalidatePath("/users");
-}
-
 export async function toggleCashierActive(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
   const isActive = String(formData.get("is_active") ?? "") === "true";

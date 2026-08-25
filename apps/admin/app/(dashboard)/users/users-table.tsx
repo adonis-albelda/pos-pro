@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState, useTransition } from "react";
+import { useActionState, useEffect, useState } from "react";
 import {
   Ban,
   CircleCheck,
@@ -12,6 +12,8 @@ import {
   UserRound,
   type LucideIcon,
 } from "lucide-react";
+import { toast } from "sonner";
+import { ApiError } from "@double-a/api-client";
 import type { User } from "@double-a/shared-types";
 import {
   Badge,
@@ -27,8 +29,8 @@ import {
 import { PasswordInput } from "@/components/password-input";
 import { ConfirmDialog, Dialog, Sheet } from "@/components/overlay";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
-import { useInvalidateUsers } from "@/lib/query/users";
-import { resetUserPassword, toggleUserCanSell } from "./actions";
+import { useToggleUserCanSell } from "@/lib/query/users";
+import { resetUserPassword } from "./actions";
 import { UserForm } from "./user-form";
 
 const ROLE_ICONS: Record<string, LucideIcon> = {
@@ -94,19 +96,21 @@ export function UsersTable({ users }: { users: User[] }) {
   const [editing, setEditing] = useState<User | null>(null);
   const [resetting, setResetting] = useState<User | null>(null);
   const [toggling, setToggling] = useState<User | null>(null);
-  const [pending, startTransition] = useTransition();
-  const invalidateUsers = useInvalidateUsers();
+  const toggleCanSell = useToggleUserCanSell();
 
   function confirmToggleSell() {
     if (!toggling) return;
-    const form = new FormData();
-    form.set("id", toggling.id);
-    form.set("can_sell", String(!toggling.canSell));
-    startTransition(async () => {
-      await toggleUserCanSell(form);
-      invalidateUsers();
-      setToggling(null);
-    });
+    toggleCanSell.mutate(
+      { id: toggling.id, canSell: !toggling.canSell },
+      {
+        onSuccess: () => setToggling(null),
+        onError: (error) => {
+          const message =
+            error instanceof ApiError ? error.message : "Could not update this user.";
+          toast.error(message);
+        },
+      },
+    );
   }
 
   return (
@@ -219,7 +223,7 @@ export function UsersTable({ users }: { users: User[] }) {
         open={toggling !== null}
         onClose={() => setToggling(null)}
         onConfirm={confirmToggleSell}
-        pending={pending}
+        pending={toggleCanSell.isPending}
         title={toggling?.canSell ? "Disable sales?" : "Enable sales?"}
         description={
           toggling?.canSell

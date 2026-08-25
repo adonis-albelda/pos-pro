@@ -1,7 +1,7 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { countUsers, listUsers } from "@double-a/api-client/queries";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { countUsers, listUsers, updateUser } from "@double-a/api-client/queries";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 import { queryKeys } from "./keys";
 
@@ -21,8 +21,24 @@ export function useUserCount() {
   });
 }
 
-/** Call after saveCashier/toggleUserCanSell/toggleCashierActive (Server Actions) succeed — revalidatePath doesn't touch this cache. */
+/** Call after saveCashier (Server Action) succeeds — revalidatePath doesn't touch this cache. */
 export function useInvalidateUsers() {
   const queryClient = useQueryClient();
   return () => queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
+}
+
+/**
+ * Client-side, not a Server Action — a toggle needs its error (e.g. the
+ * demo-account 403) to reach a toast directly, which a Server Action
+ * crashing into Next's generic error boundary never did.
+ */
+export function useToggleUserCanSell() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, canSell }: { id: string; canSell: boolean }) =>
+      updateUser(getBrowserApiClient(), id, { canSell }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
+    },
+  });
 }
