@@ -15,7 +15,7 @@ export default async function DemoAccessPage() {
       <PageHeader
         icon={KeyRound}
         title="Demo access codes"
-        description="One-time codes for the demo@store.com account. Generate one and send it to a prospect yourself — nothing here delivers it for you."
+        description="One-time codes for demo-flagged accounts, generated and sent to prospects by the external site that hands out demo access."
       />
       <DemoAccessPageClient />
     </div>

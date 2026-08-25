@@ -18,10 +18,8 @@ export interface LoginInput {
   password: string;
   /** Label for the issued Sanctum token — shows up in `listTokens`. */
   deviceName: string;
-  /** Only meaningful for the demo@store.com account — LoginController rejects that one email without it. */
+  /** Only meaningful for a demo-flagged account — LoginController rejects such a login without it. */
   accessCode?: string;
-  /** The prospect's own email the access code was generated for — distinct from `email` above, which is always demo@store.com here. */
-  codeEmail?: string;
 }
 
 export interface LoginResult {
@@ -45,7 +43,6 @@ export async function login(client: ApiClient, input: LoginInput): Promise<Login
     password: input.password,
     device_name: input.deviceName,
     access_code: input.accessCode,
-    code_email: input.codeEmail,
   });
   return {
     user: toUser(data),

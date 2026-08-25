@@ -23,12 +23,7 @@ export function LoginForm({ next }: { next: string }) {
   } | null>(null);
 
   const mutation = useMutation({
-    mutationFn: async (input: {
-      email: string;
-      password: string;
-      accessCode?: string;
-      codeEmail?: string;
-    }) => {
+    mutationFn: async (input: { email: string; password: string; accessCode?: string }) => {
       return login(getBrowserBareClient(), { ...input, deviceName: "admin-web" });
     },
     onSuccess: ({ user, token, expiresAt }) => {
@@ -103,14 +98,13 @@ export function LoginForm({ next }: { next: string }) {
     if (!pendingCredentials) return;
 
     const formData = new FormData(event.currentTarget);
-    const codeEmail = String(formData.get("code_email") ?? "").trim();
     const accessCode = String(formData.get("access_code") ?? "").trim();
-    if (!codeEmail || !accessCode) {
-      setError("Enter the email the code was sent to and your access code.");
+    if (!accessCode) {
+      setError("Enter your access code.");
       return;
     }
 
-    mutation.mutate({ ...pendingCredentials, accessCode, codeEmail });
+    mutation.mutate({ ...pendingCredentials, accessCode });
   }
 
   if (pendingCredentials) {
@@ -122,23 +116,13 @@ export function LoginForm({ next }: { next: string }) {
             This is a demo account. Enter the one-time access code you were sent to continue.
           </p>
         </div>
-        <Field label="Your email">
-          <Input
-            icon={Mail}
-            name="code_email"
-            type="email"
-            autoComplete="email"
-            placeholder="the email your code was sent to"
-            autoFocus
-            required
-          />
-        </Field>
         <Field label="Access code">
           <Input
             icon={KeyRound}
             name="access_code"
             autoComplete="one-time-code"
             placeholder="e.g. AB12CD34EF"
+            autoFocus
             required
           />
         </Field>
