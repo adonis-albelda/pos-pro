@@ -1,3 +1,5 @@
+"use client";
+
 import Image from "next/image";
 import { AuthBrandPanel } from "@/components/auth-brand-panel";
 import { ParticleField } from "@/components/particle-field";

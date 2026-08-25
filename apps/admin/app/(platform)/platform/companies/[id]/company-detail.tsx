@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useTransition } from "react";
+import { useActionState, useEffect, useTransition } from "react";
 import { KeyRound, Lock, Mail, ShieldCheck, UserRound } from "lucide-react";
 import type { InvoiceNumberMode, User } from "@double-a/shared-types";
 import {
@@ -16,7 +16,10 @@ import {
 } from "@/components/ui";
 import { PasswordInput } from "@/components/password-input";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
-import { useInvalidateCompanyStats } from "@/lib/query/companies";
+import {
+  useInvalidateCompanyStats,
+  useInvalidateCompanyUsers,
+} from "@/lib/query/companies";
 import {
   addCompanyAdmin,
   openCompany,
@@ -29,6 +32,15 @@ import {
 
 export function AddAdminForm({ companyId }: { companyId: string }) {
   const [state, action, pending] = useActionState(addCompanyAdmin, EMPTY_FORM_STATE);
+  const invalidateUsers = useInvalidateCompanyUsers(companyId);
+  const invalidateStats = useInvalidateCompanyStats();
+
+  useEffect(() => {
+    if (state.ok) {
+      invalidateUsers();
+      invalidateStats();
+    }
+  }, [state, invalidateUsers, invalidateStats]);
 
   return (
     <form action={action} className="grid gap-4 sm:grid-cols-2">
@@ -135,6 +147,11 @@ function ResetPinForm({ user, companyId }: { user: User; companyId: string }) {
 
 function DemoFlagForm({ user, companyId }: { user: User; companyId: string }) {
   const [state, action, pending] = useActionState(setCompanyUserDemoFlag, EMPTY_FORM_STATE);
+  const invalidateUsers = useInvalidateCompanyUsers(companyId);
+
+  useEffect(() => {
+    if (state.ok) invalidateUsers();
+  }, [state, invalidateUsers]);
 
   return (
     <form action={action} className="flex flex-col gap-1">

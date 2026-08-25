@@ -1,14 +1,14 @@
+"use client";
+
 import Image from "next/image";
+import { useSearchParams } from "next/navigation";
 import { AuthBrandPanel } from "@/components/auth-brand-panel";
 import { ParticleField } from "@/components/particle-field";
 import { LoginForm } from "./login-form";
 
-export default async function LoginPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ next?: string }>;
-}) {
-  const { next } = await searchParams;
+export default function LoginPage() {
+  const searchParams = useSearchParams();
+  const next = searchParams.get("next") ?? "/";
 
   return (
     <main className="relative flex min-h-screen bg-paper">
@@ -38,7 +38,7 @@ export default async function LoginPage({
             </p>
 
             <div className="mt-8">
-              <LoginForm next={next ?? "/"} />
+              <LoginForm next={next} />
             </div>
 
             <p className="mt-6 text-center text-caption text-ink-muted">

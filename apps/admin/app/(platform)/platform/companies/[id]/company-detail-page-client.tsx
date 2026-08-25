@@ -1,21 +1,15 @@
 "use client";
 
 import { Building2, FolderTree, Package, Receipt, Truck, Users, Warehouse } from "lucide-react";
-import type { User } from "@double-a/shared-types";
 import { Badge, Card, CardBody, CardHeader, PageHeader, StatCard } from "@/components/ui";
-import { useCompanyStats } from "@/lib/query/companies";
+import { useCompanyStats, useCompanyUsers } from "@/lib/query/companies";
 import { CompanyControls, CompanyUsers } from "./company-detail";
 
-export function CompanyDetailPageClient({
-  companyId,
-  users,
-}: {
-  companyId: string;
-  users: User[];
-}) {
+export function CompanyDetailPageClient({ companyId }: { companyId: string }) {
   const statsQuery = useCompanyStats();
+  const usersQuery = useCompanyUsers(companyId);
 
-  if (statsQuery.isPending) {
+  if (statsQuery.isPending || usersQuery.isPending) {
     return <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>;
   }
 
@@ -25,6 +19,16 @@ export function CompanyDetailPageClient({
         {statsQuery.error instanceof Error
           ? statsQuery.error.message
           : "Could not load this company."}
+      </Card>
+    );
+  }
+
+  if (usersQuery.isError) {
+    return (
+      <Card className="px-4 py-8 text-center text-body text-danger">
+        {usersQuery.error instanceof Error
+          ? usersQuery.error.message
+          : "Could not load this company's users."}
       </Card>
     );
   }
@@ -74,7 +78,7 @@ export function CompanyDetailPageClient({
           description="Reset Auth passwords or PINs without opening the shop dashboard. Works even when the company is disabled."
         />
         <CardBody>
-          <CompanyUsers companyId={companyId} users={users} />
+          <CompanyUsers companyId={companyId} users={usersQuery.data} />
         </CardBody>
       </Card>
     </div>

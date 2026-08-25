@@ -92,6 +92,24 @@ export async function openCompany(client: ApiClient, companyId: string): Promise
 }
 
 /**
+ * Superadmin-only list of a company's shop users — no acting_company_id
+ * token. Prefer this over openCompany()+listUsers() from the browser so the
+ * scoped bearer never reaches client JS (CLAUDE.md §15). Response already
+ * excludes role "superadmin", matching IndexUsersController.
+ */
+export async function listCompanyUsers(
+  client: ApiClient,
+  companyId: string,
+  options: { includeInactive?: boolean } = {},
+): Promise<User[]> {
+  const { data } = await client.get<{ data: JsonApiResource<UserAttrs>[] }>(
+    `/superadmin/companies/${companyId}/users`,
+  );
+  const users = data.map(toUser);
+  return options.includeInactive ? users : users.filter((user) => user.isActive);
+}
+
+/**
  * "incremental" (JH-000001, a locked counter) or "random" (JH-7K4QX2N9,
  * unguessable) — see AssignInvoiceNumber. Superadmin-only; deliberately not
  * part of `updateStoreSettings` (queries/settings.ts), which the shop admin's

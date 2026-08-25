@@ -95,6 +95,7 @@ export const queryKeys = {
   companies: {
     all: ["companies"] as const,
     stats: () => ["companies", "stats"] as const,
+    users: (companyId: string) => ["companies", "users", companyId] as const,
   },
   /** {key: enabled} for the caller's own company (any user). The admin superadmin list carries its own key below. */
   featureFlags: {

@@ -1,7 +1,8 @@
 "use client";
 
+import { useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { companyStats, listDemoAccessCodes } from "@double-a/api-client/queries";
+import { companyStats, listCompanyUsers, listDemoAccessCodes } from "@double-a/api-client/queries";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 import { queryKeys } from "./keys";
 
@@ -27,7 +28,31 @@ export function useCompanyStats() {
 /** Call after setCompanyActive (Server Action) succeeds — revalidatePath doesn't touch this cache. */
 export function useInvalidateCompanyStats() {
   const queryClient = useQueryClient();
-  return () => queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
+  return useCallback(
+    () => queryClient.invalidateQueries({ queryKey: queryKeys.companies.all }),
+    [queryClient],
+  );
+}
+
+/**
+ * Superadmin company-detail user list via GET /superadmin/companies/:id/users —
+ * no openCompany scoped token on the client.
+ */
+export function useCompanyUsers(companyId: string) {
+  return useQuery({
+    queryKey: queryKeys.companies.users(companyId),
+    queryFn: () => listCompanyUsers(getBrowserApiClient(), companyId, { includeInactive: true }),
+    refetchOnMount: "always",
+  });
+}
+
+/** Call after add/reset company-user Server Actions succeed. */
+export function useInvalidateCompanyUsers(companyId: string) {
+  const queryClient = useQueryClient();
+  return useCallback(
+    () => queryClient.invalidateQueries({ queryKey: queryKeys.companies.users(companyId) }),
+    [queryClient, companyId],
+  );
 }
 
 /** Every demo@store.com access code issued so far, newest first — refetches on mount for the same reason useCompanyStats does. */

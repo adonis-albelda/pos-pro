@@ -1,15 +1,11 @@
-import { requireSuperadmin } from "@/lib/platform";
+"use client";
+
 import { PlatformPageClient } from "./platform-page-client";
 
 /**
- * Stays a thin Server Component so the superadmin-only gate runs before any
- * of the client bundle/data below it ever mounts — same split as
- * suppliers/page.tsx. The company list itself (companyStats — the caller's
- * own regular session, no scoped token) is client-side TanStack Query, in
- * PlatformPageClient.
+ * Client page — company list via useCompanyStats() in PlatformPageClient.
+ * Superadmin gate lives in (platform)/layout.tsx.
  */
-export default async function PlatformPage() {
-  await requireSuperadmin();
-
+export default function PlatformPage() {
   return <PlatformPageClient />;
 }

@@ -1,11 +1,14 @@
+"use client";
+
 import { Building2 } from "lucide-react";
 import { Card, CardBody, CardHeader, PageHeader } from "@/components/ui";
-import { requireSuperadmin } from "@/lib/platform";
 import { CreateCompanyForm } from "./create-company-form";
 
-export default async function NewCompanyPage() {
-  await requireSuperadmin();
-
+/**
+ * Client page — create still Server Action (scoped bootstrap token stays server-side).
+ * Superadmin gate lives in (platform)/layout.tsx.
+ */
+export default function NewCompanyPage() {
   return (
     <div className="space-y-6">
       <PageHeader
