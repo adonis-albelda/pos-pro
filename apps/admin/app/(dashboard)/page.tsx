@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { formatMoney, formatPercent, stockLevel } from "@double-a/shared-types";
 import { summariseProfit } from "@double-a/api-client/queries";
-import { resolveRange } from "@/lib/date-range";
+import { resolveRange, formatStoreDay } from "@/lib/date-range";
 import {
   Badge,
   Card,
@@ -44,6 +44,7 @@ import {
   useSupplierBalanceTotal,
   useUpcomingSupplierPayments,
 } from "@/lib/query/purchase-orders";
+import { useUpcomingExpenseBills } from "@/lib/query/expense-bills";
 import { useUsers } from "@/lib/query/users";
 import { useLocationFilter } from "@/components/location-filter-provider";
 
@@ -71,6 +72,7 @@ export default function DashboardPage() {
   const openPurchaseOrdersQuery = useOpenPurchaseOrdersCount();
   const supplierBalanceQuery = useSupplierBalanceTotal();
   const upcomingPaymentsQuery = useUpcomingSupplierPayments(7);
+  const upcomingBillsQuery = useUpcomingExpenseBills(30);
 
   const isPending = salesQuery.isPending || lowStockQuery.isPending || oversoldQuery.isPending;
   const isError = salesQuery.isError || lowStockQuery.isError || oversoldQuery.isError;
@@ -116,6 +118,9 @@ export default function DashboardPage() {
   const upcomingPayments = upcomingPaymentsQuery.isError
     ? null
     : (upcomingPaymentsQuery.data ?? null);
+  const upcomingBills = upcomingBillsQuery.isError
+    ? null
+    : (upcomingBillsQuery.data ?? null);
 
   const profit = profitRows ? summariseProfit(profitRows) : null;
   const cashierNameById = new Map(users.map((user) => [user.id, user.name]));
@@ -441,6 +446,64 @@ export default function DashboardPage() {
                     <Td className="num text-ink-muted">{payment.dueDate ?? "—"}</Td>
                     <Td numeric>
                       <Money value={payment.amount} />
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          )}
+        </Card>
+
+        <Card>
+          <CardHeader
+            icon={Wallet}
+            title="Upcoming bills"
+            description="Active expense bills due within 30 days."
+            action={
+              <Link
+                href={"/expenses" as Route}
+                className="inline-flex items-center gap-1 text-body font-medium text-primary hover:underline"
+              >
+                Expenses
+                <ArrowRight size={14} />
+              </Link>
+            }
+          />
+          {upcomingBills === null ? (
+            <EmptyState
+              icon={Wallet}
+              title="Sign in as the owner to see this"
+              instruction="Expense bills are an owner-only part of the dashboard."
+            />
+          ) : upcomingBills.length === 0 ? (
+            <EmptyState
+              icon={Wallet}
+              title="Nothing due soon"
+              instruction="Active bills due in the next 30 days will show up here."
+            />
+          ) : (
+            <Table>
+              <thead>
+                <tr>
+                  <Th>Bill</Th>
+                  <Th>Due</Th>
+                  <Th numeric>Amount</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {upcomingBills.map((bill) => (
+                  <tr key={bill.id}>
+                    <Td>
+                      <span className="font-medium text-ink">{bill.description}</span>
+                      {bill.remindersEnabled ? (
+                        <span className="ml-1.5 text-caption text-ink-muted">
+                          remind {bill.remindDaysBefore}d
+                        </span>
+                      ) : null}
+                    </Td>
+                    <Td className="num text-ink-muted">{formatStoreDay(bill.nextDueDate)}</Td>
+                    <Td numeric>
+                      <Money value={bill.amount} />
                     </Td>
                   </tr>
                 ))}

@@ -91,6 +91,11 @@ export const queryKeys = {
     list: (params?: Record<string, unknown>) => ["expenses", "list", params] as const,
     sum: (range?: Record<string, unknown>) => ["expenses", "sum", range] as const,
   },
+  expenseBills: {
+    all: ["expense-bills"] as const,
+    list: (params?: Record<string, unknown>) => ["expense-bills", "list", params] as const,
+    upcoming: (days?: number) => ["expense-bills", "upcoming", days] as const,
+  },
   /** Superadmin-only (CLAUDE.md §15). No per-id read — companyStats() always returns every row; a detail page finds its row client-side, same as the pre-TanStack server code did. */
   companies: {
     all: ["companies"] as const,

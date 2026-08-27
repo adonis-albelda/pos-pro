@@ -5,6 +5,7 @@ import { ChevronRight, Receipt, UserRound } from "lucide-react-native";
 import type { SaleStatus } from "@double-a/shared-types";
 import { useSalesList } from "@/lib/query/sales";
 import { useUsers } from "@/lib/query/users";
+import { useLocationScope } from "@/lib/location-scope";
 import { Badge, EmptyState, ErrorNote, Money } from "@/components/ui";
 import { LoadingState } from "@/components/loading-state";
 import { WaveBackdrop } from "@/components/wave-backdrop";
@@ -24,19 +25,20 @@ function statusTone(status: SaleStatus): "success" | "danger" | "warning" {
 }
 
 /**
- * Most-recent sales, newest first (server order). GAP (see
- * packages/api-client/src/queries/sales.ts): `IndexSalesController` only
- * filters by customer/status, so date range and cashier are not filterable
- * server-side here — the search box below matches client-side over this
- * one page instead of walking every page, since this is a floor view, not
- * the admin web report.
+ * Most-recent sales, newest first (server order). Scoped to the active
+ * location when one is selected (admin switcher / device enrolled branch).
  */
 export default function AdminSalesScreen() {
   const router = useRouter();
+  const { locationId } = useLocationScope();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<SaleStatus | undefined>(undefined);
 
-  const salesQuery = useSalesList({ status, pageSize: 50 });
+  const salesQuery = useSalesList({
+    status,
+    pageSize: 50,
+    locationId: locationId ?? undefined,
+  });
   const usersQuery = useUsers({ includeInactive: true });
 
   const cashierNameById = useMemo(() => {

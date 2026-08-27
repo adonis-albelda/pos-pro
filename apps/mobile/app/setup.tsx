@@ -7,7 +7,7 @@ import { ApiError } from "@double-a/api-client";
 import { login } from "@double-a/api-client/queries";
 import { getSyncMeta, markFirstPullSkipped } from "@/db/meta";
 import { countLocalProducts } from "@/db/products";
-import { getDeviceId, getDeviceLabel, setDeviceLabel, getEnrolledCompanyId, setEnrolledCompanyId, setEnrolledLocationId, getEnrolledLocationId } from "@/lib/device";
+import { getDeviceId, getDeviceLabel, setDeviceLabel, getEnrolledCompanyId, setEnrolledCompanyId, setEnrolledLocationId, getEnrolledLocationId, setEnrolledRole } from "@/lib/device";
 import { resetLocalData } from "@/db";
 import { useLayout } from "@/lib/layout";
 import { createBareClient } from "@/lib/api/client";
@@ -147,6 +147,9 @@ export default function SetupScreen() {
         await resetLocalData();
       }
       await setEnrolledCompanyId(profile.companyId);
+      if (profile.role === "admin" || profile.role === "device") {
+        await setEnrolledRole(profile.role);
+      }
       if (profile.locationId) {
         await setEnrolledLocationId(profile.locationId);
       }

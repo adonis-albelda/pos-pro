@@ -6,6 +6,7 @@ import type {
   CustomerOpenSale,
   CustomerPayment,
   Expense,
+  ExpenseBill,
   Fulfillment,
   InventoryMovement,
   InventoryReason,
@@ -169,6 +170,7 @@ export interface ExpenseAttrs {
   expense_date: string;
   note: string | null;
   created_by: string | null;
+  expense_bill_id?: string | null;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -182,6 +184,43 @@ export function toExpense(resource: JsonApiResource<ExpenseAttrs>): Expense {
     category: a.category,
     expenseDate: a.expense_date,
     note: a.note,
+    createdBy: a.created_by,
+    expenseBillId: a.expense_bill_id ?? null,
+    createdAt: a.created_at ?? "",
+    updatedAt: a.updated_at ?? "",
+  };
+}
+
+export interface ExpenseBillAttrs {
+  description: string;
+  amount: number;
+  category: string | null;
+  note: string | null;
+  frequency: string;
+  next_due_date: string;
+  remind_days_before: number;
+  reminders_enabled: boolean;
+  last_reminded_on: string | null;
+  active: boolean;
+  created_by: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export function toExpenseBill(resource: JsonApiResource<ExpenseBillAttrs>): ExpenseBill {
+  const a = resource.attributes;
+  return {
+    id: resource.id,
+    description: a.description,
+    amount: Number(a.amount),
+    category: a.category,
+    note: a.note,
+    frequency: a.frequency as ExpenseBill["frequency"],
+    nextDueDate: a.next_due_date,
+    remindDaysBefore: Number(a.remind_days_before),
+    remindersEnabled: Boolean(a.reminders_enabled),
+    lastRemindedOn: a.last_reminded_on,
+    active: Boolean(a.active),
     createdBy: a.created_by,
     createdAt: a.created_at ?? "",
     updatedAt: a.updated_at ?? "",

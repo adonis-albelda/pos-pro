@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import { ChevronRight, Menu } from "lucide-react-native";
 import { storeInitial } from "@double-a/shared-types";
 import { AccountDrawer } from "@/components/account-drawer";
+import { LocationSwitcher } from "@/components/location-switcher";
 import { useStoreSettings } from "@/lib/store";
 import { useLayout } from "@/lib/layout";
 import { useSync } from "@/sync/sync-provider";
@@ -105,6 +106,8 @@ export function StoreHeader() {
         >
           {store.name}
         </Text>
+
+        <LocationSwitcher />
 
         <Pressable
           onPress={() => router.replace("/pos/sync")}

@@ -1,12 +1,12 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { listProductsPage, type ListProductsPageOptions } from "@double-a/api-client/queries";
-import { getApiClient } from "@/lib/api/session";
+import { getAdminApiClient } from "@/lib/api/session";
 import { queryKeys } from "./keys";
 
 export function useProducts(options: ListProductsPageOptions = {}) {
   return useQuery({
     queryKey: queryKeys.products.list({ ...options }),
-    queryFn: () => listProductsPage(getApiClient(), options),
+    queryFn: () => listProductsPage(getAdminApiClient(), options),
   });
 }
 

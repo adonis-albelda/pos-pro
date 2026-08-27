@@ -9,6 +9,7 @@ import { saveLocalReceiptLayout } from "@/db/receipt-layout";
 import { saveLocalStoreSettings } from "@/db/store";
 import { replaceUsers, upsertUsers } from "@/db/users";
 import { getApiClient } from "@/lib/api/session";
+import { getActiveLocationId, setActiveLocationId } from "@/lib/device";
 
 /**
  * Fetching is one HTTP round trip — there is no byte-level signal to report
@@ -28,6 +29,9 @@ const FETCH_WEIGHT = 20;
  * simpler and safer than the old approach of taking the max `updated_at`
  * across the returned rows, and it always advances (there's no "nothing
  * changed, mark stays put" case to reason about).
+ *
+ * Stock figures are for the active location (device enrolled branch, or the
+ * branch an admin tablet selected). Customers/categories stay company-wide.
  */
 export async function pull(
   options: {
@@ -44,6 +48,7 @@ export async function pull(
   const client = getApiClient();
   const meta = await getSyncMeta();
   let since = options.full || options.replace ? null : meta.highWaterMark;
+  const locationId = await getActiveLocationId();
 
   // The old PostgREST page cap (1,000 rows) doesn't apply to the Tally API,
   // but a device that fell behind before this migration could still be
@@ -57,8 +62,12 @@ export async function pull(
     if (localCount < remoteCount) since = null;
   }
 
-  const result = await pullSync(client, { since });
+  const result = await pullSync(client, { since, locationId });
   options.onProgress?.(FETCH_WEIGHT);
+
+  if (result.locationId) {
+    await setActiveLocationId(result.locationId);
+  }
 
   const writeProducts = options.replace ? replaceProducts : upsertProducts;
   const writeUsers = options.replace ? replaceUsers : upsertUsers;

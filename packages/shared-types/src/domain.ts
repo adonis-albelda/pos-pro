@@ -476,6 +476,8 @@ export interface Expense {
   expenseDate: string;
   note: string | null;
   createdBy: string | null;
+  /** Set when this ledger row was created via Mark paid on a bill. */
+  expenseBillId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -483,6 +485,37 @@ export interface Expense {
 export const EXPENSE_DESCRIPTION_MAX = 200;
 export const EXPENSE_CATEGORY_MAX = 80;
 export const EXPENSE_NOTE_MAX = 500;
+
+export type ExpenseBillFrequency = "once" | "weekly" | "monthly" | "yearly";
+
+export const EXPENSE_BILL_FREQUENCIES: readonly ExpenseBillFrequency[] = [
+  "once",
+  "weekly",
+  "monthly",
+  "yearly",
+] as const;
+
+/** Recurring / one-shot bill template. Net only changes after Mark paid. */
+export interface ExpenseBill {
+  id: string;
+  description: string;
+  amount: number;
+  category: string | null;
+  note: string | null;
+  frequency: ExpenseBillFrequency;
+  /** Next shop calendar due day (yyyy-mm-dd). */
+  nextDueDate: string;
+  /** Start daily FCM reminders this many days before nextDueDate. */
+  remindDaysBefore: number;
+  remindersEnabled: boolean;
+  lastRemindedOn: string | null;
+  active: boolean;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const EXPENSE_BILL_REMIND_DAYS_MAX = 90;
 
 /**
  * Who the sale was for, when the counter bothered to ask. Every field is

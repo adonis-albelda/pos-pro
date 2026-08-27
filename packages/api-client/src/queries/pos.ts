@@ -198,6 +198,8 @@ function toPushSalePayload(sale: SaleWithItems): Record<string, unknown> {
     is_paid: sale.isPaid,
     fulfillment: sale.fulfillment,
     delivery_completed: sale.deliveryCompleted,
+    // Admin tablet POS may switch branches — devices' value is ignored server-side.
+    location_id: sale.locationId ?? undefined,
     created_at: sale.createdAt,
     items: sale.items.map((item) => ({
       id: item.id,
@@ -239,6 +241,8 @@ export async function pushSales(client: ApiClient, sales: SaleWithItems[]): Prom
 export interface PullSyncResult {
   /** New high-water-mark cursor (`last_synced_at`) — persist this, not device time. */
   serverTime: string;
+  /** Branch/warehouse the stock_quantity figures belong to. */
+  locationId: string | null;
   products: Product[];
   users: User[];
   categories: Category[];
@@ -251,6 +255,7 @@ export interface PullSyncResult {
 
 interface PullSyncResponse {
   server_time: string;
+  location_id?: string | null;
   products: { type: string; id: string; attributes: ProductAttrs }[];
   users: { type: string; id: string; attributes: UserAttrs }[];
   categories: { type: string; id: string; attributes: CategoryAttrs }[];
@@ -320,13 +325,18 @@ function mapSingleResource<T, A>(
  * whole every call (CLAUDE.md §1, §9, §10, §11); products/users are
  * filtered server-side to `updated_at > since` when `since` is given.
  */
-export async function pullSync(client: ApiClient, options: { since?: string | null } = {}): Promise<PullSyncResult> {
+export async function pullSync(
+  client: ApiClient,
+  options: { since?: string | null; locationId?: string | null } = {},
+): Promise<PullSyncResult> {
   const { data } = await client.get<DataEnvelope<PullSyncResponse>>("/pos/sync/pull", {
     since: options.since ?? undefined,
+    location_id: options.locationId ?? undefined,
   });
 
   return {
     serverTime: data.server_time,
+    locationId: data.location_id ?? null,
     products: mapResourceList(data.products, "products", toProduct),
     users: mapResourceList(data.users, "users", toUser),
     categories: mapResourceList(data.categories, "categories", toCategory),

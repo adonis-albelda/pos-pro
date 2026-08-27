@@ -28,6 +28,7 @@ import {
   useMovements,
   useOversoldProducts,
 } from "@/lib/query/inventory";
+import { useLocationScope } from "@/lib/location-scope";
 import { Badge, Button, EmptyState, ErrorNote, IconButton } from "@/components/ui";
 import { BottomSheet } from "@/components/bottom-sheet";
 import { WaveBackdrop } from "@/components/wave-backdrop";
@@ -70,6 +71,7 @@ const inputStyle = {
 };
 
 export default function AdminInventoryScreen() {
+  const { locationId } = useLocationScope();
   const [tab, setTab] = useState<Tab>("movements");
   const [productFilter, setProductFilter] = useState<Product | null>(null);
   const [pickingFilter, setPickingFilter] = useState(false);
@@ -77,9 +79,12 @@ export default function AdminInventoryScreen() {
   const [adjusting, setAdjusting] = useState<Product | null>(null);
 
   // Whole catalogue — used to resolve product names on movement rows and to
-  // power the pickers. Same "load a big page" contract app/admin/products
-  // already uses.
-  const productsQuery = useProducts({ pageSize: 200, includeInactive: true });
+  // power the pickers. Stock column scoped to active location when set.
+  const productsQuery = useProducts({
+    pageSize: 200,
+    includeInactive: true,
+    locationId: locationId ?? undefined,
+  });
   const products = useMemo(() => productsQuery.data?.products ?? [], [productsQuery.data]);
   const productNameById = useMemo(() => {
     const map: Record<string, string> = {};
@@ -452,6 +457,7 @@ function ProductPicker({
 }
 
 function AdjustStockForm({ product, onDone }: { product: Product; onDone: () => void }) {
+  const { locationId } = useLocationScope();
   const [direction, setDirection] = useState<"add" | "remove">("add");
   const [quantity, setQuantity] = useState("");
   const [reason, setReason] = useState<AdjustStockReason>("restock");
@@ -469,6 +475,7 @@ function AdjustStockForm({ product, onDone }: { product: Product; onDone: () => 
         changeQuantity,
         reason,
         note: note.trim() || null,
+        locationId,
       });
     },
     onSuccess: onDone,

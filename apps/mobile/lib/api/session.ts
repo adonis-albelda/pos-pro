@@ -6,9 +6,11 @@ import { resetLocalData } from "@/db";
 import {
   clearEnrolledCompanyId,
   clearEnrolledLocationId,
+  clearEnrolledRole,
   getEnrolledCompanyId,
   setEnrolledCompanyId,
   setEnrolledLocationId,
+  setEnrolledRole,
 } from "@/lib/device";
 import { apiUrl, createScopedClient, VERSION_HEADERS } from "./client";
 
@@ -81,6 +83,10 @@ async function bindEnrolledCompany(profile: User): Promise<void> {
   }
   await setEnrolledCompanyId(profile.companyId);
 
+  if (profile.role === "admin" || profile.role === "device") {
+    await setEnrolledRole(profile.role);
+  }
+
   if (profile.locationId) {
     await setEnrolledLocationId(profile.locationId);
   }
@@ -128,6 +134,7 @@ export async function unenrollTerminal(): Promise<void> {
   await clearSessionToken();
   await clearEnrolledCompanyId();
   await clearEnrolledLocationId();
+  await clearEnrolledRole();
   setAdminToken(null);
 }
 

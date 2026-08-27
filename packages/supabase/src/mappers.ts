@@ -81,6 +81,7 @@ export function toExpense(row: Tables<"expenses">): Expense {
     expenseDate: row.expense_date,
     note: row.note,
     createdBy: row.created_by,
+    expenseBillId: null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

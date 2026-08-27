@@ -15,7 +15,7 @@ import {
   type SaleItem,
 } from "@double-a/shared-types";
 import { getDb } from "./index";
-import { getEnrolledCompanyId } from "@/lib/device";
+import { getEnrolledCompanyId, getActiveLocationId } from "@/lib/device";
 
 interface SaleRow {
   id: string;
@@ -38,6 +38,7 @@ interface SaleRow {
   sync_status: string;
   synced_at: string | null;
   company_id: string | null;
+  location_id: string | null;
 }
 
 interface SaleItemRow {
@@ -71,6 +72,7 @@ function toLocalSale(row: SaleRow): LocalSale {
     fulfillment: (row.fulfillment as Fulfillment) ?? "pickup",
     deliveryCompleted: (row.delivery_completed ?? 0) === 1,
     companyId: row.company_id,
+    locationId: row.location_id,
     syncStatus: row.sync_status as LocalSale["syncStatus"],
     syncedAt: row.synced_at,
   };
@@ -132,14 +134,15 @@ export async function completeSale(
   }));
 
   const companyId = await getEnrolledCompanyId();
+  const locationId = await getActiveLocationId();
 
   await db.withTransactionAsync(async () => {
     await db.runAsync(
       `INSERT INTO sales
          (id, user_id, total_amount, discount_amount, payment_method, status, device_id, created_at,
           customer_id, customer_name, customer_address, customer_contact,
-          is_paid, fulfillment, delivery_completed, flags_pending, sync_status, company_id)
-       VALUES (?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'pending', ?)`,
+          is_paid, fulfillment, delivery_completed, flags_pending, sync_status, company_id, location_id)
+       VALUES (?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'pending', ?, ?)`,
       saleId,
       input.userId,
       total,
@@ -155,6 +158,7 @@ export async function completeSale(
       fulfillment,
       deliveryCompleted ? 1 : 0,
       companyId,
+      locationId,
     );
 
     for (const item of items) {
@@ -192,6 +196,8 @@ export async function completeSale(
     isPaid,
     fulfillment,
     deliveryCompleted,
+    companyId,
+    locationId,
     syncStatus: "pending",
     syncedAt: null,
     items,

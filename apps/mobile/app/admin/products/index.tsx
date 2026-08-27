@@ -22,6 +22,7 @@ import {
 import { getAdminApiClient } from "@/lib/api/session";
 import { useProducts, useInvalidateProducts } from "@/lib/query/products";
 import { useCategories } from "@/lib/query/categories";
+import { useLocationScope } from "@/lib/location-scope";
 import { Badge, Button, EmptyState, ErrorNote, IconButton, Money } from "@/components/ui";
 import { BottomSheet } from "@/components/bottom-sheet";
 import { LoadingState } from "@/components/loading-state";
@@ -48,7 +49,12 @@ const inputStyle = {
 };
 
 export default function AdminProductsScreen() {
-  const productsQuery = useProducts({ pageSize: 100, includeInactive: true });
+  const { locationId } = useLocationScope();
+  const productsQuery = useProducts({
+    pageSize: 100,
+    includeInactive: true,
+    locationId: locationId ?? undefined,
+  });
   const invalidate = useInvalidateProducts();
 
   const [query, setQuery] = useState("");
@@ -472,6 +478,7 @@ function ProductForm({ product, onDone }: { product: Product | null; onDone: () 
 
 function AdjustStockForm({ product, onDone }: { product: Product; onDone: () => void }) {
   const invalidate = useInvalidateProducts();
+  const { locationId } = useLocationScope();
   const [direction, setDirection] = useState<"add" | "remove">("add");
   const [quantity, setQuantity] = useState("");
   const [reason, setReason] = useState<AdjustStockReason>("restock");
@@ -489,6 +496,7 @@ function AdjustStockForm({ product, onDone }: { product: Product; onDone: () => 
         changeQuantity,
         reason,
         note: note.trim() || null,
+        locationId,
       });
     },
     onSuccess: () => {

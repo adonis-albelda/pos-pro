@@ -286,6 +286,15 @@ ALTER TABLE store_settings ADD COLUMN invoice_digits INTEGER NOT NULL DEFAULT 6;
 ALTER TABLE store_settings ADD COLUMN invoice_next_number INTEGER NOT NULL DEFAULT 1;
 `;
 
+/**
+ * v13: branch that rang the sale. Device terminals stamp enrolled location;
+ * admin tablets stamp the active location from the header switcher. Push
+ * sends it so admin actors can attribute stock to the right branch.
+ */
+const V13_SALE_LOCATION = `
+ALTER TABLE sales ADD COLUMN location_id TEXT;
+`;
+
 /** Ordered, append-only. Never edit a step that has shipped. */
 export const MIGRATIONS: Migration[] = [
   { version: 1, sql: V1_INITIAL },
@@ -300,6 +309,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 10, sql: V10_COMPANY_ID },
   { version: 11, sql: V11_FEATURE_FLAGS },
   { version: 12, sql: V12_INVOICE_NUMBERS },
+  { version: 13, sql: V13_SALE_LOCATION },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.reduce(
