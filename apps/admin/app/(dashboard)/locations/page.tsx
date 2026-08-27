@@ -1,34 +1,47 @@
 "use client";
 
-import { useActionState, useEffect, useTransition } from "react";
-import { MapPin, Warehouse } from "lucide-react";
-import type { Location, StockTransfer } from "@double-a/shared-types";
+import { useActionState, useEffect, useState, useTransition } from "react";
 import {
+  Eye,
+  EyeOff,
+  MapPin,
+  Plus,
+  Store,
+  Trash2,
+  Warehouse,
+} from "lucide-react";
+import { toast } from "sonner";
+import type { Location } from "@double-a/shared-types";
+import {
+  Badge,
   Button,
   Card,
+  EmptyState,
   ErrorNote,
   Field,
+  IconButton,
   Input,
   PageHeader,
   Select,
   SuccessNote,
+  Table,
+  Td,
+  Th,
 } from "@/components/ui";
+import { ConfirmDialog, Sheet } from "@/components/overlay";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
-import { useInvalidateLocations, useLocations, useStockTransfers } from "@/lib/query/locations";
-import { useProducts } from "@/lib/query/products";
-import { removeLocation, saveLocation, saveTransfer, setTransferStatus } from "./actions";
+import { useInvalidateLocations, useLocations } from "@/lib/query/locations";
+import { removeLocation, saveLocation, setLocationActive } from "./actions";
 
 export default function LocationsPage() {
   const locationsQuery = useLocations({ includeInactive: true });
-  const transfersQuery = useStockTransfers();
-  const productsQuery = useProducts({ includeInactive: false, pageSize: 200 });
 
   return (
     <div className="space-y-6">
       <PageHeader
         icon={MapPin}
         title="Locations"
-        description="Branches sell; warehouses hold stock. Transfer between them when a branch needs restocking."
+        description="Branches sell on the floor. Warehouses hold bulk stock. Disable a location to hide it from POS enrollment and transfers without deleting history."
       />
 
       {locationsQuery.isPending ? (
@@ -40,206 +53,242 @@ export default function LocationsPage() {
             : "Could not load locations."}
         </Card>
       ) : (
-        <LocationsBody
-          locations={locationsQuery.data ?? []}
-          transfers={transfersQuery.data?.transfers ?? []}
-          products={productsQuery.data?.products ?? []}
-        />
+        <LocationsBody locations={locationsQuery.data ?? []} />
       )}
     </div>
   );
 }
 
-function LocationsBody({
-  locations,
-  transfers,
-  products,
-}: {
-  locations: Location[];
-  transfers: StockTransfer[];
-  products: Array<{ id: string; name: string }>;
-}) {
+function LocationsBody({ locations }: { locations: Location[] }) {
   const invalidate = useInvalidateLocations();
-  const [locationState, locationAction, locationPending] = useActionState(
-    saveLocation,
-    EMPTY_FORM_STATE,
-  );
-  const [transferState, transferAction, transferPending] = useActionState(
-    saveTransfer,
-    EMPTY_FORM_STATE,
-  );
+  const [creating, setCreating] = useState(false);
+  const [togglingOff, setTogglingOff] = useState<Location | null>(null);
+  const [deleting, setDeleting] = useState<Location | null>(null);
   const [pending, startTransition] = useTransition();
 
-  useEffect(() => {
-    if (locationState.ok || transferState.ok) invalidate();
-  }, [locationState.ok, transferState.ok, invalidate]);
+  const branches = locations.filter((l) => l.type === "branch").length;
+  const warehouses = locations.filter((l) => l.type === "warehouse").length;
+  const inactive = locations.filter((l) => !l.isActive).length;
+
+  function applyActive(location: Location, next: boolean) {
+    startTransition(async () => {
+      const result = await setLocationActive(location.id, next);
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        toast.success(next ? "Location enabled." : "Location disabled.");
+        invalidate();
+      }
+      setTogglingOff(null);
+    });
+  }
+
+  function onToggleClick(location: Location) {
+    if (location.isActive) {
+      setTogglingOff(location);
+      return;
+    }
+    applyActive(location, true);
+  }
+
+  function confirmDelete() {
+    if (!deleting) return;
+    startTransition(async () => {
+      const result = await removeLocation(deleting.id);
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        toast.success("Location deleted.");
+        invalidate();
+      }
+      setDeleting(null);
+    });
+  }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <Card className="space-y-4 p-4">
-        <h2 className="text-title font-semibold text-ink">Locations</h2>
-        <ul className="divide-y divide-border">
-          {locations.map((location) => (
-            <li key={location.id} className="flex items-center justify-between gap-3 py-3">
-              <div>
-                <p className="text-body font-medium text-ink">{location.name}</p>
-                <p className="text-caption text-ink-muted">
-                  {location.type}
-                  {location.address ? ` · ${location.address}` : ""}
-                  {!location.isActive ? " · inactive" : ""}
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                disabled={pending}
-                onClick={() =>
-                  startTransition(async () => {
-                    await removeLocation(location.id);
-                    invalidate();
-                  })
-                }
-              >
-                Delete
+    <>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Card className="px-4 py-3">
+          <p className="text-caption text-ink-muted">Branches</p>
+          <p className="text-title font-semibold text-ink">{branches}</p>
+        </Card>
+        <Card className="px-4 py-3">
+          <p className="text-caption text-ink-muted">Warehouses</p>
+          <p className="text-title font-semibold text-ink">{warehouses}</p>
+        </Card>
+        <Card className="px-4 py-3">
+          <p className="text-caption text-ink-muted">Inactive</p>
+          <p className="text-title font-semibold text-ink">{inactive}</p>
+        </Card>
+      </div>
+
+      <Card>
+        <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-body font-semibold text-ink">All locations</h2>
+            <p className="text-caption text-ink-muted">
+              {locations.length} total · enable or disable without losing stock history
+            </p>
+          </div>
+          <Button type="button" size="sm" icon={Plus} onClick={() => setCreating(true)}>
+            Add location
+          </Button>
+        </div>
+
+        {locations.length === 0 ? (
+          <EmptyState
+            icon={MapPin}
+            title="No locations yet"
+            instruction="Add a branch for selling and a warehouse if you hold stock off the floor."
+            action={
+              <Button type="button" icon={Plus} onClick={() => setCreating(true)}>
+                Add location
               </Button>
-            </li>
-          ))}
-        </ul>
-
-        <form action={locationAction} className="space-y-3 border-t border-border pt-4">
-          <h3 className="text-body font-medium text-ink">Add location</h3>
-          {locationState.error ? <ErrorNote>{locationState.error}</ErrorNote> : null}
-          {locationState.ok ? <SuccessNote>Saved.</SuccessNote> : null}
-          <Field label="Name">
-            <Input name="name" required />
-          </Field>
-          <Field label="Type">
-            <Select name="type" defaultValue="branch">
-              <option value="branch">Branch</option>
-              <option value="warehouse">Warehouse</option>
-            </Select>
-          </Field>
-          <Field label="Address">
-            <Input name="address" />
-          </Field>
-          <Button type="submit" disabled={locationPending}>
-            {locationPending ? "Saving…" : "Add location"}
-          </Button>
-        </form>
+            }
+          />
+        ) : (
+          <Table>
+            <thead>
+              <tr>
+                <Th>Name</Th>
+                <Th>Type</Th>
+                <Th>Address</Th>
+                <Th>Status</Th>
+                <Th />
+              </tr>
+            </thead>
+            <tbody>
+              {locations.map((location) => {
+                const TypeIcon = location.type === "warehouse" ? Warehouse : Store;
+                return (
+                  <tr
+                    key={location.id}
+                    className={location.isActive ? undefined : "opacity-60"}
+                  >
+                    <Td>
+                      <span className="flex items-center gap-2.5">
+                        <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                          <TypeIcon size={14} strokeWidth={2} />
+                        </span>
+                        <span className="font-medium">{location.name}</span>
+                      </span>
+                    </Td>
+                    <Td>
+                      <Badge tone={location.type === "warehouse" ? "warning" : "neutral"}>
+                        {location.type === "warehouse" ? "Warehouse" : "Branch"}
+                      </Badge>
+                    </Td>
+                    <Td className="text-ink-muted">{location.address || "—"}</Td>
+                    <Td>
+                      {location.isActive ? (
+                        <Badge tone="success">Active</Badge>
+                      ) : (
+                        <Badge tone="neutral">Inactive</Badge>
+                      )}
+                    </Td>
+                    <Td>
+                      <div className="flex justify-end gap-1">
+                        <IconButton
+                          icon={location.isActive ? EyeOff : Eye}
+                          label={location.isActive ? "Disable location" : "Enable location"}
+                          onClick={() => onToggleClick(location)}
+                          disabled={pending}
+                        />
+                        <IconButton
+                          icon={Trash2}
+                          label="Delete location"
+                          tone="danger"
+                          onClick={() => setDeleting(location)}
+                          disabled={pending}
+                        />
+                      </div>
+                    </Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </Table>
+        )}
       </Card>
 
-      <Card className="space-y-4 p-4">
-        <h2 className="flex items-center gap-2 text-title font-semibold text-ink">
-          <Warehouse size={18} /> Stock transfers
-        </h2>
+      <Sheet
+        open={creating}
+        onClose={() => setCreating(false)}
+        title="Add location"
+        description="Branches enroll POS terminals. Warehouses only hold stock."
+      >
+        <AddLocationForm
+          onDone={() => {
+            setCreating(false);
+            invalidate();
+          }}
+        />
+      </Sheet>
 
-        <form action={transferAction} className="space-y-3">
-          {transferState.error ? <ErrorNote>{transferState.error}</ErrorNote> : null}
-          {transferState.ok ? <SuccessNote>Transfer saved.</SuccessNote> : null}
-          <Field label="From">
-            <Select name="from_location_id" required defaultValue="">
-              <option value="" disabled>
-                Select source
-              </option>
-              {locations.map((location) => (
-                <option key={location.id} value={location.id}>
-                  {location.name} ({location.type})
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="To">
-            <Select name="to_location_id" required defaultValue="">
-              <option value="" disabled>
-                Select destination
-              </option>
-              {locations.map((location) => (
-                <option key={location.id} value={location.id}>
-                  {location.name} ({location.type})
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Product">
-            <Select name="product_id" required defaultValue="">
-              <option value="" disabled>
-                Select product
-              </option>
-              {products.map((product) => (
-                <option key={product.id} value={product.id}>
-                  {product.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Quantity">
-            <Input name="quantity" type="number" min="0.001" step="any" required />
-          </Field>
-          <label className="flex items-center gap-2 text-caption text-ink-muted">
-            <input
-              type="checkbox"
-              name="receive_now"
-              value="true"
-              defaultChecked
-              className="accent-primary"
-            />
-            Receive immediately (move stock now)
-          </label>
-          <Button type="submit" disabled={transferPending}>
-            {transferPending ? "Saving…" : "Create transfer"}
-          </Button>
-        </form>
+      <ConfirmDialog
+        open={togglingOff !== null}
+        onClose={() => setTogglingOff(null)}
+        onConfirm={() => {
+          if (togglingOff) applyActive(togglingOff, false);
+        }}
+        title="Disable location?"
+        description={
+          togglingOff
+            ? `${togglingOff.name} will stop appearing for new transfers and terminal enrollment. Existing stock stays.`
+            : ""
+        }
+        confirmLabel="Disable"
+        pending={pending}
+      />
 
-        <ul className="divide-y divide-border border-t border-border pt-4">
-          {transfers.length === 0 ? (
-            <li className="py-3 text-caption text-ink-muted">No transfers yet.</li>
-          ) : (
-            transfers.map((transfer) => (
-              <li key={transfer.id} className="space-y-2 py-3">
-                <p className="text-body text-ink">
-                  {transfer.fromLocationName} → {transfer.toLocationName}
-                </p>
-                <p className="text-caption text-ink-muted">
-                  {transfer.status}
-                  {transfer.items[0]
-                    ? ` · ${transfer.items[0].productName ?? "product"} × ${transfer.items[0].quantity}`
-                    : ""}
-                </p>
-                {transfer.status !== "received" && transfer.status !== "cancelled" ? (
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      disabled={pending}
-                      onClick={() =>
-                        startTransition(async () => {
-                          await setTransferStatus(transfer.id, "received");
-                          invalidate();
-                        })
-                      }
-                    >
-                      Mark received
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      disabled={pending}
-                      onClick={() =>
-                        startTransition(async () => {
-                          await setTransferStatus(transfer.id, "cancelled");
-                          invalidate();
-                        })
-                      }
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                ) : null}
-              </li>
-            ))
-          )}
-        </ul>
-      </Card>
-    </div>
+      <ConfirmDialog
+        open={deleting !== null}
+        onClose={() => setDeleting(null)}
+        onConfirm={confirmDelete}
+        title="Delete location?"
+        description={
+          deleting
+            ? `Permanently remove ${deleting.name}. Prefer disable if this location ever held stock or sales.`
+            : ""
+        }
+        confirmLabel="Delete"
+        pending={pending}
+      />
+    </>
+  );
+}
+
+function AddLocationForm({ onDone }: { onDone: () => void }) {
+  const [state, action, pending] = useActionState(saveLocation, EMPTY_FORM_STATE);
+
+  useEffect(() => {
+    if (state.ok) onDone();
+  }, [state.ok, onDone]);
+
+  return (
+    <form action={action} className="space-y-4">
+      {state.error ? <ErrorNote>{state.error}</ErrorNote> : null}
+      {state.ok ? <SuccessNote>Location saved.</SuccessNote> : null}
+      <Field label="Name">
+        <Input name="name" required placeholder="Main Branch" />
+      </Field>
+      <Field label="Type">
+        <Select name="type" defaultValue="branch">
+          <option value="branch">Branch — sells on POS</option>
+          <option value="warehouse">Warehouse — holds stock only</option>
+        </Select>
+      </Field>
+      <Field label="Address">
+        <Input name="address" placeholder="Optional" />
+      </Field>
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <Button type="button" variant="secondary" onClick={onDone} disabled={pending}>
+          Cancel
+        </Button>
+        <Button type="submit" loading={pending} icon={Plus}>
+          Add location
+        </Button>
+      </div>
+    </form>
   );
 }

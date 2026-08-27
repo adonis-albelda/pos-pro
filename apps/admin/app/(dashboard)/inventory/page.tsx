@@ -34,6 +34,7 @@ import {
   type StockSort,
   type StockState,
 } from "./view-options";
+import { useLocationFilter } from "@/components/location-filter-provider";
 
 interface InventorySearchParams {
   tab?: string;
@@ -60,6 +61,7 @@ function buildHref(params: Record<string, string | undefined>): string {
 
 export default function InventoryPage() {
   const searchParams = useSearchParams();
+  const { locationId } = useLocationFilter();
   const params: InventorySearchParams = {
     tab: searchParams.get("tab") ?? undefined,
     q: searchParams.get("q") ?? undefined,
@@ -101,6 +103,7 @@ export default function InventoryPage() {
     includeInactive: true,
     page,
     pageSize: DEFAULT_PAGE_SIZE,
+    locationId: locationId ?? undefined,
   });
 
   // Movements tab only, but hooks stay unconditional — gated with `enabled`

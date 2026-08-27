@@ -45,15 +45,17 @@ import {
   useUpcomingSupplierPayments,
 } from "@/lib/query/purchase-orders";
 import { useUsers } from "@/lib/query/users";
+import { useLocationFilter } from "@/components/location-filter-provider";
 
 export default function DashboardPage() {
   const { range, fromDay, toDay } = resolveRange({ preset: "today" });
+  const { locationId } = useLocationFilter();
 
   // GAP: IndexSalesController has no date-range filter (see queries/sales.ts) —
   // the old single query for "today's sales" is now "the 200 most recent
   // sales of any status, filtered to today client-side" below. Fine unless
   // a single shop day exceeds 200 sales.
-  const salesQuery = useRecentSales(200);
+  const salesQuery = useRecentSales(200, locationId);
   const lowStockQuery = useBelowReorder();
   const oversoldQuery = useOversoldProducts();
   // GAP: SaleResource carries no cashier name (see queries/sales.ts) — joined

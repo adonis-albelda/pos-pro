@@ -31,9 +31,11 @@ import { Pagination, RecordToolbar } from "@/components/record-list";
 import { SalesFilters } from "./sales-filters";
 import { useSalesList } from "@/lib/query/sales";
 import { useUsers } from "@/lib/query/users";
+import { useLocationFilter } from "@/components/location-filter-provider";
 
 export default function SalesPage() {
   const searchParams = useSearchParams();
+  const { locationId } = useLocationFilter();
   const { q, page } = parseListQuery({
     q: searchParams.get("q") ?? undefined,
     page: searchParams.get("page") ?? undefined,
@@ -45,7 +47,14 @@ export default function SalesPage() {
   const status = searchParams.get("status") ?? undefined;
 
   const usersQuery = useUsers({ includeInactive: true });
-  const salesQuery = useSalesList({ from, to, userId, deviceId, status });
+  const salesQuery = useSalesList({
+    from,
+    to,
+    userId,
+    deviceId,
+    status,
+    locationId: locationId ?? undefined,
+  });
 
   return (
     <div className="space-y-6">

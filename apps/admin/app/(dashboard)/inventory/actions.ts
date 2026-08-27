@@ -20,13 +20,17 @@ const REASONS: AdjustStockReason[] = ["restock", "adjustment", "oversell_correct
 const MODES = ["in", "out", "count"] as const;
 type Mode = (typeof MODES)[number];
 
-export async function searchProductsForPicker(q: string): Promise<Product[]> {
+export async function searchProductsForPicker(
+  q: string,
+  locationId?: string | null,
+): Promise<Product[]> {
   const client = getAuthedClient();
   const { products } = await listProductsPage(client, {
     q,
     page: 1,
     pageSize: 8,
     includeInactive: true,
+    locationId: locationId || undefined,
   });
   return products;
 }
@@ -60,6 +64,12 @@ export async function moveStock(
     : "in";
   const rawMagnitude = Number(formData.get("quantity") ?? Number.NaN);
   const note = String(formData.get("note") ?? "").trim();
+  const locationId = String(formData.get("location_id") ?? "").trim() || null;
+  const baselineRaw = formData.get("baseline_quantity");
+  const baselineQuantity =
+    baselineRaw !== null && baselineRaw !== "" && Number.isFinite(Number(baselineRaw))
+      ? roundQuantity(Number(baselineRaw))
+      : null;
 
   if (!productId) return { error: "Pick a product.", ok: false };
   if (!REASONS.includes(reason)) return { error: "Pick a reason.", ok: false };
@@ -70,6 +80,11 @@ export async function moveStock(
   // it is always fetched — count mode needs its stock anyway.
   const product = await getProduct(client, productId);
   if (!product) return { error: "That product no longer exists.", ok: false };
+
+  // When the header scopes a location, use the location-scoped stock the
+  // picker already showed (ShowProduct has no location_id). Otherwise fall
+  // back to the company-wide total on the product row.
+  const recordedStock = baselineQuantity ?? product.stockQuantity;
 
   const floor = mode === "count" ? 0 : product.allowDecimal ? 0.001 : 1;
   const magnitude = roundQuantity(rawMagnitude);
@@ -88,15 +103,15 @@ export async function moveStock(
   let movementNote = note;
 
   if (mode === "count") {
-    changeQuantity = roundQuantity(magnitude - product.stockQuantity);
+    changeQuantity = roundQuantity(magnitude - recordedStock);
     if (changeQuantity === 0) {
       return {
-        error: `The count matches what is recorded (${product.stockQuantity}). Nothing to record.`,
+        error: `The count matches what is recorded (${recordedStock}). Nothing to record.`,
         ok: false,
       };
     }
 
-    const counted = `Counted ${magnitude}, was ${product.stockQuantity}`;
+    const counted = `Counted ${magnitude}, was ${recordedStock}`;
     movementNote = note ? `${counted}. ${note}` : counted;
   }
 
@@ -110,6 +125,7 @@ export async function moveStock(
       changeQuantity,
       reason,
       note: movementNote || undefined,
+      locationId,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

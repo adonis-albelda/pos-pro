@@ -5,6 +5,7 @@ import { DashboardShell } from "@/components/dashboard-shell";
 import { DemoSessionBanner } from "@/components/demo-session-banner";
 import { HydrateStoreSettings } from "@/components/hydrate-store-settings";
 import { ImpersonationBanner } from "@/components/impersonation-banner";
+import { LocationFilterProvider } from "@/components/location-filter-provider";
 import { PushNotificationRegistrar } from "@/components/push-notification-registrar";
 import { getUiMode } from "@/lib/ui-mode";
 
@@ -45,7 +46,7 @@ export default async function DashboardLayout({
 
   if (mode === "classic") {
     return (
-      <>
+      <LocationFilterProvider>
         <DemoSessionBanner />
         <ClassicShell
           storeName={store.name}
@@ -56,12 +57,12 @@ export default async function DashboardLayout({
         >
           {contentWithPush}
         </ClassicShell>
-      </>
+      </LocationFilterProvider>
     );
   }
 
   return (
-    <>
+    <LocationFilterProvider>
       <DemoSessionBanner />
       <DashboardShell
         storeName={store.name}
@@ -73,6 +74,6 @@ export default async function DashboardLayout({
       >
         {contentWithPush}
       </DashboardShell>
-    </>
+    </LocationFilterProvider>
   );
 }

@@ -28,6 +28,8 @@ export interface SalesFilter {
   status?: string;
   userId?: string;
   deviceId?: string;
+  /** Branch that rang the sale — IndexSalesController supports location_id. */
+  locationId?: string;
   /** ISO timestamp, inclusive lower bound on created_at. */
   from?: string;
   /** ISO timestamp, inclusive upper bound on created_at. */
@@ -45,6 +47,7 @@ export async function listSalesPage(
     status: filter.status,
     user_id: filter.userId,
     device_id: filter.deviceId,
+    location_id: filter.locationId,
     from: filter.from,
     to: filter.to,
     page: filter.page ?? 1,
@@ -73,6 +76,7 @@ export async function listSales(
   const result = await listSalesPage(client, {
     customerId: filter.customerId,
     status: filter.status,
+    locationId: filter.locationId,
     page: 1,
     pageSize: Math.min(filter.limit ?? 100, 200),
   });

@@ -22,6 +22,7 @@ import {
 } from "@/components/ui";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
 import { useInvalidateInventory } from "@/lib/query/inventory";
+import { useLocationFilter } from "@/components/location-filter-provider";
 import { loadProductForPicker, moveStock, searchProductsForPicker } from "./actions";
 
 function cx(...parts: (string | false | null | undefined)[]): string {
@@ -62,6 +63,7 @@ export function StockForm({
 }) {
   const [state, action, pending] = useActionState(moveStock, EMPTY_FORM_STATE);
   const invalidate = useInvalidateInventory();
+  const { locationId } = useLocationFilter();
   const [productId, setProductId] = useState(defaultProductId ?? "");
   const [product, setProduct] = useState<Product | null>(null);
   const [mode, setMode] = useState<Mode>("in");
@@ -119,9 +121,14 @@ export function StockForm({
     <form action={action} className="space-y-5">
       <input type="hidden" name="product_id" value={productId} />
       <input type="hidden" name="mode" value={mode} />
+      {locationId ? <input type="hidden" name="location_id" value={locationId} /> : null}
+      {product ? (
+        <input type="hidden" name="baseline_quantity" value={String(product.stockQuantity)} />
+      ) : null}
 
       <ProductPicker
         selected={product}
+        locationId={locationId}
         onSelect={(next) => {
           setProduct(next);
           setProductId(next?.id ?? "");
@@ -254,9 +261,11 @@ export function StockForm({
 
 function ProductPicker({
   selected,
+  locationId,
   onSelect,
 }: {
   selected: Product | null;
+  locationId: string | null;
   onSelect: (product: Product | null) => void;
 }) {
   const [term, setTerm] = useState("");
@@ -277,10 +286,10 @@ function ProductPicker({
   useEffect(() => {
     if (!open) return;
     const handle = setTimeout(() => {
-      void searchProductsForPicker(term).then(setMatches);
+      void searchProductsForPicker(term, locationId).then(setMatches);
     }, 150);
     return () => clearTimeout(handle);
-  }, [term, open]);
+  }, [term, open, locationId]);
 
   if (selected) {
     const level = stockLevel(selected.stockQuantity, selected.reorderPoint);

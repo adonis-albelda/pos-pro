@@ -21,6 +21,7 @@ export interface SalesListFilter {
   userId?: string;
   deviceId?: string;
   status?: string;
+  locationId?: string;
 }
 
 export function useSalesList(filter: SalesListFilter = {}) {
@@ -41,6 +42,7 @@ async function fetchSales(filter: SalesListFilter): Promise<SaleWithItems[]> {
       status: filter.status || undefined,
       userId: filter.userId || undefined,
       deviceId: filter.deviceId || undefined,
+      locationId: filter.locationId || undefined,
       from,
       to,
       page: apiPage,
@@ -58,10 +60,14 @@ async function fetchSales(filter: SalesListFilter): Promise<SaleWithItems[]> {
  * top of this. Not namespaced through queryKeys.sales.list() (that shape is
  * useSalesList's filter object) so the two never collide in cache.
  */
-export function useRecentSales(limit = 200) {
+export function useRecentSales(limit = 200, locationId?: string | null) {
   return useQuery({
-    queryKey: ["sales", "recent", limit] as const,
-    queryFn: () => listSales(getBrowserApiClient(), { limit }),
+    queryKey: ["sales", "recent", limit, locationId ?? "all"] as const,
+    queryFn: () =>
+      listSales(getBrowserApiClient(), {
+        limit,
+        locationId: locationId || undefined,
+      }),
   });
 }
 

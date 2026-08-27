@@ -7,6 +7,7 @@ import { LogOut, Menu, X } from "lucide-react";
 import { storeInitial } from "@double-a/shared-types";
 import { signOut } from "@/app/login/actions";
 import { Button } from "@/components/ui";
+import { LocationSwitcher } from "@/components/location-switcher";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { UiModeToggle } from "@/components/ui-mode-toggle";
 import type { UiMode } from "@/lib/ui-mode";
@@ -89,6 +90,7 @@ export function DashboardShell({
             <span className="shrink-0 scale-90">{brandMark}</span>
             <span className="truncate text-body font-semibold tracking-tight">{storeName}</span>
           </Link>
+          <LocationSwitcher className="shrink-0" />
         </div>
       </header>
 
@@ -161,6 +163,9 @@ export function DashboardShell({
       </aside>
 
       <main className="flex min-w-0 min-h-screen flex-1 flex-col pt-[calc(3.5rem+env(safe-area-inset-top))] lg:pt-0">
+        <div className="hidden items-center justify-end gap-3 border-b border-border bg-surface px-5 py-2.5 lg:flex">
+          <LocationSwitcher />
+        </div>
         <div className="flex-1 px-3 py-3 sm:px-4 sm:py-4 lg:px-5 lg:py-5">{children}</div>
 
         <footer className="mt-auto border-t border-border px-3 py-3 sm:px-4 lg:px-5">

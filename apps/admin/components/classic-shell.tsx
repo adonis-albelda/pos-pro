@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { ChevronDown, LayoutGrid, LogOut, Menu, X } from "lucide-react";
 import { storeInitial } from "@double-a/shared-types";
 import { signOut } from "@/app/login/actions";
+import { LocationSwitcher } from "@/components/location-switcher";
 import { UiModeToggle } from "@/components/ui-mode-toggle";
 import { filterNavGroupsByFeatures, NAV_GROUPS } from "@/lib/nav";
 import { useFeatureFlags } from "@/lib/query/features";
@@ -78,6 +79,8 @@ export function ClassicShell({
           <span className="sm:hidden">{storeName}</span>
           <span className="hidden sm:inline">{storeName} — Back Office</span>
         </span>
+
+        <LocationSwitcher tone="onPrimary" className="shrink-0" />
 
         <span className="hidden truncate text-caption text-white/75 lg:block">
           {userName ?? "Signed in"}

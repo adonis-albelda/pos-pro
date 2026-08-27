@@ -8,9 +8,11 @@ import { Card, PageHeader } from "@/components/ui";
 import { ProductsPanel } from "./products-panel";
 import { useCategories } from "@/lib/query/categories";
 import { useProducts } from "@/lib/query/products";
+import { useLocationFilter } from "@/components/location-filter-provider";
 
 export default function ProductsPage() {
   const searchParams = useSearchParams();
+  const { locationId } = useLocationFilter();
   const { q, page } = parseListQuery({
     q: searchParams.get("q") ?? undefined,
     page: searchParams.get("page") ?? undefined,
@@ -22,6 +24,7 @@ export default function ProductsPage() {
     page,
     pageSize: DEFAULT_PAGE_SIZE,
     includeInactive: true,
+    locationId: locationId ?? undefined,
   });
 
   return (

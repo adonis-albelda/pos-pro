@@ -1,5 +1,6 @@
 import type { Route } from "next";
 import {
+  ArrowLeftRight,
   Boxes,
   Camera,
   ChartColumn,
@@ -8,6 +9,7 @@ import {
   Download,
   FolderTree,
   LayoutDashboard,
+  MapPin,
   Package,
   Printer,
   QrCode,
@@ -77,13 +79,6 @@ export const NAV_GROUPS: NavGroup[] = [
         blurb: "Stock counts and movements",
         tone: "success",
       },
-      {
-        href: "/locations" as Route,
-        label: "Locations",
-        icon: Store,
-        blurb: "Branches, warehouses, transfers",
-        tone: "neutral",
-      },
     ],
   },
   {
@@ -142,8 +137,22 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: "Team",
+    label: "Operations",
     items: [
+      {
+        href: "/locations" as Route,
+        label: "Locations",
+        icon: MapPin,
+        blurb: "Branches and warehouses",
+        tone: "neutral",
+      },
+      {
+        href: "/stock-transfers" as Route,
+        label: "Stock transfers",
+        icon: ArrowLeftRight,
+        blurb: "Move stock between locations",
+        tone: "success",
+      },
       {
         href: "/users",
         label: "Users",
