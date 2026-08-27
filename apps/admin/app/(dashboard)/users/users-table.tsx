@@ -30,6 +30,7 @@ import { PasswordInput } from "@/components/password-input";
 import { ConfirmDialog, Dialog, Sheet } from "@/components/overlay";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
 import { useToggleUserCanSell } from "@/lib/query/users";
+import { useLocations } from "@/lib/query/locations";
 import { resetUserPassword } from "./actions";
 import { UserForm } from "./user-form";
 
@@ -92,11 +93,23 @@ function ResetPasswordForm({
   );
 }
 
-export function UsersTable({ users }: { users: User[] }) {
+export function UsersTable({
+  users,
+  showBranch = false,
+  mutationsLocked = false,
+}: {
+  users: User[];
+  showBranch?: boolean;
+  mutationsLocked?: boolean;
+}) {
   const [editing, setEditing] = useState<User | null>(null);
   const [resetting, setResetting] = useState<User | null>(null);
   const [toggling, setToggling] = useState<User | null>(null);
   const toggleCanSell = useToggleUserCanSell();
+  const locationsQuery = useLocations({ type: "branch" });
+  const branchNameById = new Map(
+    (locationsQuery.data ?? []).map((branch) => [branch.id, branch.name]),
+  );
 
   function confirmToggleSell() {
     if (!toggling) return;
@@ -120,6 +133,7 @@ export function UsersTable({ users }: { users: User[] }) {
           <tr>
             <Th>Name</Th>
             <Th>Email</Th>
+            {showBranch ? <Th>Branch</Th> : null}
             <Th>State</Th>
             <Th />
           </tr>
@@ -144,6 +158,13 @@ export function UsersTable({ users }: { users: User[] }) {
                   </span>
                 </Td>
                 <Td className="text-ink-muted">{user.email}</Td>
+                {showBranch ? (
+                  <Td className="text-ink-muted">
+                    {user.locationId
+                      ? (branchNameById.get(user.locationId) ?? user.locationId)
+                      : "—"}
+                  </Td>
+                ) : null}
                 <Td>
                   <span className="flex flex-wrap gap-1.5">
                     {!user.isActive ? (
@@ -164,12 +185,14 @@ export function UsersTable({ users }: { users: User[] }) {
                       icon={Pencil}
                       label="Edit user"
                       onClick={() => setEditing(user)}
+                      disabled={mutationsLocked}
                     />
                     {canResetPassword ? (
                       <IconButton
                         icon={KeyRound}
                         label="Reset password"
                         onClick={() => setResetting(user)}
+                        disabled={mutationsLocked}
                       />
                     ) : null}
                     {showSellToggle ? (
@@ -178,6 +201,7 @@ export function UsersTable({ users }: { users: User[] }) {
                         label={user.canSell ? "Disable sales" : "Enable sales"}
                         tone={user.canSell ? "danger" : "neutral"}
                         onClick={() => setToggling(user)}
+                        disabled={mutationsLocked}
                       />
                     ) : null}
                   </div>

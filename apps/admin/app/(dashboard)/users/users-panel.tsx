@@ -6,6 +6,7 @@ import type { User, UserRole } from "@double-a/shared-types";
 import { Card, EmptyState } from "@/components/ui";
 import { Sheet } from "@/components/overlay";
 import { Pagination, RecordToolbar } from "@/components/record-list";
+import { useLocationMutationsLocked } from "@/components/location-mutations-banner";
 import { UserForm } from "./user-form";
 import { UsersTable } from "./users-table";
 
@@ -51,6 +52,7 @@ export function UsersPanel({
   pageSize: number;
 }) {
   const [creating, setCreating] = useState(false);
+  const mutationsLocked = useLocationMutationsLocked();
   const copy = TAB_COPY[tab];
   const TabIcon =
     tab === "admin" ? Shield : tab === "device" ? Smartphone : UserRound;
@@ -64,6 +66,7 @@ export function UsersPanel({
           preserve={{ tab }}
           addLabel={copy.addLabel}
           onAdd={() => setCreating(true)}
+          addDisabled={mutationsLocked}
           exportHref="/api/export/users"
         />
 
@@ -76,7 +79,11 @@ export function UsersPanel({
             }
           />
         ) : (
-          <UsersTable users={users} />
+          <UsersTable
+            users={users}
+            showBranch={tab === "device"}
+            mutationsLocked={mutationsLocked}
+          />
         )}
 
         <Pagination

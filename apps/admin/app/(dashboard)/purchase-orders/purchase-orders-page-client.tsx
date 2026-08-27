@@ -28,11 +28,13 @@ import {
   Th,
 } from "@/components/ui";
 import { Pagination, RecordToolbar } from "@/components/record-list";
+import { useLocationMutationsLocked } from "@/components/location-mutations-banner";
 import { PurchaseOrdersFilters } from "./purchase-orders-filters";
 import { usePurchaseOrders } from "@/lib/query/purchase-orders";
 import { queryKeys } from "@/lib/query/keys";
 
 export function PurchaseOrdersPageClient() {
+  const mutationsLocked = useLocationMutationsLocked();
   const searchParams = useSearchParams();
   const { q, page } = parseListQuery({
     q: searchParams.get("q") ?? undefined,
@@ -56,9 +58,21 @@ export function PurchaseOrdersPageClient() {
         title="Purchase orders"
         description="What you've ordered from each supplier, on what terms, and what's still on the way."
         action={
-          <ButtonLink href="/purchase-orders/new" icon={Plus}>
-            New purchase order
-          </ButtonLink>
+          mutationsLocked ? (
+            <ButtonLink
+              href="/purchase-orders"
+              icon={Plus}
+              className="pointer-events-none opacity-40"
+              aria-disabled
+              title="Pick a specific location to create purchase orders"
+            >
+              New purchase order
+            </ButtonLink>
+          ) : (
+            <ButtonLink href={mutationsLocked ? "/purchase-orders" : "/purchase-orders/new"} className={mutationsLocked ? "pointer-events-none opacity-40" : undefined} aria-disabled={mutationsLocked || undefined}>
+              New purchase order
+            </ButtonLink>
+          )
         }
       />
 
@@ -101,6 +115,7 @@ function PurchaseOrdersBody({
   supplierId?: string;
   status?: PurchaseOrderStatus;
 }) {
+  const mutationsLocked = useLocationMutationsLocked();
   // GAP: PurchaseOrderResource carries no supplier name (see
   // queries/purchase-orders.ts) — joined against the supplier list above.
   const supplierNameById = new Map(suppliers.map((supplier) => [supplier.id, supplier.name]));
@@ -143,7 +158,7 @@ function PurchaseOrdersBody({
             }
             action={
               !q ? (
-                <ButtonLink href="/purchase-orders/new" icon={Plus}>
+                <ButtonLink href={mutationsLocked ? "/purchase-orders" : "/purchase-orders/new"} className={mutationsLocked ? "pointer-events-none opacity-40" : undefined} aria-disabled={mutationsLocked || undefined}>
                   New purchase order
                 </ButtonLink>
               ) : undefined

@@ -5,6 +5,7 @@ import { CalendarClock, Check, Pencil } from "lucide-react";
 import { formatMoney, type ExpenseBill } from "@double-a/shared-types";
 import { Button, Card, EmptyState, IconButton, Money, Table, Td, Th } from "@/components/ui";
 import { Sheet } from "@/components/overlay";
+import { useLocationMutationsLocked } from "@/components/location-mutations-banner";
 import { formatStoreDay } from "@/lib/date-range";
 import { useInvalidateExpenseBills } from "@/lib/query/expense-bills";
 import { payExpenseBill } from "./bill-actions";
@@ -24,6 +25,7 @@ export function ExpenseBillsPanel({
   bills: ExpenseBill[];
   defaultDueDate: string;
 }) {
+  const mutationsLocked = useLocationMutationsLocked();
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<ExpenseBill | null>(null);
   const [payingId, setPayingId] = useState<string | null>(null);
@@ -62,7 +64,7 @@ export function ExpenseBillsPanel({
               Schedules only — Mark paid writes the ledger expense and advances the due date.
             </p>
           </div>
-          <Button type="button" icon={CalendarClock} onClick={() => setCreating(true)}>
+          <Button type="button" icon={CalendarClock} onClick={() => setCreating(true)} disabled={mutationsLocked}>
             Add bill
           </Button>
         </div>
@@ -116,6 +118,7 @@ export function ExpenseBillsPanel({
                         icon={Check}
                         loading={paying && payingId === bill.id}
                         onClick={() => markPaid(bill)}
+                        disabled={mutationsLocked}
                         className="!px-2"
                       >
                         Mark paid
@@ -124,6 +127,7 @@ export function ExpenseBillsPanel({
                         icon={Pencil}
                         label={`Edit ${formatMoney(bill.amount)} bill`}
                         onClick={() => setEditing(bill)}
+                        disabled={mutationsLocked}
                       />
                     </div>
                   </Td>

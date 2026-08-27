@@ -146,6 +146,7 @@ export function IconButton({
   tone = "neutral",
   type = "button",
   className,
+  disabled,
   ...props
 }: Omit<ComponentProps<"button">, "children"> & {
   icon: LucideIcon;
@@ -156,9 +157,15 @@ export function IconButton({
     <button
       {...props}
       type={type}
+      disabled={disabled}
       title={label}
       aria-label={label}
-      className={iconActionClass(tone, className)}
+      className={iconActionClass(
+        tone,
+        [className, disabled ? "pointer-events-none opacity-40" : null]
+          .filter(Boolean)
+          .join(" ") || undefined,
+      )}
     >
       <Icon size={16} strokeWidth={2} />
     </button>

@@ -19,6 +19,7 @@ import {
   Td,
   Th,
 } from "@/components/ui";
+import { useLocationMutationsLocked } from "@/components/location-mutations-banner";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
 import { useInvalidateLocations, useLocations, useStockTransfers } from "@/lib/query/locations";
 import { useProducts } from "@/lib/query/products";
@@ -75,6 +76,7 @@ function TransfersBody({
   transfers: StockTransfer[];
   products: Array<{ id: string; name: string }>;
 }) {
+  const mutationsLocked = useLocationMutationsLocked();
   const invalidate = useInvalidateLocations();
   const [transferState, transferAction, transferPending] = useActionState(
     saveTransfer,
@@ -148,7 +150,7 @@ function TransfersBody({
             />
             Receive immediately (move stock now)
           </label>
-          <Button type="submit" loading={transferPending} icon={ArrowLeftRight} className="w-full">
+          <Button type="submit" loading={transferPending} icon={ArrowLeftRight} className="w-full" disabled={mutationsLocked}>
             Create transfer
           </Button>
         </form>
@@ -205,7 +207,7 @@ function TransfersBody({
                           variant="secondary"
                           size="sm"
                           icon={Check}
-                          disabled={pending}
+                          disabled={pending || mutationsLocked}
                           onClick={() =>
                             startTransition(async () => {
                               const result = await setTransferStatus(transfer.id, "received");
@@ -224,7 +226,7 @@ function TransfersBody({
                           variant="ghost"
                           size="sm"
                           icon={X}
-                          disabled={pending}
+                          disabled={pending || mutationsLocked}
                           onClick={() =>
                             startTransition(async () => {
                               const result = await setTransferStatus(transfer.id, "cancelled");

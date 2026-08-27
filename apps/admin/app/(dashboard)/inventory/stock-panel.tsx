@@ -20,6 +20,7 @@ import {
   EmptyState,
 } from "@/components/ui";
 import { Pagination, RecordToolbar } from "@/components/record-list";
+import { useLocationMutationsLocked } from "@/components/location-mutations-banner";
 import { indentLabel, type CategoryOption } from "@/lib/category-options";
 import { RestockSheet } from "./restock-sheet";
 import {
@@ -56,6 +57,7 @@ export function StockPanel({
   pageSize: number;
   focusedProduct?: string;
 }) {
+  const mutationsLocked = useLocationMutationsLocked();
   const router = useRouter();
   const search = useSearchParams();
   // A product link from the dashboard lands here with the panel already open.
@@ -88,6 +90,7 @@ export function StockPanel({
           query={query}
           addLabel="Restock or adjust"
           onAdd={() => setRestocking({})}
+          addDisabled={mutationsLocked}
           exportHref="/api/export/valuation"
           preserve={preserve}
         />
@@ -249,7 +252,8 @@ export function StockPanel({
                           label={`Restock or adjust ${product.name}`}
                           tone="primary"
                           onClick={() => setRestocking({ productId: product.id })}
-                        />
+                        disabled={mutationsLocked}
+                      />
                         <IconLink
                           icon={History}
                           label={`Movement history for ${product.name}`}

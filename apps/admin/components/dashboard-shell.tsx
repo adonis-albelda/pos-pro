@@ -8,6 +8,7 @@ import { storeInitial } from "@double-a/shared-types";
 import { signOut } from "@/app/login/actions";
 import { Button } from "@/components/ui";
 import { LocationSwitcher } from "@/components/location-switcher";
+import { LocationMutationsBanner } from "@/components/location-mutations-banner";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { UiModeToggle } from "@/components/ui-mode-toggle";
 import type { UiMode } from "@/lib/ui-mode";
@@ -166,6 +167,7 @@ export function DashboardShell({
         <div className="hidden items-center justify-end gap-3 border-b border-border bg-surface px-5 py-2.5 lg:flex">
           <LocationSwitcher />
         </div>
+        <LocationMutationsBanner />
         <div className="flex-1 px-3 py-3 sm:px-4 sm:py-4 lg:px-5 lg:py-5">{children}</div>
 
         <footer className="mt-auto border-t border-border px-3 py-3 sm:px-4 lg:px-5">

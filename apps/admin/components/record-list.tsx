@@ -50,6 +50,7 @@ export function RecordToolbar({
   preserve,
   addLabel,
   onAdd,
+  addDisabled,
   exportHref,
   importHref,
   children,
@@ -59,6 +60,8 @@ export function RecordToolbar({
   preserve?: Record<string, string | undefined>;
   addLabel?: string;
   onAdd?: () => void;
+  /** When true, Add stays visible but disabled (e.g. location filter is All). */
+  addDisabled?: boolean;
   exportHref?: string;
   importHref?: string;
   children?: ReactNode;
@@ -83,7 +86,18 @@ export function RecordToolbar({
           </ButtonLink>
         ) : null}
         {onAdd && addLabel ? (
-          <Button type="button" icon={Plus} size="sm" onClick={onAdd}>
+          <Button
+            type="button"
+            icon={Plus}
+            size="sm"
+            onClick={onAdd}
+            disabled={addDisabled}
+            title={
+              addDisabled
+                ? "Pick a specific location to create records"
+                : undefined
+            }
+          >
             {addLabel}
           </Button>
         ) : null}

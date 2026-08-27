@@ -7,6 +7,7 @@ import type { Expense } from "@double-a/shared-types";
 import { Card, EmptyState, IconButton, Money, Table, Td, Th } from "@/components/ui";
 import { Sheet } from "@/components/overlay";
 import { Pagination, RecordToolbar } from "@/components/record-list";
+import { useLocationMutationsLocked } from "@/components/location-mutations-banner";
 import { formatStoreDay } from "@/lib/date-range";
 import { ExpenseForm } from "./expense-form";
 
@@ -27,6 +28,7 @@ export function ExpensesPanel({
   total: number;
   pageSize: number;
 }) {
+  const mutationsLocked = useLocationMutationsLocked();
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
 
@@ -38,6 +40,7 @@ export function ExpensesPanel({
           query={query}
           addLabel="Add expense"
           onAdd={() => setCreating(true)}
+          addDisabled={mutationsLocked}
         />
 
         {total === 0 ? (
@@ -85,6 +88,7 @@ export function ExpensesPanel({
                         icon={Pencil}
                         label={`Edit ${formatMoney(expense.amount)} expense`}
                         onClick={() => setEditing(expense)}
+                      disabled={mutationsLocked}
                       />
                     </div>
                   </Td>

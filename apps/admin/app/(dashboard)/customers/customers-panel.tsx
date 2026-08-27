@@ -8,6 +8,7 @@ import type { Customer } from "@double-a/shared-types";
 import { Badge, Card, EmptyState, IconButton, Money, Table, Td, Th } from "@/components/ui";
 import { Sheet } from "@/components/overlay";
 import { Pagination, RecordToolbar } from "@/components/record-list";
+import { useLocationMutationsLocked } from "@/components/location-mutations-banner";
 import { CustomerForm } from "./customer-form";
 
 export function CustomersPanel({
@@ -29,6 +30,7 @@ export function CustomersPanel({
   total: number;
   pageSize: number;
 }) {
+  const mutationsLocked = useLocationMutationsLocked();
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
 
@@ -40,6 +42,7 @@ export function CustomersPanel({
           query={query}
           addLabel="Add customer"
           onAdd={() => setCreating(true)}
+          addDisabled={mutationsLocked}
           exportHref="/api/export/customers"
         />
 
@@ -88,6 +91,7 @@ export function CustomersPanel({
                         icon={Pencil}
                         label="Edit customer"
                         onClick={() => setEditing(customer)}
+                      disabled={mutationsLocked}
                       />
                       <Link
                         href={`/customers/${customer.id}` as Route}

@@ -44,6 +44,8 @@ export interface UpdateUserInput {
   email?: string;
   canSell?: boolean;
   isActive?: boolean;
+  /** Device/terminal only — rebind which branch the POS sells from. */
+  locationId?: string | null;
 }
 
 function toUpdatePayload(input: UpdateUserInput): Record<string, unknown> {
@@ -52,6 +54,7 @@ function toUpdatePayload(input: UpdateUserInput): Record<string, unknown> {
   if (input.email !== undefined) payload.email = input.email;
   if (input.canSell !== undefined) payload.can_sell = input.canSell;
   if (input.isActive !== undefined) payload.is_active = input.isActive;
+  if (input.locationId !== undefined) payload.location_id = input.locationId;
   return payload;
 }
 

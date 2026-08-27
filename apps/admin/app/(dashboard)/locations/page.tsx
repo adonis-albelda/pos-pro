@@ -28,6 +28,7 @@ import {
   Td,
   Th,
 } from "@/components/ui";
+import { useLocationMutationsLocked } from "@/components/location-mutations-banner";
 import { ConfirmDialog, Sheet } from "@/components/overlay";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
 import { useInvalidateLocations, useLocations } from "@/lib/query/locations";
@@ -60,6 +61,7 @@ export default function LocationsPage() {
 }
 
 function LocationsBody({ locations }: { locations: Location[] }) {
+  const mutationsLocked = useLocationMutationsLocked();
   const invalidate = useInvalidateLocations();
   const [creating, setCreating] = useState(false);
   const [togglingOff, setTogglingOff] = useState<Location | null>(null);
@@ -130,7 +132,7 @@ function LocationsBody({ locations }: { locations: Location[] }) {
               {locations.length} total · enable or disable without losing stock history
             </p>
           </div>
-          <Button type="button" size="sm" icon={Plus} onClick={() => setCreating(true)}>
+          <Button type="button" size="sm" icon={Plus} onClick={() => setCreating(true)} disabled={mutationsLocked}>
             Add location
           </Button>
         </div>
@@ -141,7 +143,7 @@ function LocationsBody({ locations }: { locations: Location[] }) {
             title="No locations yet"
             instruction="Add a branch for selling and a warehouse if you hold stock off the floor."
             action={
-              <Button type="button" icon={Plus} onClick={() => setCreating(true)}>
+              <Button type="button" icon={Plus} onClick={() => setCreating(true)} disabled={mutationsLocked}>
                 Add location
               </Button>
             }
@@ -192,14 +194,14 @@ function LocationsBody({ locations }: { locations: Location[] }) {
                           icon={location.isActive ? EyeOff : Eye}
                           label={location.isActive ? "Disable location" : "Enable location"}
                           onClick={() => onToggleClick(location)}
-                          disabled={pending}
+                          disabled={pending || mutationsLocked}
                         />
                         <IconButton
                           icon={Trash2}
                           label="Delete location"
                           tone="danger"
                           onClick={() => setDeleting(location)}
-                          disabled={pending}
+                          disabled={pending || mutationsLocked}
                         />
                       </div>
                     </Td>

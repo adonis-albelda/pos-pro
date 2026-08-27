@@ -29,6 +29,8 @@ function errorMessage(error: unknown): string {
  * must_change_password too). Ask backend for a company-admin-scoped reset
  * endpoint if that trip is too heavy for daily use.
  *
+ * Terminals may PATCH `location_id` to move to another active branch.
+ *
  * GAP: creating a new admin from this form cannot force
  * must_change_password on first login either — StoreUserRequest doesn't
  * accept it, and only a superadmin's reset-password call can set it. New
@@ -68,7 +70,7 @@ export async function saveCashier(
   if (!id && role === "device" && !password) {
     return { error: "Set a password so this terminal can sign in on the POS app.", ok: false };
   }
-  if (!id && role === "device" && !locationId) {
+  if (role === "device" && !locationId) {
     return { error: "Pick which branch this terminal sells from.", ok: false };
   }
   if (!id && password && password.length < 8) {
@@ -87,7 +89,12 @@ export async function saveCashier(
         };
       }
 
-      await updateUser(client, id, { name, email, canSell: role === "device" ? true : canSell });
+      await updateUser(client, id, {
+        name,
+        email,
+        canSell: role === "device" ? true : canSell,
+        ...(role === "device" ? { locationId } : {}),
+      });
       if (canUnlockWithPin(role) && pin) {
         await setUserPin(client, id, pin);
       }

@@ -7,6 +7,7 @@ import { ChevronDown, LayoutGrid, LogOut, Menu, X } from "lucide-react";
 import { storeInitial } from "@double-a/shared-types";
 import { signOut } from "@/app/login/actions";
 import { LocationSwitcher } from "@/components/location-switcher";
+import { LocationMutationsBanner } from "@/components/location-mutations-banner";
 import { UiModeToggle } from "@/components/ui-mode-toggle";
 import { filterNavGroupsByFeatures, NAV_GROUPS } from "@/lib/nav";
 import { useFeatureFlags } from "@/lib/query/features";
@@ -241,6 +242,7 @@ export function ClassicShell({
         </>
       ) : null}
 
+      <LocationMutationsBanner />
       <main className="flex-1 px-2 py-2 sm:px-3 sm:py-3">{children}</main>
 
       {/* Status strip */}

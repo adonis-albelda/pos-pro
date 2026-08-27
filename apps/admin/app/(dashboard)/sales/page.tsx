@@ -28,12 +28,14 @@ import {
   Th,
 } from "@/components/ui";
 import { Pagination, RecordToolbar } from "@/components/record-list";
+import { useLocationMutationsLocked } from "@/components/location-mutations-banner";
 import { SalesFilters } from "./sales-filters";
 import { useSalesList } from "@/lib/query/sales";
 import { useUsers } from "@/lib/query/users";
 import { useLocationFilter } from "@/components/location-filter-provider";
 
 export default function SalesPage() {
+  const mutationsLocked = useLocationMutationsLocked();
   const searchParams = useSearchParams();
   const { locationId } = useLocationFilter();
   const { q, page } = parseListQuery({
@@ -63,9 +65,21 @@ export default function SalesPage() {
         title="Sales"
         description="Every sale synced from a terminal. A sale made offline appears here only after its terminal syncs."
         action={
-          <ButtonLink href="/sales/new" icon={Plus}>
-            New sale
-          </ButtonLink>
+          mutationsLocked ? (
+            <ButtonLink
+              href="/sales"
+              icon={Plus}
+              className="pointer-events-none opacity-40"
+              aria-disabled
+              title="Pick a specific location to create sales"
+            >
+              New sale
+            </ButtonLink>
+          ) : (
+            <ButtonLink href="/sales/new" icon={Plus}>
+              New sale
+            </ButtonLink>
+          )
         }
       />
 

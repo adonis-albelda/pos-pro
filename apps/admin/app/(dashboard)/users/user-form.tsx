@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   Check,
   Info,
@@ -20,6 +20,7 @@ import {
   Select,
   SuccessNote,
 } from "@/components/ui";
+import { ConfirmDialog } from "@/components/overlay";
 import { PasswordInput } from "@/components/password-input";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
 import { useInvalidateUsers } from "@/lib/query/users";
@@ -58,6 +59,10 @@ export function UserForm({
 }) {
   const [state, action, pending] = useActionState(saveCashier, EMPTY_FORM_STATE);
   const [role, setRole] = useState<UserRole>(user?.role ?? defaultRole);
+  const [branchId, setBranchId] = useState(user?.locationId ?? "");
+  const [confirmBranch, setConfirmBranch] = useState(false);
+  const allowBranchSubmit = useRef(false);
+  const formRef = useRef<HTMLFormElement>(null);
   const invalidateUsers = useInvalidateUsers();
   const locationsQuery = useLocations({ type: "branch" });
 
@@ -66,7 +71,6 @@ export function UserForm({
       invalidateUsers();
       onDone?.();
     }
-    // invalidateUsers is stable enough for this effect; only state.ok/onDone gate re-entry.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.ok, onDone]);
 
@@ -74,171 +78,215 @@ export function UserForm({
     role === "admin" ? Shield : role === "device" ? Smartphone : UserRound;
   const branches = locationsQuery.data ?? [];
 
+  useEffect(() => {
+    if (role === "device" && !branchId && branches[0]?.id) {
+      setBranchId(branches[0].id);
+    }
+  }, [role, branchId, branches]);
+
+  const branchChanged =
+    Boolean(user) &&
+    user?.role === "device" &&
+    branchId !== "" &&
+    branchId !== (user?.locationId ?? "");
+  const fromBranchName =
+    branches.find((b) => b.id === user?.locationId)?.name ?? user?.locationId ?? "—";
+  const toBranchName = branches.find((b) => b.id === branchId)?.name ?? branchId;
+
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    if (branchChanged && !allowBranchSubmit.current) {
+      event.preventDefault();
+      setConfirmBranch(true);
+      return;
+    }
+    allowBranchSubmit.current = false;
+  }
+
+  function confirmBranchChange() {
+    allowBranchSubmit.current = true;
+    setConfirmBranch(false);
+    formRef.current?.requestSubmit();
+  }
+
   return (
-    <form action={action} className="space-y-5">
-      {user ? <input type="hidden" name="id" value={user.id} /> : null}
+    <>
+      <form ref={formRef} action={action} onSubmit={onSubmit} className="space-y-5">
+        {user ? <input type="hidden" name="id" value={user.id} /> : null}
 
-      <div className="flex items-start gap-3 rounded-md border border-border bg-primary-tint px-4 py-3">
-        <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-sm bg-primary/10 text-primary">
-          <RoleIcon size={18} strokeWidth={2} />
-        </span>
-        <p className="text-caption leading-relaxed text-ink-muted">
-          {roleDescription(role)}
-        </p>
-      </div>
+        <div className="flex items-start gap-3 rounded-md border border-border bg-primary-tint px-4 py-3">
+          <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-sm bg-primary/10 text-primary">
+            <RoleIcon size={18} strokeWidth={2} />
+          </span>
+          <p className="text-caption leading-relaxed text-ink-muted">
+            {roleDescription(role)}
+          </p>
+        </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Name">
-          <Input icon={UserRound} name="name" defaultValue={user?.name} required />
-        </Field>
-        <Field label="Email">
-          <Input
-            icon={Mail}
-            name="email"
-            type="email"
-            defaultValue={user?.email}
-            required
-          />
-        </Field>
-        <Field
-          label="Role"
-          hint={
-            user
-              ? "Role can't be changed after creation."
-              : "Controls dashboard access, PIN unlock, or terminal sign-in."
-          }
-        >
-          {user ? <input type="hidden" name="role" value={role} /> : null}
-          <Select
-            name={user ? undefined : "role"}
-            value={role}
-            disabled={Boolean(user)}
-            onChange={(event) => setRole(event.target.value as UserRole)}
-          >
-            <option value="cashier">Cashier</option>
-            <option value="admin">Admin</option>
-            <option value="device">Terminal</option>
-          </Select>
-        </Field>
-
-        {!user && role === "device" ? (
-          <Field label="Branch" hint="Stock for this terminal comes from this branch only.">
-            <Select name="location_id" required defaultValue={branches[0]?.id ?? ""}>
-              {branches.length === 0 ? (
-                <option value="">No branches yet — add one under Locations</option>
-              ) : (
-                branches.map((branch) => (
-                  <option key={branch.id} value={branch.id}>
-                    {branch.name}
-                  </option>
-                ))
-              )}
-            </Select>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Name">
+            <Input icon={UserRound} name="name" defaultValue={user?.name} required />
           </Field>
-        ) : null}
-
-        {user?.role === "device" && user.locationId ? (
-          <Field label="Branch" hint="Bound at enrollment — change by creating a new terminal.">
+          <Field label="Email">
             <Input
-              value={branches.find((b) => b.id === user.locationId)?.name ?? user.locationId}
-              readOnly
-            />
-          </Field>
-        ) : null}
-
-        {role === "cashier" || role === "admin" ? (
-          <Field
-            label={user ? "New PIN" : "PIN"}
-            hint={
-              user
-                ? "Leave empty to keep the current PIN."
-                : role === "admin"
-                  ? "Optional — 4 to 6 digits, for unlocking a terminal."
-                  : "4 to 6 digits."
-            }
-          >
-            <Input
-              icon={KeyRound}
-              name="pin"
-              inputMode="numeric"
-              pattern="\d{4,6}"
-              maxLength={6}
-              autoComplete="off"
-            />
-          </Field>
-        ) : null}
-
-        {!user && (role === "admin" || role === "device") ? (
-          <Field
-            label="Password"
-            hint={
-              role === "admin"
-                ? "Dashboard login — not a cashier PIN."
-                : "Enter this on the POS app's setup screen to connect the terminal."
-            }
-          >
-            <PasswordInput
-              icon={Lock}
-              name="password"
-              autoComplete="new-password"
-              minLength={8}
+              icon={Mail}
+              name="email"
+              type="email"
+              defaultValue={user?.email}
               required
             />
           </Field>
+          <Field
+            label="Role"
+            hint={
+              user
+                ? "Role can't be changed after creation."
+                : "Controls dashboard access, PIN unlock, or terminal sign-in."
+            }
+          >
+            {user ? <input type="hidden" name="role" value={role} /> : null}
+            <Select
+              name={user ? undefined : "role"}
+              value={role}
+              disabled={Boolean(user)}
+              onChange={(event) => setRole(event.target.value as UserRole)}
+            >
+              <option value="cashier">Cashier</option>
+              <option value="admin">Admin</option>
+              <option value="device">Terminal</option>
+            </Select>
+          </Field>
+
+          {role === "device" ? (
+            <Field
+              label="Branch"
+              hint={
+                user
+                  ? "Changing branch moves this terminal's stock and sales to the new location after the next sync."
+                  : "Stock for this terminal comes from this branch only."
+              }
+            >
+              <Select
+                name="location_id"
+                required
+                value={branchId || branches[0]?.id || ""}
+                onChange={(event) => setBranchId(event.target.value)}
+              >
+                {branches.length === 0 ? (
+                  <option value="">No branches yet — add one under Locations</option>
+                ) : (
+                  branches.map((branch) => (
+                    <option key={branch.id} value={branch.id}>
+                      {branch.name}
+                    </option>
+                  ))
+                )}
+              </Select>
+            </Field>
+          ) : null}
+
+          {role === "cashier" || role === "admin" ? (
+            <Field
+              label={user ? "New PIN" : "PIN"}
+              hint={
+                user
+                  ? "Leave empty to keep the current PIN."
+                  : role === "admin"
+                    ? "Optional — 4 to 6 digits, for unlocking a terminal."
+                    : "4 to 6 digits."
+              }
+            >
+              <Input
+                icon={KeyRound}
+                name="pin"
+                inputMode="numeric"
+                pattern="\d{4,6}"
+                maxLength={6}
+                autoComplete="off"
+              />
+            </Field>
+          ) : null}
+
+          {!user && (role === "admin" || role === "device") ? (
+            <Field
+              label="Password"
+              hint={
+                role === "admin"
+                  ? "Dashboard login — not a cashier PIN."
+                  : "Enter this on the POS app's setup screen to connect the terminal."
+              }
+            >
+              <PasswordInput
+                icon={Lock}
+                name="password"
+                autoComplete="new-password"
+                minLength={8}
+                required
+              />
+            </Field>
+          ) : null}
+        </div>
+
+        {role !== "device" ? (
+          <Field
+            label="Sales"
+            hint="Off = can still unlock a terminal, but cannot complete a sale."
+          >
+            <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-sm border border-border bg-surface px-3 text-body">
+              <input
+                type="checkbox"
+                name="can_sell"
+                value="true"
+                defaultChecked={user?.canSell ?? true}
+                className="size-4 accent-primary"
+              />
+              Allow this person to complete a sale
+            </label>
+          </Field>
+        ) : (
+          <input type="hidden" name="can_sell" value="true" />
+        )}
+
+        {user && role === "admin" ? (
+          <p className="flex items-start gap-2 text-caption text-ink-muted">
+            <Info size={14} className="mt-0.5 shrink-0" />
+            <span>
+              To reset this admin&rsquo;s password or force a change on next
+              sign-in, ask a superadmin on the Platform surface.
+            </span>
+          </p>
         ) : null}
-      </div>
 
-      {role !== "device" ? (
-        <Field
-          label="Sales"
-          hint="Off = can still unlock a terminal, but cannot complete a sale."
-        >
-          <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-sm border border-border bg-surface px-3 text-body">
-            <input
-              type="checkbox"
-              name="can_sell"
-              value="true"
-              defaultChecked={user?.canSell ?? true}
-              className="size-4 accent-primary"
-            />
-            Allow this person to complete sales
-          </label>
-        </Field>
-      ) : (
-        <input type="hidden" name="can_sell" value="true" />
-      )}
-
-      {user && role === "admin" ? (
         <p className="flex items-start gap-2 text-caption text-ink-muted">
           <Info size={14} className="mt-0.5 shrink-0" />
           <span>
-            To reset this admin&rsquo;s password or force a change on next
-            sign-in, ask a superadmin on the Platform surface.
+            Changes reach terminals on their next Sync or Refresh. PIN and
+            dashboard password stay on separate paths.
           </span>
         </p>
-      ) : null}
 
-      <p className="flex items-start gap-2 text-caption text-ink-muted">
-        <Info size={14} className="mt-0.5 shrink-0" />
-        <span>
-          Changes reach terminals on their next Sync or Refresh. PIN and
-          dashboard password stay on separate paths.
-        </span>
-      </p>
+        {state.error ? <ErrorNote>{state.error}</ErrorNote> : null}
+        {state.ok ? <SuccessNote>{successMessage(role)}</SuccessNote> : null}
 
-      {state.error ? <ErrorNote>{state.error}</ErrorNote> : null}
-      {state.ok ? <SuccessNote>{successMessage(role)}</SuccessNote> : null}
-
-      <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row">
-        <Button type="submit" loading={pending} icon={Check} className="w-full sm:w-auto">
-          {pending ? "Saving..." : user ? "Save changes" : "Add person"}
-        </Button>
-        {onDone ? (
-          <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={onDone}>
-            Cancel
+        <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row">
+          <Button type="submit" loading={pending} icon={Check} className="w-full sm:w-auto">
+            {pending ? "Saving..." : user ? "Save changes" : "Add person"}
           </Button>
-        ) : null}
-      </div>
-    </form>
+          {onDone ? (
+            <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={onDone}>
+              Cancel
+            </Button>
+          ) : null}
+        </div>
+      </form>
+
+      <ConfirmDialog
+        open={confirmBranch}
+        onClose={() => setConfirmBranch(false)}
+        onConfirm={confirmBranchChange}
+        title="Change terminal branch?"
+        description={`Move "${user?.name ?? "this terminal"}" from ${fromBranchName} to ${toBranchName}. Stock estimates and new sales will use the new branch after the next sync.`}
+        confirmLabel="Change branch"
+      />
+    </>
   );
 }

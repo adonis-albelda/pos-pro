@@ -8,6 +8,7 @@ import type { Supplier } from "@double-a/shared-types";
 import { Badge, Card, EmptyState, IconButton, Money, Table, Td, Th } from "@/components/ui";
 import { Sheet } from "@/components/overlay";
 import { Pagination, RecordToolbar } from "@/components/record-list";
+import { useLocationMutationsLocked } from "@/components/location-mutations-banner";
 import { useSupplierProductOptions } from "@/lib/query/suppliers";
 import { SupplierForm } from "./supplier-form";
 
@@ -30,6 +31,7 @@ export function SuppliersPanel({
   total: number;
   pageSize: number;
 }) {
+  const mutationsLocked = useLocationMutationsLocked();
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
 
@@ -47,6 +49,7 @@ export function SuppliersPanel({
           query={query}
           addLabel="Add supplier"
           onAdd={() => setCreating(true)}
+          addDisabled={mutationsLocked}
         />
 
         {total === 0 ? (
@@ -99,7 +102,8 @@ export function SuppliersPanel({
                           icon={Pencil}
                           label="Edit supplier"
                           onClick={() => setEditing(supplier)}
-                        />
+                        disabled={mutationsLocked}
+                      />
                         <Link
                           href={`/suppliers/${supplier.id}` as Route}
                           prefetch={false}

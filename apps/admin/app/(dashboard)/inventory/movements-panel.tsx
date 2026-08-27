@@ -17,6 +17,7 @@ import {
   Th,
 } from "@/components/ui";
 import { Pagination, RecordToolbar } from "@/components/record-list";
+import { useLocationMutationsLocked } from "@/components/location-mutations-banner";
 import { DateRangePicker, type DayWindowValue } from "@/components/date-range-picker";
 import { formatStoreDay, storeDayOf } from "@/lib/date-range";
 import {
@@ -59,6 +60,7 @@ export function MovementsPanel({
   toDay: string | null;
   rangeLabel: string;
 }) {
+  const mutationsLocked = useLocationMutationsLocked();
   const router = useRouter();
   const search = useSearchParams();
   const [restocking, setRestocking] = useState<{ productId?: string } | null>(null);
@@ -106,6 +108,7 @@ export function MovementsPanel({
           query={query}
           addLabel="Record movement"
           onAdd={() => setRestocking({})}
+          addDisabled={mutationsLocked}
           exportHref={
             exportQuery ? `/api/export/movements?${exportQuery}` : "/api/export/movements"
           }
