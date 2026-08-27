@@ -1,3 +1,5 @@
+"use client";
+
 import { ArrowLeft } from "lucide-react";
 import { exitCompany } from "@/app/(platform)/platform/actions";
 import { Button } from "@/components/ui";
