@@ -14,5 +14,7 @@ export * from "./auth";
 export * from "./sales";
 export * from "./purchase-orders";
 export * from "./features";
+export * from "./backups";
+export * from "./ai-settings";
 export * from "./push";
 export * from "./locations";

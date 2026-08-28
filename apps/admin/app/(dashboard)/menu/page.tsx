@@ -6,7 +6,7 @@ import { Card } from "@/components/ui";
 import { useStoreSettings } from "@/lib/query/settings";
 import { useProductCount } from "@/lib/query/products";
 import { useUserCount } from "@/lib/query/users";
-import { useFeatureFlags } from "@/lib/query/features";
+import { useNavFeatureEnabled } from "@/lib/query/nav-features";
 
 const TILE_STYLES: Record<string, string> = {
   primary: "bg-primary/10 text-primary",
@@ -25,7 +25,7 @@ export default function MenuPage() {
   const storeQuery = useStoreSettings();
   const productCountQuery = useProductCount({ includeInactive: true });
   const userCountQuery = useUserCount();
-  const { isEnabled } = useFeatureFlags();
+  const { isEnabled } = useNavFeatureEnabled();
   const tiles = NAV_ITEMS.filter((item) => !item.featureKey || isEnabled(item.featureKey));
 
   const isPending = storeQuery.isPending || productCountQuery.isPending || userCountQuery.isPending;

@@ -63,6 +63,7 @@ function toImportRow(row: {
     line: row.line,
     name: row.values.name,
     sku: row.values.sku,
+    supplier_sku: row.values.supplier_sku,
     price: row.values.price,
     cost_price: row.values.cost_price,
     unit: row.values.unit,

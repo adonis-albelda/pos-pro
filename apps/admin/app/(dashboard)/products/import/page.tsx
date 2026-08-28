@@ -8,7 +8,7 @@ import { ImportForm } from "./import-form";
 
 const COLUMN_NOTES: Record<string, string> = {
   name: "What the product is called.",
-  sku: "Your code for it. This is what matches a row to a product already in the list.",
+  sku: "Your code for it. Matches a row to a product by internal SKU or supplier SKU.",
   price: "The shelf price customers pay. Falls back to Price Level 1, 2, then 3 when empty or zero.",
   cost_price: "What the supplier charges you. Drives every margin figure.",
   unit: "How it is sold: pc, box, set, pack, roll, sheet, m, ft, kg, l, gal or bag.",
@@ -19,6 +19,7 @@ const COLUMN_NOTES: Record<string, string> = {
   bulk_min_quantity: "Quantity that unlocks the bulk price. Two or more.",
   category: "Full path, e.g. Plumbing / Pipes / PVC. Created if it does not exist.",
   supplier: "Supplier name. Created and linked to the product if it does not exist yet.",
+  supplier_sku: "Optional vendor item code. Import and photo scan also match on this when internal SKU differs.",
   description: "Optional longer notes. A lone dash in the file is treated as empty.",
   stock_quantity: "Optional on-hand count. Only used when you pick a stock import mode.",
   is_active: "true to show it on terminals, false to hide it.",
@@ -50,7 +51,7 @@ export default function ImportProductsPage() {
         <CardHeader
           icon={FileUp}
           title="Import wizard"
-          description="Rows are matched by SKU. A known SKU is updated; a new one is added."
+          description="Rows match by internal SKU or supplier SKU. Known code updates that product; new code adds one."
         />
         <div className="px-4 py-5 sm:px-6">
           <ImportForm />

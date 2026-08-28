@@ -3,10 +3,13 @@
 import { Settings, Store } from "lucide-react";
 import { Card, CardHeader, PageHeader } from "@/components/ui";
 import { StoreForm } from "./store-form";
+import { AiSettingsCard } from "./ai-settings-card";
 import { useStoreSettings } from "@/lib/query/settings";
+import { useAiSettings } from "@/lib/query/ai-settings";
 
 export default function SettingsPage() {
   const settingsQuery = useStoreSettings();
+  const aiQuery = useAiSettings();
 
   return (
     <div className="space-y-6">
@@ -36,6 +39,10 @@ export default function SettingsPage() {
           )}
         </div>
       </Card>
+
+      {aiQuery.isPending ? null : aiQuery.isError ? null : aiQuery.data ? (
+        <AiSettingsCard settings={aiQuery.data} />
+      ) : null}
     </div>
   );
 }

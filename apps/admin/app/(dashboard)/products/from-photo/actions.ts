@@ -37,7 +37,17 @@ function describeSaveError(error: unknown): string {
 }
 
 function describeExtractError(error: unknown): string {
-  if (error instanceof ApiError) return error.message;
+  if (error instanceof ApiError) {
+    if (error.status === 429) {
+      return "OpenAI is busy. Wait about a minute, then try again.";
+    }
+    if (error.status === 402) {
+      return "OpenAI has no credits left. Check billing or the API key on the server.";
+    }
+    if (error.status === 403) {
+      return error.message;
+    }
+  }
   return error instanceof Error
     ? `Could not read the photo: ${error.message}`
     : "Could not read the photo. Try again.";
@@ -62,6 +72,7 @@ function lineToDraft(
     bulkPrice: "",
     bulkMinQuantity: "",
     existingProductId: line.existingProductId,
+    matchedBy: line.matchedBy,
     stockApplied: line.stockApplied,
   };
 }

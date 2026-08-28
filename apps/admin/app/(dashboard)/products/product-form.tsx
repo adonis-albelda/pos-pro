@@ -132,8 +132,11 @@ export function ProductForm({
             <Input name="name" defaultValue={product?.name} required />
           </Field>
         </div>
-        <Field label="SKU" hint="Unique code. CSV imports match on this.">
+        <Field label="SKU" hint="Your shop code. CSV import and photo extract match on this.">
           <Input name="sku" defaultValue={product?.sku ?? ""} />
+        </Field>
+        <Field label="Supplier SKU" hint="Supplier item code on price lists — also used for matching.">
+          <Input name="supplier_sku" defaultValue={product?.supplierSku ?? ""} />
         </Field>
         <Field label="Barcode" hint="Optional. Scanned at the counter.">
           <Input name="barcode" defaultValue={product?.barcode ?? ""} />

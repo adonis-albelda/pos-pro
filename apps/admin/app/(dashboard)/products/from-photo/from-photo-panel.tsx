@@ -36,6 +36,7 @@ import {
   saveScannedProduct,
 } from "./actions";
 import { CropPhoto } from "./crop-photo";
+import { AiProcessingOverlay } from "@/components/overlay";
 import type { ScannedProductDraft } from "./types";
 
 /** Shrink a phone photo so the server action stays under the body limit. */
@@ -124,6 +125,11 @@ function DraftRow({
                 Stock recorded
                 {draft.quantity.trim() ? ` (+${draft.quantity})` : ""}
               </Badge>
+            </span>
+          ) : null}
+          {draft.matchedBy === "supplier" ? (
+            <span className="mt-1 inline-block">
+              <Badge tone="warning">Matched supplier SKU</Badge>
             </span>
           ) : null}
         </div>
@@ -411,6 +417,7 @@ export function FromPhotoPanel({ categories }: { categories: CategoryOption[] })
 
   return (
     <div className="space-y-6">
+      <AiProcessingOverlay open={reading} message="AI is reading your photo" />
       <Card>
         <CardHeader
           icon={Camera}

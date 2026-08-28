@@ -205,4 +205,36 @@ export class ApiClient {
   delete<T = void>(path: string): Promise<T> {
     return this.request<T>(path, { method: "DELETE" });
   }
+
+  /** Binary download — CSV exports, database backups, etc. */
+  async download(path: string): Promise<{ blob: Blob; filename: string | null }> {
+    const token = await this.getToken();
+
+    const headers: Record<string, string> = { ...this.extraHeaders };
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const response = await fetch(`${this.baseUrl}${path}`, {
+      method: "GET",
+      headers,
+    });
+
+    if (response.status === 401) {
+      await this.onUnauthorized?.();
+    }
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      throw new ApiError(
+        response.status,
+        (payload?.message as string | undefined) ?? response.statusText,
+        (payload?.errors as Record<string, string[]> | undefined) ?? null,
+      );
+    }
+
+    const disposition = response.headers.get("content-disposition");
+    const filename =
+      disposition?.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i)?.[1]?.replace(/"/g, "") ?? null;
+
+    return { blob: await response.blob(), filename: filename ? decodeURIComponent(filename) : null };
+  }
 }

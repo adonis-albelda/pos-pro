@@ -7,8 +7,9 @@ export function ImportInfoCards() {
       <Card>
         <CardHeader icon={GitMerge} title="Matching" />
         <CardBody className="text-body text-ink-muted">
-          Rows match existing products by <span className="font-medium text-ink">SKU</span>. Same
-          SKU updates that product. A new SKU adds a new product.
+          Rows match existing products by <span className="font-medium text-ink">internal SKU</span> or{" "}
+          <span className="font-medium text-ink">supplier SKU</span>. Same code updates that product.
+          A new code adds a new product.
         </CardBody>
       </Card>
       <Card>

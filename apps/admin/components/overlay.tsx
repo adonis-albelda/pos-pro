@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { X } from "lucide-react";
+import { Loader2, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui";
 
 /** Match route page-enter: short enough to read as arrival, not decoration. */
@@ -277,6 +277,79 @@ export function Sheet({
         </div>
       </div>
     </OverlayContext.Provider>
+    </OverlayPortal>
+  );
+}
+
+function ProcessingDots() {
+  return (
+    <span className="inline-flex w-7 justify-start" aria-hidden>
+      {[0, 1, 2].map((index) => (
+        <span
+          key={index}
+          className="animate-bounce text-primary"
+          style={{ animationDelay: `${index * 150}ms`, animationDuration: "1s" }}
+        >
+          .
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** Blocks the UI while an AI request is in flight — no dismiss. */
+export function AiProcessingOverlay({
+  open,
+  message = "AI is processing",
+}: {
+  open: boolean;
+  message?: string;
+}) {
+  const labelId = useId();
+  const { mounted, entered } = usePresence(open);
+
+  useBodyScrollLock(mounted);
+
+  if (!mounted) return null;
+
+  return (
+    <OverlayPortal>
+      <div
+        className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+        role="presentation"
+      >
+        <div
+          className={cx(backdropClass, "z-0", entered ? "opacity-100" : "opacity-0")}
+          aria-hidden
+        />
+        <div
+          role="status"
+          aria-live="polite"
+          aria-labelledby={labelId}
+          data-state={entered ? "open" : "closed"}
+          className={cx(
+            "relative z-10 flex w-full max-w-md flex-col items-center gap-4 rounded-lg border border-border bg-surface px-8 py-10 shadow-lg",
+            "transition-[opacity,transform] duration-[180ms] ease-out motion-reduce:transition-none",
+            entered ? "translate-y-0 scale-100 opacity-100" : "translate-y-1.5 scale-[0.98] opacity-0",
+          )}
+        >
+          <div className="relative flex size-16 items-center justify-center">
+            <Sparkles size={36} strokeWidth={1.75} className="text-primary" aria-hidden />
+            <Loader2
+              size={22}
+              className="absolute -right-1 -bottom-1 animate-spin text-ink-muted"
+              aria-hidden
+            />
+          </div>
+          <div className="text-center">
+            <p id={labelId} className="text-heading-sm font-semibold text-ink">
+              {message}
+              <ProcessingDots />
+            </p>
+            <p className="mt-1 text-caption text-ink-muted">This may take a moment.</p>
+          </div>
+        </div>
+      </div>
     </OverlayPortal>
   );
 }

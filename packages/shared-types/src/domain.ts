@@ -389,6 +389,8 @@ export interface Product {
   id: string;
   name: string;
   sku: string | null;
+  /** Supplier's item code on price lists — matched on import and photo extract too. */
+  supplierSku: string | null;
   /** The shelf price. What the attendant charges may be lower — see CartLine. */
   price: number;
   /** What the supplier charges us. The owner's margin hangs off this. */

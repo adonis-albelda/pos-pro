@@ -108,4 +108,12 @@ export const queryKeys = {
     mine: () => ["feature-flags", "mine"] as const,
     admin: () => ["feature-flags", "admin"] as const,
   },
+  aiSettings: {
+    all: ["ai-settings"] as const,
+    detail: () => ["ai-settings", "detail"] as const,
+  },
+  backups: {
+    all: ["platform-backups"] as const,
+    list: () => ["platform-backups", "list"] as const,
+  },
 } as const;

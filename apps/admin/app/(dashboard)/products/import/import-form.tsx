@@ -39,6 +39,7 @@ import {
   rejectedRowsFromPlan,
 } from "@/lib/product-import-export";
 import { ColumnMappingForm, ColumnMappingSummary } from "./column-mapping-form";
+import { AiProcessingOverlay } from "@/components/overlay";
 import { FileColumnsTable } from "./file-columns-table";
 import { ImportInfoCards } from "./import-info-cards";
 import { ImportProgress } from "./import-progress";
@@ -69,9 +70,12 @@ function AiFixButton({ disabled }: { disabled?: boolean }) {
   const { pending } = useFormStatus();
 
   return (
-    <Button type="submit" variant="secondary" size="sm" icon={Sparkles} loading={pending} disabled={disabled}>
-      {pending ? "Fixing with AI..." : "Fix with AI"}
-    </Button>
+    <>
+      <AiProcessingOverlay open={pending} message="AI is fixing your file" />
+      <Button type="submit" variant="secondary" size="sm" icon={Sparkles} loading={pending} disabled={disabled}>
+        {pending ? "Fixing with AI..." : "Fix with AI"}
+      </Button>
+    </>
   );
 }
 

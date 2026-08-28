@@ -6,6 +6,7 @@ export interface ProductInput {
   name: string;
   description?: string | null;
   sku?: string | null;
+  supplierSku?: string | null;
   price: number;
   costPrice: number;
   categoryId?: string | null;
@@ -24,6 +25,7 @@ function toPayload(input: Partial<ProductInput>): Record<string, unknown> {
   if (input.name !== undefined) payload.name = input.name;
   if (input.description !== undefined) payload.description = input.description;
   if (input.sku !== undefined) payload.sku = input.sku;
+  if (input.supplierSku !== undefined) payload.supplier_sku = input.supplierSku;
   if (input.price !== undefined) payload.price = input.price;
   if (input.costPrice !== undefined) payload.cost_price = input.costPrice;
   if (input.categoryId !== undefined) payload.category_id = input.categoryId;
@@ -166,6 +168,7 @@ export interface ExtractedProductLine {
   unit: string;
   existingProductId: string | null;
   stockApplied: boolean;
+  matchedBy: "internal" | "supplier" | null;
 }
 
 interface ExtractedProductLineAttrs {
@@ -179,6 +182,7 @@ interface ExtractedProductLineAttrs {
   unit: string;
   existing_product_id: string | null;
   stock_applied: boolean;
+  matched_by: "internal" | "supplier" | null;
 }
 
 /** Vision extraction runs server-side (Laravel AI / OpenAI) — see apps/admin from-photo feature. */
@@ -209,6 +213,7 @@ export async function extractProductsFromPhoto(
     unit: line.unit,
     existingProductId: line.existing_product_id,
     stockApplied: line.stock_applied,
+    matchedBy: line.matched_by,
   }));
 }
 
@@ -346,6 +351,7 @@ export interface ProductImportRowPayload {
   name: string;
   description?: string | null;
   sku: string;
+  supplier_sku?: string | null;
   price: number;
   cost_price?: number;
   unit?: string;
@@ -390,6 +396,7 @@ export async function startProductImport(
       name: row.name,
       description: row.description,
       sku: row.sku,
+      supplier_sku: row.supplier_sku,
       price: row.price,
       cost_price: row.cost_price,
       unit: row.unit,

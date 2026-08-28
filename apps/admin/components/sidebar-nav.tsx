@@ -4,11 +4,11 @@ import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { LoaderCircle } from "lucide-react";
 import { filterNavGroupsByFeatures, NAV_GROUPS } from "@/lib/nav";
-import { useFeatureFlags } from "@/lib/query/features";
+import { useNavFeatureEnabled } from "@/lib/query/nav-features";
 
 export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
-  const { isEnabled } = useFeatureFlags();
+  const { isEnabled } = useNavFeatureEnabled();
   const groups = filterNavGroupsByFeatures(NAV_GROUPS, isEnabled);
 
   return (

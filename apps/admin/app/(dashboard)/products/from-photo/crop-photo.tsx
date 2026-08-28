@@ -20,6 +20,42 @@ function normalizeRect(a: { x: number; y: number }, b: { x: number; y: number })
   };
 }
 
+/** Where object-contain actually paints the photo inside the <img> box. */
+function getRenderedImageMetrics(img: HTMLImageElement) {
+  const { naturalWidth, naturalHeight, clientWidth, clientHeight } = img;
+  if (!naturalWidth || !naturalHeight || !clientWidth || !clientHeight) {
+    return { offsetX: 0, offsetY: 0, width: clientWidth, height: clientHeight, scale: 1 };
+  }
+
+  const naturalAspect = naturalWidth / naturalHeight;
+  const elementAspect = clientWidth / clientHeight;
+
+  let width: number;
+  let height: number;
+  let offsetX: number;
+  let offsetY: number;
+
+  if (naturalAspect > elementAspect) {
+    width = clientWidth;
+    height = clientWidth / naturalAspect;
+    offsetX = 0;
+    offsetY = (clientHeight - height) / 2;
+  } else {
+    height = clientHeight;
+    width = clientHeight * naturalAspect;
+    offsetX = (clientWidth - width) / 2;
+    offsetY = 0;
+  }
+
+  return {
+    offsetX,
+    offsetY,
+    width,
+    height,
+    scale: naturalWidth / width,
+  };
+}
+
 /**
  * Draw one rectangle over the photo, then crop to it — not a full editor
  * (no resize handles, no rotate). A notebook photo just needs the table's
@@ -44,7 +80,9 @@ export function CropPhoto({
   const [error, setError] = useState<string | null>(null);
 
   function pointerPos(event: React.PointerEvent): { x: number; y: number } {
-    const bounds = containerRef.current!.getBoundingClientRect();
+    const img = imgRef.current;
+    if (!img) return { x: 0, y: 0 };
+    const bounds = img.getBoundingClientRect();
     return {
       x: Math.min(Math.max(event.clientX - bounds.left, 0), bounds.width),
       y: Math.min(Math.max(event.clientY - bounds.top, 0), bounds.height),
@@ -76,8 +114,7 @@ export function CropPhoto({
 
   async function applyCrop() {
     const img = imgRef.current;
-    const container = containerRef.current;
-    if (!img || !container || !rect || rect.width < 8 || rect.height < 8) {
+    if (!img || !rect || rect.width < 8 || rect.height < 8) {
       setError("Drag a box around the part of the photo to keep.");
       return;
     }
@@ -85,23 +122,37 @@ export function CropPhoto({
     setCropping(true);
     setError(null);
     try {
-      // Displayed size (CSS px) vs. the photo's real pixels — the drag
-      // rectangle is in the former, the crop has to happen in the latter.
-      const scaleX = img.naturalWidth / container.clientWidth;
-      const scaleY = img.naturalHeight / container.clientHeight;
+      const metrics = getRenderedImageMetrics(img);
+
+      const selLeft = Math.max(rect.x, metrics.offsetX);
+      const selTop = Math.max(rect.y, metrics.offsetY);
+      const selRight = Math.min(rect.x + rect.width, metrics.offsetX + metrics.width);
+      const selBottom = Math.min(rect.y + rect.height, metrics.offsetY + metrics.height);
+      const selWidth = selRight - selLeft;
+      const selHeight = selBottom - selTop;
+
+      if (selWidth < 8 || selHeight < 8) {
+        setError("Drag a box over the photo itself, not the empty margins.");
+        return;
+      }
+
+      const sourceX = (selLeft - metrics.offsetX) * metrics.scale;
+      const sourceY = (selTop - metrics.offsetY) * metrics.scale;
+      const sourceWidth = selWidth * metrics.scale;
+      const sourceHeight = selHeight * metrics.scale;
 
       const canvas = document.createElement("canvas");
-      canvas.width = Math.round(rect.width * scaleX);
-      canvas.height = Math.round(rect.height * scaleY);
+      canvas.width = Math.round(sourceWidth);
+      canvas.height = Math.round(sourceHeight);
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("Canvas is not available.");
 
       ctx.drawImage(
         img,
-        rect.x * scaleX,
-        rect.y * scaleY,
-        rect.width * scaleX,
-        rect.height * scaleY,
+        sourceX,
+        sourceY,
+        sourceWidth,
+        sourceHeight,
         0,
         0,
         canvas.width,

@@ -21,6 +21,7 @@ import { parseCsvTable, type CsvTable } from "@/lib/csv";
 export const REQUIRED_COLUMNS = ["name", "sku", "price"] as const;
 
 export const OPTIONAL_COLUMNS = [
+  "supplier_sku",
   "cost_price",
   "unit",
   "allow_decimal",
@@ -74,6 +75,7 @@ const KNOWN_COLUMNS = new Set<string>([
 export interface ProductImportRow {
   name: string;
   sku: string;
+  supplier_sku: string | null;
   price: number;
   cost_price: number;
   unit: string;
@@ -247,9 +249,10 @@ export function planProductImportFromTable(
   const has = (column: string) => table.headers.includes(column);
   const unknownColumns = table.headers.filter((header) => !KNOWN_COLUMNS.has(header));
 
-  const bySku = new Map<string, Product>();
+  const byCode = new Map<string, Product>();
   for (const product of context.products) {
-    if (product.sku) bySku.set(product.sku.toLowerCase(), product);
+    if (product.sku) byCode.set(product.sku.toLowerCase(), product);
+    if (product.supplierSku) byCode.set(product.supplierSku.toLowerCase(), product);
   }
 
   const categoryIdByPath = new Map<string, string>();
@@ -274,7 +277,7 @@ export function planProductImportFromTable(
 
     const name = cell("name");
     const sku = cell("sku");
-    const existing = sku ? bySku.get(sku.toLowerCase()) : undefined;
+    const existing = sku ? byCode.get(sku.toLowerCase()) : undefined;
     const problems: string[] = [];
 
     if (!sku) {
@@ -415,9 +418,12 @@ export function planProductImportFromTable(
       if (!newSupplierNames.includes(supplierName)) newSupplierNames.push(supplierName);
     }
 
+    const supplierSku = given("supplier_sku") ? cell("supplier_sku") : (existing?.supplierSku ?? null);
+
     const values: ProductImportRow = {
       name,
       sku,
+      supplier_sku: supplierSku,
       price: price!,
       cost_price: costPrice,
       unit,
@@ -434,7 +440,14 @@ export function planProductImportFromTable(
     };
 
     const notes = existing
-      ? describeChanges(existing, values, categoryPath)
+      ? [
+          ...describeChanges(existing, values, categoryPath),
+          ...(existing.supplierSku &&
+          sku.toLowerCase() === existing.supplierSku.toLowerCase() &&
+          existing.sku?.toLowerCase() !== sku.toLowerCase()
+            ? ["Matched on supplier SKU."]
+            : []),
+        ]
       : stockMode !== "skip" && stockQuantity !== null
         ? ["New product."]
         : ["New product. Stock starts at zero until you record it in Inventory."];

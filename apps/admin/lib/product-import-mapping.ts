@@ -42,7 +42,7 @@ export const IMPORT_FIELD_META: ImportFieldMeta[] = [
     key: "sku",
     label: "SKU / item code",
     required: true,
-    hint: "Unique code used to match rows to existing products.",
+    hint: "Unique code used to match rows to existing products — internal SKU or supplier code.",
     aliases: ["sku", "itemcode", "item_code", "code", "product_code", "stock_code", "part_number"],
   },
   {
@@ -57,6 +57,20 @@ export const IMPORT_FIELD_META: ImportFieldMeta[] = [
       "retail_price",
       "shelf_price",
       "unit_price",
+    ],
+  },
+  {
+    key: "supplier_sku",
+    label: "Supplier SKU",
+    required: false,
+    hint: "The supplier's item code. Import and photo extract also match on this.",
+    aliases: [
+      "supplier_sku",
+      "supplier_code",
+      "vendor_sku",
+      "vendor_code",
+      "supplier_item_code",
+      "vendor_item_code",
     ],
   },
   {

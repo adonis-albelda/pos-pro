@@ -71,6 +71,7 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Camera,
         blurb: "Read a notebook list into products",
         tone: "accent",
+        featureKey: "product_photo_ai",
       },
       {
         href: "/inventory",

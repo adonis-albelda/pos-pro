@@ -19,6 +19,8 @@ export interface ScannedProductDraft {
   bulkMinQuantity: string;
   /** Set when the API matched an existing catalogue SKU. */
   existingProductId: string | null;
+  /** internal or supplier — how the line matched an existing product. */
+  matchedBy: "internal" | "supplier" | null;
   /** Stock movement already recorded for an existing SKU. */
   stockApplied: boolean;
 }

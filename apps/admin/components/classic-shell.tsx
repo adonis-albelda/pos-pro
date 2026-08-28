@@ -10,7 +10,7 @@ import { LocationSwitcher } from "@/components/location-switcher";
 import { LocationMutationsBanner } from "@/components/location-mutations-banner";
 import { UiModeToggle } from "@/components/ui-mode-toggle";
 import { filterNavGroupsByFeatures, NAV_GROUPS } from "@/lib/nav";
-import { useFeatureFlags } from "@/lib/query/features";
+import { useNavFeatureEnabled } from "@/lib/query/nav-features";
 import type { UiMode } from "@/lib/ui-mode";
 
 /**
@@ -36,7 +36,7 @@ export function ClassicShell({
   const pathname = usePathname();
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const { isEnabled } = useFeatureFlags();
+  const { isEnabled } = useNavFeatureEnabled();
   const navGroups = filterNavGroupsByFeatures(NAV_GROUPS, isEnabled);
 
   useEffect(() => {

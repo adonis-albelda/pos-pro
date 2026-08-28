@@ -29,3 +29,6 @@ supabase/.temp
 # os / editor
 .DS_Store
 *.log
+
+# database backups (superadmin platform)
+.data/

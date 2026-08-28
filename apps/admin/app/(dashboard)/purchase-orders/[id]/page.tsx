@@ -4,7 +4,7 @@ import type { Route } from "next";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Boxes, ListOrdered, Wallet } from "lucide-react";
+import { ArrowLeft, Boxes, FileDown, ListOrdered, Wallet } from "lucide-react";
 import {
   formatMoney,
   formatQuantity,
@@ -19,6 +19,7 @@ import { usePurchaseOrder, usePurchaseOrderMovements } from "@/lib/query/purchas
 import { PO_STATUS_TONE } from "@/lib/purchase-order-status";
 import {
   Badge,
+  ButtonLink,
   Card,
   CardHeader,
   EmptyState,
@@ -111,6 +112,14 @@ export default function PurchaseOrderDetailPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <ButtonLink
+            href={`/api/purchase-orders/${order.id}/pdf`}
+            icon={FileDown}
+            size="sm"
+            download
+          >
+            Generate PDF
+          </ButtonLink>
           {order.status === "draft" ? (
             <UpdateStatusButton id={order.id} status="ordered" label="Mark as ordered" />
           ) : null}
