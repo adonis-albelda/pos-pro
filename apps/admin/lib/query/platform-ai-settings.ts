@@ -10,7 +10,7 @@ export function usePlatformAiSettings() {
   return useQuery({
     queryKey: queryKeys.platformAiSettings.detail(),
     queryFn: () => getPlatformAiSettings(getBrowserApiClient()),
-    staleTime: 30_000,
+    staleTime: 5 * 60_000,
   });
 }
 

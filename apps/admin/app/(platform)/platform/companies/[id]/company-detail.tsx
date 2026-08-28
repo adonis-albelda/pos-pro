@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useState, type FormEvent } from "react";
 import { KeyRound, Lock, Mail, ShieldCheck, UserRound } from "lucide-react";
 import type { InvoiceNumberMode, User, AiPlanId, AiSubscriptionPlan } from "@double-a/shared-types";
 import {
@@ -15,37 +15,47 @@ import {
   Th,
 } from "@/components/ui";
 import { PasswordInput } from "@/components/password-input";
-import { EMPTY_FORM_STATE } from "@/lib/form-state";
+import { isValidPin } from "@double-a/shared-types";
 import {
-  useInvalidateCompanyStats,
-  useInvalidateCompanyUsers,
+  useAddCompanyAdmin,
+  useOpenCompany,
+  useResetCompanyUserPassword,
+  useResetCompanyUserPin,
   useSetCompanyActive,
   useSetCompanyAiPlan,
   useSetCompanyInvoiceMode,
+  useSetCompanyUserDemoFlag,
 } from "@/lib/query/companies";
-import {
-  addCompanyAdmin,
-  openCompany,
-  resetCompanyUserPassword,
-  resetCompanyUserPin,
-  setCompanyUserDemoFlag,
-} from "../../actions";
 
 export function AddAdminForm({ companyId }: { companyId: string }) {
-  const [state, action, pending] = useActionState(addCompanyAdmin, EMPTY_FORM_STATE);
-  const invalidateUsers = useInvalidateCompanyUsers(companyId);
-  const invalidateStats = useInvalidateCompanyStats();
+  const mutation = useAddCompanyAdmin(companyId);
+  const [success, setSuccess] = useState(false);
 
-  useEffect(() => {
-    if (state.ok) {
-      invalidateUsers();
-      invalidateStats();
-    }
-  }, [state, invalidateUsers, invalidateStats]);
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSuccess(false);
+    const form = new FormData(event.currentTarget);
+    const name = String(form.get("name") ?? "").trim();
+    const email = String(form.get("email") ?? "").trim();
+    const password = String(form.get("password") ?? "");
+    const pin = String(form.get("pin") ?? "").trim();
+
+    if (!name || !email || password.length < 8) return;
+    if (pin && !isValidPin(pin)) return;
+
+    mutation.mutate(
+      { name, email, password, pin },
+      {
+        onSuccess: () => {
+          setSuccess(true);
+          event.currentTarget.reset();
+        },
+      },
+    );
+  }
 
   return (
-    <form action={action} className="grid gap-4 sm:grid-cols-2">
-      <input type="hidden" name="company_id" value={companyId} />
+    <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
       <Field label="Name">
         <Input icon={UserRound} name="name" required />
       </Field>
@@ -71,16 +81,18 @@ export function AddAdminForm({ companyId }: { companyId: string }) {
         />
       </Field>
       <div className="flex items-end">
-        <Button type="submit" loading={pending}>
+        <Button type="submit" loading={mutation.isPending}>
           Add admin
         </Button>
       </div>
-      {state.error ? (
+      {mutation.isError ? (
         <div className="sm:col-span-2">
-          <ErrorNote>{state.error}</ErrorNote>
+          <ErrorNote>
+            {mutation.error instanceof Error ? mutation.error.message : "Could not add admin."}
+          </ErrorNote>
         </div>
       ) : null}
-      {state.ok ? (
+      {success ? (
         <div className="sm:col-span-2">
           <SuccessNote>Admin created.</SuccessNote>
         </div>
@@ -90,15 +102,22 @@ export function AddAdminForm({ companyId }: { companyId: string }) {
 }
 
 function ResetPasswordForm({ user, companyId }: { user: User; companyId: string }) {
-  const [state, action, pending] = useActionState(
-    resetCompanyUserPassword,
-    EMPTY_FORM_STATE,
-  );
+  const mutation = useResetCompanyUserPassword();
+  const [success, setSuccess] = useState(false);
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSuccess(false);
+    const password = String(new FormData(event.currentTarget).get("password") ?? "");
+    if (password.length < 8) return;
+    mutation.mutate(
+      { userId: user.id, password },
+      { onSuccess: () => setSuccess(true) },
+    );
+  }
 
   return (
-    <form action={action} className="flex flex-col gap-2 sm:flex-row sm:items-end">
-      <input type="hidden" name="id" value={user.id} />
-      <input type="hidden" name="company_id" value={companyId} />
+    <form onSubmit={submit} className="flex flex-col gap-2 sm:flex-row sm:items-end">
       <Field label={`Password for ${user.name}`}>
         <PasswordInput
           icon={Lock}
@@ -108,25 +127,33 @@ function ResetPasswordForm({ user, companyId }: { user: User; companyId: string 
           required
         />
       </Field>
-      <Button type="submit" loading={pending} icon={KeyRound} size="sm">
+      <Button type="submit" loading={mutation.isPending} icon={KeyRound} size="sm">
         Set password
       </Button>
-      {state.error ? <ErrorNote>{state.error}</ErrorNote> : null}
-      {state.ok ? <SuccessNote>Password updated.</SuccessNote> : null}
+      {mutation.isError ? (
+        <ErrorNote>
+          {mutation.error instanceof Error ? mutation.error.message : "Could not reset password."}
+        </ErrorNote>
+      ) : null}
+      {success ? <SuccessNote>Password updated.</SuccessNote> : null}
     </form>
   );
 }
 
-function ResetPinForm({ user, companyId }: { user: User; companyId: string }) {
-  const [state, action, pending] = useActionState(
-    resetCompanyUserPin,
-    EMPTY_FORM_STATE,
-  );
+function ResetPinForm({ user }: { user: User; companyId: string }) {
+  const mutation = useResetCompanyUserPin();
+  const [success, setSuccess] = useState(false);
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSuccess(false);
+    const pin = String(new FormData(event.currentTarget).get("pin") ?? "").trim();
+    if (!isValidPin(pin)) return;
+    mutation.mutate({ userId: user.id, pin }, { onSuccess: () => setSuccess(true) });
+  }
 
   return (
-    <form action={action} className="flex flex-col gap-2 sm:flex-row sm:items-end">
-      <input type="hidden" name="id" value={user.id} />
-      <input type="hidden" name="company_id" value={companyId} />
+    <form onSubmit={submit} className="flex flex-col gap-2 sm:flex-row sm:items-end">
       <Field label={`PIN for ${user.name}`}>
         <Input
           icon={KeyRound}
@@ -137,39 +164,40 @@ function ResetPinForm({ user, companyId }: { user: User; companyId: string }) {
           required
         />
       </Field>
-      <Button type="submit" loading={pending} icon={KeyRound} size="sm">
+      <Button type="submit" loading={mutation.isPending} icon={KeyRound} size="sm">
         Set PIN
       </Button>
-      {state.error ? <ErrorNote>{state.error}</ErrorNote> : null}
-      {state.ok ? <SuccessNote>PIN updated.</SuccessNote> : null}
+      {mutation.isError ? (
+        <ErrorNote>
+          {mutation.error instanceof Error ? mutation.error.message : "Could not reset PIN."}
+        </ErrorNote>
+      ) : null}
+      {success ? <SuccessNote>PIN updated.</SuccessNote> : null}
     </form>
   );
 }
 
 function DemoFlagForm({ user, companyId }: { user: User; companyId: string }) {
-  const [state, action, pending] = useActionState(setCompanyUserDemoFlag, EMPTY_FORM_STATE);
-  const invalidateUsers = useInvalidateCompanyUsers(companyId);
-
-  useEffect(() => {
-    if (state.ok) invalidateUsers();
-  }, [state, invalidateUsers]);
+  const mutation = useSetCompanyUserDemoFlag(companyId);
 
   return (
-    <form action={action} className="flex flex-col gap-1">
-      <input type="hidden" name="id" value={user.id} />
-      <input type="hidden" name="company_id" value={companyId} />
-      <input type="hidden" name="is_demo" value={user.isDemo ? "false" : "true"} />
+    <div className="flex flex-col gap-1">
       <Button
-        type="submit"
+        type="button"
         variant={user.isDemo ? "secondary" : "ghost"}
         size="sm"
-        loading={pending}
+        loading={mutation.isPending}
         icon={ShieldCheck}
+        onClick={() => mutation.mutate({ userId: user.id, isDemo: !user.isDemo })}
       >
         {user.isDemo ? "Unflag demo" : "Flag as demo"}
       </Button>
-      {state.error ? <ErrorNote>{state.error}</ErrorNote> : null}
-    </form>
+      {mutation.isError ? (
+        <ErrorNote>
+          {mutation.error instanceof Error ? mutation.error.message : "Could not update demo flag."}
+        </ErrorNote>
+      ) : null}
+    </div>
   );
 }
 
@@ -351,6 +379,16 @@ function AppPlanSelector({
   );
 }
 
+function OpenCompanyButton({ companyId }: { companyId: string }) {
+  const mutation = useOpenCompany();
+
+  return (
+    <Button type="button" loading={mutation.isPending} onClick={() => mutation.mutate(companyId)}>
+      Open company
+    </Button>
+  );
+}
+
 export function CompanyControls({
   companyId,
   isActive,
@@ -367,10 +405,7 @@ export function CompanyControls({
   return (
     <div className="space-y-3">
       <div className="flex flex-col gap-2 sm:flex-row">
-        <form action={openCompany}>
-          <input type="hidden" name="company_id" value={companyId} />
-          <Button type="submit">Open company</Button>
-        </form>
+        <OpenCompanyButton companyId={companyId} />
         <ToggleActiveButton companyId={companyId} isActive={isActive} />
       </div>
       <AppPlanSelector companyId={companyId} aiPlanId={aiPlanId} plans={plans} />

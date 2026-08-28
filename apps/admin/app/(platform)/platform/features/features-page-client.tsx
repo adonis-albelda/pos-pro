@@ -1,11 +1,14 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import type { FeatureFlagAdmin } from "@double-a/api-client/queries";
 import { Badge, Button, Card, CardHeader, ErrorNote, Field, Select } from "@/components/ui";
-import { useFeatureFlagsAdmin, useInvalidateFeatureFlags } from "@/lib/query/features";
+import {
+  useFeatureFlagsAdmin,
+  useSetCompanyFeatureOverride,
+  useUpdateFeatureFlag,
+} from "@/lib/query/features";
 import { useCompanyStats } from "@/lib/query/companies";
-import { setCompanyFeatureOverrideAction, updateFeatureFlagAction } from "./actions";
 
 export function FeaturesPageClient() {
   const flagsQuery = useFeatureFlagsAdmin();
@@ -39,37 +42,38 @@ function FeatureFlagCard({
   flag: FeatureFlagAdmin;
   companies: { id: string; name: string }[];
 }) {
-  const invalidate = useInvalidateFeatureFlags();
-  const [pending, startTransition] = useTransition();
+  const updateFlag = useUpdateFeatureFlag();
+  const setOverride = useSetCompanyFeatureOverride();
   const [error, setError] = useState<string | null>(null);
   const [companyId, setCompanyId] = useState("");
   const [companyEnabled, setCompanyEnabled] = useState<"true" | "false">("false");
 
+  const pending = updateFlag.isPending || setOverride.isPending;
   const overriddenIds = new Set(flag.overrides.map((o) => o.companyId));
   const pickable = companies.filter((c) => !overriddenIds.has(c.id));
 
   function toggleGlobal() {
     setError(null);
-    startTransition(async () => {
-      const result = await updateFeatureFlagAction(flag.key, !flag.enabled);
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
-      invalidate();
-    });
+    updateFlag.mutate(
+      { key: flag.key, enabled: !flag.enabled },
+      {
+        onError: (saveError) => {
+          setError(saveError instanceof Error ? saveError.message : "Could not update feature.");
+        },
+      },
+    );
   }
 
   function clearOverride(overrideCompanyId: string) {
     setError(null);
-    startTransition(async () => {
-      const result = await setCompanyFeatureOverrideAction(overrideCompanyId, flag.key, null);
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
-      invalidate();
-    });
+    setOverride.mutate(
+      { companyId: overrideCompanyId, key: flag.key, enabled: null },
+      {
+        onError: (saveError) => {
+          setError(saveError instanceof Error ? saveError.message : "Could not clear override.");
+        },
+      },
+    );
   }
 
   function addOverride() {
@@ -78,19 +82,15 @@ function FeatureFlagCard({
       return;
     }
     setError(null);
-    startTransition(async () => {
-      const result = await setCompanyFeatureOverrideAction(
-        companyId,
-        flag.key,
-        companyEnabled === "true",
-      );
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
-      setCompanyId("");
-      invalidate();
-    });
+    setOverride.mutate(
+      { companyId, key: flag.key, enabled: companyEnabled === "true" },
+      {
+        onSuccess: () => setCompanyId(""),
+        onError: (saveError) => {
+          setError(saveError instanceof Error ? saveError.message : "Could not add override.");
+        },
+      },
+    );
   }
 
   return (

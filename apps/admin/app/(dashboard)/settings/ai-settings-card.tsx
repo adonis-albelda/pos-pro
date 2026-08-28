@@ -1,13 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { Sparkles } from "lucide-react";
 import type { CompanyAiSettings } from "@double-a/api-client/queries";
 import { formatMoney, PESO_SIGN } from "@double-a/shared-types";
 import { Badge, Button, Card, CardHeader, ErrorNote } from "@/components/ui";
 import { Dialog } from "@/components/overlay";
-import { useInvalidateAiSettings } from "@/lib/query/ai-settings";
-import { saveAiSettings } from "./ai-actions";
+import { useUpdateCompanyAiSettings } from "@/lib/query/ai-settings";
 
 function UsageMeter({
   label,
@@ -79,8 +78,7 @@ function AiToggle({
 }
 
 export function AiSettingsCard({ settings }: { settings: CompanyAiSettings }) {
-  const invalidate = useInvalidateAiSettings();
-  const [pending, startTransition] = useTransition();
+  const mutation = useUpdateCompanyAiSettings();
   const [error, setError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -98,14 +96,11 @@ export function AiSettingsCard({ settings }: { settings: CompanyAiSettings }) {
 
   function applyEnabled(next: boolean) {
     setError(null);
-    startTransition(async () => {
-      const result = await saveAiSettings(next);
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
-      invalidate();
-      setConfirmOpen(false);
+    mutation.mutate(next, {
+      onSuccess: () => setConfirmOpen(false),
+      onError: (saveError) => {
+        setError(saveError instanceof Error ? saveError.message : "Could not save AI settings.");
+      },
     });
   }
 
@@ -135,7 +130,7 @@ export function AiSettingsCard({ settings }: { settings: CompanyAiSettings }) {
               )}
               <AiToggle
                 enabled={settings.enabled}
-                disabled={pending || settings.bypassesLimits}
+                disabled={mutation.isPending || settings.bypassesLimits}
                 onChange={onToggle}
               />
             </div>
@@ -197,7 +192,7 @@ export function AiSettingsCard({ settings }: { settings: CompanyAiSettings }) {
 
       <Dialog
         open={confirmOpen}
-        onClose={() => !pending && setConfirmOpen(false)}
+        onClose={() => !mutation.isPending && setConfirmOpen(false)}
         title="Turn on paid photo reads?"
         description="Your free weekly allowance is already available. This only enables paid overage requests."
       >
@@ -237,12 +232,12 @@ export function AiSettingsCard({ settings }: { settings: CompanyAiSettings }) {
             <Button
               type="button"
               variant="secondary"
-              disabled={pending}
+              disabled={mutation.isPending}
               onClick={() => setConfirmOpen(false)}
             >
               Cancel
             </Button>
-            <Button type="button" loading={pending} onClick={() => applyEnabled(true)}>
+            <Button type="button" loading={mutation.isPending} onClick={() => applyEnabled(true)}>
               Enable paid overage
             </Button>
           </div>

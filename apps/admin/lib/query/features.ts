@@ -1,7 +1,13 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { getFeatureFlags, listFeatureFlagsAdmin } from "@double-a/api-client/queries";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  getFeatureFlags,
+  listFeatureFlagsAdmin,
+  setCompanyFeatureOverride,
+  updateFeatureFlag,
+  type FeatureFlagAdmin,
+} from "@double-a/api-client/queries";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 import { queryKeys } from "./keys";
 
@@ -34,8 +40,42 @@ export function useFeatureFlagsAdmin() {
   });
 }
 
-/** Call after updateFeatureFlagAction/setCompanyFeatureOverrideAction (Server Actions) succeed — revalidatePath doesn't touch this cache. */
+/** Call after feature-flag mutations succeed. */
 export function useInvalidateFeatureFlags() {
   const queryClient = useQueryClient();
   return () => queryClient.invalidateQueries({ queryKey: queryKeys.featureFlags.all });
+}
+
+export function useUpdateFeatureFlag() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ key, enabled }: { key: string; enabled: boolean }) =>
+      updateFeatureFlag(getBrowserApiClient(), key, enabled),
+    onSuccess: (_, { key, enabled }) => {
+      queryClient.setQueryData<FeatureFlagAdmin[]>(queryKeys.featureFlags.admin(), (current) =>
+        current?.map((flag) => (flag.key === key ? { ...flag, enabled } : flag)),
+      );
+      queryClient.setQueryData<Record<string, boolean>>(queryKeys.featureFlags.mine(), (current) =>
+        current ? { ...current, [key]: enabled } : current,
+      );
+    },
+  });
+}
+
+export function useSetCompanyFeatureOverride() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      companyId,
+      key,
+      enabled,
+    }: {
+      companyId: string;
+      key: string;
+      enabled: boolean | null;
+    }) => setCompanyFeatureOverride(getBrowserApiClient(), companyId, key, enabled),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.featureFlags.admin() });
+    },
+  });
 }

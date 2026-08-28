@@ -1,16 +1,25 @@
 "use client";
 
 import { useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import type { AiPlanId, CompanyStats, InvoiceNumberMode } from "@double-a/shared-types";
 import {
   companyStats,
+  createCompany as apiCreateCompany,
+  createUser,
   listCompanyUsers,
   listDemoAccessCodes,
+  listUsers,
+  openCompany as apiOpenCompany,
+  resetUserPassword,
+  resetUserPin,
   setCompanyInvoiceMode,
+  setUserDemoFlag,
   updateCompany,
 } from "@double-a/api-client/queries";
-import { getBrowserApiClient } from "@/lib/api/browser-client";
+import { createScopedClient } from "@/lib/api/client";
+import { exitActingSession, getBrowserApiClient, startActingSession } from "@/lib/api/browser-client";
 import { queryKeys } from "./keys";
 
 function patchCompanyStatsRow(
@@ -25,15 +34,8 @@ function patchCompanyStatsRow(
 }
 
 /**
- * Superadmin-only (CLAUDE.md §15) platform read — every company's row, no
- * `company_id` scoping. `refetchOnMount: "always"` overrides the app's 30s
- * default staleTime deliberately: `createCompany` (Server Action) redirects
- * back to /platform on success, and a Server Action calling `redirect()`
- * never gives client code a reliable place to call an invalidate hook (the
- * awaited call throws the NEXT_REDIRECT digest instead of resolving with a
- * success state) — see lib/query/companies.ts's caller-side notes in the
- * platform pages. Always refetching on mount is the simple, correct fix:
- * this list is small and infrequently visited.
+ * Superadmin-only platform read — every company's row. Refetch on mount so a
+ * fresh visit after create-company picks up the new row without a manual refresh.
  */
 export function useCompanyStats() {
   return useQuery({
@@ -64,7 +66,7 @@ export function useCompanyUsers(companyId: string) {
   });
 }
 
-/** Call after add/reset company-user Server Actions succeed. */
+/** Call after company-user mutations succeed. */
 export function useInvalidateCompanyUsers(companyId: string) {
   const queryClient = useQueryClient();
   return useCallback(
@@ -102,6 +104,120 @@ export function useSetCompanyInvoiceMode() {
       setCompanyInvoiceMode(getBrowserApiClient(), companyId, mode),
     onSuccess: (mode, { companyId }) => {
       patchCompanyStatsRow(queryClient, companyId, { invoiceNumberMode: mode });
+    },
+  });
+}
+
+async function bootstrapCompanyAdmin(companyId: string, password: string, pin: string): Promise<void> {
+  const opened = await apiOpenCompany(getBrowserApiClient(), companyId);
+  const scoped = createScopedClient(opened.token);
+  const users = await listUsers(scoped, { includeInactive: true });
+  const admin = users.find((user) => user.role === "admin");
+  if (!admin) {
+    throw new Error("Company was created but its admin user could not be found to finish setup.");
+  }
+  await resetUserPassword(scoped, admin.id, password);
+  await resetUserPin(scoped, admin.id, pin);
+}
+
+export function useCreateCompany() {
+  const queryClient = useQueryClient();
+  const router = useRouter();
+  return useMutation({
+    mutationFn: async (input: {
+      name: string;
+      adminName: string;
+      adminEmail: string;
+      adminPassword: string;
+      adminPin: string;
+    }) => {
+      const company = await apiCreateCompany(getBrowserApiClient(), {
+        name: input.name,
+        adminName: input.adminName,
+        adminEmail: input.adminEmail,
+        adminPassword: input.adminPassword,
+      });
+      await bootstrapCompanyAdmin(company.id, input.adminPassword, input.adminPin);
+      return company;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.companies.stats() });
+      router.push("/platform");
+    },
+  });
+}
+
+export function useOpenCompany() {
+  const router = useRouter();
+  return useMutation({
+    mutationFn: (companyId: string) => apiOpenCompany(getBrowserApiClient(), companyId),
+    onSuccess: (opened) => {
+      startActingSession(opened.token, { id: opened.company.id, name: opened.company.name });
+      router.push("/");
+    },
+  });
+}
+
+export function useExitCompany() {
+  const router = useRouter();
+  return useMutation({
+    mutationFn: async () => {
+      exitActingSession();
+    },
+    onSuccess: () => {
+      router.push("/platform");
+    },
+  });
+}
+
+export function useAddCompanyAdmin(companyId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      name: string;
+      email: string;
+      password: string;
+      pin: string;
+    }) => {
+      const opened = await apiOpenCompany(getBrowserApiClient(), companyId);
+      const scoped = createScopedClient(opened.token);
+      const admin = await createUser(scoped, {
+        name: input.name,
+        email: input.email,
+        role: "admin",
+        password: input.password,
+      });
+      await resetUserPassword(scoped, admin.id, input.password);
+      if (input.pin) await resetUserPin(scoped, admin.id, input.pin);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.companies.users(companyId) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.companies.stats() });
+    },
+  });
+}
+
+export function useResetCompanyUserPassword() {
+  return useMutation({
+    mutationFn: ({ userId, password }: { userId: string; password: string }) =>
+      resetUserPassword(getBrowserApiClient(), userId, password),
+  });
+}
+
+export function useResetCompanyUserPin() {
+  return useMutation({
+    mutationFn: ({ userId, pin }: { userId: string; pin: string }) =>
+      resetUserPin(getBrowserApiClient(), userId, pin),
+  });
+}
+
+export function useSetCompanyUserDemoFlag(companyId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, isDemo }: { userId: string; isDemo: boolean }) =>
+      setUserDemoFlag(getBrowserApiClient(), userId, isDemo),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.companies.users(companyId) });
     },
   });
 }

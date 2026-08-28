@@ -88,3 +88,21 @@ export function endBrowserSession(): void {
   deleteCookie(ACTING_COMPANY_COOKIE);
   deleteCookie(SESSION_EXPIRES_AT_COOKIE);
 }
+
+export interface ActingCompany {
+  id: string;
+  name: string;
+}
+
+/** Superadmin "Open company" — swap SESSION to scoped token, keep BASE_SESSION for exit. */
+export function startActingSession(token: string, company: ActingCompany): void {
+  writeCookie(SESSION_COOKIE, token, ONE_YEAR_SECONDS);
+  writeCookie(ACTING_COMPANY_COOKIE, JSON.stringify(company), ONE_YEAR_SECONDS);
+}
+
+/** Restore superadmin's own token — no API call. */
+export function exitActingSession(): void {
+  const base = readCookie(BASE_SESSION_COOKIE);
+  if (base) writeCookie(SESSION_COOKIE, base, ONE_YEAR_SECONDS);
+  deleteCookie(ACTING_COMPANY_COOKIE);
+}

@@ -1,17 +1,62 @@
 "use client";
 
-import { useActionState } from "react";
+import { useState, type FormEvent } from "react";
 import { Building2, KeyRound, Lock, Mail, UserRound } from "lucide-react";
+import { isValidPin } from "@double-a/shared-types";
 import { Button, ErrorNote, Field, Input } from "@/components/ui";
 import { PasswordInput } from "@/components/password-input";
-import { EMPTY_FORM_STATE } from "@/lib/form-state";
-import { createCompany } from "../../actions";
+import { useCreateCompany } from "@/lib/query/companies";
 
 export function CreateCompanyForm() {
-  const [state, action, pending] = useActionState(createCompany, EMPTY_FORM_STATE);
+  const mutation = useCreateCompany();
+  const [error, setError] = useState<string | null>(null);
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+
+    const form = new FormData(event.currentTarget);
+    const name = String(form.get("name") ?? "").trim();
+    const adminName = String(form.get("admin_name") ?? "").trim();
+    const adminEmail = String(form.get("admin_email") ?? "").trim();
+    const adminPassword = String(form.get("admin_password") ?? "");
+    const adminPin = String(form.get("admin_pin") ?? "").trim();
+
+    if (!name) {
+      setError("Company name is required.");
+      return;
+    }
+    if (!adminName) {
+      setError("Admin name is required.");
+      return;
+    }
+    if (!adminEmail) {
+      setError("Admin email is required.");
+      return;
+    }
+    if (adminPassword.length < 8) {
+      setError("Admin password must be at least 8 characters.");
+      return;
+    }
+    if (!isValidPin(adminPin)) {
+      setError(
+        "Admin PIN must be 4 to 6 digits. The POS unlocks with this PIN, not the dashboard password.",
+      );
+      return;
+    }
+
+    mutation.mutate(
+      { name, adminName, adminEmail, adminPassword, adminPin },
+      {
+        onError: (saveError) => {
+          setError(saveError instanceof Error ? saveError.message : "Could not create company.");
+        },
+      },
+    );
+  }
 
   return (
-    <form action={action} className="space-y-5">
+    <form onSubmit={submit} className="space-y-5">
       <Field label="Company name">
         <Input icon={Building2} name="name" required />
       </Field>
@@ -43,8 +88,8 @@ export function CreateCompanyForm() {
           required
         />
       </Field>
-      {state.error ? <ErrorNote>{state.error}</ErrorNote> : null}
-      <Button type="submit" loading={pending}>
+      {error ? <ErrorNote>{error}</ErrorNote> : null}
+      <Button type="submit" loading={mutation.isPending}>
         Create company
       </Button>
     </form>

@@ -1,7 +1,7 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { listDatabaseBackups, type DatabaseBackup } from "@double-a/api-client/queries";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { createDatabaseBackup, listDatabaseBackups, type DatabaseBackup } from "@double-a/api-client/queries";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 import { queryKeys } from "./keys";
 
@@ -21,4 +21,14 @@ export function useDatabaseBackups() {
 export function useInvalidateDatabaseBackups() {
   const queryClient = useQueryClient();
   return () => queryClient.invalidateQueries({ queryKey: queryKeys.backups.all });
+}
+
+export function useTriggerDatabaseBackup() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => createDatabaseBackup(getBrowserApiClient()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.backups.list() });
+    },
+  });
 }

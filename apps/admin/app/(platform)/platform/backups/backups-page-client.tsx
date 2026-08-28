@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { Database, Download, RefreshCw } from "lucide-react";
 import { downloadDatabaseBackup, type DatabaseBackup } from "@double-a/api-client/queries";
 import {
@@ -15,8 +15,7 @@ import {
   Th,
 } from "@/components/ui";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
-import { useDatabaseBackups, useInvalidateDatabaseBackups } from "@/lib/query/backups";
-import { triggerDatabaseBackupAction } from "./actions";
+import { useDatabaseBackups, useTriggerDatabaseBackup } from "@/lib/query/backups";
 
 function formatBytes(bytes: number): string {
   if (bytes <= 0) return "—";
@@ -57,8 +56,7 @@ function statusLabel(status: DatabaseBackup["status"]) {
 
 export function BackupsPageClient() {
   const backupsQuery = useDatabaseBackups();
-  const invalidate = useInvalidateDatabaseBackups();
-  const [pending, startTransition] = useTransition();
+  const triggerBackup = useTriggerDatabaseBackup();
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,13 +65,10 @@ export function BackupsPageClient() {
 
   function createBackup() {
     setError(null);
-    startTransition(async () => {
-      const result = await triggerDatabaseBackupAction();
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
-      invalidate();
+    triggerBackup.mutate(undefined, {
+      onError: (saveError) => {
+        setError(saveError instanceof Error ? saveError.message : "Could not start backup.");
+      },
     });
   }
 
@@ -111,7 +106,7 @@ export function BackupsPageClient() {
                 size="sm"
                 icon={RefreshCw}
                 variant="secondary"
-                onClick={() => invalidate()}
+                onClick={() => backupsQuery.refetch()}
                 loading={backupsQuery.isFetching && !backupsQuery.isPending}
               >
                 Refresh
@@ -121,7 +116,7 @@ export function BackupsPageClient() {
                 size="sm"
                 icon={Database}
                 onClick={createBackup}
-                loading={pending || running}
+                loading={triggerBackup.isPending || running}
               >
                 Backup now
               </Button>
