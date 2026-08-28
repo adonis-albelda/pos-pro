@@ -16,5 +16,6 @@ export * from "./purchase-orders";
 export * from "./features";
 export * from "./backups";
 export * from "./ai-settings";
+export * from "./platform-ai-settings";
 export * from "./push";
 export * from "./locations";

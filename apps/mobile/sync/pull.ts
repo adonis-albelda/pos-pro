@@ -1,5 +1,6 @@
 import type { PullResult } from "@double-a/shared-types";
-import { countProducts, pullSync } from "@double-a/api-client/queries";
+import { countProducts, getCompanyAiSettings, pullSync } from "@double-a/api-client/queries";
+import { saveLocalAiSettings } from "@/db/ai-settings";
 import { replaceCategories } from "@/db/categories";
 import { replaceSyncedCustomers } from "@/db/customers";
 import { replaceFeatureFlags } from "@/db/feature-flags";
@@ -84,6 +85,17 @@ export async function pull(
   await replaceCategories(result.categories);
   await replaceSyncedCustomers(result.customers);
   await replaceFeatureFlags(result.featureFlags);
+
+  try {
+    const aiSettings = await getCompanyAiSettings(client);
+    await saveLocalAiSettings({
+      platformAvailable: aiSettings.platformAvailable,
+      enabled: aiSettings.enabled,
+    });
+  } catch (error: unknown) {
+    console.warn("AI settings pull failed — keeping last snapshot", error);
+  }
+
   if (result.storeSettings) await saveLocalStoreSettings(result.storeSettings);
   if (result.receiptLayout) await saveLocalReceiptLayout(result.receiptLayout);
 

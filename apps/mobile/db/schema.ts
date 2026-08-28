@@ -300,6 +300,21 @@ ALTER TABLE products ADD COLUMN description TEXT;
 ALTER TABLE products ADD COLUMN replenish_quantity INTEGER NOT NULL DEFAULT 0;
 `;
 
+/**
+ * v15: shop AI opt-in snapshot — replaced on every pull, same pattern as
+ * store_settings. POS only needs platform_available + enabled for the search
+ * bar icon; quotas stay server-side.
+ */
+const V15_AI_SETTINGS = `
+CREATE TABLE IF NOT EXISTS ai_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  platform_available INTEGER NOT NULL DEFAULT 0,
+  enabled INTEGER NOT NULL DEFAULT 0
+);
+
+INSERT OR IGNORE INTO ai_settings (id) VALUES (1);
+`;
+
 /** Ordered, append-only. Never edit a step that has shipped. */
 export const MIGRATIONS: Migration[] = [
   { version: 1, sql: V1_INITIAL },
@@ -316,6 +331,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 12, sql: V12_INVOICE_NUMBERS },
   { version: 13, sql: V13_SALE_LOCATION },
   { version: 14, sql: V14_PRODUCT_NOTES },
+  { version: 15, sql: V15_AI_SETTINGS },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.reduce(

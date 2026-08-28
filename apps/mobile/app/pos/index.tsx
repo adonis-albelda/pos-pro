@@ -35,6 +35,7 @@ import {
   ScanBarcode,
   Search,
   ShoppingCart,
+  Sparkles,
   Smartphone,
   Tag,
   Trash2,
@@ -86,6 +87,7 @@ import {
   type CartDraft,
 } from "@/lib/cart-draft";
 import { getDeviceId } from "@/lib/device";
+import { useAiEnabled } from "@/lib/ai-settings";
 import { useFeatureFlags } from "@/lib/features";
 import { useLayout } from "@/lib/layout";
 import { useSession } from "@/lib/session";
@@ -155,6 +157,7 @@ export default function SellScreen() {
   const { cashier } = useSession();
   const { refresh, autoPush, dataVersion } = useSync();
   const { isEnabled } = useFeatureFlags();
+  const aiEnabled = useAiEnabled();
 
   // A phone cannot hold a grid and a cart side by side, so below the compact
   // breakpoint the cart moves behind a summary bar the cashier taps to pay.
@@ -840,6 +843,15 @@ export default function SellScreen() {
             >
               <ScanBarcode size={20} color={color.onPrimary} strokeWidth={2} />
             </Pressable>
+          ) : null}
+          {aiEnabled ? (
+            <View
+              accessibilityRole="image"
+              accessibilityLabel="AI search enabled for this shop"
+              style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}
+            >
+              <Sparkles size={20} color={color.onPrimary} strokeWidth={2} />
+            </View>
           ) : null}
         </View>
 

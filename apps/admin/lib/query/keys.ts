@@ -112,6 +112,10 @@ export const queryKeys = {
     all: ["ai-settings"] as const,
     detail: () => ["ai-settings", "detail"] as const,
   },
+  platformAiSettings: {
+    all: ["platform-ai-settings"] as const,
+    detail: () => ["platform-ai-settings", "detail"] as const,
+  },
   backups: {
     all: ["platform-backups"] as const,
     list: () => ["platform-backups", "list"] as const,
