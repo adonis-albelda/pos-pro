@@ -50,15 +50,19 @@ function lineToDraft(
   return {
     clientId: randomUUID(),
     name: line.name,
+    description: line.description ?? "",
     sku: line.sku ?? "",
     barcode: line.barcode ?? "",
     price: line.price !== null ? String(line.price) : "",
     costPrice: line.costPrice !== null ? String(line.costPrice) : "",
+    quantity: line.quantity !== null ? String(line.quantity) : "",
     categoryId: matchCategoryId(`${line.name} ${line.sku ?? ""}`, categories),
     unit: isProductUnit(line.unit) ? line.unit : "pc",
     reorderPoint: "5",
     bulkPrice: "",
     bulkMinQuantity: "",
+    existingProductId: line.existingProductId,
+    stockApplied: line.stockApplied,
   };
 }
 
@@ -74,6 +78,7 @@ function draftToInput(draft: ScannedProductDraft) {
     categoryId: draft.categoryId.trim() || null,
     unit: draft.unit.trim() || "pc",
     barcode: draft.barcode.trim() || null,
+    description: draft.description.trim() || null,
     reorderPoint: Number(draft.reorderPoint || 0),
     bulkPrice: optionalNumber(draft.bulkPrice),
     bulkMinQuantity: optionalNumber(draft.bulkMinQuantity),
@@ -81,6 +86,10 @@ function draftToInput(draft: ScannedProductDraft) {
 }
 
 async function insertDraft(draft: ScannedProductDraft): Promise<string | null> {
+  if (draft.stockApplied) {
+    return "Stock was already recorded for this existing SKU.";
+  }
+
   const input = draftToInput(draft);
   const validation = validateProductInput(input);
   if (!validation.ok) return validation.errors.join(" ");
@@ -95,6 +104,7 @@ async function insertDraft(draft: ScannedProductDraft): Promise<string | null> {
       categoryId: input.categoryId,
       unit: input.unit,
       barcode: input.barcode,
+      description: input.description,
       reorderPoint: input.reorderPoint,
       bulkPrice: input.bulkPrice,
       bulkMinQuantity: input.bulkMinQuantity,
@@ -107,11 +117,9 @@ async function insertDraft(draft: ScannedProductDraft): Promise<string | null> {
 }
 
 /**
- * Reads product lines from a notebook photo. OCR and line-parsing both run
- * on the Laravel API (ExtractProductsFromPhotoAction) — this just turns what
- * comes back into editable drafts, matching each line to a category from the
- * tenant's own tree. Stock is never extracted — opening stock belongs on
- * Inventory.
+ * Reads product lines from a notebook photo. Vision extraction runs on the
+ * Laravel API (ProductPhotoExtractor via Laravel AI / OpenAI). Existing SKUs with a
+ * quantity get a restock movement server-side; new lines become editable drafts.
  */
 export async function extractProductsFromImage(
   formData: FormData,
@@ -181,6 +189,10 @@ export async function saveAllScannedProducts(
   let saved = 0;
 
   for (const draft of drafts) {
+    if (draft.stockApplied) {
+      saved += 1;
+      continue;
+    }
     const error = await insertDraft(draft);
     if (error) {
       failures.push({ clientId: draft.clientId, error });

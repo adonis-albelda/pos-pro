@@ -1,22 +1,7 @@
 import type { FormState } from "@/lib/form-state";
-import type { ImportPlan } from "@/lib/product-import";
+import type { ColumnMapping } from "@/lib/product-import-mapping";
+import type { ImportPlan, ProductStockMode } from "@/lib/product-import";
 
-/**
- * An import is two steps: read the file and show what it would do, then write
- * it. The file itself is carried between them so the confirm step re-reads the
- * very same rows rather than trusting a summary the browser sent back.
- *
- * Lives outside actions.ts because a "use server" module may only export
- * async functions.
- */
-
-/**
- * A row that passed the plan's own validation (see `ImportRowPlan`) but
- * failed on the actual write to the API — a real possibility now that each
- * accepted row is its own `createProduct`/`updateProduct` call instead of
- * one atomic upsert. Distinct from `skipped`, which counts rows rejected
- * before any write was attempted.
- */
 export interface ImportRowFailure {
   line: number;
   sku: string;
@@ -26,9 +11,21 @@ export interface ImportRowFailure {
 export interface ImportState extends FormState {
   csv: string;
   plan: ImportPlan | null;
+  sourceHeaders: string[];
+  mapping: ColumnMapping | null;
+  sampleRow: Record<string, string> | null;
+  ignoredSourceColumns: string[];
+  stockMode: ProductStockMode;
+  locationId: string | null;
+  importId: string | null;
+  importTotal: number | null;
+  importPercent: number | null;
+  importing: boolean;
   imported: number | null;
   skipped: number | null;
+  stockAdjusted: number | null;
   failures: ImportRowFailure[] | null;
+  notice: string | null;
 }
 
 export const EMPTY_IMPORT_STATE: ImportState = {
@@ -36,7 +33,19 @@ export const EMPTY_IMPORT_STATE: ImportState = {
   ok: false,
   csv: "",
   plan: null,
+  sourceHeaders: [],
+  mapping: null,
+  sampleRow: null,
+  ignoredSourceColumns: [],
+  stockMode: "skip",
+  locationId: null,
+  importId: null,
+  importTotal: null,
+  importPercent: null,
+  importing: false,
   imported: null,
   skipped: null,
+  stockAdjusted: null,
   failures: null,
+  notice: null,
 };

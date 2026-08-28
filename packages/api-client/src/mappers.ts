@@ -40,6 +40,7 @@ import type { JsonApiResource } from "./http";
 
 export interface ProductAttrs {
   name: string;
+  description: string | null;
   sku: string | null;
   price: number;
   stock_quantity: number;
@@ -50,6 +51,7 @@ export interface ProductAttrs {
   unit: string;
   barcode: string | null;
   reorder_point: number;
+  replenish_quantity: number;
   bulk_price: number | null;
   bulk_min_quantity: number | null;
   allow_decimal: boolean;
@@ -62,6 +64,7 @@ export function toProduct(resource: JsonApiResource<ProductAttrs>): Product {
   return {
     id: resource.id,
     name: a.name,
+    description: a.description,
     sku: a.sku,
     price: Number(a.price),
     costPrice: Number(a.cost_price),
@@ -72,6 +75,7 @@ export function toProduct(resource: JsonApiResource<ProductAttrs>): Product {
     allowDecimal: a.allow_decimal,
     barcode: a.barcode,
     reorderPoint: a.reorder_point,
+    replenishQuantity: a.replenish_quantity ?? 0,
     bulkPrice: a.bulk_price === null ? null : Number(a.bulk_price),
     bulkMinQuantity: a.bulk_min_quantity === null ? null : Number(a.bulk_min_quantity),
     isActive: a.is_active,

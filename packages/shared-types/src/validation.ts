@@ -19,6 +19,8 @@ export function validateProductInput(input: {
   sku?: string | null;
   costPrice?: number;
   reorderPoint?: number;
+  replenishQuantity?: number;
+  description?: string | null;
   bulkPrice?: number | null;
   bulkMinQuantity?: number | null;
   unit?: string;
@@ -40,6 +42,11 @@ export function validateProductInput(input: {
   if (input.reorderPoint !== undefined) {
     if (!Number.isInteger(input.reorderPoint) || input.reorderPoint < 0) {
       errors.push("Reorder point must be a whole number, zero or more.");
+    }
+  }
+  if (input.replenishQuantity !== undefined) {
+    if (!Number.isInteger(input.replenishQuantity) || input.replenishQuantity < 0) {
+      errors.push("Replenish quantity must be a whole number, zero or more.");
     }
   }
   if (input.unit !== undefined && !isProductUnit(input.unit)) {

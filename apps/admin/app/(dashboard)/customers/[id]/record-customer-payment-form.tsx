@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect } from "react";
 import { HandCoins } from "lucide-react";
-import { Button, ErrorNote, Field, Input, SuccessNote } from "@/components/ui";
+import { Button, ErrorNote, Field, Input, MoneyInput, SuccessNote } from "@/components/ui";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
 import { useInvalidateCustomers } from "@/lib/query/customers";
 import { recordCustomerPaymentAction } from "../actions";
@@ -24,7 +24,7 @@ export function RecordCustomerPaymentForm({ customerId }: { customerId: string }
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Amount">
-          <Input name="amount" type="number" step="0.01" min="0.01" required />
+          <MoneyInput name="amount" type="number" step="0.01" min="0.01" required />
         </Field>
         <Field label="Note (optional)">
           <Input name="note" />

@@ -21,12 +21,14 @@ export function SearchField({
   defaultValue = "",
   param = "q",
   preserve = {},
+  className,
 }: {
   placeholder?: string;
   defaultValue?: string;
   param?: string;
   /** Other query keys to keep when searching (filters, etc.). Page is dropped. */
   preserve?: Record<string, string | undefined>;
+  className?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -53,7 +55,7 @@ export function SearchField({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="relative min-w-0 flex-1 sm:max-w-sm">
+    <form onSubmit={handleSubmit} className={`relative min-w-0 flex-1 sm:max-w-sm ${className ?? ""}`}>
       <Input
         name={param}
         value={value}
@@ -72,29 +74,38 @@ export function RecordToolbar({
   preserve,
   addLabel,
   onAdd,
+  addHref,
   addDisabled,
   exportHref,
   importHref,
   children,
+  hideSearch = false,
+  embedded = false,
 }: {
   searchPlaceholder: string;
   query?: string;
   preserve?: Record<string, string | undefined>;
   addLabel?: string;
   onAdd?: () => void;
+  addHref?: string;
   /** When true, Add stays visible but disabled (e.g. location filter is All). */
   addDisabled?: boolean;
   exportHref?: string;
   importHref?: string;
   children?: ReactNode;
+  hideSearch?: boolean;
+  /** No outer padding or border — for custom card headers. */
+  embedded?: boolean;
 }) {
-  return (
-    <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-6">
-      <SearchField
-        placeholder={searchPlaceholder}
-        defaultValue={query ?? ""}
-        preserve={preserve}
-      />
+  const content = (
+    <>
+      {!hideSearch ? (
+        <SearchField
+          placeholder={searchPlaceholder}
+          defaultValue={query ?? ""}
+          preserve={preserve}
+        />
+      ) : null}
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
         {children}
         {exportHref ? (
@@ -107,7 +118,11 @@ export function RecordToolbar({
             Import
           </ButtonLink>
         ) : null}
-        {onAdd && addLabel ? (
+        {addHref && addLabel ? (
+          <ButtonLink href={addHref} icon={Plus} size="sm">
+            {addLabel}
+          </ButtonLink>
+        ) : onAdd && addLabel ? (
           <Button
             type="button"
             icon={Plus}
@@ -124,6 +139,20 @@ export function RecordToolbar({
           </Button>
         ) : null}
       </div>
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-6">
+      {content}
     </div>
   );
 }

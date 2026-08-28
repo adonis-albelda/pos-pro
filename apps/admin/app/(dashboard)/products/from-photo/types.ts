@@ -6,15 +6,21 @@ export interface ScannedProductDraft {
   /** Stable React key; not a DB id. */
   clientId: string;
   name: string;
+  description: string;
   sku: string;
   barcode: string;
   price: string;
   costPrice: string;
+  quantity: string;
   categoryId: string;
   unit: string;
   reorderPoint: string;
   bulkPrice: string;
   bulkMinQuantity: string;
+  /** Set when the API matched an existing catalogue SKU. */
+  existingProductId: string | null;
+  /** Stock movement already recorded for an existing SKU. */
+  stockApplied: boolean;
 }
 
 export interface ExtractProductsResult {

@@ -202,9 +202,12 @@ export default function InventoryPage() {
   }
 
   const stats = statsQuery.data ?? {
+    total: 0,
     tracked: 0,
     stockCost: 0,
     needsReordering: 0,
+    lowStock: 0,
+    outOfStock: 0,
     oversold: 0,
     hidden: 0,
   };

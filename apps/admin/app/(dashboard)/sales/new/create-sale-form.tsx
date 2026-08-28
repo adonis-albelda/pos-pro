@@ -13,6 +13,7 @@ import {
   Field,
   Input,
   Money,
+  MoneyInput,
   Select,
 } from "@/components/ui";
 import { ProductPicker } from "@/components/product-picker";
@@ -154,7 +155,7 @@ export function CreateSaleForm() {
                 label="Unit price"
                 hint={row.product ? `Shelf price ${formatMoney(row.product.price)}` : "Pick a product first"}
               >
-                <Input
+                <MoneyInput
                   type="number"
                   inputMode="decimal"
                   min={0}
@@ -162,7 +163,6 @@ export function CreateSaleForm() {
                   placeholder={row.product ? String(row.product.price) : ""}
                   value={row.unitPrice}
                   onChange={(event) => updateItem(row.key, { unitPrice: event.target.value })}
-                  className="num"
                 />
               </Field>
             </div>

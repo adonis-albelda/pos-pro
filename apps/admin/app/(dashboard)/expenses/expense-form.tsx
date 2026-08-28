@@ -9,7 +9,7 @@ import {
 } from "@double-a/shared-types";
 import type { Expense } from "@double-a/shared-types";
 import { ConfirmDialog } from "@/components/overlay";
-import { Button, ErrorNote, Field, Input, SuccessNote } from "@/components/ui";
+import { Button, ErrorNote, Field, Input, MoneyInput, SuccessNote } from "@/components/ui";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
 import { useInvalidateExpenses } from "@/lib/query/expenses";
 import { removeExpense, saveExpense } from "./actions";
@@ -66,8 +66,8 @@ export function ExpenseForm({
         </Field>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Amount (₱)">
-            <Input
+          <Field label="Amount">
+            <MoneyInput
               name="amount"
               type="number"
               inputMode="decimal"
@@ -75,7 +75,6 @@ export function ExpenseForm({
               min="0.01"
               defaultValue={expense?.amount}
               required
-              className="num"
             />
           </Field>
           <Field label="Date" hint="Shop day this expense belongs to.">

@@ -15,7 +15,7 @@ export default function FromPhotoPage() {
       <PageHeader
         icon={Camera}
         title="From photo"
-        description="Snap a notebook list — one product per line — then check and save each row."
+        description="Snap a notebook list or delivery note — AI reads each line. Known SKUs restock automatically."
       />
 
       <Link

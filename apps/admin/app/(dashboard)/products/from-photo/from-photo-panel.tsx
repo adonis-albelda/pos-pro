@@ -17,6 +17,7 @@ import {
   shelfPriceFromMarkup,
 } from "@double-a/shared-types";
 import {
+  Badge,
   Button,
   Card,
   CardHeader,
@@ -24,6 +25,7 @@ import {
   Field,
   FileInput,
   Input,
+  MoneyInput,
   Select,
   SuccessNote,
 } from "@/components/ui";
@@ -112,9 +114,19 @@ function DraftRow({
   return (
     <div className="space-y-3 border-t border-border px-4 py-4 sm:px-6">
       <div className="flex items-start justify-between gap-3">
-        <p className="text-body font-medium text-ink">
-          {draft.name.trim() || "Untitled product"}
-        </p>
+        <div className="min-w-0">
+          <p className="text-body font-medium text-ink">
+            {draft.name.trim() || "Untitled product"}
+          </p>
+          {draft.stockApplied ? (
+            <span className="mt-1 inline-block">
+              <Badge tone="success">
+                Stock recorded
+                {draft.quantity.trim() ? ` (+${draft.quantity})` : ""}
+              </Badge>
+            </span>
+          ) : null}
+        </div>
         <div className="flex shrink-0 gap-2">
           <Button
             type="button"
@@ -122,8 +134,9 @@ function DraftRow({
             icon={Check}
             loading={saving}
             onClick={onSave}
+            disabled={draft.stockApplied}
           >
-            Save
+            {draft.stockApplied ? "Done" : "Save"}
           </Button>
           <Button
             type="button"
@@ -143,23 +156,38 @@ function DraftRow({
             value={draft.name}
             onChange={(event) => onChange({ name: event.target.value })}
             required
+            disabled={draft.stockApplied}
+          />
+        </Field>
+        <Field label="Description">
+          <Input
+            value={draft.description}
+            onChange={(event) => onChange({ description: event.target.value })}
+            disabled={draft.stockApplied}
           />
         </Field>
         <Field label="SKU">
           <Input
             value={draft.sku}
             onChange={(event) => onChange({ sku: event.target.value })}
+            disabled={draft.stockApplied}
           />
         </Field>
         <Field label="Barcode">
           <Input
             value={draft.barcode}
             onChange={(event) => onChange({ barcode: event.target.value })}
+            disabled={draft.stockApplied}
           />
         </Field>
+        {draft.quantity.trim() ? (
+          <Field label="Qty from photo">
+            <Input value={draft.quantity} readOnly disabled />
+          </Field>
+        ) : null}
 
         <Field label="Supplier price">
-          <Input
+          <MoneyInput
             type="number"
             step="0.01"
             min="0"
@@ -168,7 +196,7 @@ function DraftRow({
           />
         </Field>
         <Field label="Shelf price">
-          <Input
+          <MoneyInput
             type="number"
             step="0.01"
             min="0"
@@ -221,7 +249,7 @@ function DraftRow({
           />
         </Field>
         <Field label="Bulk price">
-          <Input
+          <MoneyInput
             type="number"
             step="0.01"
             min="0"
@@ -318,8 +346,12 @@ export function FromPhotoPanel({ categories }: { categories: CategoryOption[] })
           return;
         }
         setDrafts(result.drafts);
+        const stocked = result.drafts.filter((draft) => draft.stockApplied).length;
+        const toAdd = result.drafts.length - stocked;
         setSuccess(
-          `Found ${result.drafts.length} product${result.drafts.length === 1 ? "" : "s"}. Check each row, then save.`,
+          stocked > 0
+            ? `Found ${result.drafts.length} line${result.drafts.length === 1 ? "" : "s"} — ${stocked} restocked, ${toAdd} to add as new products.`
+            : `Found ${result.drafts.length} product${result.drafts.length === 1 ? "" : "s"}. Check each row, then save.`,
         );
       } catch (err) {
         setDrafts([]);

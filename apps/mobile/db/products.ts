@@ -19,6 +19,8 @@ interface ProductRow {
   allow_decimal: number;
   barcode: string | null;
   reorder_point: number;
+  replenish_quantity: number;
+  description: string | null;
   bulk_price: number | null;
   bulk_min_quantity: number | null;
   is_active: number;
@@ -45,6 +47,8 @@ function toProductWithEstimate(row: ProductRow): ProductWithEstimatedStock {
     allowDecimal: row.allow_decimal === 1,
     barcode: row.barcode,
     reorderPoint: row.reorder_point,
+    replenishQuantity: row.replenish_quantity ?? 0,
+    description: row.description,
     bulkPrice: row.bulk_price,
     bulkMinQuantity: row.bulk_min_quantity,
     isActive: row.is_active === 1,
@@ -75,6 +79,8 @@ SELECT p.id,
        p.allow_decimal,
        p.barcode,
        p.reorder_point,
+       p.replenish_quantity,
+       p.description,
        p.bulk_price,
        p.bulk_min_quantity,
        p.is_active,
@@ -222,8 +228,9 @@ async function insertOrReplaceProduct(
   await db.runAsync(
     `INSERT INTO products
        (id, name, sku, price, cost_price, stock_quantity, category, category_id,
-        unit, allow_decimal, barcode, reorder_point, bulk_price, bulk_min_quantity, is_active, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        unit, allow_decimal, barcode, reorder_point, replenish_quantity, description,
+        bulk_price, bulk_min_quantity, is_active, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (id) DO UPDATE SET
        name = excluded.name,
        sku = excluded.sku,
@@ -236,6 +243,8 @@ async function insertOrReplaceProduct(
        allow_decimal = excluded.allow_decimal,
        barcode = excluded.barcode,
        reorder_point = excluded.reorder_point,
+       replenish_quantity = excluded.replenish_quantity,
+       description = excluded.description,
        bulk_price = excluded.bulk_price,
        bulk_min_quantity = excluded.bulk_min_quantity,
        is_active = excluded.is_active,
@@ -252,6 +261,8 @@ async function insertOrReplaceProduct(
     product.allowDecimal ? 1 : 0,
     product.barcode,
     product.reorderPoint,
+    product.replenishQuantity,
+    product.description,
     product.bulkPrice,
     product.bulkMinQuantity,
     product.isActive ? 1 : 0,

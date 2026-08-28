@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { validateProductInput } from "@double-a/shared-types";
-import { createProduct, updateProduct } from "@double-a/api-client/queries";
+import { isValidQuantity, QUANTITY_DECIMALS } from "@double-a/shared-types";
+import { adjustStock, createProduct, listLocations, updateProduct } from "@double-a/api-client/queries";
 import { ApiError } from "@double-a/api-client";
 import type { FormState } from "@/lib/form-state";
 import { getAuthedClient } from "@/lib/api/session";
@@ -17,6 +18,10 @@ function optionalNumber(formData: FormData, key: string): number | null {
   return raw === "" ? null : Number(raw);
 }
 
+function roundQuantity(value: number): number {
+  return Number(value.toFixed(QUANTITY_DECIMALS));
+}
+
 function readProductForm(formData: FormData) {
   return {
     name: text(formData, "name"),
@@ -27,7 +32,9 @@ function readProductForm(formData: FormData) {
     unit: text(formData, "unit") || "pc",
     allowDecimal: formData.get("allow_decimal") !== null,
     barcode: text(formData, "barcode") || null,
+    description: text(formData, "description") || null,
     reorderPoint: Number(formData.get("reorder_point") ?? 0),
+    replenishQuantity: Number(formData.get("replenish_quantity") ?? 0),
     // The two bulk fields live or die together, so an empty pair is two nulls
     // rather than a price with no minimum that would never apply.
     bulkPrice: optionalNumber(formData, "bulk_price"),
@@ -59,6 +66,9 @@ export async function saveProduct(
   formData: FormData,
 ): Promise<FormState> {
   const id = String(formData.get("id") ?? "");
+  const openingStock = optionalNumber(formData, "opening_stock_quantity");
+  const stockLocationId = text(formData, "stock_location_id") || null;
+  const openingStockNote = text(formData, "opening_stock_note");
   const input = readProductForm(formData);
 
   const validation = validateProductInput(input);
@@ -77,12 +87,51 @@ export async function saveProduct(
     unit: input.unit,
     allowDecimal: input.allowDecimal,
     barcode: input.barcode,
+    description: input.description,
     reorderPoint: input.reorderPoint,
+    replenishQuantity: input.replenishQuantity,
     bulkPrice: input.bulkPrice,
     bulkMinQuantity: input.bulkMinQuantity,
   };
 
   const client = getAuthedClient();
+
+  let openingStockLocationId: string | null = null;
+
+  if (!id && openingStock !== null) {
+    if (!Number.isFinite(openingStock) || openingStock < 0) {
+      return { error: "Opening stock must be zero or more.", ok: false };
+    }
+    if (openingStock > 0) {
+      const floor = input.allowDecimal ? 0.001 : 1;
+      if (!isValidQuantity(openingStock, input.allowDecimal, floor)) {
+        return {
+          error: input.allowDecimal
+            ? "Opening stock must be greater than zero."
+            : "Opening stock must be a whole number greater than zero.",
+          ok: false,
+        };
+      }
+
+      const branches = await listLocations(client, { type: "branch" });
+      openingStockLocationId =
+        branches.length === 1
+          ? branches[0]!.id
+          : stockLocationId && branches.some((branch) => branch.id === stockLocationId)
+            ? stockLocationId
+            : null;
+
+      if (!openingStockLocationId) {
+        return {
+          error:
+            branches.length === 0
+              ? "Add a branch before recording opening stock."
+              : "Choose which branch receives the opening stock.",
+          ok: false,
+        };
+      }
+    }
+  }
 
   try {
     if (id) {
@@ -90,7 +139,16 @@ export async function saveProduct(
       // inventory page, which writes a movement row the trigger applies.
       await updateProduct(client, id, row);
     } else {
-      await createProduct(client, row);
+      const created = await createProduct(client, row);
+
+      if (openingStockLocationId && openingStock !== null && openingStock > 0) {
+        await adjustStock(client, created.id, {
+          changeQuantity: roundQuantity(openingStock),
+          reason: "adjustment",
+          note: openingStockNote || "Opening stock",
+          locationId: openingStockLocationId,
+        });
+      }
     }
   } catch (error) {
     return { error: describeSaveError(error), ok: false };

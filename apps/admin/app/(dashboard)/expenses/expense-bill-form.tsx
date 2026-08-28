@@ -11,7 +11,7 @@ import {
   type ExpenseBill,
 } from "@double-a/shared-types";
 import { ConfirmDialog } from "@/components/overlay";
-import { Button, ErrorNote, Field, Input, Select, SuccessNote } from "@/components/ui";
+import { Button, ErrorNote, Field, Input, MoneyInput, Select, SuccessNote } from "@/components/ui";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
 import { useInvalidateExpenseBills } from "@/lib/query/expense-bills";
 import { removeExpenseBill, saveExpenseBill } from "./bill-actions";
@@ -73,8 +73,8 @@ export function ExpenseBillForm({
         </Field>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Amount (₱)">
-            <Input
+          <Field label="Amount">
+            <MoneyInput
               name="amount"
               type="number"
               inputMode="decimal"
@@ -82,7 +82,6 @@ export function ExpenseBillForm({
               min="0.01"
               defaultValue={bill?.amount}
               required
-              className="num"
             />
           </Field>
           <Field label="Frequency">

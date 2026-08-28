@@ -2,44 +2,23 @@
 
 import { revalidatePath } from "next/cache";
 import {
-  createCategory,
-  createProduct,
   listCategories,
+  listLocations,
   listProducts,
-  updateProduct,
-  type ProductInput,
+  listSuppliers,
+  startProductImport,
+  type ProductImportRowPayload,
 } from "@double-a/api-client/queries";
-import { ApiError, type ApiClient } from "@double-a/api-client";
-import { toCategoryOptions } from "@/lib/category-options";
-import { planProductImport, type ProductImportRow } from "@/lib/product-import";
+import type { ProductStockMode } from "@/lib/product-import";
+import {
+  prepareImportTable,
+  readColumnMapping,
+} from "@/lib/product-import-mapping";
+import { planProductImportFromTable } from "@/lib/product-import";
+import { suggestImportRowFixes } from "@/lib/product-import-ai-fix";
+import { applyImportRowFixes } from "@/lib/product-import-fix";
 import { getAuthedClient } from "@/lib/api/session";
-import { EMPTY_IMPORT_STATE, type ImportRowFailure, type ImportState } from "./import-state";
-
-/** Snake_case CSV row shape to the api-client's camelCase write shape. */
-function toProductInput(row: ProductImportRow): ProductInput {
-  return {
-    name: row.name,
-    sku: row.sku,
-    price: row.price,
-    costPrice: row.cost_price,
-    categoryId: row.category_id,
-    unit: row.unit,
-    barcode: row.barcode,
-    reorderPoint: row.reorder_point,
-    bulkPrice: row.bulk_price,
-    bulkMinQuantity: row.bulk_min_quantity,
-    allowDecimal: row.allow_decimal,
-    isActive: row.is_active,
-  };
-}
-
-function describeRowError(error: unknown): string {
-  if (error instanceof ApiError && error.isValidation) {
-    const first = Object.values(error.errors ?? {})[0]?.[0];
-    if (first) return first;
-  }
-  return error instanceof Error ? error.message : "Unknown error";
-}
+import { EMPTY_IMPORT_STATE, type ImportState } from "./import-state";
 
 async function readUpload(formData: FormData): Promise<string> {
   const file = formData.get("file");
@@ -47,47 +26,74 @@ async function readUpload(formData: FormData): Promise<string> {
   return String(formData.get("pasted") ?? "");
 }
 
-/**
- * Walks a path like "Plumbing / Pipes / PVC", creating whatever level is
- * missing, and hands back the id of the deepest one.
- */
-async function ensureCategoryPath(
-  client: ApiClient,
-  path: string,
-  idByPath: Map<string, string>,
-): Promise<string | null> {
-  let parentId: string | null = null;
-  let walked = "";
-
-  for (const segment of path.split(" / ")) {
-    walked = walked ? `${walked} / ${segment}` : segment;
-
-    const known = idByPath.get(walked.toLowerCase());
-    if (known) {
-      parentId = known;
-      continue;
-    }
-
-    const created = await createCategory(client, { name: segment, parentId });
-    idByPath.set(walked.toLowerCase(), created.id);
-    parentId = created.id;
-  }
-
-  return parentId;
+function readStockMode(formData: FormData): ProductStockMode {
+  const raw = String(formData.get("stock_mode") ?? "skip");
+  if (raw === "set" || raw === "add") return raw;
+  return "skip";
 }
 
-/**
- * Both steps of the import run through here — checking the file and, on a
- * second deliberate submit, writing it. One action means one piece of state,
- * so a stale error from an earlier attempt can never sit next to a fresh
- * preview.
- */
+function resolveStockLocationId(
+  branches: Array<{ id: string }>,
+  locationId: string | null,
+): string | null {
+  if (branches.length === 1) return branches[0]!.id;
+  if (!locationId) return null;
+  return branches.some((branch) => branch.id === locationId) ? locationId : null;
+}
+
+function ignoredSourceColumns(
+  sourceHeaders: string[],
+  mapping: ReturnType<typeof readColumnMapping>,
+): string[] {
+  const mapped = new Set(
+    Object.values(mapping).filter((header): header is string => Boolean(header)),
+  );
+  return sourceHeaders.filter((header) => !mapped.has(header));
+}
+
+function toImportRow(row: {
+  line: number;
+  values: NonNullable<ImportState["plan"]>["rows"][number]["values"];
+  categoryPath: string | null;
+  supplierName: string | null;
+}): ProductImportRowPayload | null {
+  if (!row.values) return null;
+
+  return {
+    line: row.line,
+    name: row.values.name,
+    sku: row.values.sku,
+    price: row.values.price,
+    cost_price: row.values.cost_price,
+    unit: row.values.unit,
+    barcode: row.values.barcode,
+    reorder_point: row.values.reorder_point,
+    replenish_quantity: row.values.replenish_quantity,
+    bulk_price: row.values.bulk_price,
+    bulk_min_quantity: row.values.bulk_min_quantity,
+    allow_decimal: row.values.allow_decimal,
+    is_active: row.values.is_active,
+    description: row.values.description,
+    category_path: row.categoryPath,
+    supplier_name: row.supplierName,
+    stock_quantity: row.values.stock_quantity,
+  };
+}
+
 export async function importProducts(
   _prev: ImportState,
   formData: FormData,
 ): Promise<ImportState> {
-  const writing = String(formData.get("intent") ?? "") === "import";
-  const csv = writing ? String(formData.get("csv") ?? "") : await readUpload(formData);
+  const intent = String(formData.get("intent") ?? "");
+  const writing = intent === "import";
+  const remapping = intent === "map";
+  const aiFixing = intent === "ai_fix";
+  const csv = writing || remapping || aiFixing
+    ? String(formData.get("csv") ?? "")
+    : await readUpload(formData);
+
+  const stockMode = readStockMode(formData);
+  const locationId = String(formData.get("location_id") ?? "").trim() || null;
 
   if (!csv.trim()) {
     return {
@@ -98,18 +104,219 @@ export async function importProducts(
     };
   }
 
+  const mapping = remapping || writing || aiFixing ? readColumnMapping(formData) : undefined;
+  const prepared = prepareImportTable(csv, mapping);
+  const ignored = ignoredSourceColumns(prepared.sourceHeaders, prepared.mapping);
+
+  if (prepared.sourceHeaders.length === 0) {
+    return { ...EMPTY_IMPORT_STATE, error: "That file is empty." };
+  }
+
+  if (prepared.missingRequired.length > 0) {
+    const labels = prepared.missingRequired.join(", ");
+    return {
+      ...EMPTY_IMPORT_STATE,
+      csv,
+      sourceHeaders: prepared.sourceHeaders,
+      mapping: prepared.mapping,
+      sampleRow: prepared.sampleRow,
+      ignoredSourceColumns: ignored,
+      stockMode,
+      locationId,
+      error: `Map these required columns: ${labels}.`,
+    };
+  }
+
   const client = getAuthedClient();
-  const [products, categories] = await Promise.all([
+  const [products, categories, suppliers, branches] = await Promise.all([
     listProducts(client, { includeInactive: true }),
     listCategories(client, { includeInactive: true }),
+    listSuppliers(client, { includeInactive: true }),
+    listLocations(client, { type: "branch" }),
   ]);
 
-  // Planned from the file both times, never from anything the browser posted
-  // back, so what was previewed cannot be edited into a different write.
-  const plan = planProductImport(csv, { products, categories });
-  if (plan.error) return { ...EMPTY_IMPORT_STATE, error: plan.error };
+  const hasStockColumn = Boolean(prepared.mapping.stock_quantity);
+  const stockLocationId =
+    hasStockColumn && stockMode !== "skip"
+      ? resolveStockLocationId(branches, locationId)
+      : locationId;
 
-  if (!writing) return { ...EMPTY_IMPORT_STATE, csv, plan };
+  const plan = planProductImportFromTable(prepared.table!, {
+    products,
+    categories,
+    suppliers,
+    stockMode,
+  });
+
+  if (plan.error) {
+    return {
+      ...EMPTY_IMPORT_STATE,
+      csv,
+      sourceHeaders: prepared.sourceHeaders,
+      mapping: prepared.mapping,
+      sampleRow: prepared.sampleRow,
+      ignoredSourceColumns: ignored,
+      stockMode,
+      locationId: stockLocationId,
+      error: plan.error,
+    };
+  }
+
+  if (!aiFixing && hasStockColumn && stockMode !== "skip" && !stockLocationId) {
+    return {
+      ...EMPTY_IMPORT_STATE,
+      csv,
+      plan,
+      sourceHeaders: prepared.sourceHeaders,
+      mapping: prepared.mapping,
+      sampleRow: prepared.sampleRow,
+      ignoredSourceColumns: ignored,
+      stockMode,
+      locationId: stockLocationId,
+      error:
+        branches.length === 0
+          ? "Add an active branch before importing stock quantities."
+          : "Choose which branch receives the stock updates.",
+    };
+  }
+
+  if (aiFixing) {
+    const rejected = plan.rows.filter((row) => row.action === "reject");
+    if (rejected.length === 0) {
+      return {
+        ...EMPTY_IMPORT_STATE,
+        csv,
+        plan,
+        sourceHeaders: prepared.sourceHeaders,
+        mapping: prepared.mapping,
+        sampleRow: prepared.sampleRow,
+        ignoredSourceColumns: ignored,
+        stockMode,
+        locationId: stockLocationId,
+        error: "No turned-away rows to fix.",
+      };
+    }
+
+    try {
+      const acceptedSamples = plan.rows
+        .filter((row) => row.action !== "reject")
+        .slice(0, 5)
+        .map((row) => ({ line: row.line }));
+
+      const { fixes, attempted } = await suggestImportRowFixes({
+        csv,
+        mapping: prepared.mapping,
+        rejected: rejected.map((row) => ({ line: row.line, errors: row.notes })),
+        acceptedSamples,
+      });
+
+      if (fixes.length === 0) {
+        return {
+          ...EMPTY_IMPORT_STATE,
+          csv,
+          plan,
+          sourceHeaders: prepared.sourceHeaders,
+          mapping: prepared.mapping,
+          sampleRow: prepared.sampleRow,
+          ignoredSourceColumns: ignored,
+          stockMode,
+          locationId: stockLocationId,
+          error: `AI could not confidently fix any of the ${attempted} turned-away rows.`,
+        };
+      }
+
+      const fixedCsv = applyImportRowFixes(csv, prepared.mapping, fixes);
+      const fixedPrepared = prepareImportTable(fixedCsv, prepared.mapping);
+      if (!fixedPrepared.table) {
+        return {
+          ...EMPTY_IMPORT_STATE,
+          csv: fixedCsv,
+          sourceHeaders: fixedPrepared.sourceHeaders,
+          mapping: fixedPrepared.mapping,
+          sampleRow: fixedPrepared.sampleRow,
+          ignoredSourceColumns: ignoredSourceColumns(
+            fixedPrepared.sourceHeaders,
+            fixedPrepared.mapping,
+          ),
+          stockMode,
+          locationId: stockLocationId,
+          error: "Fixed file could not be read back. Try downloading turned-away rows instead.",
+        };
+      }
+
+      const fixedPlan = planProductImportFromTable(fixedPrepared.table, {
+        products,
+        categories,
+        suppliers,
+        stockMode,
+      });
+
+      if (fixedPlan.error) {
+        return {
+          ...EMPTY_IMPORT_STATE,
+          csv: fixedCsv,
+          sourceHeaders: fixedPrepared.sourceHeaders,
+          mapping: fixedPrepared.mapping,
+          sampleRow: fixedPrepared.sampleRow,
+          ignoredSourceColumns: ignoredSourceColumns(
+            fixedPrepared.sourceHeaders,
+            fixedPrepared.mapping,
+          ),
+          stockMode,
+          locationId: stockLocationId,
+          error: fixedPlan.error,
+        };
+      }
+
+      const recovered = plan.rejectCount - fixedPlan.rejectCount;
+
+      return {
+        ...EMPTY_IMPORT_STATE,
+        csv: fixedCsv,
+        plan: fixedPlan,
+        sourceHeaders: fixedPrepared.sourceHeaders,
+        mapping: fixedPrepared.mapping,
+        sampleRow: fixedPrepared.sampleRow,
+        ignoredSourceColumns: ignoredSourceColumns(
+          fixedPrepared.sourceHeaders,
+          fixedPrepared.mapping,
+        ),
+        stockMode,
+        locationId: stockLocationId,
+        notice:
+          recovered > 0
+            ? `AI fixed ${fixes.length} row${fixes.length === 1 ? "" : "s"} — ${recovered} now pass preview. Review before importing.`
+            : `AI updated ${fixes.length} row${fixes.length === 1 ? "" : "s"}, but they still need manual edits. Check the preview.`,
+      };
+    } catch (error) {
+      return {
+        ...EMPTY_IMPORT_STATE,
+        csv,
+        plan,
+        sourceHeaders: prepared.sourceHeaders,
+        mapping: prepared.mapping,
+        sampleRow: prepared.sampleRow,
+        ignoredSourceColumns: ignored,
+        stockMode,
+        locationId: stockLocationId,
+        error: error instanceof Error ? error.message : "AI fix could not run.",
+      };
+    }
+  }
+
+  if (!writing) {
+    return {
+      ...EMPTY_IMPORT_STATE,
+      csv,
+      plan,
+      sourceHeaders: prepared.sourceHeaders,
+      mapping: prepared.mapping,
+      sampleRow: prepared.sampleRow,
+      ignoredSourceColumns: ignored,
+      stockMode,
+      locationId: stockLocationId,
+    };
+  }
 
   const accepted = plan.rows.filter((row) => row.values !== null);
   if (accepted.length === 0) {
@@ -117,75 +324,66 @@ export async function importProducts(
       ...EMPTY_IMPORT_STATE,
       csv,
       plan,
+      sourceHeaders: prepared.sourceHeaders,
+      mapping: prepared.mapping,
+      sampleRow: prepared.sampleRow,
+      ignoredSourceColumns: ignored,
+      stockMode,
+      locationId: stockLocationId,
       error: "Every row was turned away. Fix the ones listed and upload again.",
     };
   }
 
-  const idByPath = new Map<string, string>();
-  for (const option of toCategoryOptions(categories)) {
-    idByPath.set(option.path.toLowerCase(), option.id);
-  }
+  const rows = accepted
+    .map((row) =>
+      toImportRow({
+        line: row.line,
+        values: row.values,
+        categoryPath: row.categoryPath,
+        supplierName: row.supplierName,
+      }),
+    )
+    .filter((row): row is ProductImportRowPayload => row !== null);
 
-  const productIdBySku = new Map<string, string>();
-  for (const product of products) {
-    if (product.sku) productIdBySku.set(product.sku.toLowerCase(), product.id);
-  }
+  try {
+    const started = await startProductImport(client, {
+      rows,
+      stockMode,
+      locationId: stockLocationId,
+    });
 
-  // GAP: the Tally API has no bulk upsert-by-SKU endpoint (the old flow was
-  // a single Postgres upsert). Each accepted row is now its own
-  // create/update call, so a failure on one row no longer aborts the whole
-  // file — partial success is expected and surfaced below instead of one
-  // all-or-nothing error.
-  const failures: ImportRowFailure[] = [];
-  let imported = 0;
-
-  for (const row of accepted) {
-    try {
-      const values: ProductImportRow = { ...row.values! };
-      if (row.categoryPath) {
-        values.category_id = await ensureCategoryPath(client, row.categoryPath, idByPath);
-      }
-
-      const input = toProductInput(values);
-      if (row.action === "update") {
-        const id = productIdBySku.get(row.sku.toLowerCase());
-        if (!id) throw new Error("That product could not be found anymore.");
-        await updateProduct(client, id, input);
-      } else {
-        await createProduct(client, input);
-      }
-      imported += 1;
-    } catch (error) {
-      failures.push({ line: row.line, sku: row.sku, error: describeRowError(error) });
-    }
-  }
-
-  if (imported > 0) {
     revalidatePath("/products");
     revalidatePath("/categories");
+    revalidatePath("/suppliers");
     revalidatePath("/inventory");
     revalidatePath("/reports");
-  }
 
-  if (imported === 0) {
     return {
       ...EMPTY_IMPORT_STATE,
       csv,
       plan,
-      error: "Nothing was imported. Every accepted row failed to save — see below.",
-      failures,
+      sourceHeaders: prepared.sourceHeaders,
+      mapping: prepared.mapping,
+      sampleRow: prepared.sampleRow,
+      ignoredSourceColumns: ignored,
+      stockMode,
+      locationId: stockLocationId,
+      importId: started.importId,
+      importTotal: started.total,
+      importing: true,
+    };
+  } catch (error) {
+    return {
+      ...EMPTY_IMPORT_STATE,
+      csv,
+      plan,
+      sourceHeaders: prepared.sourceHeaders,
+      mapping: prepared.mapping,
+      sampleRow: prepared.sampleRow,
+      ignoredSourceColumns: ignored,
+      stockMode,
+      locationId: stockLocationId,
+      error: error instanceof Error ? error.message : "Import could not be started.",
     };
   }
-
-  return {
-    ...EMPTY_IMPORT_STATE,
-    ok: true,
-    error:
-      failures.length > 0
-        ? `${failures.length} row${failures.length === 1 ? "" : "s"} could not be saved — see below.`
-        : null,
-    imported,
-    skipped: plan.rejectCount,
-    failures: failures.length > 0 ? failures : null,
-  };
 }

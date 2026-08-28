@@ -12,6 +12,7 @@ import {
   Field,
   IconButton,
   Input,
+  MoneyInput,
   Select,
   Table,
   Td,
@@ -307,11 +308,11 @@ export function CreatePurchaseOrderForm({
                     />
                   </Td>
                   <Td numeric>
-                    <Input
+                    <MoneyInput
                       type="number"
                       min="0"
                       step="0.01"
-                      className="num text-right"
+                      className="text-right"
                       value={item.unitCost}
                       onChange={(event) => updateItem(item.key, { unitCost: event.target.value })}
                     />
@@ -390,11 +391,11 @@ export function CreatePurchaseOrderForm({
                     />
                   </Td>
                   <Td numeric>
-                    <Input
+                    <MoneyInput
                       type="number"
                       min="0"
                       step="0.01"
-                      className="num text-right"
+                      className="text-right"
                       value={term.amount}
                       onChange={(event) => updateTerm(term.key, { amount: event.target.value })}
                     />

@@ -4,6 +4,7 @@ import { type ProductAttrs, toProduct } from "../mappers";
 
 export interface ProductInput {
   name: string;
+  description?: string | null;
   sku?: string | null;
   price: number;
   costPrice: number;
@@ -11,6 +12,7 @@ export interface ProductInput {
   unit: string;
   barcode?: string | null;
   reorderPoint?: number;
+  replenishQuantity?: number;
   bulkPrice?: number | null;
   bulkMinQuantity?: number | null;
   allowDecimal?: boolean;
@@ -20,6 +22,7 @@ export interface ProductInput {
 function toPayload(input: Partial<ProductInput>): Record<string, unknown> {
   const payload: Record<string, unknown> = {};
   if (input.name !== undefined) payload.name = input.name;
+  if (input.description !== undefined) payload.description = input.description;
   if (input.sku !== undefined) payload.sku = input.sku;
   if (input.price !== undefined) payload.price = input.price;
   if (input.costPrice !== undefined) payload.cost_price = input.costPrice;
@@ -27,6 +30,7 @@ function toPayload(input: Partial<ProductInput>): Record<string, unknown> {
   if (input.unit !== undefined) payload.unit = input.unit;
   if (input.barcode !== undefined) payload.barcode = input.barcode;
   if (input.reorderPoint !== undefined) payload.reorder_point = input.reorderPoint;
+  if (input.replenishQuantity !== undefined) payload.replenish_quantity = input.replenishQuantity;
   if (input.bulkPrice !== undefined) payload.bulk_price = input.bulkPrice;
   if (input.bulkMinQuantity !== undefined) payload.bulk_min_quantity = input.bulkMinQuantity;
   if (input.allowDecimal !== undefined) payload.allow_decimal = input.allowDecimal;
@@ -73,9 +77,12 @@ export async function listProductsPage(
 }
 
 export interface ProductStats {
+  total: number;
   tracked: number;
   stockCost: number;
   needsReordering: number;
+  lowStock: number;
+  outOfStock: number;
   oversold: number;
   hidden: number;
 }
@@ -85,21 +92,32 @@ export interface ProductStats {
  * the Inventory page's header stat cards, instead of walking the whole
  * catalogue into the browser just to add four numbers up.
  */
-export async function getProductStats(client: ApiClient): Promise<ProductStats> {
+export async function getProductStats(
+  client: ApiClient,
+  options: { locationId?: string } = {},
+): Promise<ProductStats> {
   const { data } = await client.get<{
     data: {
+      total: number;
       tracked: number;
       stock_cost: number;
       needs_reordering: number;
+      low_stock: number;
+      out_of_stock: number;
       oversold: number;
       hidden: number;
     };
-  }>("/products/stats");
+  }>("/products/stats", {
+    location_id: options.locationId,
+  });
 
   return {
+    total: data.total,
     tracked: data.tracked,
     stockCost: Number(data.stock_cost),
     needsReordering: data.needs_reordering,
+    lowStock: data.low_stock,
+    outOfStock: data.out_of_stock,
     oversold: data.oversold,
     hidden: data.hidden,
   };
@@ -139,29 +157,41 @@ export async function countProducts(
 /** One line read off a notebook photo — see ExtractProductsFromPhotoAction (Laravel). No category: that match happens client-side against the tenant's own category tree. */
 export interface ExtractedProductLine {
   name: string;
+  description: string | null;
   sku: string | null;
   barcode: string | null;
   price: number | null;
   costPrice: number | null;
+  quantity: number | null;
   unit: string;
+  existingProductId: string | null;
+  stockApplied: boolean;
 }
 
 interface ExtractedProductLineAttrs {
   name: string;
+  description: string | null;
   sku: string | null;
   barcode: string | null;
   price: number | null;
   cost_price: number | null;
+  quantity: number | null;
   unit: string;
+  existing_product_id: string | null;
+  stock_applied: boolean;
 }
 
-/** OCR runs server-side (Tesseract on the API host) — see CLAUDE.md notes on apps/admin's from-photo feature. */
+/** Vision extraction runs server-side (Laravel AI / OpenAI) — see apps/admin from-photo feature. */
 export async function extractProductsFromPhoto(
   client: ApiClient,
   image: File,
+  options: { locationId?: string | null } = {},
 ): Promise<ExtractedProductLine[]> {
   const formData = new FormData();
   formData.set("image", image);
+  if (options.locationId) {
+    formData.set("location_id", options.locationId);
+  }
 
   const result = await client.postMultipart<{ data: ExtractedProductLineAttrs[] }>(
     "/products/extract-from-photo",
@@ -170,11 +200,15 @@ export async function extractProductsFromPhoto(
 
   return result.data.map((line) => ({
     name: line.name,
+    description: line.description,
     sku: line.sku,
     barcode: line.barcode,
     price: line.price,
     costPrice: line.cost_price,
+    quantity: line.quantity,
     unit: line.unit,
+    existingProductId: line.existing_product_id,
+    stockApplied: line.stock_applied,
   }));
 }
 
@@ -305,19 +339,113 @@ export async function adjustStock(
   return toProduct(data);
 }
 
-/**
- * GAP: no bulk upsert-by-SKU endpoint on the Tally API. The old CSV import
- * flow (`upsertProductsBySku`) relied on a single Postgres `upsert(...,
- * { onConflict: "sku" })` call. Doing this as N sequential create/update
- * calls changes the error contract (partial-failure semantics, no single
- * transaction) — flagging rather than faking it. CSV import needs either a
- * bulk endpoint on pos-inventory-laravel or an explicit decision to accept
- * per-row calls with its own progress/error UI.
- */
-export function upsertProductsBySku(): never {
-  throw new Error(
-    "upsertProductsBySku has no Tally API equivalent yet — CSV bulk import needs a backend decision before porting this call site.",
-  );
+export type ProductStockMode = "skip" | "set" | "add";
+
+export interface ProductImportRowPayload {
+  line: number;
+  name: string;
+  description?: string | null;
+  sku: string;
+  price: number;
+  cost_price?: number;
+  unit?: string;
+  barcode?: string | null;
+  reorder_point?: number;
+  replenish_quantity?: number;
+  bulk_price?: number | null;
+  bulk_min_quantity?: number | null;
+  allow_decimal?: boolean;
+  is_active?: boolean;
+  category_path?: string | null;
+  supplier_name?: string | null;
+  stock_quantity?: number | null;
+}
+
+export interface ProductImportStatus {
+  importId: string;
+  status: "queued" | "processing" | "completed" | "failed";
+  total: number;
+  processed: number;
+  percent: number;
+  created: number;
+  updated: number;
+  stockAdjusted: number;
+  failures: { line: number; sku: string; error: string }[];
+  errorMessage: string | null;
+}
+
+export async function startProductImport(
+  client: ApiClient,
+  input: {
+    rows: ProductImportRowPayload[];
+    stockMode: ProductStockMode;
+    locationId?: string | null;
+  },
+): Promise<{ importId: string; total: number; status: string }> {
+  const { data } = await client.post<{
+    data: { import_id: string; total: number; status: string };
+  }>("/products/import", {
+    rows: input.rows.map((row) => ({
+      line: row.line,
+      name: row.name,
+      description: row.description,
+      sku: row.sku,
+      price: row.price,
+      cost_price: row.cost_price,
+      unit: row.unit,
+      barcode: row.barcode,
+      reorder_point: row.reorder_point,
+      replenish_quantity: row.replenish_quantity,
+      bulk_price: row.bulk_price,
+      bulk_min_quantity: row.bulk_min_quantity,
+      allow_decimal: row.allow_decimal,
+      is_active: row.is_active,
+      category_path: row.category_path,
+      supplier_name: row.supplier_name,
+      stock_quantity: row.stock_quantity,
+    })),
+    stock_mode: input.stockMode,
+    location_id: input.locationId ?? undefined,
+  });
+
+  return {
+    importId: data.import_id,
+    total: data.total,
+    status: data.status,
+  };
+}
+
+export async function getProductImportStatus(
+  client: ApiClient,
+  importId: string,
+): Promise<ProductImportStatus> {
+  const { data } = await client.get<{
+    data: {
+      import_id: string;
+      status: ProductImportStatus["status"];
+      total: number;
+      processed: number;
+      percent: number;
+      created: number;
+      updated: number;
+      stock_adjusted: number;
+      failures: { line: number; sku: string; error: string }[];
+      error_message: string | null;
+    };
+  }>(`/products/import/${importId}`);
+
+  return {
+    importId: data.import_id,
+    status: data.status,
+    total: data.total,
+    processed: data.processed,
+    percent: data.percent,
+    created: data.created,
+    updated: data.updated,
+    stockAdjusted: data.stock_adjusted,
+    failures: data.failures ?? [],
+    errorMessage: data.error_message,
+  };
 }
 
 export async function listBelowReorder(client: ApiClient): Promise<Product[]> {

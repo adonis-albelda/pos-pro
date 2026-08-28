@@ -1,25 +1,21 @@
 "use client";
 
 import { useState } from "react";
+import type { Route } from "next";
 import { Eye, EyeOff, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { ApiError } from "@double-a/api-client";
 import type { Product } from "@double-a/shared-types";
 import { formatPercent, marginPercent, stockLevel } from "@double-a/shared-types";
-import { Badge, IconButton, Money, Table, Td, Th } from "@/components/ui";
-import { ConfirmDialog, Sheet } from "@/components/overlay";
-import type { CategoryOption } from "@/lib/category-options";
+import { Badge, IconButton, IconLink, Money, Table, Td, Th } from "@/components/ui";
+import { ConfirmDialog } from "@/components/overlay";
 import { useSetProductActive } from "@/lib/query/products";
-import { ProductForm } from "./product-form";
 
 export function ProductsTable({
   products,
-  categories,
 }: {
   products: Product[];
-  categories: CategoryOption[];
 }) {
-  const [editing, setEditing] = useState<Product | null>(null);
   const [hiding, setHiding] = useState<Product | null>(null);
   const setActive = useSetProductActive();
 
@@ -99,10 +95,10 @@ export function ProductsTable({
                 </Td>
                 <Td>
                   <div className="flex justify-end gap-1">
-                    <IconButton
+                    <IconLink
                       icon={Pencil}
                       label="Edit product"
-                      onClick={() => setEditing(product)}
+                      href={`/products/${product.id}` as Route}
                     />
                     <IconButton
                       icon={product.isActive ? EyeOff : Eye}
@@ -118,23 +114,6 @@ export function ProductsTable({
           })}
         </tbody>
       </Table>
-
-      <Sheet
-        open={editing !== null}
-        onClose={() => setEditing(null)}
-        title={editing ? `Edit ${editing.name}` : "Edit product"}
-        description="Changes reach terminals on their next sync."
-        wide
-      >
-        {editing ? (
-          <ProductForm
-            key={editing.id}
-            product={editing}
-            categories={categories}
-            onDone={() => setEditing(null)}
-          />
-        ) : null}
-      </Sheet>
 
       <ConfirmDialog
         open={hiding !== null}

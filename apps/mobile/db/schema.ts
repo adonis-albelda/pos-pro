@@ -295,6 +295,11 @@ const V13_SALE_LOCATION = `
 ALTER TABLE sales ADD COLUMN location_id TEXT;
 `;
 
+const V14_PRODUCT_NOTES = `
+ALTER TABLE products ADD COLUMN description TEXT;
+ALTER TABLE products ADD COLUMN replenish_quantity INTEGER NOT NULL DEFAULT 0;
+`;
+
 /** Ordered, append-only. Never edit a step that has shipped. */
 export const MIGRATIONS: Migration[] = [
   { version: 1, sql: V1_INITIAL },
@@ -310,6 +315,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 11, sql: V11_FEATURE_FLAGS },
   { version: 12, sql: V12_INVOICE_NUMBERS },
   { version: 13, sql: V13_SALE_LOCATION },
+  { version: 14, sql: V14_PRODUCT_NOTES },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.reduce(

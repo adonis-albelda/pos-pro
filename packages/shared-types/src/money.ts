@@ -6,6 +6,8 @@
 
 const PESO = "\u20B1";
 
+export const PESO_SIGN = PESO;
+
 export function roundMoney(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }

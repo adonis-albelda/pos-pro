@@ -13,7 +13,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
-import { formatMoney } from "@double-a/shared-types";
+import { formatMoney, PESO_SIGN } from "@double-a/shared-types";
 
 /**
  * The exact message EnforceDemoReadOnly (Laravel) returns on every blocked
@@ -489,6 +489,23 @@ export function Input({
         className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-ink-muted"
       />
       {input}
+    </span>
+  );
+}
+
+export function MoneyInput({ className, ...props }: ComponentProps<"input">) {
+  return (
+    <span className="relative block">
+      <span
+        aria-hidden
+        className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-body text-ink-muted"
+      >
+        {PESO_SIGN}
+      </span>
+      <input
+        {...props}
+        className={cx(CONTROL_STYLES, "num h-11 pl-8 sm:h-10", className)}
+      />
     </span>
   );
 }

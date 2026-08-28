@@ -408,6 +408,10 @@ export interface Product {
   barcode: string | null;
   /** At or below this count the product lands on the reorder report. */
   reorderPoint: number;
+  /** Suggested qty to order when restocking (from supplier lists). */
+  replenishQuantity: number;
+  /** Optional longer notes — separate from the shelf name. */
+  description: string | null;
   /** Contractor price, offered once the line reaches `bulkMinQuantity`. */
   bulkPrice: number | null;
   bulkMinQuantity: number | null;

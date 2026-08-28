@@ -3,6 +3,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   countProducts,
+  getProduct,
   getProductStats,
   listBelowReorder,
   listProductLabelsPage,
@@ -41,11 +42,24 @@ export function useProducts(options: ListProductsPageOptions = {}) {
   });
 }
 
-/** The Inventory page's four header stat cards — one aggregate query, not a whole-catalogue walk. */
-export function useProductStats() {
+/** Single product for the edit page. */
+export function useProduct(id: string) {
   return useQuery({
-    queryKey: [...queryKeys.products.all, "stats"] as const,
-    queryFn: () => getProductStats(getBrowserApiClient()),
+    queryKey: queryKeys.products.detail(id),
+    queryFn: async () => {
+      const product = await getProduct(getBrowserApiClient(), id);
+      if (!product) throw new Error("Product not found");
+      return product;
+    },
+    enabled: Boolean(id),
+  });
+}
+
+/** Header stat cards — one aggregate query, not a whole-catalogue walk. */
+export function useProductStats(options: { locationId?: string } = {}) {
+  return useQuery({
+    queryKey: [...queryKeys.products.all, "stats", options] as const,
+    queryFn: () => getProductStats(getBrowserApiClient(), options),
   });
 }
 
