@@ -95,6 +95,7 @@ export function PurchaseOrdersPageClient() {
           page={page}
           supplierId={supplierId}
           status={status}
+          fetching={ordersQuery.isFetching && Boolean(ordersQuery.data)}
         />
       )}
     </div>
@@ -108,6 +109,7 @@ function PurchaseOrdersBody({
   page,
   supplierId,
   status,
+  fetching = false,
 }: {
   orders: PurchaseOrderWithLines[];
   suppliers: Supplier[];
@@ -115,6 +117,7 @@ function PurchaseOrdersBody({
   page: number;
   supplierId?: string;
   status?: PurchaseOrderStatus;
+  fetching?: boolean;
 }) {
   const mutationsLocked = useLocationMutationsLocked();
   // GAP: PurchaseOrderResource carries no supplier name (see
@@ -166,7 +169,7 @@ function PurchaseOrdersBody({
             }
           />
         ) : (
-          <Table>
+          <Table fetching={fetching}>
             <thead>
               <tr>
                 <Th>Order date</Th>

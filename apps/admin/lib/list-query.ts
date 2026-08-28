@@ -10,6 +10,11 @@ export function isInitialQueryLoad(isPending: boolean, hasData: boolean): boolea
   return isPending && !hasData;
 }
 
+/** Background refetch while stale rows stay visible (keepPreviousData). */
+export function isListRefetching(isFetching: boolean, hasData: boolean): boolean {
+  return isFetching && hasData;
+}
+
 export function parseListQuery(params: {
   q?: string;
   page?: string;

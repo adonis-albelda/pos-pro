@@ -13,8 +13,10 @@ import { useSetProductActive } from "@/lib/query/products";
 
 export function ProductsTable({
   products,
+  fetching = false,
 }: {
   products: Product[];
+  fetching?: boolean;
 }) {
   const [hiding, setHiding] = useState<Product | null>(null);
   const setActive = useSetProductActive();
@@ -36,7 +38,7 @@ export function ProductsTable({
 
   return (
     <>
-      <Table>
+      <Table fetching={fetching}>
         <thead>
           <tr>
             <Th>Product</Th>

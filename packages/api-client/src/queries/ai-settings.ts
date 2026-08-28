@@ -1,4 +1,5 @@
 import type { ApiClient } from "../http";
+import type { AiPlanId } from "@double-a/shared-types";
 
 export interface AiUsageBucket {
   weeklyLimit: number;
@@ -13,6 +14,10 @@ export interface CompanyAiSettings {
   platformAvailable: boolean;
   enabled: boolean;
   bypassesLimits: boolean;
+  aiPlan: {
+    id: AiPlanId;
+    name: string;
+  };
   photoExtract: AiUsageBucket;
   vectorSearch: AiUsageBucket;
   weekResetsAt: string;
@@ -22,6 +27,10 @@ interface CompanyAiSettingsAttrs {
   platform_available: boolean;
   enabled: boolean;
   bypasses_limits: boolean;
+  ai_plan: {
+    id: number;
+    name: string;
+  };
   photo_extract: {
     weekly_limit: number;
     used: number;
@@ -64,6 +73,10 @@ function mapCompanyAiSettings(data: CompanyAiSettingsAttrs): CompanyAiSettings {
     platformAvailable: data.platform_available,
     enabled: data.enabled,
     bypassesLimits: data.bypasses_limits,
+    aiPlan: {
+      id: data.ai_plan.id as AiPlanId,
+      name: data.ai_plan.name,
+    },
     photoExtract: mapUsageBucket(data.photo_extract),
     vectorSearch: mapUsageBucket(data.vector_search),
     weekResetsAt: data.week_resets_at,

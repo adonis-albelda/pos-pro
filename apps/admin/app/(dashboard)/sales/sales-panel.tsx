@@ -93,9 +93,11 @@ function SalesPanelHeader({
 function SalesTableSection({
   sales,
   users,
+  fetching = false,
 }: {
   sales: SaleWithItems[];
   users: User[];
+  fetching?: boolean;
 }) {
   const searchParams = useSearchParams();
   const { q, page } = parseListQuery({
@@ -171,7 +173,7 @@ function SalesTableSection({
           }
         />
       ) : (
-        <Table>
+        <Table fetching={fetching}>
           <thead>
             <tr>
               <Th>Sold at</Th>
@@ -288,9 +290,11 @@ function SalesTableSection({
 export function SalesPanel({
   sales,
   users,
+  fetching = false,
 }: {
   sales: SaleWithItems[];
   users: User[];
+  fetching?: boolean;
 }) {
   const devices = useMemo(
     () => [...new Set(sales.map((sale) => sale.deviceId).filter(Boolean))] as string[],
@@ -300,7 +304,7 @@ export function SalesPanel({
   return (
     <Card>
       <SalesPanelHeader users={users} devices={devices} />
-      <SalesTableSection sales={sales} users={users} />
+      <SalesTableSection sales={sales} users={users} fetching={fetching} />
     </Card>
   );
 }

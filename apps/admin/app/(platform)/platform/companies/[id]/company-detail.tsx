@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useTransition } from "react";
 import { KeyRound, Lock, Mail, ShieldCheck, UserRound } from "lucide-react";
-import type { InvoiceNumberMode, User } from "@double-a/shared-types";
+import type { InvoiceNumberMode, User, AiPlanId } from "@double-a/shared-types";
 import {
   Badge,
   Button,
@@ -20,12 +20,14 @@ import {
   useInvalidateCompanyStats,
   useInvalidateCompanyUsers,
 } from "@/lib/query/companies";
+import { usePlatformAiSettings } from "@/lib/query/platform-ai-settings";
 import {
   addCompanyAdmin,
   openCompany,
   resetCompanyUserPassword,
   resetCompanyUserPin,
   setCompanyActive,
+  setCompanyAiPlan,
   setCompanyUserDemoFlag,
   setInvoiceMode,
 } from "../../actions";
@@ -309,14 +311,66 @@ function InvoiceModeToggle({
   );
 }
 
+function AiPlanSelector({
+  companyId,
+  aiPlanId,
+}: {
+  companyId: string;
+  aiPlanId: AiPlanId;
+}) {
+  const plansQuery = usePlatformAiSettings();
+  const [pending, startTransition] = useTransition();
+  const invalidate = useInvalidateCompanyStats();
+
+  function submit(next: AiPlanId) {
+    if (next === aiPlanId) return;
+    const form = new FormData();
+    form.set("company_id", companyId);
+    form.set("ai_plan_id", String(next));
+    startTransition(async () => {
+      await setCompanyAiPlan(form);
+      invalidate();
+    });
+  }
+
+  const plans = plansQuery.data?.plans ?? [];
+
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-border p-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <p className="text-body-sm font-medium text-ink">AI subscription plan</p>
+        <p className="text-caption text-ink-muted">
+          Controls weekly free photo and vector search allowances for this company.
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {plans.map((plan) => (
+          <Button
+            key={plan.id}
+            type="button"
+            variant={aiPlanId === plan.id ? "primary" : "secondary"}
+            size="sm"
+            loading={pending || plansQuery.isPending}
+            onClick={() => submit(plan.id)}
+          >
+            Plan {plan.id}: {plan.name}
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function CompanyControls({
   companyId,
   isActive,
   invoiceNumberMode,
+  aiPlanId,
 }: {
   companyId: string;
   isActive: boolean;
   invoiceNumberMode: InvoiceNumberMode;
+  aiPlanId: AiPlanId;
 }) {
   return (
     <div className="space-y-3">
@@ -327,6 +381,7 @@ export function CompanyControls({
         </form>
         <ToggleActiveButton companyId={companyId} isActive={isActive} />
       </div>
+      <AiPlanSelector companyId={companyId} aiPlanId={aiPlanId} />
       <InvoiceModeToggle companyId={companyId} mode={invoiceNumberMode} />
     </div>
   );

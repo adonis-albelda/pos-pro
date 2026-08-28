@@ -13,6 +13,7 @@ export function ProductsPanel({
   pageCount,
   total,
   pageSize,
+  fetching = false,
 }: {
   products: Product[];
   query: string;
@@ -20,6 +21,7 @@ export function ProductsPanel({
   pageCount: number;
   total: number;
   pageSize: number;
+  fetching?: boolean;
 }) {
   return (
     <Card>
@@ -60,7 +62,7 @@ export function ProductsPanel({
           }
         />
       ) : (
-        <ProductsTable products={products} />
+        <ProductsTable products={products} fetching={fetching} />
       )}
 
       <Pagination

@@ -292,6 +292,10 @@ export default function InventoryPage() {
           fromDay={dayWindow.fromDay}
           toDay={dayWindow.toDay}
           rangeLabel={dayWindow.label}
+          fetching={
+            (searchIdsQuery.isFetching && Boolean(searchIdsQuery.data)) ||
+            (movementsQuery.isFetching && Boolean(movementsQuery.data))
+          }
         />
       </div>
     );
@@ -346,6 +350,7 @@ export default function InventoryPage() {
         total={stockPage.total}
         pageSize={DEFAULT_PAGE_SIZE}
         focusedProduct={focusedProduct}
+        fetching={stockQuery.isFetching && Boolean(stockQuery.data)}
       />
     </div>
   );

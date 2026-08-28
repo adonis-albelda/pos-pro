@@ -39,5 +39,5 @@ export default function SalesPage() {
     );
   }
 
-  return <SalesPanel sales={salesQuery.data ?? []} users={usersQuery.data ?? []} />;
+  return <SalesPanel sales={salesQuery.data ?? []} users={usersQuery.data ?? []} fetching={salesQuery.isFetching && Boolean(salesQuery.data)} />;
 }

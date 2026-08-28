@@ -46,6 +46,7 @@ export function MovementsPanel({
   fromDay,
   toDay,
   rangeLabel,
+  fetching = false,
 }: {
   movements: InventoryMovement[];
   total: number;
@@ -59,6 +60,7 @@ export function MovementsPanel({
   fromDay: string | null;
   toDay: string | null;
   rangeLabel: string;
+  fetching?: boolean;
 }) {
   const mutationsLocked = useLocationMutationsLocked();
   const router = useRouter();
@@ -185,7 +187,7 @@ export function MovementsPanel({
             }
           />
         ) : (
-          <Table>
+          <Table fetching={fetching}>
             <thead>
               <tr>
                 <Th>Time</Th>

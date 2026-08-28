@@ -1,4 +1,4 @@
-import type { Company, CompanyStats, InvoiceNumberMode, User } from "@double-a/shared-types";
+import type { Company, CompanyStats, InvoiceNumberMode, User, AiPlanId } from "@double-a/shared-types";
 import type { ApiClient, DataEnvelope, JsonApiOne, JsonApiResource } from "../http";
 import { type CompanyAttrs, type CompanyStatsAttrs, type UserAttrs, toCompany, toCompanyStats, toUser } from "../mappers";
 
@@ -20,6 +20,7 @@ export interface CreateCompanyInput {
 export interface UpdateCompanyInput {
   name?: string;
   isActive?: boolean;
+  aiPlanId?: AiPlanId;
 }
 
 export interface OpenCompanyResult {
@@ -67,6 +68,7 @@ export async function updateCompany(client: ApiClient, id: string, patch: Update
   const payload: Record<string, unknown> = {};
   if (patch.name !== undefined) payload.name = patch.name;
   if (patch.isActive !== undefined) payload.is_active = patch.isActive;
+  if (patch.aiPlanId !== undefined) payload.ai_plan_id = patch.aiPlanId;
 
   const { data } = await client.patch<{ data: JsonApiResource<CompanyAttrs> }>(
     `/superadmin/companies/${id}`,

@@ -123,14 +123,14 @@ export function AiSettingsCard({ settings }: { settings: CompanyAiSettings }) {
         <CardHeader
           icon={Sparkles}
           title="AI features"
-          description="Photo reading and smart product search. Weekly limits reset every Monday."
+          description={`${settings.aiPlan.name} plan. Weekly limits reset every Monday.`}
           action={
             <div className="flex items-center gap-3">
               {settings.bypassesLimits ? (
                 <Badge tone="warning">Unlimited (platform admin)</Badge>
               ) : (
-                <Badge tone={settings.enabled ? "success" : "danger"}>
-                  {settings.enabled ? "On" : "Off"}
+                <Badge tone={settings.enabled ? "success" : "warning"}>
+                  {settings.enabled ? "Paid overage on" : "Free tier only"}
                 </Badge>
               )}
               <AiToggle
@@ -144,8 +144,9 @@ export function AiSettingsCard({ settings }: { settings: CompanyAiSettings }) {
 
         <div className="space-y-4 px-4 py-5 sm:px-6">
           <p className="text-body text-ink-muted">
-            Turn on AI when your team is ready. Photo reads beyond the weekly free allowance are
-            billed at {PESO_SIGN}
+            Free photo and vector searches from your {settings.aiPlan.name} plan work as soon as AI
+            is enabled for your company. Turn AI on here only when you want paid photo reads beyond
+            the weekly free allowance at {PESO_SIGN}
             {photo.unitOverageChargePeso ?? 3} per request.
           </p>
 
@@ -197,8 +198,8 @@ export function AiSettingsCard({ settings }: { settings: CompanyAiSettings }) {
       <Dialog
         open={confirmOpen}
         onClose={() => !pending && setConfirmOpen(false)}
-        title="Turn on AI features?"
-        description="Review your weekly allowance and overage pricing before continuing."
+        title="Turn on paid photo reads?"
+        description="Your free weekly allowance is already available. This only enables paid overage requests."
       >
         <div className="space-y-4">
           <div className="space-y-2 rounded-sm border border-border bg-paper/50 px-4 py-3 text-body">
@@ -242,7 +243,7 @@ export function AiSettingsCard({ settings }: { settings: CompanyAiSettings }) {
               Cancel
             </Button>
             <Button type="button" loading={pending} onClick={() => applyEnabled(true)}>
-              Turn on AI
+              Enable paid overage
             </Button>
           </div>
         </div>

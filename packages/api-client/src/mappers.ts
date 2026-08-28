@@ -29,6 +29,7 @@ import type {
   Supplier,
   User,
   UserRole,
+  AiPlanId,
 } from "@double-a/shared-types";
 import type { JsonApiResource } from "./http";
 
@@ -576,6 +577,7 @@ export interface CompanyAttrs {
   name: string;
   is_active: boolean;
   invoice_number_mode?: string | null;
+  ai_plan_id?: number;
   created_at: string | null;
 }
 
@@ -586,11 +588,13 @@ export function toCompany(resource: JsonApiResource<CompanyAttrs>): Company {
     name: a.name,
     isActive: a.is_active,
     invoiceNumberMode: a.invoice_number_mode === "incremental" ? "incremental" : "random",
+    aiPlanId: (a.ai_plan_id ?? 1) as AiPlanId,
     createdAt: a.created_at ?? "",
   };
 }
 
 export interface CompanyStatsAttrs extends CompanyAttrs {
+  ai_plan_id?: number;
   product_count: number;
   category_count: number;
   supplier_count: number;

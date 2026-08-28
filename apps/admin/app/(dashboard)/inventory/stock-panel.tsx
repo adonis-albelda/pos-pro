@@ -44,6 +44,7 @@ export function StockPanel({
   total,
   pageSize,
   focusedProduct,
+  fetching = false,
 }: {
   products: Product[];
   categories: CategoryOption[];
@@ -56,6 +57,7 @@ export function StockPanel({
   total: number;
   pageSize: number;
   focusedProduct?: string;
+  fetching?: boolean;
 }) {
   const mutationsLocked = useLocationMutationsLocked();
   const router = useRouter();
@@ -181,7 +183,7 @@ export function StockPanel({
             }
           />
         ) : (
-          <Table>
+          <Table fetching={fetching}>
             <thead>
               <tr>
                 <Th>Product</Th>

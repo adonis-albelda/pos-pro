@@ -91,6 +91,7 @@ export default function ProductsPage() {
             pageCount={productsQuery.data?.pageCount ?? 1}
             total={productsQuery.data?.total ?? 0}
             pageSize={DEFAULT_PAGE_SIZE}
+            fetching={productsQuery.isFetching && Boolean(productsQuery.data)}
           />
         </>
       )}

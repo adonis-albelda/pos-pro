@@ -60,6 +60,7 @@ export function CompanyDetailPageClient({ companyId }: { companyId: string }) {
         companyId={companyId}
         isActive={stats.isActive}
         invoiceNumberMode={stats.invoiceNumberMode}
+        aiPlanId={stats.aiPlanId}
       />
 
       <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4">

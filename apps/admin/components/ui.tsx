@@ -399,19 +399,45 @@ export function Num({ value, className }: { value: number; className?: string })
 /* Table primitives                                                           */
 /* -------------------------------------------------------------------------- */
 
-export function Table({ className, ...props }: ComponentProps<"table">) {
+export function Table({
+  className,
+  fetching = false,
+  fetchingMessage = "Fetching data that matches your keyword…",
+  children,
+  ...props
+}: Omit<ComponentProps<"table">, "children"> & {
+  fetching?: boolean;
+  fetchingMessage?: string;
+  children?: ReactNode;
+}) {
   return (
-    <div className="overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]">
-      <table
-        {...props}
-        className={cx(
-          "w-full text-body",
-          // Rows highlight on hover so the eye can hold a line across a wide table.
-          "[&_tbody_tr]:transition-colors [&_tbody_tr:hover]:bg-paper",
-          "[&_tbody_tr:last-child_td]:border-b-0",
-          className,
-        )}
-      />
+    <div className="relative min-h-[10rem]">
+      {fetching ? (
+        <div
+          className="absolute inset-0 z-10 flex items-center justify-center bg-surface/75 px-4 backdrop-blur-[1px]"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex max-w-sm flex-col items-center gap-3 text-center">
+            <Loader2 size={28} strokeWidth={2} className="animate-spin text-primary" aria-hidden />
+            <p className="text-body text-ink-muted">{fetchingMessage}</p>
+          </div>
+        </div>
+      ) : null}
+      <div className="overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]">
+        <table
+          {...props}
+          className={cx(
+            "w-full text-body",
+            // Rows highlight on hover so the eye can hold a line across a wide table.
+            "[&_tbody_tr]:transition-colors [&_tbody_tr:hover]:bg-paper",
+            "[&_tbody_tr:last-child_td]:border-b-0",
+            className,
+          )}
+        >
+          {children}
+        </table>
+      </div>
     </div>
   );
 }

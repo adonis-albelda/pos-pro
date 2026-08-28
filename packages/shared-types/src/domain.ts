@@ -302,12 +302,24 @@ export interface StockTransfer {
 /** A tenant the platform superadmin creates. Shop identity still lives in store_settings. */
 export type InvoiceNumberMode = "incremental" | "random";
 
+export type AiPlanId = 1 | 2 | 3;
+
+export interface AiSubscriptionPlan {
+  id: AiPlanId;
+  name: string;
+  photoExtractWeeklyLimit: number;
+  vectorSearchWeeklyLimit: number;
+  sortOrder: number;
+}
+
 export interface Company {
   id: string;
   name: string;
   isActive: boolean;
   /** Superadmin-only dial — see AssignInvoiceNumber. Defaults to "random" for a new company. */
   invoiceNumberMode: InvoiceNumberMode;
+  /** Superadmin-only subscription tier for weekly AI allowances. */
+  aiPlanId: AiPlanId;
   createdAt: string;
 }
 
