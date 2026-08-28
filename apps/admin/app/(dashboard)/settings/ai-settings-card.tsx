@@ -83,7 +83,18 @@ export function AiSettingsCard({ settings }: { settings: CompanyAiSettings }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   if (!settings.platformAvailable) {
-    return null;
+    return (
+      <Card>
+        <CardHeader
+          icon={Sparkles}
+          title="AI Usage"
+          description="Photo reads and vector search limits for your app plan."
+        />
+        <div className="px-4 py-8 text-center text-body text-ink-muted sm:px-6">
+          AI is not enabled for your company. Contact your platform admin if you need access.
+        </div>
+      </Card>
+    );
   }
 
   const photo = settings.photoExtract;
@@ -117,7 +128,7 @@ export function AiSettingsCard({ settings }: { settings: CompanyAiSettings }) {
       <Card>
         <CardHeader
           icon={Sparkles}
-          title="AI features"
+          title="AI Usage"
           description={`${settings.aiPlan.name} app plan. Weekly AI limits reset every Monday.`}
           action={
             <div className="flex items-center gap-3">
