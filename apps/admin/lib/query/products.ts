@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   countProducts,
   getProductStats,
@@ -22,6 +22,7 @@ import { queryKeys } from "./keys";
 export function useProducts(options: ListProductsPageOptions = {}) {
   return useQuery({
     queryKey: queryKeys.products.list({ ...options }),
+    placeholderData: keepPreviousData,
     queryFn: async () => {
       const client = getBrowserApiClient();
       const pageSize = options.pageSize ?? 25;
@@ -62,6 +63,7 @@ export function useProductLabelsPage(
 ) {
   return useQuery({
     queryKey: [...queryKeys.products.all, "labels", options] as const,
+    placeholderData: keepPreviousData,
     queryFn: () => listProductLabelsPage(getBrowserApiClient(), options),
   });
 }

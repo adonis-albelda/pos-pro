@@ -1,7 +1,7 @@
 "use client";
 
 import type { Route } from "next";
-import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   ChevronLeft,
   ChevronRight,
@@ -11,11 +11,11 @@ import {
   Upload,
   type LucideIcon,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Button, ButtonLink, Input } from "@/components/ui";
 import { DEFAULT_PAGE_SIZE } from "@/lib/list-query";
 
-/** Plain GET form — URL stays source of truth, no client router needed. */
+/** Client-side search — updates URL via router, no full page reload. */
 export function SearchField({
   placeholder = "Search…",
   defaultValue = "",
@@ -28,14 +28,36 @@ export function SearchField({
   /** Other query keys to keep when searching (filters, etc.). Page is dropped. */
   preserve?: Record<string, string | undefined>;
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [value, setValue] = useState(defaultValue);
+
+  useEffect(() => {
+    setValue(defaultValue);
+  }, [defaultValue]);
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const next = new URLSearchParams(searchParams.toString());
+    for (const [key, entry] of Object.entries(preserve)) {
+      if (entry) next.set(key, entry);
+      else next.delete(key);
+    }
+    const trimmed = value.trim();
+    if (trimmed) next.set(param, trimmed);
+    else next.delete(param);
+    next.delete("page");
+    const qs = next.toString();
+    router.replace((qs ? `${pathname}?${qs}` : pathname) as Route);
+  }
+
   return (
-    <form method="get" className="relative min-w-0 flex-1 sm:max-w-sm">
-      {Object.entries(preserve).map(([key, value]) =>
-        value ? <input key={key} type="hidden" name={key} value={value} /> : null,
-      )}
+    <form onSubmit={handleSubmit} className="relative min-w-0 flex-1 sm:max-w-sm">
       <Input
         name={param}
-        defaultValue={defaultValue}
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
         placeholder={placeholder}
         icon={Search}
         aria-label={placeholder}
@@ -135,6 +157,12 @@ export function Pagination({
   basePath: string;
   query?: Record<string, string | undefined>;
 }) {
+  const router = useRouter();
+
+  function goToPage(nextPage: number) {
+    router.replace(pageHref(basePath, nextPage, query));
+  }
+
   if (total === 0 || pageCount <= 1) {
     return total > 0 ? (
       <p className="border-t border-border px-4 py-3 text-caption text-ink-muted sm:px-6">
@@ -162,10 +190,10 @@ export function Pagination({
             Prev
           </span>
         ) : (
-          <Link href={pageHref(basePath, page - 1, query)} className={linkClass}>
+          <button type="button" onClick={() => goToPage(page - 1)} className={linkClass}>
             <ChevronLeft size={14} />
             Prev
-          </Link>
+          </button>
         )}
         <span className="num text-caption text-ink-muted">
           {page} / {pageCount}
@@ -176,10 +204,10 @@ export function Pagination({
             <ChevronRight size={14} />
           </span>
         ) : (
-          <Link href={pageHref(basePath, page + 1, query)} className={linkClass}>
+          <button type="button" onClick={() => goToPage(page + 1)} className={linkClass}>
             Next
             <ChevronRight size={14} />
-          </Link>
+          </button>
         )}
       </div>
     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   findProductIdsMatching,
   listMovementsPage,
@@ -34,6 +34,7 @@ export function useInventoryMovements(
 ) {
   return useQuery({
     queryKey: queryKeys.inventory.movements(filter as Record<string, unknown>),
+    placeholderData: keepPreviousData,
     queryFn: () => listMovementsPage(getBrowserApiClient(), filter),
     enabled: options.enabled ?? true,
   });

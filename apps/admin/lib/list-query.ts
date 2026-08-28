@@ -5,6 +5,11 @@
 
 export const DEFAULT_PAGE_SIZE = 25;
 
+/** First fetch only — keep list mounted while URL-driven refetches run. */
+export function isInitialQueryLoad(isPending: boolean, hasData: boolean): boolean {
+  return isPending && !hasData;
+}
+
 export function parseListQuery(params: {
   q?: string;
   page?: string;

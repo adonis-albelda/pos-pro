@@ -12,7 +12,7 @@ import {
   Warehouse,
 } from "lucide-react";
 import { formatMoney } from "@double-a/shared-types";
-import { DEFAULT_PAGE_SIZE } from "@/lib/list-query";
+import { DEFAULT_PAGE_SIZE, isInitialQueryLoad } from "@/lib/list-query";
 import { toCategoryOptions } from "@/lib/category-options";
 import { resolveDayWindow } from "@/lib/date-range";
 import { Card, PageHeader, StatCard } from "@/components/ui";
@@ -156,12 +156,15 @@ export default function InventoryPage() {
 
   const movementsTabPending =
     isMovementsTab &&
-    (searchIdsPending || (movementsEnabled && (movementsQuery.isPending || totalsQuery.isPending)));
+    (searchIdsPending ||
+      (movementsEnabled &&
+        isInitialQueryLoad(movementsQuery.isPending, Boolean(movementsQuery.data))));
   const movementsTabError =
     isMovementsTab &&
     (searchIdsQuery.isError || (movementsEnabled && (movementsQuery.isError || totalsQuery.isError)));
 
-  const stockTabPending = !isMovementsTab && stockQuery.isPending;
+  const stockTabPending =
+    !isMovementsTab && isInitialQueryLoad(stockQuery.isPending, Boolean(stockQuery.data));
   const stockTabError = !isMovementsTab && stockQuery.isError;
 
   const pending = statsQuery.isPending || categoriesQuery.isPending || stockTabPending || movementsTabPending;

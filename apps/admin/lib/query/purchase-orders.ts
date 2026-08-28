@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { InventoryMovement } from "@double-a/shared-types";
 import {
   countOpenPurchaseOrders,
@@ -18,6 +18,7 @@ import { queryKeys } from "./keys";
 export function usePurchaseOrders(filter: PurchaseOrdersFilter & { limit?: number } = {}) {
   return useQuery({
     queryKey: queryKeys.purchaseOrders.list(filter as Record<string, unknown>),
+    placeholderData: keepPreviousData,
     queryFn: () => listPurchaseOrders(getBrowserApiClient(), filter),
   });
 }

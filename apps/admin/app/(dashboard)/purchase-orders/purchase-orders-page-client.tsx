@@ -13,7 +13,7 @@ import {
 } from "@double-a/shared-types";
 import { listSuppliers, type PurchaseOrderWithLines } from "@double-a/api-client/queries";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
-import { matchesQuery, paginateItems, parseListQuery } from "@/lib/list-query";
+import { isInitialQueryLoad, matchesQuery, paginateItems, parseListQuery } from "@/lib/list-query";
 import { PO_STATUS_TONE } from "@/lib/purchase-order-status";
 import {
   Badge,
@@ -76,7 +76,8 @@ export function PurchaseOrdersPageClient() {
         }
       />
 
-      {ordersQuery.isPending || suppliersQuery.isPending ? (
+      {isInitialQueryLoad(ordersQuery.isPending, Boolean(ordersQuery.data)) ||
+      suppliersQuery.isPending ? (
         <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>
       ) : ordersQuery.isError || suppliersQuery.isError ? (
         <Card className="px-4 py-8 text-center text-body text-danger">

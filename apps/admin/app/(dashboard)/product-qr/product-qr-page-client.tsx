@@ -7,6 +7,7 @@ import { ProductQrPanel } from "./product-qr-panel";
 import { useCategories } from "@/lib/query/categories";
 import { useProductLabelsPage } from "@/lib/query/products";
 import { toCategoryOptions } from "@/lib/category-options";
+import { isInitialQueryLoad } from "@/lib/list-query";
 
 const PAGE_SIZE = 50;
 
@@ -43,7 +44,9 @@ export function ProductQrPageClient() {
     pageSize: PAGE_SIZE,
   });
 
-  const pending = labelsQuery.isPending || categoriesQuery.isPending;
+  const pending =
+    isInitialQueryLoad(labelsQuery.isPending, Boolean(labelsQuery.data)) ||
+    categoriesQuery.isPending;
   const error = labelsQuery.error ?? categoriesQuery.error;
 
   return (

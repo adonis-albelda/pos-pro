@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { formatMoney } from "@double-a/shared-types";
 import type { SaleWithItems, User } from "@double-a/shared-types";
-import { matchesQuery, paginateItems, parseListQuery } from "@/lib/list-query";
+import { isInitialQueryLoad, matchesQuery, paginateItems, parseListQuery } from "@/lib/list-query";
 import {
   Badge,
   ButtonLink,
@@ -83,7 +83,7 @@ export default function SalesPage() {
         }
       />
 
-      {salesQuery.isPending || usersQuery.isPending ? (
+      {isInitialQueryLoad(salesQuery.isPending, Boolean(salesQuery.data)) || usersQuery.isPending ? (
         <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>
       ) : salesQuery.isError ? (
         <Card className="px-4 py-8 text-center text-body text-danger">

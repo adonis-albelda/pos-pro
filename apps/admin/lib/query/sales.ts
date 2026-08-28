@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getSale, listMovementsPage, listSales, listSalesPage } from "@double-a/api-client/queries";
 import type { SaleWithItems } from "@double-a/shared-types";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
@@ -27,6 +27,7 @@ export interface SalesListFilter {
 export function useSalesList(filter: SalesListFilter = {}) {
   return useQuery({
     queryKey: queryKeys.sales.list({ ...filter }),
+    placeholderData: keepPreviousData,
     queryFn: () => fetchSales(filter),
   });
 }

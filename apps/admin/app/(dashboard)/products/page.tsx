@@ -3,7 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import { Package } from "lucide-react";
 import { toCategoryOptions } from "@/lib/category-options";
-import { DEFAULT_PAGE_SIZE, parseListQuery } from "@/lib/list-query";
+import { DEFAULT_PAGE_SIZE, isInitialQueryLoad, parseListQuery } from "@/lib/list-query";
 import { Card, PageHeader } from "@/components/ui";
 import { ProductsPanel } from "./products-panel";
 import { useCategories } from "@/lib/query/categories";
@@ -35,7 +35,8 @@ export default function ProductsPage() {
         description="Names, prices and categories. Terminals pick these up on their next sync."
       />
 
-      {productsQuery.isPending || categoriesQuery.isPending ? (
+      {isInitialQueryLoad(productsQuery.isPending, Boolean(productsQuery.data)) ||
+      categoriesQuery.isPending ? (
         <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>
       ) : productsQuery.isError || categoriesQuery.isError ? (
         <Card className="px-4 py-8 text-center text-body text-danger">
