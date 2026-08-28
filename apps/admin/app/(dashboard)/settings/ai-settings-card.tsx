@@ -123,7 +123,7 @@ export function AiSettingsCard({ settings }: { settings: CompanyAiSettings }) {
         <CardHeader
           icon={Sparkles}
           title="AI features"
-          description={`${settings.aiPlan.name} plan. Weekly limits reset every Monday.`}
+          description={`${settings.aiPlan.name} app plan. Weekly AI limits reset every Monday.`}
           action={
             <div className="flex items-center gap-3">
               {settings.bypassesLimits ? (
@@ -144,9 +144,9 @@ export function AiSettingsCard({ settings }: { settings: CompanyAiSettings }) {
 
         <div className="space-y-4 px-4 py-5 sm:px-6">
           <p className="text-body text-ink-muted">
-            Free photo and vector searches from your {settings.aiPlan.name} plan work as soon as AI
-            is enabled for your company. Turn AI on here only when you want paid photo reads beyond
-            the weekly free allowance at {PESO_SIGN}
+            Free photo and vector searches included with your {settings.aiPlan.name} app plan work as
+            soon as AI is enabled for your company. Turn on paid overage here only when you want
+            photo reads beyond the weekly free allowance at {PESO_SIGN}
             {photo.unitOverageChargePeso ?? 3} per request.
           </p>
 

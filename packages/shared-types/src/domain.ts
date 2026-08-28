@@ -318,7 +318,7 @@ export interface Company {
   isActive: boolean;
   /** Superadmin-only dial — see AssignInvoiceNumber. Defaults to "random" for a new company. */
   invoiceNumberMode: InvoiceNumberMode;
-  /** Superadmin-only subscription tier for weekly AI allowances. */
+  /** Superadmin-only app subscription tier (Basic / Standard / Premium). */
   aiPlanId: AiPlanId;
   createdAt: string;
 }

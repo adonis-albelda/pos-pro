@@ -1,8 +1,8 @@
 "use client";
 
-import { useActionState, useEffect, useTransition } from "react";
+import { useActionState, useEffect } from "react";
 import { KeyRound, Lock, Mail, ShieldCheck, UserRound } from "lucide-react";
-import type { InvoiceNumberMode, User, AiPlanId } from "@double-a/shared-types";
+import type { InvoiceNumberMode, User, AiPlanId, AiSubscriptionPlan } from "@double-a/shared-types";
 import {
   Badge,
   Button,
@@ -19,17 +19,16 @@ import { EMPTY_FORM_STATE } from "@/lib/form-state";
 import {
   useInvalidateCompanyStats,
   useInvalidateCompanyUsers,
+  useSetCompanyActive,
+  useSetCompanyAiPlan,
+  useSetCompanyInvoiceMode,
 } from "@/lib/query/companies";
-import { usePlatformAiSettings } from "@/lib/query/platform-ai-settings";
 import {
   addCompanyAdmin,
   openCompany,
   resetCompanyUserPassword,
   resetCompanyUserPin,
-  setCompanyActive,
-  setCompanyAiPlan,
   setCompanyUserDemoFlag,
-  setInvoiceMode,
 } from "../../actions";
 
 export function AddAdminForm({ companyId }: { companyId: string }) {
@@ -232,30 +231,20 @@ export function CompanyUsers({
   );
 }
 
-/** setCompanyActive (Server Action) doesn't redirect, so — unlike createCompany
- * (see lib/query/companies.ts) — it's safe to await then invalidate directly. */
 function ToggleActiveButton({ companyId, isActive }: { companyId: string; isActive: boolean }) {
-  const [pending, startTransition] = useTransition();
-  const invalidate = useInvalidateCompanyStats();
+  const mutation = useSetCompanyActive();
 
   function submit() {
-    const form = new FormData();
-    form.set("company_id", companyId);
-    form.set("is_active", isActive ? "false" : "true");
-    startTransition(async () => {
-      await setCompanyActive(form);
-      invalidate();
-    });
+    mutation.mutate({ companyId, isActive: !isActive });
   }
 
   return (
-    <Button type="button" variant="secondary" loading={pending} onClick={submit}>
+    <Button type="button" variant="secondary" loading={mutation.isPending} onClick={submit}>
       {isActive ? "Disable company" : "Enable company"}
     </Button>
   );
 }
 
-/** setInvoiceMode (Server Action) doesn't redirect — same await-then-invalidate shape as ToggleActiveButton. */
 function InvoiceModeToggle({
   companyId,
   mode,
@@ -263,18 +252,11 @@ function InvoiceModeToggle({
   companyId: string;
   mode: InvoiceNumberMode;
 }) {
-  const [pending, startTransition] = useTransition();
-  const invalidate = useInvalidateCompanyStats();
+  const mutation = useSetCompanyInvoiceMode();
 
   function submit(next: InvoiceNumberMode) {
-    if (next === mode) return;
-    const form = new FormData();
-    form.set("company_id", companyId);
-    form.set("mode", next);
-    startTransition(async () => {
-      await setInvoiceMode(form);
-      invalidate();
-    });
+    if (next === mode || mutation.isPending) return;
+    mutation.mutate({ companyId, mode: next });
   }
 
   return (
@@ -287,75 +269,83 @@ function InvoiceModeToggle({
             : "Sequential counter (e.g. JH-000001), set by the shop admin."}
         </p>
       </div>
-      <div className="flex gap-2">
-        <Button
-          type="button"
-          variant={mode === "random" ? "primary" : "secondary"}
-          size="sm"
-          loading={pending}
-          onClick={() => submit("random")}
-        >
-          Random
-        </Button>
-        <Button
-          type="button"
-          variant={mode === "incremental" ? "primary" : "secondary"}
-          size="sm"
-          loading={pending}
-          onClick={() => submit("incremental")}
-        >
-          Incremental
-        </Button>
+      <div className="flex flex-col gap-2 sm:items-end">
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant={mode === "random" ? "primary" : "secondary"}
+            size="sm"
+            loading={mutation.isPending}
+            onClick={() => submit("random")}
+          >
+            Random
+          </Button>
+          <Button
+            type="button"
+            variant={mode === "incremental" ? "primary" : "secondary"}
+            size="sm"
+            loading={mutation.isPending}
+            onClick={() => submit("incremental")}
+          >
+            Incremental
+          </Button>
+        </div>
+        {mutation.isError ? (
+          <ErrorNote>
+            {mutation.error instanceof Error
+              ? mutation.error.message
+              : "Could not update invoice mode."}
+          </ErrorNote>
+        ) : null}
       </div>
     </div>
   );
 }
 
-function AiPlanSelector({
+function AppPlanSelector({
   companyId,
   aiPlanId,
+  plans,
 }: {
   companyId: string;
   aiPlanId: AiPlanId;
+  plans: AiSubscriptionPlan[];
 }) {
-  const plansQuery = usePlatformAiSettings();
-  const [pending, startTransition] = useTransition();
-  const invalidate = useInvalidateCompanyStats();
+  const mutation = useSetCompanyAiPlan();
 
   function submit(next: AiPlanId) {
-    if (next === aiPlanId) return;
-    const form = new FormData();
-    form.set("company_id", companyId);
-    form.set("ai_plan_id", String(next));
-    startTransition(async () => {
-      await setCompanyAiPlan(form);
-      invalidate();
-    });
+    if (next === aiPlanId || mutation.isPending) return;
+    mutation.mutate({ companyId, aiPlanId: next });
   }
-
-  const plans = plansQuery.data?.plans ?? [];
 
   return (
     <div className="flex flex-col gap-2 rounded-md border border-border p-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <p className="text-body-sm font-medium text-ink">AI subscription plan</p>
+        <p className="text-body-sm font-medium text-ink">App plan</p>
         <p className="text-caption text-ink-muted">
-          Controls weekly free photo and vector search allowances for this company.
+          Which subscription tier this shop is on. AI weekly limits follow the plan.
         </p>
       </div>
-      <div className="flex flex-wrap gap-2">
-        {plans.map((plan) => (
-          <Button
-            key={plan.id}
-            type="button"
-            variant={aiPlanId === plan.id ? "primary" : "secondary"}
-            size="sm"
-            loading={pending || plansQuery.isPending}
-            onClick={() => submit(plan.id)}
-          >
-            Plan {plan.id}: {plan.name}
-          </Button>
-        ))}
+      <div className="flex flex-col gap-2 sm:items-end">
+        <div className="flex flex-wrap gap-2">
+          {plans.map((plan) => (
+            <Button
+              key={plan.id}
+              type="button"
+              variant={aiPlanId === plan.id ? "primary" : "secondary"}
+              size="sm"
+              loading={mutation.isPending}
+              onClick={() => submit(plan.id)}
+            >
+              Plan {plan.id}: {plan.name}
+            </Button>
+          ))}
+        </div>
+        {mutation.isError ? (
+          <ErrorNote>
+            {mutation.error instanceof Error ? mutation.error.message : "Could not update app plan."}
+          </ErrorNote>
+        ) : null}
       </div>
     </div>
   );
@@ -366,11 +356,13 @@ export function CompanyControls({
   isActive,
   invoiceNumberMode,
   aiPlanId,
+  plans,
 }: {
   companyId: string;
   isActive: boolean;
   invoiceNumberMode: InvoiceNumberMode;
   aiPlanId: AiPlanId;
+  plans: AiSubscriptionPlan[];
 }) {
   return (
     <div className="space-y-3">
@@ -381,7 +373,7 @@ export function CompanyControls({
         </form>
         <ToggleActiveButton companyId={companyId} isActive={isActive} />
       </div>
-      <AiPlanSelector companyId={companyId} aiPlanId={aiPlanId} />
+      <AppPlanSelector companyId={companyId} aiPlanId={aiPlanId} plans={plans} />
       <InvoiceModeToggle companyId={companyId} mode={invoiceNumberMode} />
     </div>
   );

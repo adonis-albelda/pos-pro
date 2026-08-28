@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { Route } from "next";
 import { isValidPin } from "@double-a/shared-types";
-import type { AiPlanId } from "@double-a/shared-types";
 import { ApiError } from "@double-a/api-client";
 import {
   createCompany as apiCreateCompany,
@@ -162,18 +161,6 @@ export async function setInvoiceMode(formData: FormData): Promise<void> {
   await setCompanyInvoiceMode(client, companyId, mode);
 
   revalidatePath(`/platform/companies/${companyId}`);
-}
-
-export async function setCompanyAiPlan(formData: FormData): Promise<void> {
-  const { client } = await requireSuperadmin();
-  const companyId = String(formData.get("company_id") ?? "");
-  const rawPlanId = Number.parseInt(String(formData.get("ai_plan_id") ?? ""), 10);
-  if (!companyId || ![1, 2, 3].includes(rawPlanId)) return;
-
-  await updateCompany(client, companyId, { aiPlanId: rawPlanId as AiPlanId });
-
-  revalidatePath(`/platform/companies/${companyId}`);
-  revalidatePath("/platform");
 }
 
 export async function openCompany(formData: FormData): Promise<void> {

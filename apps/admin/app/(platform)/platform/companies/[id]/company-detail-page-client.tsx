@@ -3,13 +3,15 @@
 import { Building2, FolderTree, Package, Receipt, Truck, Users, Warehouse } from "lucide-react";
 import { Badge, Card, CardBody, CardHeader, PageHeader, StatCard } from "@/components/ui";
 import { useCompanyStats, useCompanyUsers } from "@/lib/query/companies";
+import { usePlatformAiSettings } from "@/lib/query/platform-ai-settings";
 import { CompanyControls, CompanyUsers } from "./company-detail";
 
 export function CompanyDetailPageClient({ companyId }: { companyId: string }) {
   const statsQuery = useCompanyStats();
   const usersQuery = useCompanyUsers(companyId);
+  const plansQuery = usePlatformAiSettings();
 
-  if (statsQuery.isPending || usersQuery.isPending) {
+  if (statsQuery.isPending || usersQuery.isPending || plansQuery.isPending) {
     return <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>;
   }
 
@@ -29,6 +31,16 @@ export function CompanyDetailPageClient({ companyId }: { companyId: string }) {
         {usersQuery.error instanceof Error
           ? usersQuery.error.message
           : "Could not load this company's users."}
+      </Card>
+    );
+  }
+
+  if (plansQuery.isError) {
+    return (
+      <Card className="px-4 py-8 text-center text-body text-danger">
+        {plansQuery.error instanceof Error
+          ? plansQuery.error.message
+          : "Could not load app plans."}
       </Card>
     );
   }
@@ -61,6 +73,7 @@ export function CompanyDetailPageClient({ companyId }: { companyId: string }) {
         isActive={stats.isActive}
         invoiceNumberMode={stats.invoiceNumberMode}
         aiPlanId={stats.aiPlanId}
+        plans={plansQuery.data.plans}
       />
 
       <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4">

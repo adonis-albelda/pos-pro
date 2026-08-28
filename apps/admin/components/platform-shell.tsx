@@ -115,7 +115,7 @@ export function PlatformShell({
             ].join(" ")}
           >
             <Sparkles size={18} strokeWidth={2} />
-            AI settings
+            App plans
           </Link>
           <Link
             href={"/platform/demo-access" as Route}

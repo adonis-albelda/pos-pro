@@ -10,8 +10,8 @@ export default function PlatformAiSettingsPage() {
     <div className="space-y-6">
       <PageHeader
         icon={Sparkles}
-        title="AI settings"
-        description="Platform-wide free weekly allowances for photo reading and vector search."
+        title="App plans"
+        description="Subscription tiers for shops. Set weekly AI allowances and photo overage pricing per plan."
       />
       <PlatformAiSettingsPageClient />
     </div>

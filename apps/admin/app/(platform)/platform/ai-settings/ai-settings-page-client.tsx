@@ -1,14 +1,13 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState } from "react";
 import { Save, Sparkles } from "lucide-react";
 import type { AiPlanId, AiSubscriptionPlan } from "@double-a/shared-types";
 import { Button, Card, CardHeader, ErrorNote, Field, Input } from "@/components/ui";
 import {
-  useInvalidatePlatformAiSettings,
   usePlatformAiSettings,
+  useUpdatePlatformAiSettings,
 } from "@/lib/query/platform-ai-settings";
-import { savePlatformAiSettingsAction } from "./actions";
 
 export function PlatformAiSettingsPageClient() {
   const settingsQuery = usePlatformAiSettings();
@@ -38,8 +37,7 @@ function PlatformAiSettingsForm({
     plans: AiSubscriptionPlan[];
   };
 }) {
-  const invalidate = useInvalidatePlatformAiSettings();
-  const [pending, startTransition] = useTransition();
+  const mutation = useUpdatePlatformAiSettings();
   const [error, setError] = useState<string | null>(null);
   const [overageCharge, setOverageCharge] = useState(String(settings.photoOverageChargePeso));
   const [plans, setPlans] = useState(settings.plans);
@@ -84,25 +82,22 @@ function PlatformAiSettingsForm({
     }
 
     setError(null);
-    startTransition(async () => {
-      const result = await savePlatformAiSettingsAction({
-        photoOverageChargePeso,
-        plans: parsedPlans,
-      });
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
-      invalidate();
-    });
+    mutation.mutate(
+      { photoOverageChargePeso, plans: parsedPlans },
+      {
+        onError: (saveError) => {
+          setError(saveError instanceof Error ? saveError.message : "Could not save AI settings.");
+        },
+      },
+    );
   }
 
   return (
     <Card>
       <CardHeader
         icon={Sparkles}
-        title="AI subscription plans"
-        description="Configure weekly free allowances per plan and the paid photo overage rate when a shop opts in."
+        title="Subscription tiers"
+        description="Each plan is what a shop pays to use the app. AI weekly limits and photo overage pricing are configured per tier."
       />
 
       <div className="space-y-4 px-4 py-5 sm:px-6">
@@ -154,14 +149,15 @@ function PlatformAiSettingsForm({
         </div>
 
         <p className="text-caption text-ink-muted">
-          Counts reset every Monday. Assign each company a plan on its detail page. Shops only need
-          to turn AI on in Settings when they want paid photo reads beyond the free weekly allowance.
+          Counts reset every Monday. Assign each company a tier on its detail page. Shops only need
+          to turn on paid photo overage in Settings when they want reads beyond the free weekly
+          allowance.
         </p>
 
         {error ? <ErrorNote>{error}</ErrorNote> : null}
 
         <div className="flex justify-end">
-          <Button type="button" icon={Save} loading={pending} onClick={save}>
+          <Button type="button" icon={Save} loading={mutation.isPending} onClick={save}>
             Save AI settings
           </Button>
         </div>

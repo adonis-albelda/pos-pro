@@ -1,10 +1,28 @@
 "use client";
 
 import { useCallback } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { companyStats, listCompanyUsers, listDemoAccessCodes } from "@double-a/api-client/queries";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import type { AiPlanId, CompanyStats, InvoiceNumberMode } from "@double-a/shared-types";
+import {
+  companyStats,
+  listCompanyUsers,
+  listDemoAccessCodes,
+  setCompanyInvoiceMode,
+  updateCompany,
+} from "@double-a/api-client/queries";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 import { queryKeys } from "./keys";
+
+function patchCompanyStatsRow(
+  queryClient: QueryClient,
+  companyId: string,
+  patch: Partial<CompanyStats>,
+): void {
+  queryClient.setQueryData<CompanyStats[]>(queryKeys.companies.stats(), (current) => {
+    if (!current) return current;
+    return current.map((row) => (row.id === companyId ? { ...row, ...patch } : row));
+  });
+}
 
 /**
  * Superadmin-only (CLAUDE.md §15) platform read — every company's row, no
@@ -29,7 +47,7 @@ export function useCompanyStats() {
 export function useInvalidateCompanyStats() {
   const queryClient = useQueryClient();
   return useCallback(
-    () => queryClient.invalidateQueries({ queryKey: queryKeys.companies.all }),
+    () => queryClient.invalidateQueries({ queryKey: queryKeys.companies.stats() }),
     [queryClient],
   );
 }
@@ -53,6 +71,39 @@ export function useInvalidateCompanyUsers(companyId: string) {
     () => queryClient.invalidateQueries({ queryKey: queryKeys.companies.users(companyId) }),
     [queryClient, companyId],
   );
+}
+
+export function useSetCompanyActive() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ companyId, isActive }: { companyId: string; isActive: boolean }) =>
+      updateCompany(getBrowserApiClient(), companyId, { isActive }),
+    onSuccess: (company) => {
+      patchCompanyStatsRow(queryClient, company.id, { isActive: company.isActive });
+    },
+  });
+}
+
+export function useSetCompanyAiPlan() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ companyId, aiPlanId }: { companyId: string; aiPlanId: AiPlanId }) =>
+      updateCompany(getBrowserApiClient(), companyId, { aiPlanId }),
+    onSuccess: (company) => {
+      patchCompanyStatsRow(queryClient, company.id, { aiPlanId: company.aiPlanId });
+    },
+  });
+}
+
+export function useSetCompanyInvoiceMode() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ companyId, mode }: { companyId: string; mode: InvoiceNumberMode }) =>
+      setCompanyInvoiceMode(getBrowserApiClient(), companyId, mode),
+    onSuccess: (mode, { companyId }) => {
+      patchCompanyStatsRow(queryClient, companyId, { invoiceNumberMode: mode });
+    },
+  });
 }
 
 /** Every demo@store.com access code issued so far, newest first — refetches on mount for the same reason useCompanyStats does. */
