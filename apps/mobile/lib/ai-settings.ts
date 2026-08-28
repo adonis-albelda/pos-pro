@@ -3,10 +3,11 @@ import { getLocalAiSettings } from "@/db/ai-settings";
 import { useSync } from "@/sync/sync-provider";
 
 /**
- * Whether this shop has AI turned on, as last pulled. Icon hidden until both
- * the platform feature and the shop opt-in are true.
+ * Shop opt-in from Settings, as last pulled. POS chrome uses the
+ * `product_photo_ai` feature flag instead; this hook is for flows that
+ * actually call AI and need the company toggle on top of the platform flag.
  */
-export function useAiEnabled(): boolean {
+export function useAiShopEnabled(): boolean {
   const { dataVersion } = useSync();
   const [enabled, setEnabled] = useState(false);
 
