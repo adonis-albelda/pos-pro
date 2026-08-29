@@ -4,7 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import type { Route } from "next";
 import { usePathname } from "next/navigation";
-import { Building2, Database, KeyRound, LogOut, Menu, Sparkles, ToggleLeft, X } from "lucide-react";
+import { Building2, Database, KeyRound, LogOut, Menu, ShieldCheck, Sparkles, ToggleLeft, X } from "lucide-react";
 import { signOut } from "@/app/login/actions";
 import { Button } from "@/components/ui";
 
@@ -128,6 +128,18 @@ export function PlatformShell({
           >
             <KeyRound size={18} strokeWidth={2} />
             Demo access
+          </Link>
+          <Link
+            href={"/platform/security-settings" as Route}
+            className={[
+              "flex min-h-11 items-center gap-2.5 rounded-sm px-3 text-body font-medium",
+              pathname.startsWith("/platform/security-settings")
+                ? "bg-primary/10 text-primary"
+                : "text-ink hover:bg-border/60",
+            ].join(" ")}
+          >
+            <ShieldCheck size={18} strokeWidth={2} />
+            Security
           </Link>
           <Link
             href={"/platform/backups" as Route}

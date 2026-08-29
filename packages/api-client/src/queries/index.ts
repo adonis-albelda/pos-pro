@@ -21,3 +21,4 @@ export * from "./push";
 export * from "./locations";
 export * from "./mfa";
 export * from "./security-settings";
+export * from "./platform-security-settings";

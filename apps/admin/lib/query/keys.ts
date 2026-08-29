@@ -129,6 +129,10 @@ export const queryKeys = {
     all: ["platform-ai-settings"] as const,
     detail: () => ["platform-ai-settings", "detail"] as const,
   },
+  platformSecuritySettings: {
+    all: ["platform-security-settings"] as const,
+    detail: () => ["platform-security-settings", "detail"] as const,
+  },
   productEmbeddingCoverage: {
     all: ["product-embedding-coverage"] as const,
     detail: () => ["product-embedding-coverage", "detail"] as const,
