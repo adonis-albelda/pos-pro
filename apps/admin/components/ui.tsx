@@ -11,6 +11,7 @@ import {
 } from "react";
 import type { Route } from "next";
 import Link from "next/link";
+import { createPortal } from "react-dom";
 import {
   AlertTriangle,
   Check,
@@ -620,8 +621,17 @@ export function Combobox({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [highlighted, setHighlighted] = useState(0);
+  const [panelRect, setPanelRect] = useState<{ top: number; left: number; width: number } | null>(
+    null,
+  );
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // The dropdown panel is portaled to document.body (see below), so it's no
+  // longer a DOM descendant of rootRef — needs its own ref or the
+  // click-outside handler fires on mousedown, closing (and unmounting) the
+  // panel before the option's click ever reaches it, so nothing gets
+  // selected.
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const selectedOption = options.find((option) => option.value === selected) ?? null;
 
@@ -631,14 +641,37 @@ export function Combobox({
 
   useEffect(() => {
     function onPointerDown(event: MouseEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-        setQuery("");
-      }
+      const target = event.target as Node;
+      if (rootRef.current?.contains(target) || panelRef.current?.contains(target)) return;
+      setOpen(false);
+      setQuery("");
     }
     document.addEventListener("mousedown", onPointerDown);
     return () => document.removeEventListener("mousedown", onPointerDown);
   }, []);
+
+  // A plain `absolute` panel only escapes ancestors within its own stacking
+  // context — any ancestor with overflow-hidden/auto (a scrollable table
+  // wrapper, a Card, a Sheet) still clips it no matter the z-index. Portal
+  // to document.body and position by the input's real screen coordinates
+  // instead, same fix OverlayPortal uses for Dialog/Sheet.
+  useEffect(() => {
+    if (!open) return;
+
+    function updatePosition() {
+      const rect = rootRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setPanelRect({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+    }
+
+    updatePosition();
+    window.addEventListener("scroll", updatePosition, true);
+    window.addEventListener("resize", updatePosition);
+    return () => {
+      window.removeEventListener("scroll", updatePosition, true);
+      window.removeEventListener("resize", updatePosition);
+    };
+  }, [open]);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -732,34 +765,53 @@ export function Combobox({
         />
       </div>
 
-      {open ? (
-        <div className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-sm border border-border bg-surface p-1 shadow-lg">
-          {filtered.length === 0 ? (
-            <p className="px-3 py-2 text-caption text-ink-muted">{emptyLabel}</p>
-          ) : (
-            filtered.map((option, index) => (
-              <button
-                key={option.value}
-                type="button"
-                onMouseEnter={() => setHighlighted(index)}
-                onClick={() => commit(option.value)}
-                className={cx(
-                  "flex w-full items-center justify-between gap-2 rounded-sm px-3 py-2 text-left text-body",
-                  index === highlighted ? "bg-primary-tint text-ink" : "text-ink hover:bg-paper",
-                  option.value === selected && "font-medium",
-                )}
-              >
-                <span className="min-w-0 truncate">{option.label}</span>
-                {option.sublabel ? (
-                  <span className="shrink-0 text-caption text-ink-muted">{option.sublabel}</span>
-                ) : null}
-              </button>
-            ))
-          )}
-        </div>
+      {open && panelRect ? (
+        <ComboboxPortal>
+          <div
+            ref={panelRef}
+            style={{
+              position: "fixed",
+              top: panelRect.top,
+              left: panelRect.left,
+              width: panelRect.width,
+            }}
+            className="z-50 max-h-64 overflow-y-auto rounded-sm border border-border bg-surface p-1 shadow-lg"
+          >
+            {filtered.length === 0 ? (
+              <p className="px-3 py-2 text-caption text-ink-muted">{emptyLabel}</p>
+            ) : (
+              filtered.map((option, index) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onMouseEnter={() => setHighlighted(index)}
+                  onClick={() => commit(option.value)}
+                  className={cx(
+                    "flex w-full items-center justify-between gap-2 rounded-sm px-3 py-2 text-left text-body",
+                    index === highlighted ? "bg-primary-tint text-ink" : "text-ink hover:bg-paper",
+                    option.value === selected && "font-medium",
+                  )}
+                >
+                  <span className="min-w-0 truncate">{option.label}</span>
+                  {option.sublabel ? (
+                    <span className="shrink-0 text-caption text-ink-muted">{option.sublabel}</span>
+                  ) : null}
+                </button>
+              ))
+            )}
+          </div>
+        </ComboboxPortal>
       ) : null}
     </div>
   );
+}
+
+/** Escapes any ancestor's overflow-hidden/auto clipping — same reason Dialog/Sheet portal to document.body. */
+function ComboboxPortal({ children }: { children: ReactNode }) {
+  const [target, setTarget] = useState<HTMLElement | null>(null);
+  useEffect(() => setTarget(document.body), []);
+  if (!target) return null;
+  return createPortal(children, target);
 }
 
 export function Textarea({ className, ...props }: ComponentProps<"textarea">) {
