@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { Route } from "next";
 import {
   CheckCircle2,
   ChevronLeft,
@@ -46,7 +45,6 @@ import {
   Input,
   Money,
   MoneyInput,
-  Select,
 } from "@/components/ui";
 import { toast } from "sonner";
 import { ConfirmDialog, Dialog } from "@/components/overlay";
@@ -516,11 +514,18 @@ export function CreateSaleForm() {
 
   return (
     <div className="flex flex-col gap-4 lg:h-[calc(100vh-8rem)] lg:flex-row">
-      {/* Grid + search — left column on desktop, on top on narrow widths. */}
+      {/* Grid + search — left column on desktop, on top on narrow widths. Scrolls on its own; the cart column never moves with it. */}
       <div className="flex min-h-0 flex-1 flex-col gap-4">
-        <Card>
-          <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:px-6">
-            <div className="flex flex-1 items-center gap-2">
+        <Card className="flex min-h-0 flex-1 flex-col">
+          <div className="flex flex-col gap-4 border-b border-border px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0 shrink-0">
+              <h1 className="text-heading-md font-semibold text-ink">New sale</h1>
+              <p className="mt-1 text-caption text-ink-muted">
+                Rung up in the office — not from a POS terminal.
+              </p>
+            </div>
+
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 lg:justify-end">
               <Input
                 icon={Search}
                 value={search}
@@ -530,16 +535,22 @@ export function CreateSaleForm() {
                 }}
                 placeholder="Search by name or SKU, or scan a barcode"
                 autoComplete="off"
+                className="min-w-0 flex-1 sm:max-w-xs"
               />
-              {isEnabled("product_vector_search") ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  icon={Sparkles}
-                  aria-label="Smart search with AI"
-                  onClick={() => setAiSearchOpen(true)}
+              <div className="w-40">
+                <Combobox
+                  value={categoryId}
+                  onChange={(next) => {
+                    clearAiSearch();
+                    setCategoryId(next);
+                  }}
+                  placeholder="All categories"
+                  options={[
+                    { value: "", label: "All categories" },
+                    ...categories.map((category) => ({ value: category.id, label: category.name })),
+                  ]}
                 />
-              ) : null}
+              </div>
               {isEnabled("voice_search") && voiceSupported ? (
                 <Button
                   type="button"
@@ -549,22 +560,15 @@ export function CreateSaleForm() {
                   onClick={() => setVoiceSearchOpen(true)}
                 />
               ) : null}
-            </div>
-            <div className="sm:w-56">
-              <Select
-                value={categoryId}
-                onChange={(event) => {
-                  clearAiSearch();
-                  setCategoryId(event.target.value);
-                }}
-              >
-                <option value="">All categories</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </Select>
+              {isEnabled("product_vector_search") ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  icon={Sparkles}
+                  aria-label="Smart search with AI"
+                  onClick={() => setAiSearchOpen(true)}
+                />
+              ) : null}
             </div>
           </div>
 
@@ -585,7 +589,7 @@ export function CreateSaleForm() {
             </div>
           ) : null}
 
-          <div className="px-4 py-4 sm:px-6">
+          <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
             {gridLoading && displayedProducts.length === 0 ? (
               <div className="py-12 text-center text-body text-ink-muted">Loading products…</div>
             ) : displayedProducts.length === 0 ? (
@@ -639,8 +643,8 @@ export function CreateSaleForm() {
         </Card>
       </div>
 
-      {/* Cart — right column on desktop, stacked below on narrow widths. */}
-      <div className="flex w-full flex-col gap-4 lg:w-[420px] lg:shrink-0">
+      {/* Cart — right column on desktop, pinned full-height and never scrolls with the product grid. Stacked below on narrow widths. */}
+      <div className="flex min-h-0 w-full flex-col gap-4 lg:h-full lg:w-[420px] lg:shrink-0">
         <Card className="flex min-h-0 flex-1 flex-col">
           <CardHeader
             icon={ShoppingCart}
@@ -789,25 +793,21 @@ export function CreateSaleForm() {
           <div className="space-y-4 border-t border-border px-4 py-4 sm:px-6">
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Payment method" required>
-                <Select
+                <Combobox
                   value={paymentMethod}
-                  onChange={(event) => setPaymentMethod(event.target.value as PaymentMethod)}
-                >
-                  {PAYMENT_METHODS.map((method) => (
-                    <option key={method.value} value={method.value}>
-                      {method.label}
-                    </option>
-                  ))}
-                </Select>
+                  onChange={(next) => setPaymentMethod(next as PaymentMethod)}
+                  options={PAYMENT_METHODS.map((method) => ({ value: method.value, label: method.label }))}
+                />
               </Field>
               <Field label="Fulfillment" required>
-                <Select
+                <Combobox
                   value={fulfillment}
-                  onChange={(event) => setFulfillment(event.target.value as "pickup" | "delivery")}
-                >
-                  <option value="pickup">Pickup</option>
-                  <option value="delivery">Delivery</option>
-                </Select>
+                  onChange={(next) => setFulfillment(next as "pickup" | "delivery")}
+                  options={[
+                    { value: "pickup", label: "Pickup" },
+                    { value: "delivery", label: "Delivery" },
+                  ]}
+                />
               </Field>
             </div>
 
@@ -864,14 +864,6 @@ export function CreateSaleForm() {
             {error ? <ErrorNote>{error}</ErrorNote> : null}
 
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <Button
-                type="button"
-                variant="secondary"
-                className="w-full sm:w-auto"
-                onClick={() => router.push("/sales" as Route)}
-              >
-                Cancel
-              </Button>
               <Button
                 type="button"
                 variant="secondary"
