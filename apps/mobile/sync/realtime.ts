@@ -61,6 +61,8 @@ export async function connectRealtime(
 
   const scheme = process.env.EXPO_PUBLIC_REVERB_SCHEME ?? "https";
   const port = Number(process.env.EXPO_PUBLIC_REVERB_PORT ?? (scheme === "https" ? 443 : 80));
+  const authEndpoint = `${apiUrl().replace(/\/v1\/?$/, "")}/broadcasting/auth`;
+  if (__DEV__) console.warn("[realtime] authEndpoint:", authEndpoint);
 
   echo = new EchoCtor({
     broadcaster: "reverb",
@@ -76,7 +78,7 @@ export async function connectRealtime(
     // request this app makes (see lib/api/session.ts). Broadcast::routes()
     // registers at the app root, not under /v1 — apiUrl() is API-v1-scoped
     // (…/v1), so it has to be stripped here or this 404s.
-    authEndpoint: `${apiUrl().replace(/\/v1\/?$/, "")}/broadcasting/auth`,
+    authEndpoint,
     bearerToken: token,
   });
 

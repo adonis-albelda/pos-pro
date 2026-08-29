@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -15,6 +16,7 @@ import {
   LOCATION_FILTER_COOKIE,
   parseLocationFilterCookie,
 } from "@/lib/location-filter";
+import { connectRealtime, disconnectRealtime } from "@/lib/realtime";
 
 const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
 
@@ -38,6 +40,23 @@ export function LocationFilterProvider({ children }: { children: ReactNode }) {
   const [locationId, setLocationIdState] = useState<string | null>(() =>
     parseLocationFilterCookie(readCookie(LOCATION_FILTER_COOKIE)),
   );
+
+  // Live stock ticks for whichever single branch is selected — "all
+  // locations" (locationId === null) has no one channel to subscribe to,
+  // so this simply stays disconnected until a specific branch is picked.
+  useEffect(() => {
+    if (!locationId) {
+      disconnectRealtime();
+      return;
+    }
+
+    connectRealtime(locationId, () => {
+      void queryClient.invalidateQueries({ queryKey: ["products"] });
+      void queryClient.invalidateQueries({ queryKey: ["inventory"] });
+    });
+
+    return () => disconnectRealtime();
+  }, [locationId, queryClient]);
 
   const setLocationId = useCallback(
     (id: string | null) => {
