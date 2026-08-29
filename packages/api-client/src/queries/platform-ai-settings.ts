@@ -57,13 +57,61 @@ export async function getProductEmbeddingCoverage(
   return result.data;
 }
 
-/** Queues GenerateProductEmbeddingJob for every active product still missing one. Returns how many were queued. */
-export async function embedAllProducts(client: ApiClient): Promise<{ queued: number }> {
-  const result = await client.post<{ data: { queued: number } }>(
+/**
+ * Queues GenerateProductEmbeddingJob (as a batch, so it can be cancelled
+ * mid-run) for every active product still missing one. `batchId` is null
+ * when there was nothing to queue.
+ */
+export async function embedAllProducts(
+  client: ApiClient,
+): Promise<{ queued: number; batchId: string | null }> {
+  const result = await client.post<{ data: { queued: number; batch_id: string | null } }>(
     "/superadmin/products/embed-all",
     {},
   );
-  return result.data;
+  return { queued: result.data.queued, batchId: result.data.batch_id };
+}
+
+export interface EmbedAllBatchStatus {
+  id: string;
+  totalJobs: number;
+  pendingJobs: number;
+  processedJobs: number;
+  failedJobs: number;
+  finished: boolean;
+  cancelled: boolean;
+}
+
+export async function getEmbedAllBatchStatus(
+  client: ApiClient,
+  batchId: string,
+): Promise<EmbedAllBatchStatus> {
+  const result = await client.get<{
+    data: {
+      id: string;
+      total_jobs: number;
+      pending_jobs: number;
+      processed_jobs: number;
+      failed_jobs: number;
+      finished: boolean;
+      cancelled: boolean;
+    };
+  }>(`/superadmin/products/embed-all/${batchId}`);
+
+  return {
+    id: result.data.id,
+    totalJobs: result.data.total_jobs,
+    pendingJobs: result.data.pending_jobs,
+    processedJobs: result.data.processed_jobs,
+    failedJobs: result.data.failed_jobs,
+    finished: result.data.finished,
+    cancelled: result.data.cancelled,
+  };
+}
+
+/** Jobs already picked up by a worker still finish; every job still queued becomes a no-op. */
+export async function cancelEmbedAllBatch(client: ApiClient, batchId: string): Promise<void> {
+  await client.post(`/superadmin/products/embed-all/${batchId}/cancel`, {});
 }
 
 export async function updatePlatformAiSettings(

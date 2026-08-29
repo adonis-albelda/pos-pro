@@ -124,6 +124,7 @@ export const queryKeys = {
   productEmbeddingCoverage: {
     all: ["product-embedding-coverage"] as const,
     detail: () => ["product-embedding-coverage", "detail"] as const,
+    batch: (batchId: string | null) => ["product-embedding-coverage", "batch", batchId] as const,
   },
   backups: {
     all: ["platform-backups"] as const,

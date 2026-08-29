@@ -2,7 +2,9 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  cancelEmbedAllBatch,
   embedAllProducts,
+  getEmbedAllBatchStatus,
   getPlatformAiSettings,
   getProductEmbeddingCoverage,
   updatePlatformAiSettings,
@@ -19,12 +21,34 @@ export function useProductEmbeddingCoverage() {
 }
 
 export function useEmbedAllProducts() {
-  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => embedAllProducts(getBrowserApiClient()),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.productEmbeddingCoverage.all });
+  });
+}
+
+/** Polls a running backfill batch every 1.5s until it finishes or is cancelled. */
+export function useEmbedAllBatchStatus(batchId: string | null) {
+  const queryClient = useQueryClient();
+  return useQuery({
+    queryKey: queryKeys.productEmbeddingCoverage.batch(batchId),
+    queryFn: () => getEmbedAllBatchStatus(getBrowserApiClient(), batchId!),
+    enabled: batchId !== null,
+    refetchInterval: (query) => {
+      const status = query.state.data;
+      if (!status || status.finished || status.cancelled) {
+        // Coverage % only moves once jobs actually finish — refresh it here
+        // rather than making every caller remember to.
+        void queryClient.invalidateQueries({ queryKey: queryKeys.productEmbeddingCoverage.detail() });
+        return false;
+      }
+      return 1500;
     },
+  });
+}
+
+export function useCancelEmbedAllBatch() {
+  return useMutation({
+    mutationFn: (batchId: string) => cancelEmbedAllBatch(getBrowserApiClient(), batchId),
   });
 }
 

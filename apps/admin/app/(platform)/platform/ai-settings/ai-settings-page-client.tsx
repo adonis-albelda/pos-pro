@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BrainCircuit, Save, Sparkles } from "lucide-react";
+import { BrainCircuit, Save, Sparkles, X } from "lucide-react";
 import type { AiPlanId, AiSubscriptionPlan } from "@double-a/shared-types";
 import { Button, Card, CardHeader, ErrorNote, Field, Input } from "@/components/ui";
+import { ConfirmDialog } from "@/components/overlay";
 import { toast } from "sonner";
 import {
+  useCancelEmbedAllBatch,
+  useEmbedAllBatchStatus,
   useEmbedAllProducts,
   usePlatformAiSettings,
   useProductEmbeddingCoverage,
@@ -45,18 +48,51 @@ export function PlatformAiSettingsPageClient() {
 function ProductEmbeddingCard() {
   const coverageQuery = useProductEmbeddingCoverage();
   const embedAll = useEmbedAllProducts();
+  const cancelBatch = useCancelEmbedAllBatch();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
+
+  const statusQuery = useEmbedAllBatchStatus(activeBatchId);
+  const status = statusQuery.data;
+  const running = activeBatchId !== null && !!status && !status.finished && !status.cancelled;
+
+  const missing = coverageQuery.data ? coverageQuery.data.total - coverageQuery.data.embedded : 0;
+
+  useEffect(() => {
+    if (!status || !activeBatchId) return;
+    if (status.finished && !status.cancelled) {
+      toast.success(`Finished embedding — ${status.processedJobs} product${status.processedJobs === 1 ? "" : "s"} done.`);
+      setActiveBatchId(null);
+    } else if (status.cancelled) {
+      toast(`Cancelled — ${status.processedJobs} of ${status.totalJobs} had already finished.`);
+      setActiveBatchId(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fires once per finished/cancelled transition, not on every status poll
+  }, [status?.finished, status?.cancelled]);
 
   function run() {
     embedAll.mutate(undefined, {
-      onSuccess: ({ queued }) => {
-        toast.success(
-          queued > 0
-            ? `Queued ${queued} product${queued === 1 ? "" : "s"} for embedding.`
-            : "Every active product already has an embedding.",
-        );
+      onSuccess: ({ queued, batchId }) => {
+        setConfirmOpen(false);
+        if (queued > 0 && batchId) {
+          setActiveBatchId(batchId);
+          toast.success(`Queued ${queued} product${queued === 1 ? "" : "s"} for embedding.`);
+        } else {
+          toast.success("Every active product already has an embedding.");
+        }
       },
       onError: (error) => {
+        setConfirmOpen(false);
         toast.error(error instanceof Error ? error.message : "Could not queue embedding.");
+      },
+    });
+  }
+
+  function cancel() {
+    if (!activeBatchId) return;
+    cancelBatch.mutate(activeBatchId, {
+      onError: (error) => {
+        toast.error(error instanceof Error ? error.message : "Could not cancel.");
       },
     });
   }
@@ -66,7 +102,7 @@ function ProductEmbeddingCard() {
       <CardHeader
         icon={BrainCircuit}
         title="Product embeddings"
-        description="Backfills smart search's vector for products created before the feature shipped. Queued jobs run on the worker, not instantly — refresh to see coverage climb."
+        description="Backfills smart search's vector for products created before the feature shipped. Already-embedded products are left alone."
       />
       <div className="space-y-4 px-4 py-5 sm:px-6">
         {coverageQuery.isPending ? (
@@ -97,18 +133,60 @@ function ProductEmbeddingCard() {
           </>
         )}
 
-        <div className="flex justify-end">
-          <Button
-            type="button"
-            icon={Sparkles}
-            loading={embedAll.isPending}
-            disabled={coverageQuery.isPending || coverageQuery.isError}
-            onClick={run}
-          >
-            Embed all missing products
-          </Button>
-        </div>
+        {running && status ? (
+          <div className="space-y-2 rounded-sm border border-primary/30 bg-primary-tint px-3 py-3">
+            <div className="flex items-baseline justify-between">
+              <span className="text-body text-primary-dark">
+                Embedding in progress — {status.processedJobs} of {status.totalJobs}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                icon={X}
+                loading={cancelBatch.isPending}
+                onClick={cancel}
+              >
+                Cancel
+              </Button>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-border/60">
+              <div
+                className="h-full rounded-full bg-primary transition-[width]"
+                style={{
+                  width: `${status.totalJobs > 0 ? Math.min(100, (status.processedJobs / status.totalJobs) * 100) : 0}%`,
+                }}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              icon={Sparkles}
+              disabled={coverageQuery.isPending || coverageQuery.isError || missing === 0}
+              onClick={() => setConfirmOpen(true)}
+            >
+              Embed all missing products
+            </Button>
+          </div>
+        )}
       </div>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        onConfirm={run}
+        pending={embedAll.isPending}
+        title="Embed all missing products"
+        description={
+          missing > 0
+            ? `Queues ${missing} product${missing === 1 ? "" : "s"} across every company that ${missing === 1 ? "doesn't" : "don't"} have an embedding yet. Already-embedded products are left alone. You can cancel the run once it starts.`
+            : "Every active product already has an embedding."
+        }
+        confirmLabel="Queue embedding"
+        confirmIcon={Sparkles}
+      />
     </Card>
   );
 }
