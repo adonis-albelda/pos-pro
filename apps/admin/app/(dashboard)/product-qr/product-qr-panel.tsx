@@ -17,6 +17,7 @@ import {
   Button,
   Card,
   CardHeader,
+  Combobox,
   EmptyState,
   Field,
   Input,
@@ -350,17 +351,15 @@ export function ProductQrPanel({
             />
           </Field>
           <Field label="Category" hint="Filter to one batch, or all.">
-            <Select
+            <Combobox
               value={categoryId}
-              onChange={(event) => onCategoryChange(event.target.value)}
-            >
-              <option value="all">All categories</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.label}
-                </option>
-              ))}
-            </Select>
+              onChange={(next) => onCategoryChange(next)}
+              placeholder="All categories"
+              options={[
+                { value: "all", label: "All categories" },
+                ...categories.map((category) => ({ value: category.id, label: category.label })),
+              ]}
+            />
           </Field>
           <Field label="Label size" hint="Fixed = same size at any count.">
             <Select

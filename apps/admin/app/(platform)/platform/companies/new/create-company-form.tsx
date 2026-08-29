@@ -57,16 +57,20 @@ export function CreateCompanyForm() {
 
   return (
     <form onSubmit={submit} className="space-y-5">
-      <Field label="Company name">
+      <Field label="Company name" required>
         <Input icon={Building2} name="name" required />
       </Field>
-      <Field label="Admin name">
+      <Field label="Admin name" required>
         <Input icon={UserRound} name="admin_name" required />
       </Field>
-      <Field label="Admin email">
+      <Field label="Admin email" required>
         <Input icon={Mail} name="admin_email" type="email" required />
       </Field>
-      <Field label="Admin password" hint="Dashboard sign-in. They will be asked to change it on first visit.">
+      <Field
+        label="Admin password"
+        hint="Dashboard sign-in. They will be asked to change it on first visit."
+        required
+      >
         <PasswordInput
           icon={Lock}
           name="admin_password"
@@ -78,6 +82,7 @@ export function CreateCompanyForm() {
       <Field
         label="Admin PIN"
         hint="4–6 digits. Unlocks a POS terminal. Not the dashboard password."
+        required
       >
         <Input
           icon={KeyRound}

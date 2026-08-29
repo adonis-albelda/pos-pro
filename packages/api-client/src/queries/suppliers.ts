@@ -1,13 +1,16 @@
-import type { Supplier } from "@double-a/shared-types";
+import type { Product, Supplier } from "@double-a/shared-types";
 import { ApiError, type ApiClient, type JsonApiResource } from "../http";
-import { type SupplierAttrs, toSupplier } from "../mappers";
+import { type ProductAttrs, type SupplierAttrs, toProduct, toSupplier } from "../mappers";
 
 export interface SupplierInput {
   name: string;
   contactPerson?: string | null;
   phone?: string | null;
+  secondaryPhone?: string | null;
   email?: string | null;
+  secondaryEmail?: string | null;
   address?: string | null;
+  notes?: string | null;
   isActive?: boolean;
 }
 
@@ -16,8 +19,11 @@ function toPayload(input: Partial<SupplierInput>): Record<string, unknown> {
   if (input.name !== undefined) payload.name = input.name;
   if (input.contactPerson !== undefined) payload.contact_person = input.contactPerson;
   if (input.phone !== undefined) payload.phone = input.phone;
+  if (input.secondaryPhone !== undefined) payload.secondary_phone = input.secondaryPhone;
   if (input.email !== undefined) payload.email = input.email;
+  if (input.secondaryEmail !== undefined) payload.secondary_email = input.secondaryEmail;
   if (input.address !== undefined) payload.address = input.address;
+  if (input.notes !== undefined) payload.notes = input.notes;
   if (input.isActive !== undefined) payload.is_active = input.isActive;
   return payload;
 }
@@ -94,11 +100,9 @@ export async function supplierBalance(client: ApiClient, supplierId: string): Pr
  * Replace-all for which products a supplier carries. `PUT
  * /suppliers/{supplier}/products` (SetSupplierProductsController) is a
  * plain, non-JSON:API endpoint — `{ data: { supplier_id, product_ids } }` —
- * and echoes back only the ids it just saved, never product names.
- * `SupplierProduct` (shared-types) carries `productName`, but there is no
- * endpoint that returns it: callers must already hold a product list (e.g.
- * from `listProducts`) and join by id themselves, same as the old
- * `products(name)` embed had to be joined by the caller's UI layer anyway.
+ * and echoes back only the ids it just saved, never product names. Use
+ * `listSupplierProducts` below to read the full linked list back (with
+ * names) after a save, or to pre-check an edit picker.
  */
 export async function setSupplierProducts(
   client: ApiClient,
@@ -112,28 +116,15 @@ export async function setSupplierProducts(
   return data.product_ids;
 }
 
-/**
- * GAP: no Tally API endpoint reads back a supplier's currently linked
- * product ids — `SetSupplierProductsController` is write-only (replace +
- * echo what it just wrote). The old `listSupplierProducts` (joined product
- * names for a single supplier) and `listAllSupplierProductIds` (every
- * supplier's ids in one round trip, used to pre-check an edit form) have no
- * server-side equivalent to port. A caller needing to know what is
- * currently linked before editing has nothing to read it from; ask backend
- * for a `GET /suppliers/{supplier}/products` endpoint before porting this
- * call site.
- */
-export function listSupplierProducts(): never {
-  throw new Error(
-    "listSupplierProducts has no Tally API equivalent — SetSupplierProductsController is write-only, there is no GET to read a supplier's linked products back.",
+/** The read side of setSupplierProducts's replace-all write — what this supplier is currently linked to. */
+export async function listSupplierProducts(
+  client: ApiClient,
+  supplierId: string,
+): Promise<Product[]> {
+  const { data } = await client.get<{ data: JsonApiResource<ProductAttrs>[] }>(
+    `/suppliers/${supplierId}/products`,
   );
-}
-
-/** @see listSupplierProducts — same gap, no read endpoint exists. */
-export function listAllSupplierProductIds(): never {
-  throw new Error(
-    "listAllSupplierProductIds has no Tally API equivalent — no endpoint reads supplier-product links back.",
-  );
+  return data.map(toProduct);
 }
 
 /**

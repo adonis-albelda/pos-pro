@@ -60,7 +60,7 @@ export function ChangePasswordForm() {
 
   return (
     <form onSubmit={handleSubmit} className="mt-5 space-y-4">
-      <Field label="Current password">
+      <Field label="Current password" required>
         <PasswordInput
           icon={Lock}
           name="current_password"
@@ -68,7 +68,7 @@ export function ChangePasswordForm() {
           required
         />
       </Field>
-      <Field label="New password">
+      <Field label="New password" required>
         <PasswordInput
           icon={Lock}
           name="password"
@@ -77,7 +77,7 @@ export function ChangePasswordForm() {
           required
         />
       </Field>
-      <Field label="Confirm password">
+      <Field label="Confirm password" required>
         <PasswordInput
           icon={Lock}
           name="confirm"

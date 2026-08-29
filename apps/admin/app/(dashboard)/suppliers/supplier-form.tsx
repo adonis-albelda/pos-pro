@@ -7,10 +7,11 @@ import {
   SUPPLIER_CONTACT_PERSON_MAX,
   SUPPLIER_EMAIL_MAX,
   SUPPLIER_NAME_MAX,
+  SUPPLIER_NOTES_MAX,
   SUPPLIER_PHONE_MAX,
 } from "@double-a/shared-types";
 import type { Product, Supplier } from "@double-a/shared-types";
-import { Button, ErrorNote, Field, Input, SuccessNote } from "@/components/ui";
+import { Button, ErrorNote, Field, Input, SuccessNote, Textarea } from "@/components/ui";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
 import { useInvalidateSuppliers } from "@/lib/query/suppliers";
 import { saveSupplier } from "./actions";
@@ -45,14 +46,12 @@ export function SupplierForm({
 
   const visibleProducts = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    const pool = needle
-      ? products.filter(
-          (product) =>
-            product.name.toLowerCase().includes(needle) ||
-            (product.sku ?? "").toLowerCase().includes(needle),
-        )
-      : products;
-    return pool.slice(0, 40);
+    if (!needle) return products;
+    return products.filter(
+      (product) =>
+        product.name.toLowerCase().includes(needle) ||
+        (product.sku ?? "").toLowerCase().includes(needle),
+    );
   }, [products, search]);
 
   function toggle(productId: string) {
@@ -64,13 +63,22 @@ export function SupplierForm({
     });
   }
 
+  function selectAllVisible() {
+    setSelected((previous) => new Set([...previous, ...visibleProducts.map((p) => p.id)]));
+  }
+
+  function clearAllVisible() {
+    const visibleIds = new Set(visibleProducts.map((p) => p.id));
+    setSelected((previous) => new Set([...previous].filter((id) => !visibleIds.has(id))));
+  }
+
   return (
     <form action={action} className="space-y-4">
       {supplier ? <input type="hidden" name="id" value={supplier.id} /> : null}
       <input type="hidden" name="product_ids" value={Array.from(selected).join(",")} />
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Name">
+        <Field label="Name" required>
           <Input
             name="name"
             defaultValue={supplier?.name}
@@ -78,21 +86,28 @@ export function SupplierForm({
             maxLength={SUPPLIER_NAME_MAX}
           />
         </Field>
-        <Field label="Contact person">
+        <Field label="Contact person" required={false}>
           <Input
             name="contact_person"
             defaultValue={supplier?.contactPerson ?? ""}
             maxLength={SUPPLIER_CONTACT_PERSON_MAX}
           />
         </Field>
-        <Field label="Phone">
+        <Field label="Phone" required={false}>
           <Input
             name="phone"
             defaultValue={supplier?.phone ?? ""}
             maxLength={SUPPLIER_PHONE_MAX}
           />
         </Field>
-        <Field label="Email">
+        <Field label="Secondary phone" required={false}>
+          <Input
+            name="secondary_phone"
+            defaultValue={supplier?.secondaryPhone ?? ""}
+            maxLength={SUPPLIER_PHONE_MAX}
+          />
+        </Field>
+        <Field label="Email" required={false}>
           <Input
             name="email"
             type="email"
@@ -100,9 +115,17 @@ export function SupplierForm({
             maxLength={SUPPLIER_EMAIL_MAX}
           />
         </Field>
+        <Field label="Secondary email" required={false}>
+          <Input
+            name="secondary_email"
+            type="email"
+            defaultValue={supplier?.secondaryEmail ?? ""}
+            maxLength={SUPPLIER_EMAIL_MAX}
+          />
+        </Field>
       </div>
 
-      <Field label="Address">
+      <Field label="Address" required={false}>
         <Input
           name="address"
           defaultValue={supplier?.address ?? ""}
@@ -110,10 +133,15 @@ export function SupplierForm({
         />
       </Field>
 
+      <Field label="Notes" hint="Payment terms, delivery quirks, anything else worth remembering." required={false}>
+        <Textarea name="notes" defaultValue={supplier?.notes ?? ""} maxLength={SUPPLIER_NOTES_MAX} rows={3} />
+      </Field>
+
       {supplier ? (
         <Field
           label="Active"
           hint="Off hides it from new purchase orders. Existing orders are unaffected."
+          required={false}
         >
           <label className="flex min-h-11 items-center gap-2 rounded-sm border border-border bg-surface px-3 text-body">
             <input
@@ -129,26 +157,44 @@ export function SupplierForm({
       ) : null}
 
       <div>
-        <span className="mb-1 block text-caption font-medium text-ink-muted">
-          Products this supplier carries
-        </span>
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+          <span className="text-caption font-medium text-ink-muted">
+            Products this supplier carries
+          </span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={selectAllVisible}
+              className="text-caption font-medium text-primary hover:underline"
+            >
+              Select all shown
+            </button>
+            <button
+              type="button"
+              onClick={clearAllVisible}
+              className="text-caption font-medium text-ink-muted hover:text-ink hover:underline"
+            >
+              Clear shown
+            </button>
+          </div>
+        </div>
         <div className="rounded-sm border border-border">
           <div className="border-b border-border p-2">
             <Input
               icon={Search}
-              placeholder="Filter products…"
+              placeholder="Filter by name or SKU…"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
           </div>
-          <div className="max-h-56 overflow-y-auto p-2">
+          <div className="max-h-96 overflow-y-auto p-2">
             {visibleProducts.length === 0 ? (
               <p className="px-2 py-3 text-caption text-ink-muted">No products match.</p>
             ) : (
               visibleProducts.map((product) => (
                 <label
                   key={product.id}
-                  className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-body hover:bg-paper"
+                  className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-2 text-body hover:bg-paper"
                 >
                   <input
                     type="checkbox"
@@ -157,6 +203,9 @@ export function SupplierForm({
                     onChange={() => toggle(product.id)}
                   />
                   <span className="min-w-0 flex-1 truncate">{product.name}</span>
+                  {product.category ? (
+                    <span className="shrink-0 text-caption text-ink-muted">{product.category}</span>
+                  ) : null}
                   {product.sku ? (
                     <span className="shrink-0 text-caption text-ink-muted">{product.sku}</span>
                   ) : null}

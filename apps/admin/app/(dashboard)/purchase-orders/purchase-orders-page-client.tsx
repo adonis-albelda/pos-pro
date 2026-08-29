@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { Route } from "next";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -15,26 +16,31 @@ import { listSuppliers, type PurchaseOrderWithLines } from "@double-a/api-client
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 import { isInitialQueryLoad, matchesQuery, paginateItems, parseListQuery } from "@/lib/list-query";
 import { PO_STATUS_TONE } from "@/lib/purchase-order-status";
-import {
-  Badge,
-  ButtonLink,
-  Card,
-  CardHeader,
-  EmptyState,
-  Money,
-  PageHeader,
-  Table,
-  Td,
-  Th,
-} from "@/components/ui";
-import { Pagination, RecordToolbar } from "@/components/record-list";
+import { Badge, Button, ButtonLink, Card, CardHeader, EmptyState, Money, Table, Td, Th } from "@/components/ui";
+import { Dialog } from "@/components/overlay";
+import { Pagination, SearchField } from "@/components/record-list";
 import { useLocationMutationsLocked } from "@/components/location-mutations-banner";
 import { PurchaseOrdersFilters } from "./purchase-orders-filters";
 import { usePurchaseOrders } from "@/lib/query/purchase-orders";
 import { queryKeys } from "@/lib/query/keys";
 
+function FiltersButton({ suppliers, active }: { suppliers: Supplier[]; active: boolean }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <Button type="button" variant="secondary" size="sm" icon={SlidersHorizontal} onClick={() => setOpen(true)}>
+        Filters
+        {active ? <span className="ml-1 inline-block size-1.5 rounded-full bg-primary" /> : null}
+      </Button>
+      <Dialog open={open} onClose={() => setOpen(false)} title="Filter purchase orders">
+        <PurchaseOrdersFilters suppliers={suppliers} onDone={() => setOpen(false)} />
+      </Dialog>
+    </>
+  );
+}
+
 export function PurchaseOrdersPageClient() {
-  const mutationsLocked = useLocationMutationsLocked();
   const searchParams = useSearchParams();
   const { q, page } = parseListQuery({
     q: searchParams.get("q") ?? undefined,
@@ -53,29 +59,6 @@ export function PurchaseOrdersPageClient() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        icon={ClipboardList}
-        title="Purchase orders"
-        description="What you've ordered from each supplier, on what terms, and what's still on the way."
-        action={
-          mutationsLocked ? (
-            <ButtonLink
-              href="/purchase-orders"
-              icon={Plus}
-              className="pointer-events-none opacity-40"
-              aria-disabled
-              title="Pick a specific location to create purchase orders"
-            >
-              New purchase order
-            </ButtonLink>
-          ) : (
-            <ButtonLink href={mutationsLocked ? "/purchase-orders" : "/purchase-orders/new"} className={mutationsLocked ? "pointer-events-none opacity-40" : undefined} aria-disabled={mutationsLocked || undefined}>
-              New purchase order
-            </ButtonLink>
-          )
-        }
-      />
-
       {isInitialQueryLoad(ordersQuery.isPending, Boolean(ordersQuery.data)) ||
       suppliersQuery.isPending ? (
         <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>
@@ -138,17 +121,36 @@ function PurchaseOrdersBody({
   return (
     <>
       <Card>
-        <CardHeader icon={SlidersHorizontal} title="Filter" />
-        <div className="px-4 py-5 sm:px-6">
-          <PurchaseOrdersFilters suppliers={suppliers} />
-        </div>
-      </Card>
-
-      <Card>
-        <RecordToolbar
-          searchPlaceholder="Search supplier, reference, notes…"
-          query={q}
-          preserve={listQuery}
+        <CardHeader
+          icon={ClipboardList}
+          title="Purchase orders"
+          description="What you've ordered from each supplier, on what terms, and what's still on the way."
+          action={
+            <div className="flex flex-wrap items-center gap-2">
+              <SearchField
+                placeholder="Search supplier, reference, notes…"
+                defaultValue={q}
+                preserve={listQuery}
+                className="sm:max-w-xs"
+              />
+              <FiltersButton suppliers={suppliers} active={Boolean(supplierId || status)} />
+              {mutationsLocked ? (
+                <ButtonLink
+                  href="/purchase-orders"
+                  icon={Plus}
+                  className="pointer-events-none opacity-40"
+                  aria-disabled
+                  title="Pick a specific location to create purchase orders"
+                >
+                  New purchase order
+                </ButtonLink>
+              ) : (
+                <ButtonLink href="/purchase-orders/new" icon={Plus}>
+                  New purchase order
+                </ButtonLink>
+              )}
+            </div>
+          }
         />
 
         {total === 0 ? (

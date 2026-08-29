@@ -419,9 +419,13 @@ export interface SupplierAttrs {
   name: string;
   contact_person: string | null;
   phone: string | null;
+  secondary_phone: string | null;
   email: string | null;
+  secondary_email: string | null;
   address: string | null;
+  notes: string | null;
   is_active: boolean;
+  products_count: number | null;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -433,9 +437,13 @@ export function toSupplier(resource: JsonApiResource<SupplierAttrs>): Supplier {
     name: a.name,
     contactPerson: a.contact_person,
     phone: a.phone,
+    secondaryPhone: a.secondary_phone,
     email: a.email,
+    secondaryEmail: a.secondary_email,
     address: a.address,
+    notes: a.notes,
     isActive: a.is_active,
+    productsCount: a.products_count ?? null,
     createdAt: a.created_at ?? "",
     updatedAt: a.updated_at ?? "",
   };

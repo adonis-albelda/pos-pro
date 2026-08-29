@@ -214,6 +214,7 @@ export function Sheet({
   description,
   children,
   wide,
+  className,
 }: {
   open: boolean;
   onClose: () => void;
@@ -222,6 +223,8 @@ export function Sheet({
   children: ReactNode;
   /** Wider panel for product forms and dense field grids. */
   wide?: boolean;
+  /** Overrides wide's max-w-2xl for panels that need more room still (e.g. a document preview). */
+  className?: string;
 }) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -259,7 +262,7 @@ export function Sheet({
             "relative z-10 flex h-dvh w-full flex-col border-l border-border bg-surface shadow-lg outline-none",
             "transition-transform duration-[180ms] ease-out motion-reduce:transition-none",
             entered ? "translate-x-0" : "translate-x-full",
-            wide ? "max-w-2xl" : "max-w-md",
+            className ?? (wide ? "max-w-2xl" : "max-w-md"),
           )}
         >
           <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">

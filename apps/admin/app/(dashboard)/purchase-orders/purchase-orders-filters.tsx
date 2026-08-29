@@ -5,11 +5,18 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Search, X } from "lucide-react";
 import type { PurchaseOrderStatus, Supplier } from "@double-a/shared-types";
 import { PURCHASE_ORDER_STATUS_LABELS } from "@double-a/shared-types";
-import { Button, Field, Select } from "@/components/ui";
+import { Button, Combobox, Field, Select } from "@/components/ui";
 
 const STATUSES = Object.keys(PURCHASE_ORDER_STATUS_LABELS) as PurchaseOrderStatus[];
 
-export function PurchaseOrdersFilters({ suppliers }: { suppliers: Supplier[] }) {
+export function PurchaseOrdersFilters({
+  suppliers,
+  onDone,
+}: {
+  suppliers: Supplier[];
+  /** Fired after apply or clear navigates — lets a dialog/popover host close itself. */
+  onDone?: () => void;
+}) {
   const router = useRouter();
   const params = useSearchParams();
 
@@ -21,20 +28,22 @@ export function PurchaseOrdersFilters({ suppliers }: { suppliers: Supplier[] }) 
     const q = params.get("q");
     if (q) next.set("q", q);
     router.push(`/purchase-orders?${next.toString()}` as Route);
+    onDone?.();
   }
 
   return (
     <form action={apply} className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Supplier">
-          <Select name="supplierId" defaultValue={params.get("supplierId") ?? ""}>
-            <option value="">Every supplier</option>
-            {suppliers.map((supplier) => (
-              <option key={supplier.id} value={supplier.id}>
-                {supplier.name}
-              </option>
-            ))}
-          </Select>
+          <Combobox
+            name="supplierId"
+            defaultValue={params.get("supplierId") ?? ""}
+            placeholder="Every supplier"
+            options={[
+              { value: "", label: "Every supplier" },
+              ...suppliers.map((supplier) => ({ value: supplier.id, label: supplier.name })),
+            ]}
+          />
         </Field>
         <Field label="Status">
           <Select name="status" defaultValue={params.get("status") ?? ""}>
@@ -57,7 +66,10 @@ export function PurchaseOrdersFilters({ suppliers }: { suppliers: Supplier[] }) 
           variant="secondary"
           icon={X}
           className="w-full sm:w-auto"
-          onClick={() => router.push("/purchase-orders" as Route)}
+          onClick={() => {
+            router.push("/purchase-orders" as Route);
+            onDone?.();
+          }}
         >
           Clear
         </Button>

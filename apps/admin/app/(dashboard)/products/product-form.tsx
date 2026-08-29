@@ -22,6 +22,7 @@ import {
   Card,
   CardBody,
   CardHeader,
+  Combobox,
   ErrorNote,
   Field,
   Input,
@@ -128,23 +129,32 @@ export function ProductForm({
         description="How cashiers find and identify the product on a terminal."
       >
         <div className="sm:col-span-2">
-          <Field label="Product name">
+          <Field label="Product name" required>
             <Input name="name" defaultValue={product?.name} required />
           </Field>
         </div>
-        <Field label="SKU" hint="Your shop code. CSV import and photo extract match on this.">
+        <Field
+          label="SKU"
+          hint="Your shop code. CSV import and photo extract match on this."
+          required={false}
+        >
           <Input name="sku" defaultValue={product?.sku ?? ""} />
         </Field>
-        <Field label="Supplier SKU" hint="Supplier item code on price lists — also used for matching.">
+        <Field
+          label="Supplier SKU"
+          hint="Supplier item code on price lists — also used for matching."
+          required={false}
+        >
           <Input name="supplier_sku" defaultValue={product?.supplierSku ?? ""} />
         </Field>
-        <Field label="Barcode" hint="Optional. Scanned at the counter.">
+        <Field label="Barcode" hint="Optional. Scanned at the counter." required={false}>
           <Input name="barcode" defaultValue={product?.barcode ?? ""} />
         </Field>
         <div className="sm:col-span-2">
           <Field
             label="Description"
             hint="Optional notes for staff — not printed on the receipt by default."
+            required={false}
           >
             <Textarea
               name="description"
@@ -160,7 +170,7 @@ export function ProductForm({
         title="Pricing"
         description="Supplier cost drives margin reports. Shelf price is what customers pay."
       >
-        <Field label="Supplier price">
+        <Field label="Supplier price" required>
           <MoneyInput
             name="cost_price"
             type="number"
@@ -175,7 +185,7 @@ export function ProductForm({
             required
           />
         </Field>
-        <Field label="Shelf price">
+        <Field label="Shelf price" required>
           <MoneyInput
             name="price"
             type="number"
@@ -208,7 +218,11 @@ export function ProductForm({
             )}
           </div>
         </div>
-        <Field label="Bulk / contractor price" hint="Optional. Needs a minimum quantity.">
+        <Field
+          label="Bulk / contractor price"
+          hint="Optional. Needs a minimum quantity."
+          required={false}
+        >
           <MoneyInput
             name="bulk_price"
             type="number"
@@ -217,7 +231,11 @@ export function ProductForm({
             defaultValue={product?.bulkPrice ?? ""}
           />
         </Field>
-        <Field label="Bulk minimum quantity" hint="Quantity that unlocks the bulk price.">
+        <Field
+          label="Bulk minimum quantity"
+          hint="Quantity that unlocks the bulk price."
+          required={false}
+        >
           <Input
             name="bulk_min_quantity"
             type="number"
@@ -239,27 +257,28 @@ export function ProductForm({
               ? `Markup ${selectedCategory.markupPercent}% can fill shelf price from cost.`
               : undefined
           }
+          required={false}
         >
-          <Select
+          <Combobox
             name="category_id"
             value={categoryId}
-            onChange={(event) => {
-              const next = event.target.value;
+            onChange={(next) => {
               setCategoryId(next);
               applyCategoryMarkup(next, costPrice);
             }}
-          >
-            <option value="">No category</option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {indentLabel(category)}
-                {category.isActive ? "" : " (hidden)"}
-                {category.markupApplied ? ` (+${category.markupPercent}%)` : ""}
-              </option>
-            ))}
-          </Select>
+            placeholder="No category"
+            options={[
+              { value: "", label: "No category" },
+              ...categories.map((category) => ({
+                value: category.id,
+                label: `${indentLabel(category)}${category.isActive ? "" : " (hidden)"}${
+                  category.markupApplied ? ` (+${category.markupPercent}%)` : ""
+                }`,
+              })),
+            ]}
+          />
         </Field>
-        <Field label="Sold by">
+        <Field label="Sold by" required>
           <Select name="unit" value={unit} onChange={(event) => onUnitChange(event.target.value)}>
             {PRODUCT_UNITS.map((option) => (
               <option key={option} value={option}>
@@ -276,6 +295,7 @@ export function ProductForm({
                 ? "Fractional quantities allowed (e.g. 2.5 kg)."
                 : "Whole numbers only."
             }
+            required={false}
           >
             <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-sm border border-border bg-surface px-3">
               <input
@@ -298,7 +318,7 @@ export function ProductForm({
         title="Stock planning"
         description="These numbers flag restocking — they do not change stock on their own."
       >
-        <Field label="Reorder point" hint="Flag for restocking at or below this count.">
+        <Field label="Reorder point" hint="Flag for restocking at or below this count." required>
           <Input
             name="reorder_point"
             type="number"
@@ -308,7 +328,7 @@ export function ProductForm({
             required
           />
         </Field>
-        <Field label="Replenish quantity" hint="Suggested qty to order when restocking.">
+        <Field label="Replenish quantity" hint="Suggested qty to order when restocking." required>
           <Input
             name="replenish_quantity"
             type="number"
@@ -344,6 +364,7 @@ export function ProductForm({
           <Field
             label="Quantity on hand"
             hint="Leave blank to start at zero. More stock can be added later in Inventory."
+            required={false}
           >
             <Input
               name="opening_stock_quantity"
@@ -355,7 +376,11 @@ export function ProductForm({
           {singleBranch ? (
             <input type="hidden" name="stock_location_id" value={singleBranch.id} />
           ) : branches.length > 1 ? (
-            <Field label="Branch" hint="Opening stock is recorded at this branch only.">
+            <Field
+              label="Branch"
+              hint="Opening stock is recorded at this branch only."
+              required={false}
+            >
               <Select name="stock_location_id" defaultValue="">
                 <option value="">— Choose branch —</option>
                 {branches.map((branch) => (
@@ -373,7 +398,11 @@ export function ProductForm({
             </div>
           )}
           <div className="sm:col-span-2">
-            <Field label="Note" hint="Optional. Shown on the movement in Inventory history.">
+            <Field
+              label="Note"
+              hint="Optional. Shown on the movement in Inventory history."
+              required={false}
+            >
               <Input name="opening_stock_note" placeholder="Opening stock" />
             </Field>
           </div>

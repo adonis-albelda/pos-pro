@@ -136,6 +136,7 @@ function StockOptionsForm({
         <Field
           label="Branch for stock"
           hint="File quantities update inventory at this branch only."
+          required
         >
           <Select name="location_id" defaultValue={stockLocationId ?? ""} required>
             <option value="">— Choose branch —</option>
@@ -261,11 +262,16 @@ export function ImportForm() {
         <Field
           label="CSV file"
           hint="Any layout works — connect columns on the next step. Download our template if you prefer."
+          required={false}
         >
           <FileInput name="file" accept=".csv,text/csv" />
         </Field>
 
-        <Field label="Or paste the rows" hint="Header row first, commas between columns.">
+        <Field
+          label="Or paste the rows"
+          hint="Header row first, commas between columns."
+          required={false}
+        >
           <Textarea
             name="pasted"
             rows={4}

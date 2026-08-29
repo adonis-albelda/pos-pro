@@ -1,10 +1,11 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Truck } from "lucide-react";
+import { CheckCircle2, Users, Wallet } from "lucide-react";
 import type { Supplier } from "@double-a/shared-types";
+import { formatMoney } from "@double-a/shared-types";
 import { matchesQuery, paginateItems, parseListQuery } from "@/lib/list-query";
-import { Card, PageHeader } from "@/components/ui";
+import { Card, StatCard } from "@/components/ui";
 import { SuppliersPanel } from "./suppliers-panel";
 import { useSupplierBalances, useSuppliers } from "@/lib/query/suppliers";
 
@@ -23,12 +24,6 @@ export function SuppliersPageClient() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        icon={Truck}
-        title="Suppliers"
-        description="Who the shop buys stock from, what they carry, and what's owed on each order."
-      />
-
       {isPending ? (
         <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>
       ) : error ? (
@@ -66,22 +61,33 @@ function SuppliersBody({
     page,
   );
 
-  // GAP (see lib/query/suppliers.ts / packages/api-client/src/queries/
-  // suppliers.ts): SetSupplierProductsController is write-only, no GET reads
-  // a supplier's linked product ids back — every edit sheet's picker opens
-  // fully unchecked. Preserved as-is from the pre-TanStack Query version.
-  const productIdsBySupplier: Record<string, string[]> = {};
+  // Company-wide totals, not narrowed by the search box — a snapshot of
+  // every supplier on file, same as the list itself before pagination.
+  const activeCount = suppliers.filter((supplier) => supplier.isActive).length;
+  const totalOwed = Object.values(balances).reduce((sum, balance) => sum + balance, 0);
 
   return (
-    <SuppliersPanel
-      suppliers={pageItems}
-      balances={balances}
-      productIdsBySupplier={productIdsBySupplier}
-      query={q}
-      page={safePage}
-      pageCount={pageCount}
-      total={total}
-      pageSize={pageSize}
-    />
+    <>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard icon={Users} label="Total suppliers" value={String(suppliers.length)} />
+        <StatCard icon={CheckCircle2} label="Active suppliers" value={String(activeCount)} />
+        <StatCard
+          icon={Wallet}
+          label="Total owed"
+          value={formatMoney(totalOwed)}
+          tone={totalOwed > 0 ? "warning" : "neutral"}
+        />
+      </div>
+
+      <SuppliersPanel
+        suppliers={pageItems}
+        balances={balances}
+        query={q}
+        page={safePage}
+        pageCount={pageCount}
+        total={total}
+        pageSize={pageSize}
+      />
+    </>
   );
 }

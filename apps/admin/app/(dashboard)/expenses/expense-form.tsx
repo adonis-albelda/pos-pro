@@ -55,7 +55,7 @@ export function ExpenseForm({
       <form action={action} className="space-y-4">
         {expense ? <input type="hidden" name="id" value={expense.id} /> : null}
 
-        <Field label="Description">
+        <Field label="Description" required>
           <Input
             name="description"
             defaultValue={expense?.description}
@@ -66,7 +66,7 @@ export function ExpenseForm({
         </Field>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Amount">
+          <Field label="Amount" required>
             <MoneyInput
               name="amount"
               type="number"
@@ -77,7 +77,7 @@ export function ExpenseForm({
               required
             />
           </Field>
-          <Field label="Date" hint="Shop day this expense belongs to.">
+          <Field label="Date" hint="Shop day this expense belongs to." required>
             <Input
               name="expense_date"
               type="date"
@@ -87,7 +87,7 @@ export function ExpenseForm({
           </Field>
         </div>
 
-        <Field label="Category" hint="Optional — rent, wages, utilities…">
+        <Field label="Category" hint="Optional — rent, wages, utilities…" required={false}>
           <Input
             name="category"
             defaultValue={expense?.category ?? ""}
@@ -95,7 +95,7 @@ export function ExpenseForm({
           />
         </Field>
 
-        <Field label="Note">
+        <Field label="Note" required={false}>
           <Input
             name="note"
             defaultValue={expense?.note ?? ""}

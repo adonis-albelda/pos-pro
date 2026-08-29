@@ -56,13 +56,13 @@ export function AddAdminForm({ companyId }: { companyId: string }) {
 
   return (
     <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
-      <Field label="Name">
+      <Field label="Name" required>
         <Input icon={UserRound} name="name" required />
       </Field>
-      <Field label="Email">
+      <Field label="Email" required>
         <Input icon={Mail} name="email" type="email" required />
       </Field>
-      <Field label="Password" hint="They must change it on first sign-in.">
+      <Field label="Password" hint="They must change it on first sign-in." required>
         <PasswordInput
           icon={Lock}
           name="password"
@@ -71,7 +71,11 @@ export function AddAdminForm({ companyId }: { companyId: string }) {
           required
         />
       </Field>
-      <Field label="PIN" hint="Optional. 4–6 digits to unlock a terminal. Dashboard password will not work on the POS.">
+      <Field
+        label="PIN"
+        hint="Optional. 4–6 digits to unlock a terminal. Dashboard password will not work on the POS."
+        required={false}
+      >
         <Input
           icon={KeyRound}
           name="pin"
@@ -118,7 +122,7 @@ function ResetPasswordForm({ user, companyId }: { user: User; companyId: string 
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-2 sm:flex-row sm:items-end">
-      <Field label={`Password for ${user.name}`}>
+      <Field label={`Password for ${user.name}`} required>
         <PasswordInput
           icon={Lock}
           name="password"
@@ -154,7 +158,7 @@ function ResetPinForm({ user }: { user: User; companyId: string }) {
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-2 sm:flex-row sm:items-end">
-      <Field label={`PIN for ${user.name}`}>
+      <Field label={`PIN for ${user.name}`} required>
         <Input
           icon={KeyRound}
           name="pin"

@@ -8,12 +8,12 @@ import { formatMoney, roundMoney } from "@double-a/shared-types";
 import type { Product, Supplier } from "@double-a/shared-types";
 import {
   Button,
+  Combobox,
   ErrorNote,
   Field,
   IconButton,
   Input,
   MoneyInput,
-  Select,
   Table,
   Td,
   Th,
@@ -211,35 +211,38 @@ export function CreatePurchaseOrderForm({
     <div className="space-y-6">
       <div className="rounded-md border border-border bg-surface p-4 sm:p-6">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Field label="Supplier">
-            <Select value={supplierId} onChange={(event) => setSupplierId(event.target.value)}>
-              {suppliers.map((supplier) => (
-                <option key={supplier.id} value={supplier.id}>
-                  {supplier.name}
-                </option>
-              ))}
-            </Select>
+          <Field label="Supplier" required>
+            <Combobox
+              value={supplierId}
+              onChange={setSupplierId}
+              options={suppliers.map((supplier) => ({ value: supplier.id, label: supplier.name }))}
+              placeholder="Search suppliers…"
+            />
           </Field>
-          <Field label="Order date">
+          <Field label="Order date" required>
             <Input
               type="date"
               value={orderDate}
               onChange={(event) => setOrderDate(event.target.value)}
             />
           </Field>
-          <Field label="Expected date" hint="Optional.">
+          <Field label="Expected date" hint="Optional." required={false}>
             <Input
               type="date"
               value={expectedDate}
               onChange={(event) => setExpectedDate(event.target.value)}
             />
           </Field>
-          <Field label="Reference no." hint="Supplier's invoice/PO number, optional.">
+          <Field
+            label="Reference no."
+            hint="Supplier's invoice/PO number, optional."
+            required={false}
+          >
             <Input value={referenceNo} onChange={(event) => setReferenceNo(event.target.value)} />
           </Field>
         </div>
         <div className="mt-4">
-          <Field label="Notes">
+          <Field label="Notes" required={false}>
             <Input
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
@@ -282,18 +285,16 @@ export function CreatePurchaseOrderForm({
               return (
                 <tr key={item.key}>
                   <Td>
-                    <Select
+                    <Combobox
                       value={item.productId}
-                      onChange={(event) => pickProduct(item.key, event.target.value)}
-                    >
-                      <option value="">Choose a product…</option>
-                      {availableProducts.map((product) => (
-                        <option key={product.id} value={product.id}>
-                          {product.name}
-                          {product.sku ? ` (${product.sku})` : ""}
-                        </option>
-                      ))}
-                    </Select>
+                      onChange={(productId) => pickProduct(item.key, productId)}
+                      options={availableProducts.map((product) => ({
+                        value: product.id,
+                        label: product.name,
+                        sublabel: product.sku ?? undefined,
+                      }))}
+                      placeholder="Choose a product…"
+                    />
                   </Td>
                   <Td numeric>
                     <Input
@@ -437,18 +438,20 @@ export function CreatePurchaseOrderForm({
 
       {error ? <ErrorNote>{error}</ErrorNote> : null}
 
-      <div className="flex flex-col-reverse gap-2 sm:flex-row">
-        <Button icon={Save} loading={pending} onClick={submit} className="w-full sm:w-auto">
-          {pending ? "Creating..." : "Create purchase order"}
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          className="w-full sm:w-auto"
-          onClick={() => router.push("/purchase-orders" as Route)}
-        >
-          Cancel
-        </Button>
+      <div className="sticky bottom-0 z-10 rounded-md border border-border bg-surface px-4 py-4 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] sm:px-6">
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button
+            type="button"
+            variant="secondary"
+            className="w-full sm:w-auto"
+            onClick={() => router.push("/purchase-orders" as Route)}
+          >
+            Cancel
+          </Button>
+          <Button icon={Save} loading={pending} onClick={submit} className="w-full sm:w-auto">
+            {pending ? "Creating..." : "Create purchase order"}
+          </Button>
+        </div>
       </div>
     </div>
   );

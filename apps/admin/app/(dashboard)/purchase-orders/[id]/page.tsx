@@ -4,7 +4,7 @@ import type { Route } from "next";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Boxes, FileDown, ListOrdered, Wallet } from "lucide-react";
+import { ArrowLeft, Boxes, ListOrdered, Wallet } from "lucide-react";
 import {
   formatMoney,
   formatQuantity,
@@ -19,7 +19,6 @@ import { usePurchaseOrder, usePurchaseOrderMovements } from "@/lib/query/purchas
 import { PO_STATUS_TONE } from "@/lib/purchase-order-status";
 import {
   Badge,
-  ButtonLink,
   Card,
   CardHeader,
   EmptyState,
@@ -28,6 +27,7 @@ import {
   Td,
   Th,
 } from "@/components/ui";
+import { PdfPreviewButton } from "./pdf-preview-button";
 import { ReceiveLineForm } from "./receive-line-form";
 import { PaymentStatusButton, UpdateStatusButton } from "./status-actions";
 
@@ -84,61 +84,17 @@ export default function PurchaseOrderDetailPage() {
   const movements = movementsQuery.data ?? [];
   const balance = purchaseOrderBalance(order.payments);
   const canReceive = order.status === "ordered" || order.status === "partially_received";
+  const pdfSlug = order.referenceNo?.trim().replace(/[^\w-]+/g, "-") || order.id.slice(0, 8);
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <Link
-            href={"/purchase-orders" as Route}
-            className="inline-flex items-center gap-1.5 text-caption text-ink-muted transition-colors hover:text-ink"
-          >
-            <ArrowLeft size={14} />
-            Back to purchase orders
-          </Link>
-          <h1 className="mt-2 text-heading-md font-semibold sm:text-heading-lg">
-            <Link
-              href={`/suppliers/${order.supplierId}` as Route}
-              className="text-primary hover:underline"
-            >
-              {supplier?.name ?? "Supplier"}
-            </Link>
-          </h1>
-          <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-body text-ink-muted">
-            <span>Ordered {order.orderDate}</span>
-            {order.expectedDate ? <span>Expected {order.expectedDate}</span> : null}
-            {order.referenceNo ? <span className="num">Ref {order.referenceNo}</span> : null}
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <ButtonLink
-            href={`/api/purchase-orders/${order.id}/pdf`}
-            icon={FileDown}
-            size="sm"
-            download
-          >
-            Generate PDF
-          </ButtonLink>
-          {order.status === "draft" ? (
-            <UpdateStatusButton id={order.id} status="ordered" label="Mark as ordered" />
-          ) : null}
-          {order.status === "draft" || order.status === "ordered" ? (
-            <UpdateStatusButton
-              id={order.id}
-              status="cancelled"
-              label="Cancel order"
-              variant="secondary"
-            />
-          ) : null}
-        </div>
-      </header>
-
-      <div className="flex flex-wrap gap-3">
-        <Badge tone={PO_STATUS_TONE[order.status]}>
-          {PURCHASE_ORDER_STATUS_LABELS[order.status]}
-        </Badge>
-      </div>
+      <Link
+        href={"/purchase-orders" as Route}
+        className="inline-flex items-center gap-1.5 text-caption text-ink-muted transition-colors hover:text-ink"
+      >
+        <ArrowLeft size={14} />
+        Back to purchase orders
+      </Link>
 
       {order.notes ? (
         <Card>
@@ -150,15 +106,47 @@ export default function PurchaseOrderDetailPage() {
       <Card>
         <CardHeader
           icon={ListOrdered}
-          title="Line items"
-          description={
-            order.status === "draft"
-              ? "Sent to the supplier once you mark this order as ordered."
-              : canReceive
-                ? "Record what actually shows up — partial deliveries are fine."
-                : "Every line has been received."
+          title={supplier?.name ?? "Purchase order"}
+          description={[
+            `Ordered ${order.orderDate}`,
+            order.expectedDate ? `Expected ${order.expectedDate}` : null,
+            order.referenceNo ? `Ref ${order.referenceNo}` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+          action={
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone={PO_STATUS_TONE[order.status]}>
+                {PURCHASE_ORDER_STATUS_LABELS[order.status]}
+              </Badge>
+              <Link
+                href={`/suppliers/${order.supplierId}` as Route}
+                className="text-caption font-medium text-primary hover:underline"
+              >
+                View supplier
+              </Link>
+              <PdfPreviewButton purchaseOrderId={order.id} filenameSlug={pdfSlug} />
+              {order.status === "draft" ? (
+                <UpdateStatusButton id={order.id} status="ordered" label="Mark as ordered" />
+              ) : null}
+              {order.status === "draft" || order.status === "ordered" ? (
+                <UpdateStatusButton
+                  id={order.id}
+                  status="cancelled"
+                  label="Cancel order"
+                  variant="secondary"
+                />
+              ) : null}
+            </div>
           }
         />
+        <p className="px-4 pt-4 text-caption text-ink-muted sm:px-6">
+          {order.status === "draft"
+            ? "Sent to the supplier once you mark this order as ordered."
+            : canReceive
+              ? "Record what actually shows up — partial deliveries are fine."
+              : "Every line has been received."}
+        </p>
         {order.items.length === 0 ? (
           <EmptyState
             icon={ListOrdered}

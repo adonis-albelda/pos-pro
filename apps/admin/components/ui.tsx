@@ -1,14 +1,24 @@
 "use client";
 
-import { forwardRef, useEffect, type ComponentProps, type ReactNode } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import type { Route } from "next";
 import Link from "next/link";
 import {
   AlertTriangle,
   Check,
+  ChevronDown,
   CircleAlert,
   Dot,
   Loader2,
+  Search,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -475,15 +485,30 @@ export function Td({ className, numeric, ...props }: ComponentProps<"td"> & { nu
 export function Field({
   label,
   hint,
+  required,
   children,
 }: {
   label: string;
   hint?: string;
+  /** Shows a "Required"/"Optional" tag next to the label — pass the same value the field's own `required` prop has. */
+  required?: boolean;
   children: ReactNode;
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-caption font-medium text-ink-muted">{label}</span>
+      <span className="mb-1 flex items-baseline justify-between gap-2">
+        <span className="text-caption font-medium text-ink-muted">{label}</span>
+        {required === undefined ? null : (
+          <span
+            className={cx(
+              "text-[11px] font-medium tracking-wide uppercase",
+              required ? "text-danger/70" : "text-ink-muted/60",
+            )}
+          >
+            {required ? "Required" : "Optional"}
+          </span>
+        )}
+      </span>
       {children}
       {hint ? <span className="mt-1 block text-caption text-ink-muted">{hint}</span> : null}
     </label>
@@ -542,6 +567,198 @@ export function Select({ className, ...props }: ComponentProps<"select">) {
       {...props}
       className={cx(CONTROL_STYLES, "h-11 cursor-pointer sm:h-10", className)}
     />
+  );
+}
+
+export interface ComboboxOption {
+  value: string;
+  label: string;
+  /** Shown muted, right-aligned next to the label — e.g. a SKU or category path. */
+  sublabel?: string;
+}
+
+/**
+ * A searchable drop-in for `<Select>` where the option list is long/dynamic
+ * enough that scrolling a native dropdown is worse than typing to filter —
+ * product, supplier, category pickers. Short fixed enums (status, unit,
+ * role) stay plain `Select`; search adds nothing there.
+ *
+ * Owns its own selection state so it works both controlled (`value` +
+ * `onChange`, e.g. create-po-form.tsx's plain useState fields) and as a
+ * native form field (`name` + `defaultValue`, read back via FormData in a
+ * Server Action) — a hidden input mirrors the selection whenever `name` is
+ * given, since a custom listbox can't participate in native form
+ * submission the way a real `<select>` does.
+ */
+export function Combobox({
+  name,
+  value,
+  defaultValue,
+  onChange,
+  options,
+  placeholder = "Search…",
+  emptyLabel = "No matches.",
+  disabled,
+  required,
+  className,
+}: {
+  name?: string;
+  /** Controlled selection — when given, this is authoritative over defaultValue. */
+  value?: string;
+  defaultValue?: string;
+  onChange?: (value: string) => void;
+  options: ComboboxOption[];
+  placeholder?: string;
+  emptyLabel?: string;
+  disabled?: boolean;
+  required?: boolean;
+  className?: string;
+}) {
+  const [internal, setInternal] = useState(value ?? defaultValue ?? "");
+  const selected = value ?? internal;
+
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [highlighted, setHighlighted] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const selectedOption = options.find((option) => option.value === selected) ?? null;
+
+  useEffect(() => {
+    if (value !== undefined) setInternal(value);
+  }, [value]);
+
+  useEffect(() => {
+    function onPointerDown(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+        setQuery("");
+      }
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, []);
+
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return options;
+    return options.filter(
+      (option) =>
+        option.label.toLowerCase().includes(needle) ||
+        (option.sublabel ?? "").toLowerCase().includes(needle),
+    );
+  }, [options, query]);
+
+  function commit(nextValue: string) {
+    setInternal(nextValue);
+    onChange?.(nextValue);
+    setOpen(false);
+    setQuery("");
+  }
+
+  function onKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      if (!open) {
+        setOpen(true);
+        return;
+      }
+      setHighlighted((index) => Math.min(index + 1, filtered.length - 1));
+      return;
+    }
+    // Everything below only makes sense once the list is actually open —
+    // otherwise a bare Enter (e.g. submitting the surrounding form) would
+    // silently commit whatever option index 0 happens to be.
+    if (!open) return;
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setHighlighted((index) => Math.max(index - 1, 0));
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      const option = filtered[highlighted];
+      if (option) commit(option.value);
+    } else if (event.key === "Escape") {
+      setOpen(false);
+      setQuery("");
+      inputRef.current?.blur();
+    }
+  }
+
+  return (
+    <div ref={rootRef} className="relative">
+      {name ? <input type="hidden" name={name} value={selected} required={required} /> : null}
+      <div className="relative">
+        {open ? (
+          <Search
+            size={16}
+            className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-ink-muted"
+          />
+        ) : null}
+        <input
+          ref={inputRef}
+          type="text"
+          role="combobox"
+          aria-expanded={open}
+          aria-controls={undefined}
+          disabled={disabled}
+          value={open ? query : (selectedOption?.label ?? "")}
+          placeholder={selectedOption ? undefined : placeholder}
+          onFocus={() => {
+            setOpen(true);
+            setQuery("");
+            setHighlighted(0);
+          }}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setHighlighted(0);
+            if (!open) setOpen(true);
+          }}
+          onKeyDown={onKeyDown}
+          className={cx(
+            CONTROL_STYLES,
+            "h-11 cursor-text pr-9 sm:h-10",
+            open ? "pl-9" : undefined,
+            className,
+          )}
+        />
+        <ChevronDown
+          size={16}
+          className={cx(
+            "pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-ink-muted transition-transform",
+            open && "rotate-180",
+          )}
+        />
+      </div>
+
+      {open ? (
+        <div className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-sm border border-border bg-surface p-1 shadow-lg">
+          {filtered.length === 0 ? (
+            <p className="px-3 py-2 text-caption text-ink-muted">{emptyLabel}</p>
+          ) : (
+            filtered.map((option, index) => (
+              <button
+                key={option.value}
+                type="button"
+                onMouseEnter={() => setHighlighted(index)}
+                onClick={() => commit(option.value)}
+                className={cx(
+                  "flex w-full items-center justify-between gap-2 rounded-sm px-3 py-2 text-left text-body",
+                  index === highlighted ? "bg-primary-tint text-ink" : "text-ink hover:bg-paper",
+                  option.value === selected && "font-medium",
+                )}
+              >
+                <span className="min-w-0 truncate">{option.label}</span>
+                {option.sublabel ? (
+                  <span className="shrink-0 text-caption text-ink-muted">{option.sublabel}</span>
+                ) : null}
+              </button>
+            ))
+          )}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

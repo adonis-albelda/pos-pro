@@ -33,7 +33,7 @@ export function CustomerForm({
       {customer ? <input type="hidden" name="id" value={customer.id} /> : null}
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <Field label="Name">
+        <Field label="Name" required>
           <Input
             name="name"
             defaultValue={customer?.name}
@@ -41,14 +41,14 @@ export function CustomerForm({
             maxLength={CUSTOMER_FIELD_MAX_LENGTH}
           />
         </Field>
-        <Field label="Contact">
+        <Field label="Contact" required={false}>
           <Input
             name="contact"
             defaultValue={customer?.contact ?? ""}
             maxLength={CUSTOMER_FIELD_MAX_LENGTH}
           />
         </Field>
-        <Field label="Address">
+        <Field label="Address" required={false}>
           <Input
             name="address"
             defaultValue={customer?.address ?? ""}

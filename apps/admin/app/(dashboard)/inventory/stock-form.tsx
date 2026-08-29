@@ -172,6 +172,7 @@ export function StockForm({
                 ? `Counted in ${product.unit}.`
                 : "Pick a product to see how it is sold."
             }
+            required
           >
             <Input
               name="quantity"
@@ -208,7 +209,7 @@ export function StockForm({
           )}
         </div>
 
-        <Field label="Reason" hint="Shows in the movement history and on reports.">
+        <Field label="Reason" hint="Shows in the movement history and on reports." required>
           <Select
             name="reason"
             value={reason}
@@ -221,7 +222,11 @@ export function StockForm({
         </Field>
       </div>
 
-      <Field label="Note" hint="Optional. Delivery receipt number, who counted, why.">
+      <Field
+        label="Note"
+        hint="Optional. Delivery receipt number, who counted, why."
+        required={false}
+      >
         <Input
           name="note"
           placeholder="Delivery from supplier, recount after audit..."
@@ -348,7 +353,7 @@ function ProductPicker({
 
   return (
     <div ref={rootRef} className="relative">
-      <Field label="Product" hint="Search by name, SKU or barcode.">
+      <Field label="Product" hint="Search by name, SKU or barcode." required>
         <Input
           icon={Search}
           value={term}

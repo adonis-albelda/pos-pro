@@ -8,6 +8,7 @@ import {
   Badge,
   Button,
   Card,
+  Combobox,
   EmptyState,
   ErrorNote,
   Field,
@@ -101,7 +102,7 @@ function TransfersBody({
         <form action={transferAction} className="space-y-3">
           {transferState.error ? <ErrorNote>{transferState.error}</ErrorNote> : null}
           {transferState.ok ? <SuccessNote>Transfer saved.</SuccessNote> : null}
-          <Field label="From">
+          <Field label="From" required>
             <Select name="from_location_id" required defaultValue="">
               <option value="" disabled>
                 Select source
@@ -113,7 +114,7 @@ function TransfersBody({
               ))}
             </Select>
           </Field>
-          <Field label="To">
+          <Field label="To" required>
             <Select name="to_location_id" required defaultValue="">
               <option value="" disabled>
                 Select destination
@@ -125,19 +126,16 @@ function TransfersBody({
               ))}
             </Select>
           </Field>
-          <Field label="Product">
-            <Select name="product_id" required defaultValue="">
-              <option value="" disabled>
-                Select product
-              </option>
-              {products.map((product) => (
-                <option key={product.id} value={product.id}>
-                  {product.name}
-                </option>
-              ))}
-            </Select>
+          <Field label="Product" required>
+            <Combobox
+              name="product_id"
+              required
+              defaultValue=""
+              placeholder="Select product"
+              options={products.map((product) => ({ value: product.id, label: product.name }))}
+            />
           </Field>
-          <Field label="Quantity">
+          <Field label="Quantity" required>
             <Input name="quantity" type="number" min="0.001" step="any" required />
           </Field>
           <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-sm border border-border bg-surface px-3 text-caption text-ink-muted">

@@ -9,6 +9,7 @@ import { signOut } from "@/app/login/actions";
 import { Button } from "@/components/ui";
 import { LocationSwitcher } from "@/components/location-switcher";
 import { LocationMutationsBanner } from "@/components/location-mutations-banner";
+import { BrandFooter } from "@/components/brand-footer";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { UiModeToggle } from "@/components/ui-mode-toggle";
 import type { UiMode } from "@/lib/ui-mode";
@@ -171,22 +172,7 @@ export function DashboardShell({
         <div className="flex-1 px-3 py-3 sm:px-4 sm:py-4 lg:px-5 lg:py-5">{children}</div>
 
         <footer className="mt-auto border-t border-border px-3 py-3 sm:px-4 lg:px-5">
-          <div className="flex flex-wrap items-center justify-center gap-2 text-caption text-ink-muted">
-            <img
-              src="/logo.png"
-              alt=""
-              className="size-5 shrink-0 object-contain"
-            />
-            <span>
-              Powered by:{" "}
-              <a
-                href="mailto:doubleadigitalsolutions@gmail.com"
-                className="text-ink-muted underline decoration-border underline-offset-2 transition-colors hover:text-ink hover:decoration-ink-muted"
-              >
-                doubleadigitalsolutions@gmail.com
-              </a>
-            </span>
-          </div>
+          <BrandFooter />
         </footer>
       </main>
     </div>

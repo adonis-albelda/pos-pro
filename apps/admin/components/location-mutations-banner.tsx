@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useOptionalLocationFilter } from "@/components/location-filter-provider";
 
 /** Paths where catalog CRUD stays allowed even when location filter is All. */
-const CATALOG_PATH_PREFIXES = ["/products", "/categories"];
+const CATALOG_PATH_PREFIXES = ["/products", "/categories", "/suppliers"];
 
 export function useLocationMutationsLocked(): boolean {
   const { locationId } = useOptionalLocationFilter();
@@ -28,7 +28,7 @@ export function LocationMutationsBanner() {
       <MapPin size={16} className="mt-0.5 shrink-0 text-amber-700" strokeWidth={2} />
       <p className="text-caption leading-relaxed text-ink">
         Create, update, and delete are disabled until you select a specific location.
-        Products and categories stay editable — they are company-wide.
+        Products, categories, and suppliers stay editable — they are company-wide.
       </p>
     </div>
   );

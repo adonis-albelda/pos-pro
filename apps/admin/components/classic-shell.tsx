@@ -8,6 +8,7 @@ import { storeInitial } from "@double-a/shared-types";
 import { signOut } from "@/app/login/actions";
 import { LocationSwitcher } from "@/components/location-switcher";
 import { LocationMutationsBanner } from "@/components/location-mutations-banner";
+import { BrandFooter } from "@/components/brand-footer";
 import { UiModeToggle } from "@/components/ui-mode-toggle";
 import { filterNavGroupsByFeatures, NAV_GROUPS } from "@/lib/nav";
 import { useNavFeatureEnabled } from "@/lib/query/nav-features";
@@ -247,19 +248,7 @@ export function ClassicShell({
 
       {/* Status strip */}
       <footer className="border-t border-border bg-surface px-3 py-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))]">
-        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-caption text-ink-muted sm:justify-start">
-          <span>{storeName}</span>
-          <span className="hidden sm:inline">{userEmail}</span>
-          <span className="sm:ml-auto">
-            Powered by:{" "}
-            <a
-              href="mailto:doubleadigitalsolutions@gmail.com"
-              className="underline decoration-border underline-offset-2 hover:text-ink"
-            >
-              doubleadigitalsolutions@gmail.com
-            </a>
-          </span>
-        </div>
+        <BrandFooter userEmail={userEmail} />
       </footer>
     </div>
   );

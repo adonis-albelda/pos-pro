@@ -60,7 +60,7 @@ function ResetPasswordForm({
         Sets a new Auth password for <span className="font-medium text-ink">{user.email}</span>.
         Cashiers use a PIN — reset that from Edit instead.
       </p>
-      <Field label="New password">
+      <Field label="New password" required>
         <PasswordInput
           icon={Lock}
           name="password"

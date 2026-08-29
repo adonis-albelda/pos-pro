@@ -9,6 +9,7 @@ import {
   Button,
   Card,
   CardHeader,
+  Combobox,
   ErrorNote,
   Field,
   Input,
@@ -140,7 +141,7 @@ export function CreateSaleForm() {
             </div>
 
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <Field label="Quantity">
+              <Field label="Quantity" required>
                 <Input
                   type="number"
                   inputMode="decimal"
@@ -154,6 +155,7 @@ export function CreateSaleForm() {
               <Field
                 label="Unit price"
                 hint={row.product ? `Shelf price ${formatMoney(row.product.price)}` : "Pick a product first"}
+                required={false}
               >
                 <MoneyInput
                   type="number"
@@ -176,7 +178,7 @@ export function CreateSaleForm() {
         <div className="ledger-line" />
 
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="Payment method">
+          <Field label="Payment method" required>
             <Select
               value={paymentMethod}
               onChange={(event) =>
@@ -191,7 +193,7 @@ export function CreateSaleForm() {
             </Select>
           </Field>
 
-          <Field label="Fulfillment">
+          <Field label="Fulfillment" required>
             <Select
               value={fulfillment}
               onChange={(event) => setFulfillment(event.target.value as "pickup" | "delivery")}
@@ -201,15 +203,19 @@ export function CreateSaleForm() {
             </Select>
           </Field>
 
-          <Field label="Customer" hint="Optional — a walk-in needs nothing here.">
-            <Select value={customerId} onChange={(event) => setCustomerId(event.target.value)}>
-              <option value="">Walk-in</option>
-              {customers.map((customer: Customer) => (
-                <option key={customer.id} value={customer.id}>
-                  {customer.name}
-                </option>
-              ))}
-            </Select>
+          <Field label="Customer" hint="Optional — a walk-in needs nothing here." required={false}>
+            <Combobox
+              value={customerId}
+              onChange={(next) => setCustomerId(next)}
+              placeholder="Walk-in"
+              options={[
+                { value: "", label: "Walk-in" },
+                ...customers.map((customer: Customer) => ({
+                  value: customer.id,
+                  label: customer.name,
+                })),
+              ]}
+            />
           </Field>
         </div>
 

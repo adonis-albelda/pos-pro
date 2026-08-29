@@ -116,7 +116,7 @@ export function LoginForm({ next }: { next: string }) {
             This is a demo account. Enter the one-time access code you were sent to continue.
           </p>
         </div>
-        <Field label="Access code">
+        <Field label="Access code" required>
           <Input
             icon={KeyRound}
             name="access_code"
@@ -146,7 +146,7 @@ export function LoginForm({ next }: { next: string }) {
 
   return (
     <form onSubmit={handleCredentialsSubmit} className="space-y-4">
-      <Field label="Email">
+      <Field label="Email" required>
         <Input
           icon={Mail}
           name="email"
@@ -156,7 +156,7 @@ export function LoginForm({ next }: { next: string }) {
           required
         />
       </Field>
-      <Field label="Password">
+      <Field label="Password" required>
         <PasswordInput
           icon={Lock}
           name="password"

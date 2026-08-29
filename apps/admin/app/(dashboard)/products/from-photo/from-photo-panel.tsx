@@ -1,12 +1,14 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import {
+  ArrowLeftRight,
   Camera,
   Check,
   Crop,
   ImagePlus,
   Save,
+  SearchCheck,
   Trash2,
   TriangleAlert,
   X,
@@ -21,23 +23,29 @@ import {
   Button,
   Card,
   CardHeader,
+  Combobox,
   ErrorNote,
   Field,
   FileInput,
   Input,
+  Money,
   MoneyInput,
   Select,
   SuccessNote,
 } from "@/components/ui";
 import { indentLabel, type CategoryOption } from "@/lib/category-options";
 import {
+  checkSkuExists,
   extractProductsFromImage,
   saveAllScannedProducts,
   saveScannedProduct,
 } from "./actions";
 import { CropPhoto } from "./crop-photo";
 import { AiProcessingOverlay } from "@/components/overlay";
-import type { ScannedProductDraft } from "./types";
+import type { ExistingProductMatch, ScannedProductDraft } from "./types";
+
+/** How long to let the user keep typing before checking the SKU against the catalogue. */
+const SKU_CHECK_DEBOUNCE_MS = 500;
 
 /** Shrink a phone photo so the server action stays under the body limit. */
 async function compressImage(file: File): Promise<File> {
@@ -79,6 +87,39 @@ function patchDraft(
   );
 }
 
+function ExistingSkuBanner({ match }: { match: ExistingProductMatch }) {
+  return (
+    <div className="flex items-start gap-3 rounded-md border border-warning/40 bg-warning/12 px-4 py-3 text-[#8a6516]">
+      <SearchCheck size={18} className="mt-0.5 shrink-0" />
+      <div className="min-w-0 text-caption">
+        <p className="font-medium">This SKU already exists — compare against the AI's reading below.</p>
+        <dl className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-0.5 sm:grid-cols-4">
+          <div>
+            <dt className="text-[11px] uppercase opacity-70">Name</dt>
+            <dd className="truncate font-medium">{match.name}</dd>
+          </div>
+          <div>
+            <dt className="text-[11px] uppercase opacity-70">Category</dt>
+            <dd className="truncate">{match.category ?? "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-[11px] uppercase opacity-70">Cost / shelf</dt>
+            <dd>
+              <Money value={match.costPrice} /> / <Money value={match.price} />
+            </dd>
+          </div>
+          <div>
+            <dt className="text-[11px] uppercase opacity-70">Stock on hand</dt>
+            <dd>
+              {match.stockQuantity} {(UNIT_LABELS as Record<string, string>)[match.unit] ?? match.unit}
+            </dd>
+          </div>
+        </dl>
+      </div>
+    </div>
+  );
+}
+
 function DraftRow({
   draft,
   categories,
@@ -97,6 +138,36 @@ function DraftRow({
   onRemove: () => void;
 }) {
   const selected = categories.find((entry) => entry.id === draft.categoryId);
+  const [skuMatch, setSkuMatch] = useState<ExistingProductMatch | null>(null);
+  const [checkingSku, setCheckingSku] = useState(false);
+
+  // Only re-checks what the user actually typed here, not the SKU the AI
+  // pre-filled the row with — that already ran the same match server-side
+  // during extraction (see lineToDraft's existingProductId/matchedBy).
+  useEffect(() => {
+    const sku = draft.sku.trim();
+    if (!sku) {
+      setSkuMatch(null);
+      setCheckingSku(false);
+      return;
+    }
+
+    let cancelled = false;
+    setCheckingSku(true);
+    const timer = setTimeout(() => {
+      void (async () => {
+        const match = await checkSkuExists(sku);
+        if (cancelled) return; // superseded by a newer keystroke
+        setSkuMatch(match);
+        setCheckingSku(false);
+      })();
+    }, SKU_CHECK_DEBOUNCE_MS);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [draft.sku]);
 
   function applyMarkup(nextCategoryId: string, nextCost: string) {
     const category = categories.find((entry) => entry.id === nextCategoryId);
@@ -113,7 +184,11 @@ function DraftRow({
   }
 
   return (
-    <div className="space-y-3 border-t border-border px-4 py-4 sm:px-6">
+    <div
+      className={`space-y-3 border-t border-border px-4 py-4 sm:px-6 ${
+        skuMatch && !draft.stockApplied ? "border-l-2 border-l-warning bg-warning/[0.03]" : ""
+      }`}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-body font-medium text-ink">
@@ -172,13 +247,37 @@ function DraftRow({
             disabled={draft.stockApplied}
           />
         </Field>
-        <Field label="SKU">
-          <Input
-            value={draft.sku}
-            onChange={(event) => onChange({ sku: event.target.value })}
-            disabled={draft.stockApplied}
-          />
-        </Field>
+        <div className="sm:col-span-2 xl:col-span-1">
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="text-caption font-medium text-ink-muted">SKU / supplier SKU</span>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              icon={ArrowLeftRight}
+              disabled={draft.stockApplied}
+              onClick={() => onChange({ sku: draft.supplierSku, supplierSku: draft.sku })}
+            >
+              Swap
+            </Button>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="SKU" hint={checkingSku ? "Checking catalogue…" : undefined}>
+              <Input
+                value={draft.sku}
+                onChange={(event) => onChange({ sku: event.target.value })}
+                disabled={draft.stockApplied}
+              />
+            </Field>
+            <Field label="Supplier SKU">
+              <Input
+                value={draft.supplierSku}
+                onChange={(event) => onChange({ supplierSku: event.target.value })}
+                disabled={draft.stockApplied}
+              />
+            </Field>
+          </div>
+        </div>
         <Field label="Barcode">
           <Input
             value={draft.barcode}
@@ -218,19 +317,20 @@ function DraftRow({
               : undefined
           }
         >
-          <Select
+          <Combobox
             value={draft.categoryId}
-            onChange={(event) => applyMarkup(event.target.value, draft.costPrice)}
-          >
-            <option value="">No category</option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {indentLabel(category)}
-                {category.isActive ? "" : " (hidden)"}
-                {category.markupApplied ? ` (+${category.markupPercent}%)` : ""}
-              </option>
-            ))}
-          </Select>
+            onChange={(next) => applyMarkup(next, draft.costPrice)}
+            placeholder="No category"
+            options={[
+              { value: "", label: "No category" },
+              ...categories.map((category) => ({
+                value: category.id,
+                label: `${indentLabel(category)}${category.isActive ? "" : " (hidden)"}${
+                  category.markupApplied ? ` (+${category.markupPercent}%)` : ""
+                }`,
+              })),
+            ]}
+          />
         </Field>
 
         <Field label="Sold by">
@@ -276,6 +376,7 @@ function DraftRow({
         </Field>
       </div>
 
+      {skuMatch && !draft.stockApplied ? <ExistingSkuBanner match={skuMatch} /> : null}
       {rowError ? <ErrorNote>{rowError}</ErrorNote> : null}
     </div>
   );

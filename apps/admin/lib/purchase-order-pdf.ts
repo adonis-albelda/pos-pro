@@ -2,9 +2,9 @@ import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFPage } 
 import type { PurchaseOrderWithLines } from "@double-a/api-client/queries";
 import type { StoreSettings, Supplier } from "@double-a/shared-types";
 import {
-  formatMoney,
   formatQuantity,
   purchaseOrderBalance,
+  roundMoney,
 } from "@double-a/shared-types";
 
 export interface PurchaseOrderPdfInput {
@@ -22,6 +22,20 @@ const INK = rgb(0.12, 0.12, 0.12);
 const MUTED = rgb(0.42, 0.42, 0.42);
 const LINE = rgb(0.78, 0.78, 0.78);
 const ACCENT = rgb(0.08, 0.45, 0.48);
+
+/**
+ * formatMoney()'s "₱" (U+20B1) has no glyph in WinAnsi, the only encoding
+ * the standard 14 PDF fonts (pdf-lib's StandardFonts, no embedding) support
+ * — drawText() throws on it. "PHP " is the WinAnsi-safe stand-in used only
+ * in this PDF; every other formatMoney() call site (web display) is
+ * untouched and still shows the real peso sign.
+ */
+function pdfMoney(value: number): string {
+  return `PHP ${roundMoney(value).toLocaleString("en-PH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
 
 /** Portrait purchase-order document for emailing or printing. */
 export async function purchaseOrderToPdf(input: PurchaseOrderPdfInput): Promise<Uint8Array> {
@@ -282,8 +296,8 @@ function drawLineItemsTable(
       String(index + 1),
       item.note?.trim() ? `${item.productName} (${item.note.trim()})` : item.productName,
       formatQuantity(item.quantityOrdered),
-      formatMoney(item.unitCost),
-      formatMoney(item.lineTotal),
+      pdfMoney(item.unitCost),
+      pdfMoney(item.lineTotal),
     ];
 
     for (let c = 0; c < cols.length; c += 1) {
@@ -331,7 +345,7 @@ function drawTotals(
   let y = startY;
 
   const totalLabel = "TOTAL";
-  const totalValue = formatMoney(totalAmount);
+  const totalValue = pdfMoney(totalAmount);
   y -= 10;
 
   page.drawText(totalLabel, {
@@ -381,14 +395,14 @@ function drawPaymentTerms(
     }
 
     const due = term.dueDate ? formatDisplayDate(term.dueDate) : "On receipt";
-    const line = `Term ${term.termNumber} — due ${due} — ${formatMoney(term.amount)}`;
+    const line = `Term ${term.termNumber} — due ${due} — ${pdfMoney(term.amount)}`;
     currentPage.drawText(line, { x: MARGIN, y, size: 9, font, color: INK });
     y -= 12;
   }
 
   const balance = purchaseOrderBalance(order.payments);
   if (balance > 0) {
-    currentPage.drawText(`Balance outstanding: ${formatMoney(balance)}`, {
+    currentPage.drawText(`Balance outstanding: ${pdfMoney(balance)}`, {
       x: MARGIN,
       y: y - 2,
       size: 9,

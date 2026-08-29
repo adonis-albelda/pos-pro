@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect } from "react";
 import { Check, FolderPlus } from "lucide-react";
-import { Button, ErrorNote, Field, Input, Select, SuccessNote } from "@/components/ui";
+import { Button, Combobox, ErrorNote, Field, Input, SuccessNote } from "@/components/ui";
 import {
   descendantIds,
   indentLabel,
@@ -41,7 +41,7 @@ export function CategoryForm({
       {category ? <input type="hidden" name="id" value={category.id} /> : null}
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Name">
+        <Field label="Name" required>
           <Input
             name="name"
             defaultValue={category?.name}
@@ -49,17 +49,18 @@ export function CategoryForm({
             required
           />
         </Field>
-        <Field label="Sits under" hint="Leave as a top level to start a new branch.">
-          <Select name="parent_id" defaultValue={category?.parentId ?? ""}>
-            <option value="">Top level</option>
-            {categories
-              .filter((option) => !blocked.has(option.id))
-              .map((option) => (
-                <option key={option.id} value={option.id}>
-                  {indentLabel(option)}
-                </option>
-              ))}
-          </Select>
+        <Field label="Sits under" hint="Leave as a top level to start a new branch." required={false}>
+          <Combobox
+            name="parent_id"
+            defaultValue={category?.parentId ?? ""}
+            placeholder="Top level"
+            options={[
+              { value: "", label: "Top level" },
+              ...categories
+                .filter((option) => !blocked.has(option.id))
+                .map((option) => ({ value: option.id, label: indentLabel(option) })),
+            ]}
+          />
         </Field>
       </div>
 
@@ -67,6 +68,7 @@ export function CategoryForm({
         <Field
           label="Markup %"
           hint="When applied, new products under this category get shelf = cost × (1 + %)."
+          required={false}
         >
           <Input
             name="markup_percent"
@@ -76,7 +78,7 @@ export function CategoryForm({
             defaultValue={category?.markupPercent ?? 0}
           />
         </Field>
-        <Field label="Apply markup" hint="Off = owner types shelf price by hand.">
+        <Field label="Apply markup" hint="Off = owner types shelf price by hand." required={false}>
           <label className="flex min-h-11 items-center gap-2 rounded-sm border border-border bg-surface px-3 text-body">
             <input
               type="checkbox"

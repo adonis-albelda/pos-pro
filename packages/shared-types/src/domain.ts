@@ -706,9 +706,16 @@ export interface Supplier {
   name: string;
   contactPerson: string | null;
   phone: string | null;
+  /** An alternate line — a second sales rep, warehouse desk, whatever else the shop actually dials. */
+  secondaryPhone: string | null;
   email: string | null;
+  secondaryEmail: string | null;
   address: string | null;
+  /** Free-form — payment terms, delivery quirks, anything else that doesn't fit a dedicated field. */
+  notes: string | null;
   isActive: boolean;
+  /** Only populated by listSuppliers (withCount, no extra request) — null from show/create/update. */
+  productsCount: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -727,6 +734,7 @@ export const SUPPLIER_CONTACT_PERSON_MAX = 120;
 export const SUPPLIER_PHONE_MAX = 40;
 export const SUPPLIER_EMAIL_MAX = 200;
 export const SUPPLIER_ADDRESS_MAX = 300;
+export const SUPPLIER_NOTES_MAX = 2000;
 
 /**
  * draft: still being put together, freely editable.

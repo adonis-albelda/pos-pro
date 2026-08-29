@@ -7,6 +7,7 @@ import {
   createProduct,
   extractProductsFromPhoto,
   listCategories,
+  listProductsPage,
   type ExtractedProductLine,
 } from "@double-a/api-client/queries";
 import { ApiError } from "@double-a/api-client";
@@ -14,6 +15,7 @@ import { toCategoryOptions } from "@/lib/category-options";
 import { getAuthedClient } from "@/lib/api/session";
 import { matchCategoryId } from "./match-category";
 import type {
+  ExistingProductMatch,
   ExtractProductsResult,
   SaveAllScannedResult,
   SaveScannedResult,
@@ -25,6 +27,7 @@ import type {
 function describeSaveError(error: unknown): string {
   if (error instanceof ApiError && error.isValidation) {
     if (error.errors?.sku) return "That SKU is already used by another product.";
+    if (error.errors?.supplier_sku) return "That supplier SKU is already used by another product.";
     if (error.errors?.barcode) return "That barcode is already on another product.";
     if (error.errors?.bulk_price || error.errors?.bulk_min_quantity) {
       return "Bulk pricing needs both a bulk price and a minimum quantity.";
@@ -62,6 +65,7 @@ function lineToDraft(
     name: line.name,
     description: line.description ?? "",
     sku: line.sku ?? "",
+    supplierSku: "",
     barcode: line.barcode ?? "",
     price: line.price !== null ? String(line.price) : "",
     costPrice: line.costPrice !== null ? String(line.costPrice) : "",
@@ -84,6 +88,7 @@ function draftToInput(draft: ScannedProductDraft) {
   return {
     name: draft.name.trim(),
     sku: draft.sku.trim() || null,
+    supplierSku: draft.supplierSku.trim() || null,
     price: Number(draft.price || 0),
     costPrice: Number(draft.costPrice || 0),
     categoryId: draft.categoryId.trim() || null,
@@ -110,6 +115,7 @@ async function insertDraft(draft: ScannedProductDraft): Promise<string | null> {
     await createProduct(client, {
       name: input.name,
       sku: input.sku,
+      supplierSku: input.supplierSku,
       price: input.price,
       costPrice: input.costPrice,
       categoryId: input.categoryId,
@@ -174,6 +180,39 @@ export async function extractProductsFromImage(
   const drafts = lines.map((line) => lineToDraft(line, options));
 
   return { error: null, drafts };
+}
+
+/**
+ * Live check for the SKU field — `search` on `/products` is a fuzzy LIKE
+ * match (name or SKU), so results are filtered down here to an exact,
+ * case-insensitive SKU match before returning anything to the row.
+ */
+export async function checkSkuExists(sku: string): Promise<ExistingProductMatch | null> {
+  const trimmed = sku.trim();
+  if (!trimmed) return null;
+
+  const client = getAuthedClient();
+  const { products } = await listProductsPage(client, {
+    q: trimmed,
+    includeInactive: true,
+    pageSize: 10,
+  });
+
+  const match = products.find(
+    (product) => product.sku?.toLowerCase() === trimmed.toLowerCase(),
+  );
+  if (!match) return null;
+
+  return {
+    id: match.id,
+    name: match.name,
+    sku: match.sku,
+    category: match.category,
+    price: match.price,
+    costPrice: match.costPrice,
+    stockQuantity: match.stockQuantity,
+    unit: match.unit,
+  };
 }
 
 export async function saveScannedProduct(

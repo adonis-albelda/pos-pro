@@ -123,10 +123,10 @@ export function UserForm({
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Name">
+          <Field label="Name" required>
             <Input icon={UserRound} name="name" defaultValue={user?.name} required />
           </Field>
-          <Field label="Email">
+          <Field label="Email" required>
             <Input
               icon={Mail}
               name="email"
@@ -142,6 +142,7 @@ export function UserForm({
                 ? "Role can't be changed after creation."
                 : "Controls dashboard access, PIN unlock, or terminal sign-in."
             }
+            required
           >
             {user ? <input type="hidden" name="role" value={role} /> : null}
             <Select
@@ -164,6 +165,7 @@ export function UserForm({
                   ? "Changing branch moves this terminal's stock and sales to the new location after the next sync."
                   : "Stock for this terminal comes from this branch only."
               }
+              required
             >
               <Select
                 name="location_id"
@@ -194,6 +196,7 @@ export function UserForm({
                     ? "Optional — 4 to 6 digits, for unlocking a terminal."
                     : "4 to 6 digits."
               }
+              required={!user && role === "cashier"}
             >
               <Input
                 icon={KeyRound}
@@ -214,6 +217,7 @@ export function UserForm({
                   ? "Dashboard login — not a cashier PIN."
                   : "Enter this on the POS app's setup screen to connect the terminal."
               }
+              required
             >
               <PasswordInput
                 icon={Lock}
@@ -230,6 +234,7 @@ export function UserForm({
           <Field
             label="Sales"
             hint="Off = can still unlock a terminal, but cannot complete a sale."
+            required={false}
           >
             <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-sm border border-border bg-surface px-3 text-body">
               <input

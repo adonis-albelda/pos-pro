@@ -54,7 +54,7 @@ export function StoreForm({ settings }: { settings: StoreSettings }) {
         </span>
 
         <div className="min-w-0 flex-1 space-y-2">
-          <Field label="Logo" hint="PNG, JPEG, WebP or SVG, under 1 MB.">
+          <Field label="Logo" hint="PNG, JPEG, WebP or SVG, under 1 MB." required={false}>
             <FileInput
               name="logo"
               accept="image/png,image/jpeg,image/webp,image/svg+xml"
@@ -83,10 +83,10 @@ export function StoreForm({ settings }: { settings: StoreSettings }) {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Shop name" hint="Heads every terminal and the receipt.">
+        <Field label="Shop name" hint="Heads every terminal and the receipt." required>
           <Input icon={Store} name="name" defaultValue={settings.name} required />
         </Field>
-        <Field label="Phone">
+        <Field label="Phone" required={false}>
           <Input
             icon={Phone}
             name="phone"
@@ -96,7 +96,7 @@ export function StoreForm({ settings }: { settings: StoreSettings }) {
         </Field>
       </div>
 
-      <Field label="Address">
+      <Field label="Address" required={false}>
         <Input
           icon={MapPin}
           name="address"
@@ -108,6 +108,7 @@ export function StoreForm({ settings }: { settings: StoreSettings }) {
       <Field
         label="Receipt footer"
         hint="Printed under the total. Leave empty to keep the default."
+        required={false}
       >
         <Textarea
           name="receipt_footer"
@@ -123,7 +124,7 @@ export function StoreForm({ settings }: { settings: StoreSettings }) {
           <span className="font-mono">{invoicePreview}</span>
         </p>
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="Prefix" hint="Optional, e.g. JH.">
+          <Field label="Prefix" hint="Optional, e.g. JH." required={false}>
             <Input
               icon={Hash}
               name="invoice_prefix"
@@ -133,7 +134,7 @@ export function StoreForm({ settings }: { settings: StoreSettings }) {
               maxLength={8}
             />
           </Field>
-          <Field label="Digits" hint="Padded with leading zeros.">
+          <Field label="Digits" hint="Padded with leading zeros." required>
             <Input
               type="number"
               name="invoice_digits"
@@ -143,7 +144,7 @@ export function StoreForm({ settings }: { settings: StoreSettings }) {
               onChange={(event) => setInvoiceDigits(Number(event.currentTarget.value) || 1)}
             />
           </Field>
-          <Field label="Next number" hint="Bumped automatically after each sale.">
+          <Field label="Next number" hint="Bumped automatically after each sale." required>
             <Input
               type="number"
               name="invoice_next_number"

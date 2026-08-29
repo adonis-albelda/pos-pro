@@ -74,7 +74,7 @@ export function ReplaceItem({ saleId, item }: { saleId: string; item: SaleItem }
             label="Replacement product"
           />
 
-          <Field label="Quantity" hint={`Originally sold as ${item.quantity}.`}>
+          <Field label="Quantity" hint={`Originally sold as ${item.quantity}.`} required>
             <Input
               type="number"
               inputMode="decimal"

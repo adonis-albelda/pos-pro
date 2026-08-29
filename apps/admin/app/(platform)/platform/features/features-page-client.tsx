@@ -154,7 +154,7 @@ function FeatureFlagCard({
         {pickable.length > 0 ? (
           <div className="flex flex-col gap-2 border-t border-border pt-4 sm:flex-row sm:items-end">
             <div className="flex-1">
-              <Field label="Override for one shop">
+              <Field label="Override for one shop" required>
                 <Select value={companyId} onChange={(event) => setCompanyId(event.target.value)}>
                   <option value="">Pick a company…</option>
                   {pickable.map((company) => (
@@ -165,7 +165,7 @@ function FeatureFlagCard({
                 </Select>
               </Field>
             </div>
-            <Field label="State">
+            <Field label="State" required={false}>
               <Select
                 value={companyEnabled}
                 onChange={(event) => setCompanyEnabled(event.target.value as "true" | "false")}

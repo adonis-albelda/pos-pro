@@ -10,6 +10,7 @@ import {
   Badge,
   Button,
   Card,
+  Combobox,
   IconButton,
   IconLink,
   Money,
@@ -118,17 +119,15 @@ export function StockPanel({
             <span className="mb-1 block text-caption font-medium text-ink-muted">
               Category
             </span>
-            <Select
+            <Combobox
               value={category ?? ""}
-              onChange={(event) => setParam("category", event.target.value)}
-            >
-              <option value="">Every category</option>
-              {categories.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {indentLabel(option)}
-                </option>
-              ))}
-            </Select>
+              onChange={(next) => setParam("category", next)}
+              placeholder="Every category"
+              options={[
+                { value: "", label: "Every category" },
+                ...categories.map((option) => ({ value: option.id, label: indentLabel(option) })),
+              ]}
+            />
           </label>
 
           <label className="block min-w-0 flex-1">

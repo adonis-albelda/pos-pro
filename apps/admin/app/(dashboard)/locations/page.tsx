@@ -271,16 +271,16 @@ function AddLocationForm({ onDone }: { onDone: () => void }) {
     <form action={action} className="space-y-4">
       {state.error ? <ErrorNote>{state.error}</ErrorNote> : null}
       {state.ok ? <SuccessNote>Location saved.</SuccessNote> : null}
-      <Field label="Name">
+      <Field label="Name" required>
         <Input name="name" required placeholder="Main Branch" />
       </Field>
-      <Field label="Type">
+      <Field label="Type" required>
         <Select name="type" defaultValue="branch">
           <option value="branch">Branch — sells on POS</option>
           <option value="warehouse">Warehouse — holds stock only</option>
         </Select>
       </Field>
-      <Field label="Address">
+      <Field label="Address" required={false}>
         <Input name="address" placeholder="Optional" />
       </Field>
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">

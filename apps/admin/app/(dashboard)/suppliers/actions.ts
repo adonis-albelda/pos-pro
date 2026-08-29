@@ -6,6 +6,7 @@ import {
   SUPPLIER_CONTACT_PERSON_MAX,
   SUPPLIER_EMAIL_MAX,
   SUPPLIER_NAME_MAX,
+  SUPPLIER_NOTES_MAX,
   SUPPLIER_PHONE_MAX,
 } from "@double-a/shared-types";
 import { ApiError } from "@double-a/api-client";
@@ -63,8 +64,11 @@ export async function saveSupplier(
     name: name.slice(0, SUPPLIER_NAME_MAX),
     contactPerson: optional(formData, "contact_person", SUPPLIER_CONTACT_PERSON_MAX),
     phone: optional(formData, "phone", SUPPLIER_PHONE_MAX),
+    secondaryPhone: optional(formData, "secondary_phone", SUPPLIER_PHONE_MAX),
     email: optional(formData, "email", SUPPLIER_EMAIL_MAX),
+    secondaryEmail: optional(formData, "secondary_email", SUPPLIER_EMAIL_MAX),
     address: optional(formData, "address", SUPPLIER_ADDRESS_MAX),
+    notes: optional(formData, "notes", SUPPLIER_NOTES_MAX),
     isActive,
   };
 
@@ -72,12 +76,11 @@ export async function saveSupplier(
     const supplierId = id
       ? (await updateSupplier(client, id, row)).id
       : (await createSupplier(client, row)).id;
-    // GAP (see suppliers/page.tsx): there is no read-back endpoint for a
-    // supplier's linked products, so `productIds` here is only ever what the
-    // form's checkboxes carried — never pre-populated from what's actually
-    // linked server-side on an edit. `setSupplierProducts` is a replace-all,
-    // so saving an edit without re-checking every product the supplier
-    // already carries silently unlinks the rest.
+    // setSupplierProducts is a replace-all — callers must pass the full set
+    // they want linked, not a delta. Both call sites of this action
+    // (create sheet, list page's edit sheet) pre-check the picker from
+    // listSupplierProducts before rendering, so `productIds` here already
+    // reflects everything that should stay linked, not just what changed.
     await setSupplierProducts(client, supplierId, productIds);
     revalidateSupplierViews(supplierId);
   } catch (error) {
@@ -88,6 +91,82 @@ export async function saveSupplier(
     return { error: `Could not save the supplier: ${message}`, ok: false };
   }
 
+  return { error: null, ok: true };
+}
+
+/** Fields only, no product links — the detail page's Info tab, separate from its Products tab's own save. */
+export async function saveSupplierInfo(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const id = text(formData, "id");
+  const name = text(formData, "name");
+
+  if (!id) return { error: "Missing supplier.", ok: false };
+  if (!name) return { error: "Give the supplier a name.", ok: false };
+
+  const client = getAuthedClient();
+  const user = await getCurrentUser();
+  if (!isShopAdmin(user)) {
+    return { error: "Only the owner can manage suppliers.", ok: false };
+  }
+
+  const row = {
+    name: name.slice(0, SUPPLIER_NAME_MAX),
+    contactPerson: optional(formData, "contact_person", SUPPLIER_CONTACT_PERSON_MAX),
+    phone: optional(formData, "phone", SUPPLIER_PHONE_MAX),
+    secondaryPhone: optional(formData, "secondary_phone", SUPPLIER_PHONE_MAX),
+    email: optional(formData, "email", SUPPLIER_EMAIL_MAX),
+    secondaryEmail: optional(formData, "secondary_email", SUPPLIER_EMAIL_MAX),
+    address: optional(formData, "address", SUPPLIER_ADDRESS_MAX),
+    notes: optional(formData, "notes", SUPPLIER_NOTES_MAX),
+    isActive: formData.get("is_active") === "true",
+  };
+
+  try {
+    await updateSupplier(client, id, row);
+  } catch (error) {
+    if (error instanceof ApiError && error.isForbidden) {
+      return { error: error.message, ok: false };
+    }
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return { error: `Could not save the supplier: ${message}`, ok: false };
+  }
+
+  revalidateSupplierViews(id);
+  return { error: null, ok: true };
+}
+
+/** Linked products only — a replace-all, so this always sends the full checked set, not a delta. */
+export async function saveSupplierProducts(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const id = text(formData, "id");
+  const productIds = text(formData, "product_ids")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  if (!id) return { error: "Missing supplier.", ok: false };
+
+  const client = getAuthedClient();
+  const user = await getCurrentUser();
+  if (!isShopAdmin(user)) {
+    return { error: "Only the owner can manage suppliers.", ok: false };
+  }
+
+  try {
+    await setSupplierProducts(client, id, productIds);
+  } catch (error) {
+    if (error instanceof ApiError && error.isForbidden) {
+      return { error: error.message, ok: false };
+    }
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return { error: `Could not save linked products: ${message}`, ok: false };
+  }
+
+  revalidateSupplierViews(id);
   return { error: null, ok: true };
 }
 

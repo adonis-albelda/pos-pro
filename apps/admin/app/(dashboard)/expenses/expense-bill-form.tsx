@@ -62,7 +62,7 @@ export function ExpenseBillForm({
       <form action={action} className="space-y-4">
         {bill ? <input type="hidden" name="id" value={bill.id} /> : null}
 
-        <Field label="Description">
+        <Field label="Description" required>
           <Input
             name="description"
             defaultValue={bill?.description}
@@ -73,7 +73,7 @@ export function ExpenseBillForm({
         </Field>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Amount">
+          <Field label="Amount" required>
             <MoneyInput
               name="amount"
               type="number"
@@ -84,7 +84,7 @@ export function ExpenseBillForm({
               required
             />
           </Field>
-          <Field label="Frequency">
+          <Field label="Frequency" required>
             <Select name="frequency" defaultValue={bill?.frequency ?? "monthly"} required>
               {EXPENSE_BILL_FREQUENCIES.map((freq) => (
                 <option key={freq} value={freq}>
@@ -95,7 +95,7 @@ export function ExpenseBillForm({
           </Field>
         </div>
 
-        <Field label="Next due date" hint="Shop calendar day this bill is due.">
+        <Field label="Next due date" hint="Shop calendar day this bill is due." required>
           <Input
             name="next_due_date"
             type="date"
@@ -108,6 +108,7 @@ export function ExpenseBillForm({
           <Field
             label="Remind days before"
             hint={`Daily push from this many days before due (0–${EXPENSE_BILL_REMIND_DAYS_MAX}).`}
+            required={false}
           >
             <Input
               name="remind_days_before"
@@ -119,7 +120,7 @@ export function ExpenseBillForm({
               className="num"
             />
           </Field>
-          <Field label="Category" hint="Optional — rent, wages, utilities…">
+          <Field label="Category" hint="Optional — rent, wages, utilities…" required={false}>
             <Input
               name="category"
               defaultValue={bill?.category ?? ""}
@@ -128,7 +129,7 @@ export function ExpenseBillForm({
           </Field>
         </div>
 
-        <Field label="Note">
+        <Field label="Note" required={false}>
           <Input
             name="note"
             defaultValue={bill?.note ?? ""}

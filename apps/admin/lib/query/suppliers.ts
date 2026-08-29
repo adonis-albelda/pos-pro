@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   listProducts,
   listSupplierBalances,
+  listSupplierProducts,
   listSuppliers,
   getSupplier,
   supplierBalance,
@@ -64,6 +65,15 @@ export function useSupplierProductOptions(enabled = true) {
     queryKey: [...queryKeys.suppliers.all, "product-options"] as const,
     queryFn: () => listProducts(getBrowserApiClient(), { includeInactive: true }),
     enabled,
+  });
+}
+
+/** What this supplier is actually linked to right now — pre-checks the products picker instead of opening blank. */
+export function useSupplierProducts(supplierId: string, enabled = true) {
+  return useQuery({
+    queryKey: [...queryKeys.suppliers.detail(supplierId), "products"] as const,
+    queryFn: () => listSupplierProducts(getBrowserApiClient(), supplierId),
+    enabled: enabled && Boolean(supplierId),
   });
 }
 

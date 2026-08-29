@@ -8,6 +8,7 @@ export interface ScannedProductDraft {
   name: string;
   description: string;
   sku: string;
+  supplierSku: string;
   barcode: string;
   price: string;
   costPrice: string;
@@ -43,4 +44,21 @@ export interface SaveAllScannedResult {
   saved: number;
   /** clientIds that failed, with the reason. */
   failures: { clientId: string; error: string }[];
+}
+
+/**
+ * A catalogue product whose SKU exactly matches what the user just typed
+ * into a draft row — surfaced live so they can compare against what the AI
+ * read off the photo, rather than only finding out on save that the SKU
+ * collides with something else already on file.
+ */
+export interface ExistingProductMatch {
+  id: string;
+  name: string;
+  sku: string | null;
+  category: string | null;
+  price: number;
+  costPrice: number;
+  stockQuantity: number;
+  unit: string;
 }

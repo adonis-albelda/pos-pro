@@ -23,10 +23,10 @@ export function RecordCustomerPaymentForm({ customerId }: { customerId: string }
       <input type="hidden" name="customer_id" value={customerId} />
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Amount">
+        <Field label="Amount" required>
           <MoneyInput name="amount" type="number" step="0.01" min="0.01" required />
         </Field>
-        <Field label="Note (optional)">
+        <Field label="Note (optional)" required={false}>
           <Input name="note" />
         </Field>
       </div>

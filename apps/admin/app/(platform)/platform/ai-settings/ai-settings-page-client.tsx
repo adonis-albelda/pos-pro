@@ -101,7 +101,7 @@ function PlatformAiSettingsForm({
       />
 
       <div className="space-y-4 px-4 py-5 sm:px-6">
-        <Field label="Photo overage charge (per request)">
+        <Field label="Photo overage charge (per request)" required>
           <Input
             type="number"
             min={0}
@@ -119,7 +119,7 @@ function PlatformAiSettingsForm({
                 Plan {plan.id}: {plan.name}
               </p>
               <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                <Field label="Photo to text (free per week)">
+                <Field label="Photo to text (free per week)" required>
                   <Input
                     type="number"
                     min={0}
@@ -131,7 +131,7 @@ function PlatformAiSettingsForm({
                     }
                   />
                 </Field>
-                <Field label="Vector search (free per week)">
+                <Field label="Vector search (free per week)" required>
                   <Input
                     type="number"
                     min={0}
