@@ -20,6 +20,10 @@ export interface LoginInput {
   deviceName: string;
   /** Only meaningful for a demo-flagged account — LoginController rejects such a login without it. */
   accessCode?: string;
+  /** Only meaningful once MFA is enrolled+required for this account — LoginController 422s on `mfa_code` without one. */
+  mfaCode?: string;
+  /** Alternative to mfaCode: one of the 8 one-time recovery codes, for a lost authenticator device. */
+  recoveryCode?: string;
 }
 
 export interface LoginResult {
@@ -43,6 +47,8 @@ export async function login(client: ApiClient, input: LoginInput): Promise<Login
     password: input.password,
     device_name: input.deviceName,
     access_code: input.accessCode,
+    mfa_code: input.mfaCode,
+    recovery_code: input.recoveryCode,
   });
   return {
     user: toUser(data),

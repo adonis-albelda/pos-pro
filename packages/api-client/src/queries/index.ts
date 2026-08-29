@@ -19,3 +19,5 @@ export * from "./ai-settings";
 export * from "./platform-ai-settings";
 export * from "./push";
 export * from "./locations";
+export * from "./mfa";
+export * from "./security-settings";

@@ -15,6 +15,7 @@ export default async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const isPublic = PUBLIC_PATHS.some((publicPath) => path.startsWith(publicPath));
   const isChangePassword = path.startsWith("/change-password");
+  const isEnrollMfa = path.startsWith("/enroll-mfa");
   const isPlatform = path.startsWith("/platform");
 
   const token = request.cookies.get(SESSION_COOKIE)?.value ?? null;
@@ -55,6 +56,24 @@ export default async function proxy(request: NextRequest) {
 
   if (user && !isPublic) {
     const home = user.role === "superadmin" && !acting ? "/platform" : "/";
+
+    // Takes priority over mustChangePassword: without a confirmed MFA
+    // secret this account can never produce a valid mfa_code on its next
+    // login, so it has to be resolved before anything else, same ordering
+    // login-form.tsx's own onSuccess redirect uses.
+    if (user.mustEnrollMfa && !isEnrollMfa) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/enroll-mfa";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+
+    if (!user.mustEnrollMfa && isEnrollMfa) {
+      const url = request.nextUrl.clone();
+      url.pathname = home;
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
 
     if (user.mustChangePassword && !isChangePassword) {
       const url = request.nextUrl.clone();

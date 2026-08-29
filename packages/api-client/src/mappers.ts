@@ -251,6 +251,7 @@ export interface UserAttrs {
   is_active: boolean;
   can_sell: boolean;
   must_change_password: boolean;
+  must_enroll_mfa: boolean;
   is_demo: boolean;
   created_at: string | null;
   updated_at: string | null;
@@ -266,6 +267,7 @@ export function toUser(resource: JsonApiResource<UserAttrs>): User {
     isActive: a.is_active,
     canSell: a.can_sell,
     mustChangePassword: a.must_change_password,
+    mustEnrollMfa: a.must_enroll_mfa,
     isDemo: a.is_demo,
     companyId: a.company_id ?? null,
     locationId: a.location_id ?? null,

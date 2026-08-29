@@ -250,6 +250,8 @@ export interface User {
   canSell: boolean;
   /** Dashboard admin must set a new password before using the app. */
   mustChangePassword: boolean;
+  /** MFA is required for this account (company toggle, or always for superadmin) and no secret is confirmed yet — force enrollment before anything else. */
+  mustEnrollMfa: boolean;
   /** Superadmin-set sandbox flag — gates login behind an access code and caps record creation. */
   isDemo: boolean;
   /** Null only for `superadmin`. Shop staff always belong to one company. */

@@ -117,6 +117,14 @@ export const queryKeys = {
     all: ["ai-settings"] as const,
     detail: () => ["ai-settings", "detail"] as const,
   },
+  securitySettings: {
+    all: ["security-settings"] as const,
+    detail: () => ["security-settings", "detail"] as const,
+  },
+  mfaStatus: {
+    all: ["mfa-status"] as const,
+    detail: () => ["mfa-status", "detail"] as const,
+  },
   platformAiSettings: {
     all: ["platform-ai-settings"] as const,
     detail: () => ["platform-ai-settings", "detail"] as const,

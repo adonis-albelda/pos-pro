@@ -1,28 +1,32 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Settings, Sparkles, Store } from "lucide-react";
+import { Settings, ShieldCheck, Sparkles, Store } from "lucide-react";
 import { Card, CardHeader, PageHeader } from "@/components/ui";
 import { TabNav } from "@/components/tab-nav";
 import { StoreForm } from "./store-form";
 import { AiSettingsCard } from "./ai-settings-card";
+import { SecuritySettingsCard } from "./security-settings-card";
 import { useStoreSettings } from "@/lib/query/settings";
 import { useAiSettings } from "@/lib/query/ai-settings";
 
 const SETTINGS_TABS = [
   { key: "info", label: "Company info", icon: Store },
   { key: "ai", label: "AI Usage", icon: Sparkles },
+  { key: "security", label: "Security", icon: ShieldCheck },
 ] as const;
 
 type SettingsTab = (typeof SETTINGS_TABS)[number]["key"];
 
 function parseTab(raw: string | undefined): SettingsTab {
   if (raw === "ai") return "ai";
+  if (raw === "security") return "security";
   return "info";
 }
 
 function buildHref(tab: SettingsTab): string {
-  return tab === "info" ? "/settings" : "/settings?tab=ai";
+  if (tab === "info") return "/settings";
+  return `/settings?tab=${tab}`;
 }
 
 export default function SettingsPage() {
@@ -67,7 +71,7 @@ export default function SettingsPage() {
             )}
           </div>
         </Card>
-      ) : (
+      ) : tab === "ai" ? (
         <>
           {aiQuery.isPending ? (
             <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>
@@ -81,6 +85,8 @@ export default function SettingsPage() {
             <AiSettingsCard settings={aiQuery.data} />
           ) : null}
         </>
+      ) : (
+        <SecuritySettingsCard />
       )}
     </div>
   );
