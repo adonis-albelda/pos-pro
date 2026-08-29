@@ -59,8 +59,33 @@ resolve `node_modules` from the repo root, not just its own folder.
 
 ## Business logic rules (do not "fix" these — they are intentional)
 
-### 1. Sync is manual, one button, two steps, in order
-The mobile app has exactly one sync action:
+### 1. Online-first by default; offline is an explicit toggle; sync is still one manual button
+
+The terminal defaults to **online mode**. Local SQLite stays the read source at all
+times either way — this is not "read live from the API while online"; it's "keep the
+local copy fresh live instead of only on a manual pull." Two things follow from
+online mode being on:
+
+- **Live stock**: every stock-moving action on the server (sale, restock, adjustment,
+  void, transfer — anything that writes `location_inventories.quantity`, always
+  through `InventoryMovementObserver`, rule 8) broadcasts `ProductStockUpdated` over
+  Laravel Reverb to `private-location.{locationId}.stock`. The terminal listens
+  (`sync/realtime.ts`), patches just that product's `stock_quantity` in SQLite
+  (`updateProductStock`), and bumps `dataVersion` — the same signal a pull already
+  uses to make mounted screens re-read. No pull needed to see another till's sale
+  land on the shelf count.
+- **Eager push**: `autoPush()` (below) fires after every sale, best-effort, silent —
+  now simply reliable by default rather than opportunistic, since online mode is the
+  default instead of "whenever the device happens to have a connection."
+
+Flip **Offline mode** on (account drawer) to fall back to exactly the behavior
+described below: no realtime socket, `autoPush()` becomes a true no-op regardless of
+connectivity (queue it, sync it yourself later), and Sync/Refresh are the only things
+that move data. This is the setting for a connection you don't trust — a market
+stall, a spotty signal — where you want full control over when a batch of sales
+leaves the device.
+
+The mobile app has exactly one *manual* sync action, unchanged either way:
 1. **Push** — upload pending local `customers`, then `sales`/`sale_items` where
    `sync_status = 'pending'`, then patch `is_paid` / `delivery_completed` for sales
    with `flags_pending`. If this fails, stop — do not proceed to pull.
@@ -68,14 +93,15 @@ The mobile app has exactly one sync action:
    overwrite local rows, update `last_synced_at`. Categories, customers, and store settings
    are fetched whole every pull.
 
-There is no auto-sync on reconnect, no background pull, no real-time subscriptions on mobile —
-pull only ever happens because someone pressed Sync or Refresh. The one exception: after each
-sale completes, `runAutoPush()` (`sync/index.ts`) silently fires the push step alone if the
-device happens to be online — best-effort, no phase/message shown, never blocking the sale or
-its receipt (rule 4). No pull runs there, so it never touches `last_synced_at` or claims the
-terminal is "synced" — it only shortens how long a sale sits pending. The manual Sync button
-is unchanged and still the only thing that also pulls, and still the fallback for whatever
-auto-push missed (offline, dropped connection mid-push).
+There is no auto-sync on reconnect and no background pull — pull only ever happens
+because someone pressed Sync or Refresh. The one exception: after each sale
+completes, `runAutoPush()` (`sync/index.ts`) silently fires the push step alone if
+effectively online (connected, and offline mode is off) — best-effort, no
+phase/message shown, never blocking the sale or its receipt (rule 4). No pull runs
+there, so it never touches `last_synced_at` or claims the terminal is "synced" — it
+only shortens how long a sale sits pending. The manual Sync button is unchanged and
+still the only thing that also pulls, and still the fallback for whatever auto-push
+missed (offline mode on, dropped connection mid-push).
 The UI must always show a "Last synced: X ago" indicator.
 
 Alongside it there is a second, pull-only **Refresh** action (`runPullOnly`), for taking a
@@ -118,8 +144,13 @@ estimated_stock = last_synced_branch_stock - sum(pending local sales for that pr
 
 This is a display estimate only, not a value ever written back to the server. Actual
 inventory decrements happen server-side when sale data is pushed (movement at
-`sale.location_id`). Oversell (two offline devices at the same branch selling the last unit)
-is an accepted, known tradeoff — handled by post-sync flagging, not prevented.
+`sale.location_id`). Oversell (two devices at the same branch selling the last unit)
+is an accepted, known tradeoff — handled by post-sync flagging, not prevented. Online
+mode's live stock broadcast (rule 1) makes this rare in practice — `stock_quantity`
+itself updates within a second or two of the other till's sale pushing — but it is
+still not a guarantee: the estimate above is still computed locally, and a sale that
+completes in the gap before a tick arrives can still oversell. Offline mode has no
+such mitigation at all; the tradeoff is exactly as before.
 
 ### 3. IDs are client-generated UUIDs for anything created offline
 `sales` and related records generate their `id` on-device (UUID) at creation time, not via

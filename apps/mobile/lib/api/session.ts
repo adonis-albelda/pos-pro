@@ -29,9 +29,11 @@ async function clearSessionToken(): Promise<void> {
 }
 
 /**
- * The one API client on this device. It is only ever touched during a
- * manual sync/unlock: no realtime subscriptions, no background refresh,
- * nothing that fires on reconnect.
+ * The one API client on this device. Built fresh per call — cheap, stateless,
+ * always reads the current token. Touched by manual sync/unlock same as
+ * before, plus now the live stock-broadcast socket (sync/realtime.ts) and
+ * the eager sale push while online mode is on (the default) — see CLAUDE.md
+ * §1.
  */
 export function getApiClient(): ApiClient {
   return new ApiClient({ baseUrl: apiUrl(), getToken: () => getSessionToken(), extraHeaders: VERSION_HEADERS });

@@ -4,6 +4,7 @@ import {
   Image,
   Modal,
   Pressable,
+  Switch,
   Text,
   View,
   useWindowDimensions,
@@ -20,12 +21,14 @@ import {
   ShoppingCart,
   Truck,
   UserRound,
+  WifiOff,
   X,
   type LucideIcon,
 } from "lucide-react-native";
 import { APP_VERSION } from "@/lib/api/client";
 import { useSession } from "@/lib/session";
 import { useStoreSettings } from "@/lib/store";
+import { useSync } from "@/sync/sync-provider";
 import { Button } from "@/components/ui";
 import { color, fontSize, space, styles } from "@/theme";
 
@@ -74,6 +77,7 @@ export function AccountDrawer({
   const pathname = usePathname();
   const { cashier, lock } = useSession();
   const store = useStoreSettings();
+  const { offlineModeEnabled, setOfflineModeEnabled } = useSync();
   const { width } = useWindowDimensions();
   const panelWidth = Math.min(width * DRAWER_WIDTH_RATIO, DRAWER_MAX_WIDTH);
 
@@ -269,6 +273,34 @@ export function AccountDrawer({
           </View>
 
           <View style={{ flex: 1 }} />
+
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: space.sm,
+              padding: space.sm,
+              borderRadius: 14,
+              backgroundColor: color.primarySoft,
+            }}
+          >
+            <WifiOff size={18} color={color.ink} strokeWidth={2} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: fontSize.body, fontWeight: "600", color: color.ink }}>
+                Offline mode
+              </Text>
+              <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
+                {offlineModeEnabled
+                  ? "Sales queue here — sync them yourself from the Sync tab."
+                  : "Off — sales and stock updates go live automatically."}
+              </Text>
+            </View>
+            <Switch
+              value={offlineModeEnabled}
+              onValueChange={(next) => void setOfflineModeEnabled(next)}
+              trackColor={{ true: color.primary, false: color.border }}
+            />
+          </View>
 
           <Button
             label="End shift"

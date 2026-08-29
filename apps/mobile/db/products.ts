@@ -316,6 +316,20 @@ export async function replaceProducts(
 }
 
 /**
+ * The one live-broadcast write — patches just this product's stock, unlike
+ * every other write in this file which is a bulk upsert/replace from a pull.
+ * A no-op if the product hasn't been pulled to this device yet (WHERE finds
+ * nothing to update).
+ */
+export async function updateProductStock(productId: string, quantity: number): Promise<void> {
+  await getDb().runAsync(
+    "UPDATE products SET stock_quantity = ? WHERE id = ?",
+    quantity,
+    productId,
+  );
+}
+
+/**
  * How each product on a sale is sold by, for receipts and the sale detail
  * screen. Sale lines snapshot prices, not the unit — "m" or "bag" is a property
  * of the product and does not change under a completed sale.

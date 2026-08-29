@@ -7,10 +7,14 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { AppState } from "react-native";
 import { SYNC_MESSAGES, type SyncPhase, type SyncState } from "@double-a/shared-types";
 import { getSyncMeta } from "@/db/meta";
 import { countPendingSales } from "@/db/sales";
+import { getActiveLocationId, getOfflineModeEnabled, setOfflineModeEnabled as persistOfflineMode } from "@/lib/device";
+import { useNetworkStatus } from "@/lib/network";
 import { runAutoPush, runPullOnly, runReplaceAll, runSync } from "./index";
+import { connectRealtime, disconnectRealtime, isRealtimeConnected } from "./realtime";
 
 interface SyncContextValue extends SyncState {
   /**
@@ -31,6 +35,11 @@ interface SyncContextValue extends SyncState {
   replaceAll: () => Promise<void>;
   refresh: () => Promise<void>;
   autoPush: () => Promise<void>;
+  /** false (online-first) unless the cashier explicitly turned it on. */
+  offlineModeEnabled: boolean;
+  setOfflineModeEnabled: (enabled: boolean) => Promise<void>;
+  /** True only once the live stock-broadcast socket is actually connected — distinct from "online mode is on" (see components/store-header.tsx's dot). */
+  realtimeConnected: boolean;
 }
 
 const SyncContext = createContext<SyncContextValue | null>(null);
@@ -47,6 +56,58 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<SyncState>(INITIAL);
   const [dataVersion, setDataVersion] = useState(0);
   const [pullProgress, setPullProgress] = useState<number | null>(null);
+  const [offlineModeEnabled, setOfflineModeEnabledState] = useState(false);
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const { isConnected } = useNetworkStatus();
+
+  useEffect(() => {
+    void getOfflineModeEnabled().then(setOfflineModeEnabledState);
+  }, []);
+
+  const setOfflineModeEnabled = useCallback(async (enabled: boolean) => {
+    await persistOfflineMode(enabled);
+    setOfflineModeEnabledState(enabled);
+  }, []);
+
+  // Connects only while effective-online (connected, offline mode off) and
+  // the app is foregrounded — disconnects otherwise. A stock tick patches
+  // SQLite directly (sync/realtime.ts) then bumps dataVersion, the same
+  // signal a pull already uses to make mounted screens re-read.
+  useEffect(() => {
+    let cancelled = false;
+    let appState = AppState.currentState;
+
+    async function sync() {
+      const effectiveOnline = isConnected && !offlineModeEnabled && appState === "active";
+      if (!effectiveOnline) {
+        disconnectRealtime();
+        if (!cancelled) setRealtimeConnected(false);
+        return;
+      }
+
+      const locationId = await getActiveLocationId();
+      if (cancelled || !locationId) {
+        disconnectRealtime();
+        if (!cancelled) setRealtimeConnected(false);
+        return;
+      }
+
+      await connectRealtime(locationId, () => setDataVersion((version) => version + 1));
+      if (!cancelled) setRealtimeConnected(isRealtimeConnected());
+    }
+
+    void sync();
+
+    const subscription = AppState.addEventListener("change", (next) => {
+      appState = next;
+      void sync();
+    });
+
+    return () => {
+      cancelled = true;
+      subscription.remove();
+    };
+  }, [isConnected, offlineModeEnabled]);
 
   const refresh = useCallback(async () => {
     const [meta, pendingSales] = await Promise.all([
@@ -195,18 +256,46 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   /**
-   * Called after each sale completes, if online — see runAutoPush's own
-   * comment for the "why." Silent by design: no phase/message set, no error
-   * surfaced, just a pendingSales count that quietly drops when it works.
+   * Called after each sale completes. See runAutoPush's own comment for the
+   * "why." Silent by design: no phase/message set, no error surfaced, just a
+   * pendingSales count that quietly drops when it works. A no-op while
+   * offline mode is on — that toggle means "queue it, I'll sync it myself
+   * later," so this must not sneak a push out from under that even if a
+   * connection happens to be available.
    */
   const autoPush = useCallback(async () => {
+    if (offlineModeEnabled) return;
     await runAutoPush();
     await refresh();
-  }, [refresh]);
+  }, [refresh, offlineModeEnabled]);
 
   const value = useMemo(
-    () => ({ ...state, dataVersion, pullProgress, sync, pullOnly, replaceAll, refresh, autoPush }),
-    [state, dataVersion, pullProgress, sync, pullOnly, replaceAll, refresh, autoPush],
+    () => ({
+      ...state,
+      dataVersion,
+      pullProgress,
+      sync,
+      pullOnly,
+      replaceAll,
+      refresh,
+      autoPush,
+      offlineModeEnabled,
+      setOfflineModeEnabled,
+      realtimeConnected,
+    }),
+    [
+      state,
+      dataVersion,
+      pullProgress,
+      sync,
+      pullOnly,
+      replaceAll,
+      refresh,
+      autoPush,
+      offlineModeEnabled,
+      setOfflineModeEnabled,
+      realtimeConnected,
+    ],
   );
 
   return <SyncContext.Provider value={value}>{children}</SyncContext.Provider>;

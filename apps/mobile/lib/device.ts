@@ -12,6 +12,8 @@ const ENROLLED_ROLE_KEY = "double-a.enrolled-role";
  * equal to LOCATION_ID_KEY. Admin tablets may switch among company branches.
  */
 const ACTIVE_LOCATION_ID_KEY = "double-a.active-location-id";
+/** Default is online-first (unset/"0"). "1" reverts this terminal to the classic queue + manual Sync flow. */
+const OFFLINE_MODE_KEY = "double-a.offline-mode-enabled";
 
 export type EnrolledRole = "admin" | "device";
 
@@ -94,4 +96,18 @@ export async function setActiveLocationId(locationId: string): Promise<void> {
 
 export async function clearActiveLocationId(): Promise<void> {
   await SecureStore.deleteItemAsync(ACTIVE_LOCATION_ID_KEY);
+}
+
+/**
+ * Online-first by default (returns false when never set). Turning this on
+ * reverts the terminal to the classic behavior: no live stock broadcast, no
+ * eager push on sale completion — queue locally, push only on manual Sync
+ * (or the best-effort autoPush after each sale, same as always).
+ */
+export async function getOfflineModeEnabled(): Promise<boolean> {
+  return (await SecureStore.getItemAsync(OFFLINE_MODE_KEY)) === "1";
+}
+
+export async function setOfflineModeEnabled(enabled: boolean): Promise<void> {
+  await SecureStore.setItemAsync(OFFLINE_MODE_KEY, enabled ? "1" : "0");
 }

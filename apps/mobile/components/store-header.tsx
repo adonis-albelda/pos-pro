@@ -133,6 +133,30 @@ export function StoreHeader() {
             <StatusIcon size={16} color={look.ink} strokeWidth={2} />
           )}
 
+          {/* Live-connection dot: green while the stock-broadcast socket is
+              actually connected, amber if online mode is on but it isn't
+              (reconnecting, or really offline despite the toggle), gray
+              once offline mode is deliberately on. */}
+          <View
+            accessibilityLabel={
+              state.offlineModeEnabled
+                ? "Offline mode on"
+                : state.realtimeConnected
+                  ? "Live"
+                  : "Reconnecting"
+            }
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: 4,
+              backgroundColor: state.offlineModeEnabled
+                ? color.inkMuted
+                : state.realtimeConnected
+                  ? color.success
+                  : color.warning,
+            }}
+          />
+
           <View style={{ flexShrink: 1, minWidth: 0 }}>
             <Text
               numberOfLines={1}
