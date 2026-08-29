@@ -1,15 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createSale, listProductsPage } from "@double-a/api-client/queries";
-import type { Product } from "@double-a/shared-types";
+import { createSale } from "@double-a/api-client/queries";
 import { getAuthedClient } from "@/lib/api/session";
-
-export async function searchProductsForSale(q: string): Promise<Product[]> {
-  const client = getAuthedClient();
-  const { products } = await listProductsPage(client, { q, page: 1, pageSize: 8 });
-  return products;
-}
 
 export interface CreateSaleLine {
   productId: string;
