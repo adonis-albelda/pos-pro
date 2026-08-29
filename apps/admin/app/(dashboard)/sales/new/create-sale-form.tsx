@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Crop,
   FolderOpen,
   Maximize2,
   Mic,
@@ -54,6 +55,7 @@ import { toast } from "sonner";
 import { AiProcessingOverlay, ConfirmDialog, Dialog, Sheet } from "@/components/overlay";
 import { AiSearchModal } from "@/components/ai-search-modal";
 import { ProductGridTile } from "@/components/product-grid-tile";
+import { CropPhoto } from "../../products/from-photo/crop-photo";
 import { VoiceSearchModal, voiceSearchSupported } from "@/components/voice-search-modal";
 import { useCategories } from "@/lib/query/categories";
 import { useCustomers } from "@/lib/query/customers";
@@ -127,6 +129,11 @@ export function CreateSaleForm() {
 
   const [photoModalOpen, setPhotoModalOpen] = useState(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
+  // What was actually picked, shown back so the cashier knows exactly which
+  // photo is about to be read — and can crop it first, same as Products ›
+  // From photo (crop-photo.tsx).
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
+  const [photoShowCropper, setPhotoShowCropper] = useState(false);
   const [photoReading, setPhotoReading] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
 
@@ -334,6 +341,35 @@ export function CreateSaleForm() {
     });
   }
 
+  function clearPhotoPreview() {
+    if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
+    setPhotoPreviewUrl(null);
+  }
+
+  function onPhotoPicked(file: File | null) {
+    clearPhotoPreview();
+    setPhotoError(null);
+    setPhotoFile(file);
+    setPhotoShowCropper(file !== null);
+    if (!file) return;
+    setPhotoPreviewUrl(URL.createObjectURL(file));
+  }
+
+  function onPhotoCropped(cropped: File) {
+    clearPhotoPreview();
+    setPhotoFile(cropped);
+    setPhotoPreviewUrl(URL.createObjectURL(cropped));
+    setPhotoShowCropper(false);
+  }
+
+  function closePhotoModal() {
+    setPhotoModalOpen(false);
+    setPhotoFile(null);
+    setPhotoError(null);
+    setPhotoShowCropper(false);
+    clearPhotoPreview();
+  }
+
   /**
    * A photo of a customer's order (or notebook list) — matched existing
    * products go straight into the cart with the quantity read from the
@@ -378,8 +414,7 @@ export function CreateSaleForm() {
         added += 1;
       }
 
-      setPhotoModalOpen(false);
-      setPhotoFile(null);
+      closePhotoModal();
 
       if (added > 0) {
         toast.success(`Added ${added} item${added === 1 ? "" : "s"} to the cart from the photo.`);
@@ -625,21 +660,21 @@ export function CreateSaleForm() {
       <div className="flex min-h-0 flex-1 flex-col gap-4">
         <Card className="flex min-h-0 flex-1 flex-col">
           <div className="flex flex-col gap-4 border-b border-border px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex min-w-0 shrink-0 items-start gap-2">
-              <div className="min-w-0">
+            <div className="min-w-0 shrink-0">
+              <div className="flex items-center gap-2">
                 <h1 className="text-heading-md font-semibold text-ink">New sale</h1>
-                <p className="mt-1 text-caption text-ink-muted">
-                  Rung up in the office — not from a POS terminal.
-                </p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  icon={expandOpen ? Minimize2 : Maximize2}
+                  aria-label={expandOpen ? "Exit full-page view" : "Expand to a full-page, distraction-free view"}
+                  onClick={() => setExpandOpen((current) => !current)}
+                />
               </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                icon={expandOpen ? Minimize2 : Maximize2}
-                aria-label={expandOpen ? "Exit full-page view" : "Expand to a full-page, distraction-free view"}
-                onClick={() => setExpandOpen((current) => !current)}
-              />
+              <p className="mt-1 text-caption text-ink-muted">
+                Rung up in the office — not from a POS terminal.
+              </p>
             </div>
 
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 lg:justify-end">
@@ -1137,11 +1172,7 @@ export function CreateSaleForm() {
 
       <Dialog
         open={photoModalOpen}
-        onClose={() => {
-          setPhotoModalOpen(false);
-          setPhotoFile(null);
-          setPhotoError(null);
-        }}
+        onClose={closePhotoModal}
         title="Add items from a photo"
         description="A customer's order list or notebook photo — matched products go straight into the cart with the quantities read from it."
       >
@@ -1153,15 +1184,44 @@ export function CreateSaleForm() {
             <FileInput
               accept="image/*"
               capture="environment"
-              onChange={(event) => setPhotoFile(event.target.files?.[0] ?? null)}
+              onChange={(event) => onPhotoPicked(event.target.files?.[0] ?? null)}
             />
           </Field>
+
+          {photoPreviewUrl && photoShowCropper ? (
+            <CropPhoto
+              src={photoPreviewUrl}
+              onCropped={onPhotoCropped}
+              onCancel={() => setPhotoShowCropper(false)}
+            />
+          ) : photoPreviewUrl ? (
+            <div className="space-y-2">
+              <div className="overflow-hidden rounded-sm border border-border bg-paper">
+                <img
+                  src={photoPreviewUrl}
+                  alt="Selected photo"
+                  className="max-h-72 w-full object-contain"
+                />
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                icon={Crop}
+                disabled={photoReading}
+                onClick={() => setPhotoShowCropper(true)}
+              >
+                Crop this photo
+              </Button>
+            </div>
+          ) : null}
+
           {photoError ? <ErrorNote>{photoError}</ErrorNote> : null}
           <Button
             type="button"
             icon={Camera}
             loading={photoReading}
-            disabled={!photoFile}
+            disabled={!photoFile || photoShowCropper}
             onClick={() => void runPhotoExtract()}
             className="w-full"
           >

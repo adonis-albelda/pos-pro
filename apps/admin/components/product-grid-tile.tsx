@@ -32,10 +32,10 @@ export function ProductGridTile({
     <button
       type="button"
       onClick={onAdd}
-      className={`flex min-h-[124px] flex-col justify-between rounded-sm border p-3 text-left transition-colors ${
+      className={`flex min-h-[124px] flex-col justify-between rounded-sm border p-3 text-left transition-all duration-150 ${
         inCart
           ? "border-2 border-primary bg-primary-tint"
-          : "border-border bg-surface hover:bg-paper"
+          : "border-border bg-surface hover:z-10 hover:-translate-y-0.5 hover:scale-[1.02] hover:border-primary/40 hover:bg-surface hover:shadow-lg"
       } ${outOfStock ? "opacity-70" : ""}`}
     >
       <div className="space-y-1">
