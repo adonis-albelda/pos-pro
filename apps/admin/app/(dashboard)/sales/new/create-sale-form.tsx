@@ -1175,6 +1175,7 @@ export function CreateSaleForm() {
         onClose={closePhotoModal}
         title="Add items from a photo"
         description="A customer's order list or notebook photo — matched products go straight into the cart with the quantities read from it."
+        className="!max-w-2xl !max-h-[min(92vh,900px)]"
       >
         <div className="space-y-4">
           <Field
@@ -1200,7 +1201,7 @@ export function CreateSaleForm() {
                 <img
                   src={photoPreviewUrl}
                   alt="Selected photo"
-                  className="max-h-72 w-full object-contain"
+                  className="max-h-96 w-full object-contain"
                 />
               </div>
               <Button
