@@ -189,12 +189,17 @@ interface ExtractedProductLineAttrs {
 export async function extractProductsFromPhoto(
   client: ApiClient,
   image: File,
-  options: { locationId?: string | null } = {},
+  options: { locationId?: string | null; applyStock?: boolean } = {},
 ): Promise<ExtractedProductLine[]> {
   const formData = new FormData();
   formData.set("image", image);
   if (options.locationId) {
     formData.set("location_id", options.locationId);
+  }
+  // Default true server-side (restock-on-match) — the sale-cart caller sets
+  // this false so reading a customer's order photo never restocks a shelf.
+  if (options.applyStock === false) {
+    formData.set("apply_stock", "0");
   }
 
   const result = await client.postMultipart<{ data: ExtractedProductLineAttrs[] }>(

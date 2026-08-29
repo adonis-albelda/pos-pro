@@ -3,11 +3,14 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Camera,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   FolderOpen,
+  Maximize2,
   Mic,
+  Minimize2,
   PackageSearch,
   Pencil,
   Save,
@@ -32,7 +35,7 @@ import {
   QUANTITY_DECIMALS,
   roundMoney,
 } from "@double-a/shared-types";
-import { listProductsByIds, listProductsPage } from "@double-a/api-client/queries";
+import { extractProductsFromPhoto, listProductsByIds, listProductsPage } from "@double-a/api-client/queries";
 import {
   Badge,
   Button,
@@ -42,12 +45,13 @@ import {
   EmptyState,
   ErrorNote,
   Field,
+  FileInput,
   Input,
   Money,
   MoneyInput,
 } from "@/components/ui";
 import { toast } from "sonner";
-import { ConfirmDialog, Dialog } from "@/components/overlay";
+import { AiProcessingOverlay, ConfirmDialog, Dialog, Sheet } from "@/components/overlay";
 import { AiSearchModal } from "@/components/ai-search-modal";
 import { ProductGridTile } from "@/components/product-grid-tile";
 import { VoiceSearchModal, voiceSearchSupported } from "@/components/voice-search-modal";
@@ -118,6 +122,13 @@ export function CreateSaleForm() {
 
   const [voiceSearchOpen, setVoiceSearchOpen] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
+
+  const [expandOpen, setExpandOpen] = useState(false);
+
+  const [photoModalOpen, setPhotoModalOpen] = useState(false);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoReading, setPhotoReading] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
 
   const [outOfStockConfirm, setOutOfStockConfirm] = useState<Product | null>(null);
 
@@ -285,6 +296,102 @@ export function CreateSaleForm() {
         },
       ];
     });
+  }
+
+  /**
+   * A photo line adds/increments by the quantity OCR/vision actually read,
+   * not always +1 — and skips the out-of-stock confirm dialog, since a batch
+   * of lines from one photo shouldn't mean a popup per line.
+   */
+  function addPhotoLineToCart(product: Product, quantity: number) {
+    rememberProducts([product]);
+    const cap = stockCapFor(product.stockQuantity, product.allowDecimal);
+
+    setLines((current) => {
+      const existing = current.find((line) => line.productId === product.id);
+      if (existing) {
+        const next = Math.min(existing.quantity + quantity, cap);
+        return current.map((line) =>
+          line.productId === product.id ? repricedFor(line, next, product) : line,
+        );
+      }
+
+      const initial = Math.min(quantity, cap);
+      return [
+        ...current,
+        {
+          productId: product.id,
+          productName: product.name,
+          unitPrice: priceForQuantity(product, initial),
+          listPrice: product.price,
+          unitCost: product.costPrice,
+          unit: product.unit,
+          allowDecimal: product.allowDecimal,
+          quantity: initial,
+          availableStock: cap,
+        },
+      ];
+    });
+  }
+
+  /**
+   * A photo of a customer's order (or notebook list) — matched existing
+   * products go straight into the cart with the quantity read from the
+   * photo. Deliberately `applyStock: false`: this is filling a cart for a
+   * sale, not a restock, so it must never write an inventory movement (see
+   * ExtractProductsFromPhotoAction's $applyStock param). Quota/usage for
+   * product_photo_ai is still recorded server-side on every call, same as
+   * the Products › From photo page.
+   */
+  async function runPhotoExtract() {
+    if (!photoFile) {
+      setPhotoError("Choose a photo first.");
+      return;
+    }
+
+    setPhotoError(null);
+    setPhotoReading(true);
+
+    try {
+      const client = getBrowserApiClient();
+      const extractedLines = await extractProductsFromPhoto(client, photoFile, { applyStock: false });
+
+      const matchedIds = [
+        ...new Set(
+          extractedLines
+            .map((line) => line.existingProductId)
+            .filter((id): id is string => id !== null),
+        ),
+      ];
+      const matchedProducts = matchedIds.length > 0 ? await listProductsByIds(client, matchedIds) : [];
+      const productById = new Map(matchedProducts.map((product) => [product.id, product]));
+
+      let added = 0;
+      const skipped: string[] = [];
+      for (const line of extractedLines) {
+        const product = line.existingProductId ? productById.get(line.existingProductId) : undefined;
+        if (!product) {
+          skipped.push(line.name);
+          continue;
+        }
+        addPhotoLineToCart(product, line.quantity && line.quantity > 0 ? line.quantity : 1);
+        added += 1;
+      }
+
+      setPhotoModalOpen(false);
+      setPhotoFile(null);
+
+      if (added > 0) {
+        toast.success(`Added ${added} item${added === 1 ? "" : "s"} to the cart from the photo.`);
+      }
+      if (skipped.length > 0) {
+        toast.error(`Not in the catalogue, skipped: ${skipped.join(", ")}`);
+      }
+    } catch (cause) {
+      setPhotoError(cause instanceof Error ? cause.message : "Could not read the photo.");
+    } finally {
+      setPhotoReading(false);
+    }
   }
 
   /** No confirmation for a normal add — the one exception is the first tap on a zero-stock product, a backorder decision. */
@@ -512,17 +619,27 @@ export function CreateSaleForm() {
     setDrafts(listSaleDrafts());
   }
 
-  return (
-    <div className="flex flex-col gap-4 lg:h-[calc(100vh-8rem)] lg:flex-row">
+  const content = (
+    <div className="flex h-full flex-col gap-4 lg:flex-row">
       {/* Grid + search — left column on desktop, on top on narrow widths. Scrolls on its own; the cart column never moves with it. */}
       <div className="flex min-h-0 flex-1 flex-col gap-4">
         <Card className="flex min-h-0 flex-1 flex-col">
           <div className="flex flex-col gap-4 border-b border-border px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
-            <div className="min-w-0 shrink-0">
-              <h1 className="text-heading-md font-semibold text-ink">New sale</h1>
-              <p className="mt-1 text-caption text-ink-muted">
-                Rung up in the office — not from a POS terminal.
-              </p>
+            <div className="flex min-w-0 shrink-0 items-start gap-2">
+              <div className="min-w-0">
+                <h1 className="text-heading-md font-semibold text-ink">New sale</h1>
+                <p className="mt-1 text-caption text-ink-muted">
+                  Rung up in the office — not from a POS terminal.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                icon={expandOpen ? Minimize2 : Maximize2}
+                aria-label={expandOpen ? "Exit full-page view" : "Expand to a full-page, distraction-free view"}
+                onClick={() => setExpandOpen((current) => !current)}
+              />
             </div>
 
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 lg:justify-end">
@@ -558,6 +675,15 @@ export function CreateSaleForm() {
                   icon={Mic}
                   aria-label="Search by voice"
                   onClick={() => setVoiceSearchOpen(true)}
+                />
+              ) : null}
+              {isEnabled("product_photo_ai") ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  icon={Camera}
+                  aria-label="Add items from a photo"
+                  onClick={() => setPhotoModalOpen(true)}
                 />
               ) : null}
               {isEnabled("product_vector_search") ? (
@@ -1008,6 +1134,57 @@ export function CreateSaleForm() {
         onClose={() => setVoiceSearchOpen(false)}
         onResult={applyManualSearch}
       />
+
+      <Dialog
+        open={photoModalOpen}
+        onClose={() => {
+          setPhotoModalOpen(false);
+          setPhotoFile(null);
+          setPhotoError(null);
+        }}
+        title="Add items from a photo"
+        description="A customer's order list or notebook photo — matched products go straight into the cart with the quantities read from it."
+      >
+        <div className="space-y-4">
+          <Field
+            label="Photo"
+            hint="Phone camera or an existing picture. This never changes stock — only the cart."
+          >
+            <FileInput
+              accept="image/*"
+              capture="environment"
+              onChange={(event) => setPhotoFile(event.target.files?.[0] ?? null)}
+            />
+          </Field>
+          {photoError ? <ErrorNote>{photoError}</ErrorNote> : null}
+          <Button
+            type="button"
+            icon={Camera}
+            loading={photoReading}
+            disabled={!photoFile}
+            onClick={() => void runPhotoExtract()}
+            className="w-full"
+          >
+            {photoReading ? "Reading…" : "Read photo & add to cart"}
+          </Button>
+        </div>
+      </Dialog>
+
+      <AiProcessingOverlay open={photoReading} message="AI is reading your photo" />
     </div>
+  );
+
+  return (
+    <>
+      <div className={expandOpen ? "hidden" : "lg:h-[calc(100vh-8rem)]"}>{content}</div>
+      <Sheet
+        open={expandOpen}
+        onClose={() => setExpandOpen(false)}
+        title="New sale — full view"
+        className="w-full max-w-none"
+      >
+        {content}
+      </Sheet>
+    </>
   );
 }
