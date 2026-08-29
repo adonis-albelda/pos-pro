@@ -14,7 +14,7 @@ import { countPendingSales } from "@/db/sales";
 import { getActiveLocationId, getOfflineModeEnabled, setOfflineModeEnabled as persistOfflineMode } from "@/lib/device";
 import { useNetworkStatus } from "@/lib/network";
 import { runAutoPush, runPullOnly, runReplaceAll, runSync } from "./index";
-import { connectRealtime, disconnectRealtime, isRealtimeConnected } from "./realtime";
+import { connectRealtime, disconnectRealtime } from "./realtime";
 
 interface SyncContextValue extends SyncState {
   /**
@@ -92,8 +92,13 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      await connectRealtime(locationId, () => setDataVersion((version) => version + 1));
-      if (!cancelled) setRealtimeConnected(isRealtimeConnected());
+      await connectRealtime(
+        locationId,
+        () => setDataVersion((version) => version + 1),
+        (connected) => {
+          if (!cancelled) setRealtimeConnected(connected);
+        },
+      );
     }
 
     void sync();
