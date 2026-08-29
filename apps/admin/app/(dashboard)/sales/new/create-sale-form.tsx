@@ -138,6 +138,7 @@ export function CreateSaleForm() {
   const [photoError, setPhotoError] = useState<string | null>(null);
 
   const [outOfStockConfirm, setOutOfStockConfirm] = useState<Product | null>(null);
+  const [createConfirmOpen, setCreateConfirmOpen] = useState(false);
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [customerId, setCustomerId] = useState("");
@@ -551,6 +552,16 @@ export function CreateSaleForm() {
     }
   }
 
+  function requestSubmit() {
+    const hasQuantity = lines.some((line) => line.quantity > 0);
+    if (!hasQuantity) {
+      setError("Add at least one product with a quantity.");
+      return;
+    }
+    setError(null);
+    setCreateConfirmOpen(true);
+  }
+
   function submit() {
     const cleanItems = lines
       .filter((line) => line.quantity > 0)
@@ -568,14 +579,17 @@ export function CreateSaleForm() {
     setError(null);
     startTransition(async () => {
       try {
-        const { id } = await createSaleAction({
+        await createSaleAction({
           items: cleanItems,
           paymentMethod,
           customerId: customerId || undefined,
           fulfillment,
         });
-        router.push(`/sales/${id}`);
+        setCreateConfirmOpen(false);
+        resetForm();
+        toast.success("Sale created.");
       } catch (cause) {
+        setCreateConfirmOpen(false);
         setError(cause instanceof Error ? cause.message : "Could not create this sale.");
       }
     });
@@ -1024,21 +1038,30 @@ export function CreateSaleForm() {
 
             {error ? <ErrorNote>{error}</ErrorNote> : null}
 
-            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="secondary"
+              icon={Save}
+              className="w-full"
+              onClick={saveDraft}
+            >
+              Save as draft
+            </Button>
+
+            <div className="flex flex-col-reverse gap-2 sm:flex-row">
               <Button
                 type="button"
                 variant="secondary"
-                icon={Save}
-                className="w-full sm:w-auto"
-                onClick={saveDraft}
+                className="w-full sm:flex-1"
+                onClick={() => router.push("/sales")}
               >
-                Save as draft
+                Cancel
               </Button>
               <Button
                 icon={CheckCircle2}
                 loading={pending}
-                onClick={submit}
-                className="w-full sm:w-auto"
+                onClick={requestSubmit}
+                className="w-full sm:flex-1"
               >
                 {pending ? "Creating..." : "Create sale"}
               </Button>
@@ -1046,6 +1069,17 @@ export function CreateSaleForm() {
           </div>
         </Card>
       </div>
+
+      <ConfirmDialog
+        open={createConfirmOpen}
+        onClose={() => setCreateConfirmOpen(false)}
+        onConfirm={submit}
+        pending={pending}
+        title="Create this sale?"
+        description="This records the sale and updates stock. You can't undo it from here."
+        confirmLabel="Create sale"
+        confirmIcon={CheckCircle2}
+      />
 
       <Dialog
         open={discountOpen}
