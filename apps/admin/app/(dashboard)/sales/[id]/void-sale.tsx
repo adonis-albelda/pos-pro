@@ -15,7 +15,15 @@ import { voidSaleAction } from "./actions";
  * ends up indistinguishable from a genuine void afterward — accepted
  * tradeoff, not a bug.
  */
-export function VoidSale({ saleId, mode = "void" }: { saleId: string; mode?: "void" | "test" }) {
+export function VoidSale({
+  saleId,
+  confirmationText,
+  mode = "void",
+}: {
+  saleId: string;
+  confirmationText: string;
+  mode?: "void" | "test";
+}) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const invalidate = useInvalidateSales();
@@ -63,6 +71,8 @@ export function VoidSale({ saleId, mode = "void" }: { saleId: string; mode?: "vo
         title={copy.title}
         description={copy.description}
         confirmLabel={copy.label}
+        confirmationText={confirmationText}
+        confirmIcon={copy.icon}
       />
     </>
   );

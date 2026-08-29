@@ -164,6 +164,7 @@ export function CategoriesTree({
             : ""
         }
         confirmLabel="Delete category"
+        confirmationText={deleting?.path ?? ""}
       />
 
       <ConfirmDialog

@@ -315,15 +315,38 @@ export function StatCard({
   value,
   hint,
   tone = "neutral",
+  onClick,
 }: {
   icon: LucideIcon;
   label: string;
   value: string;
   hint?: string;
   tone?: StatTone;
+  onClick?: () => void;
 }) {
+  const interactive = Boolean(onClick);
+
   return (
-    <Card className="flex items-start gap-3 px-4 py-4 sm:gap-4 sm:px-5 sm:py-5">
+    <Card
+      role={interactive ? "button" : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={
+        interactive
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onClick?.();
+              }
+            }
+          : undefined
+      }
+      className={cx(
+        "flex items-start gap-3 px-4 py-4 sm:gap-4 sm:px-5 sm:py-5",
+        interactive &&
+          "cursor-pointer transition-[box-shadow,border-color] hover:border-primary/25 hover:shadow-sm focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none",
+      )}
+    >
       <span
         className={cx(
           "flex size-10 shrink-0 items-center justify-center rounded-md",

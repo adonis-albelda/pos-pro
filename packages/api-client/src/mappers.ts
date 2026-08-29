@@ -83,7 +83,10 @@ export function toProduct(resource: JsonApiResource<ProductAttrs>): Product {
     bulkPrice: a.bulk_price === null ? null : Number(a.bulk_price),
     bulkMinQuantity: a.bulk_min_quantity === null ? null : Number(a.bulk_min_quantity),
     isActive: a.is_active,
-    photoUrl: a.photo_url,
+    // Coerced explicitly: an un-migrated/older server simply omits this key,
+    // which is `undefined` at runtime despite the `string | null` type — and
+    // `undefined` crashes expo-sqlite's native bind on the mobile write path.
+    photoUrl: a.photo_url ?? null,
     updatedAt: a.updated_at ?? "",
   };
 }

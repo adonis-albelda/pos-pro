@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { Trash2 } from "lucide-react";
 import { ErrorNote } from "@/components/ui";
 import { ConfirmDialog } from "@/components/overlay";
 import { useInvalidateCustomers } from "@/lib/query/customers";
@@ -37,12 +38,13 @@ export function DeleteCustomerButton({
     <div className="text-right">
       <button
         type="button"
-        className="text-body text-danger hover:underline"
+        className="inline-flex items-center gap-1.5 text-body text-danger hover:underline"
         onClick={() => {
           setError(null);
           setOpen(true);
         }}
       >
+        <Trash2 size={14} strokeWidth={2} aria-hidden />
         Delete customer
       </button>
       {error ? (
@@ -58,6 +60,7 @@ export function DeleteCustomerButton({
         title="Delete customer?"
         description={`${customerName} will be removed. Sales keep the name already printed on them. This cannot be undone.`}
         confirmLabel="Delete customer"
+        confirmationText={customerName}
       />
     </div>
   );

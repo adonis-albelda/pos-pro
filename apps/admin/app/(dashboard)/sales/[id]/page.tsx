@@ -58,6 +58,7 @@ export default function SaleDetailPage() {
   if (!sale) notFound();
 
   const movements = movementsQuery.data ?? [];
+  const saleLabel = sale.invoiceNumber ?? id.slice(0, 8);
   const customer = saleCustomer(sale);
 
   return (
@@ -73,9 +74,7 @@ export default function SaleDetailPage() {
           </Link>
           <h1 className="mt-2 text-heading-md font-semibold sm:text-heading-lg">
             Sale{" "}
-            <span className="num text-heading-sm sm:text-heading-md">
-              {sale.invoiceNumber ?? id.slice(0, 8)}
-            </span>
+            <span className="num text-heading-sm sm:text-heading-md">{saleLabel}</span>
           </h1>
           <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-body text-ink-muted">
             <span>
@@ -94,8 +93,8 @@ export default function SaleDetailPage() {
         </div>
         {sale.status === "completed" ? (
           <div className="flex flex-col gap-2 sm:flex-row">
-            <VoidSale saleId={id} mode="test" />
-            <VoidSale saleId={id} />
+            <VoidSale saleId={id} confirmationText={saleLabel} mode="test" />
+            <VoidSale saleId={id} confirmationText={saleLabel} />
           </div>
         ) : null}
       </header>

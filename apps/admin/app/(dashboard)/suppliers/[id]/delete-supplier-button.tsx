@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { Trash2 } from "lucide-react";
 import { ConfirmDialog } from "@/components/overlay";
 import { ErrorNote } from "@/components/ui";
 import { useInvalidateSuppliers } from "@/lib/query/suppliers";
@@ -33,12 +34,13 @@ export function DeleteSupplierButton({
     <div className="space-y-2 sm:text-right">
       <button
         type="button"
-        className="text-body text-danger hover:underline"
+        className="inline-flex items-center gap-1.5 text-body text-danger hover:underline"
         onClick={() => {
           setError(null);
           setOpen(true);
         }}
       >
+        <Trash2 size={14} strokeWidth={2} aria-hidden />
         Delete supplier
       </button>
       {error ? <ErrorNote>{error}</ErrorNote> : null}
@@ -50,6 +52,7 @@ export function DeleteSupplierButton({
         title="Delete supplier?"
         description={`${supplierName} will be removed. This cannot be undone.`}
         confirmLabel="Delete supplier"
+        confirmationText={supplierName}
       />
     </div>
   );

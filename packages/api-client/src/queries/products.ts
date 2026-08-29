@@ -319,6 +319,12 @@ export async function setProductActive(client: ApiClient, id: string, isActive: 
   await updateProduct(client, id, { isActive });
 }
 
+/** Copies every field except sku/supplier_sku/barcode (must stay unique) and suffixes the name " Clone". */
+export async function cloneProduct(client: ApiClient, id: string): Promise<Product> {
+  const { data } = await client.post<{ data: JsonApiResource<ProductAttrs> }>(`/products/${id}/clone`);
+  return toProduct(data);
+}
+
 /** Server resizes to a mobile-friendly size and re-encodes as WebP — send the original file as-is. */
 export async function uploadProductPhoto(client: ApiClient, id: string, photo: File): Promise<Product> {
   const formData = new FormData();

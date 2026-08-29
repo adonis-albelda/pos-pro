@@ -254,6 +254,7 @@ function LocationsBody({ locations }: { locations: Location[] }) {
             : ""
         }
         confirmLabel="Delete"
+        confirmationText={deleting?.name ?? ""}
         pending={pending}
       />
     </>

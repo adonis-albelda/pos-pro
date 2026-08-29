@@ -272,7 +272,9 @@ async function insertOrReplaceProduct(
     product.bulkPrice,
     product.bulkMinQuantity,
     product.isActive ? 1 : 0,
-    product.photoUrl,
+    // expo-sqlite's native bind rejects `undefined` (only null/string/number/
+    // Uint8Array are valid) — guard here too, not just at the API mapper.
+    product.photoUrl ?? null,
     product.updatedAt,
   );
 }

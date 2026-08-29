@@ -2,14 +2,15 @@
 
 import { useState } from "react";
 import type { Route } from "next";
-import { Camera, Eye, EyeOff, Pencil } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Camera, Copy, Eye, EyeOff, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { ApiError } from "@double-a/api-client";
 import type { Product } from "@double-a/shared-types";
 import { formatPercent, marginPercent, stockLevel } from "@double-a/shared-types";
 import { Badge, IconButton, IconLink, Money, Table, Td, Th } from "@/components/ui";
 import { ConfirmDialog } from "@/components/overlay";
-import { useSetProductActive } from "@/lib/query/products";
+import { useCloneProduct, useSetProductActive } from "@/lib/query/products";
 
 export function ProductsTable({
   products,
@@ -18,8 +19,24 @@ export function ProductsTable({
   products: Product[];
   fetching?: boolean;
 }) {
+  const router = useRouter();
   const [hiding, setHiding] = useState<Product | null>(null);
   const setActive = useSetProductActive();
+  const cloneProduct = useCloneProduct();
+
+  function clone(product: Product) {
+    cloneProduct.mutate(product.id, {
+      onSuccess: (created) => {
+        toast.success(`Cloned as "${created.name}". Give it its own SKU.`);
+        router.push(`/products/${created.id}` as Route);
+      },
+      onError: (error) => {
+        const message =
+          error instanceof ApiError ? error.message : "Could not clone this product.";
+        toast.error(message);
+      },
+    });
+  }
 
   function confirmHide() {
     if (!hiding) return;
@@ -119,6 +136,12 @@ export function ProductsTable({
                         product.isActive ? "Hide from terminals" : "Show on terminals"
                       }
                       onClick={() => setHiding(product)}
+                    />
+                    <IconButton
+                      icon={Copy}
+                      label="Clone product"
+                      disabled={cloneProduct.isPending}
+                      onClick={() => clone(product)}
                     />
                   </div>
                 </Td>

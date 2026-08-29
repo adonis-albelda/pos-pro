@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState, useTransition } from "react";
-import { Check, CalendarClock } from "lucide-react";
+import { CalendarClock, Check, Trash2 } from "lucide-react";
 import {
   EXPENSE_BILL_FREQUENCIES,
   EXPENSE_BILL_REMIND_DAYS_MAX,
@@ -185,6 +185,7 @@ export function ExpenseBillForm({
             <Button
               type="button"
               variant="secondary"
+              icon={Trash2}
               className="w-full text-danger sm:w-auto"
               onClick={() => setConfirmDelete(true)}
             >
@@ -197,6 +198,7 @@ export function ExpenseBillForm({
             title="Delete this bill?"
             description="Ledger expenses already logged stay. Only the schedule is removed."
             confirmLabel={deleting ? "Deleting…" : "Delete"}
+            confirmationText={bill.description}
             onConfirm={confirmRemove}
             pending={deleting}
           />

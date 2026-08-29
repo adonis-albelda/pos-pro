@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState, useTransition } from "react";
-import { Check, Wallet } from "lucide-react";
+import { Check, Trash2, Wallet } from "lucide-react";
 import {
   EXPENSE_CATEGORY_MAX,
   EXPENSE_DESCRIPTION_MAX,
@@ -154,9 +154,10 @@ export function ExpenseForm({
           {expense ? (
             <button
               type="button"
-              className="text-body text-danger hover:underline sm:ml-auto"
+              className="inline-flex items-center gap-1.5 text-body text-danger hover:underline sm:ml-auto"
               onClick={() => setConfirmDelete(true)}
             >
+              <Trash2 size={14} strokeWidth={2} aria-hidden />
               Delete
             </button>
           ) : null}
@@ -171,6 +172,7 @@ export function ExpenseForm({
         title="Delete expense?"
         description="This removes it from the books and from today's net. Cannot be undone."
         confirmLabel="Delete expense"
+        confirmationText={expense?.description ?? ""}
       />
     </>
   );

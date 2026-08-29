@@ -11,8 +11,19 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { Loader2, Sparkles, X } from "lucide-react";
-import { Button } from "@/components/ui";
+import {
+  Ban,
+  Check,
+  Eye,
+  EyeOff,
+  FlaskConical,
+  Loader2,
+  Sparkles,
+  Trash2,
+  X,
+  type LucideIcon,
+} from "lucide-react";
+import { Button, Field, Input } from "@/components/ui";
 
 /** Match route page-enter: short enough to read as arrival, not decoration. */
 const OVERLAY_MS = 180;
@@ -357,6 +368,18 @@ export function AiProcessingOverlay({
   );
 }
 
+function resolveConfirmIcon(confirmLabel: string, confirmationText?: string): LucideIcon {
+  if (confirmationText) return Trash2;
+
+  const lower = confirmLabel.toLowerCase();
+  if (lower.includes("void")) return Ban;
+  if (lower.includes("test")) return FlaskConical;
+  if (lower.includes("hide") || lower.includes("disable")) return EyeOff;
+  if (lower.includes("show") || lower.includes("enable")) return Eye;
+
+  return Check;
+}
+
 export function ConfirmDialog({
   open,
   onClose,
@@ -364,6 +387,8 @@ export function ConfirmDialog({
   title,
   description,
   confirmLabel = "Delete",
+  confirmationText,
+  confirmIcon,
   pending,
 }: {
   open: boolean;
@@ -372,22 +397,52 @@ export function ConfirmDialog({
   title: string;
   description: string;
   confirmLabel?: string;
+  /** When set, the confirm button stays disabled until this text is typed exactly. */
+  confirmationText?: string;
+  confirmIcon?: LucideIcon;
   pending?: boolean;
 }) {
+  const [typed, setTyped] = useState("");
+
+  useEffect(() => {
+    if (!open) setTyped("");
+  }, [open]);
+
+  const confirmed = confirmationText ? typed.trim() === confirmationText.trim() : true;
+  const ConfirmIcon = confirmIcon ?? resolveConfirmIcon(confirmLabel, confirmationText);
+
   return (
     <Dialog open={open} onClose={onClose} title={title} description={description}>
-      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <Button type="button" variant="secondary" onClick={onClose} disabled={pending}>
-          Cancel
-        </Button>
-        <Button
-          type="button"
-          variant="danger"
-          loading={pending}
-          onClick={() => void onConfirm()}
-        >
-          {confirmLabel}
-        </Button>
+      <div className="space-y-4">
+        {confirmationText ? (
+          <Field
+            label="Type to confirm"
+            hint={`Enter "${confirmationText}" to continue.`}
+          >
+            <Input
+              value={typed}
+              onChange={(event) => setTyped(event.currentTarget.value)}
+              placeholder={confirmationText}
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </Field>
+        ) : null}
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button type="button" variant="secondary" icon={X} onClick={onClose} disabled={pending}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="danger"
+            icon={ConfirmIcon}
+            loading={pending}
+            disabled={!confirmed}
+            onClick={() => void onConfirm()}
+          >
+            {confirmLabel}
+          </Button>
+        </div>
       </div>
     </Dialog>
   );
