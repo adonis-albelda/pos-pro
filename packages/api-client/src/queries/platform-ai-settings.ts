@@ -41,6 +41,31 @@ export async function getPlatformAiSettings(client: ApiClient): Promise<Platform
   return mapPlatformAiSettings(result.data);
 }
 
+export interface ProductEmbeddingCoverage {
+  total: number;
+  embedded: number;
+  percent: number;
+}
+
+/** Coverage across every company — embeddings are a platform-wide backfill, not a per-company setting. */
+export async function getProductEmbeddingCoverage(
+  client: ApiClient,
+): Promise<ProductEmbeddingCoverage> {
+  const result = await client.get<{ data: ProductEmbeddingCoverage }>(
+    "/superadmin/products/embedding-coverage",
+  );
+  return result.data;
+}
+
+/** Queues GenerateProductEmbeddingJob for every active product still missing one. Returns how many were queued. */
+export async function embedAllProducts(client: ApiClient): Promise<{ queued: number }> {
+  const result = await client.post<{ data: { queued: number } }>(
+    "/superadmin/products/embed-all",
+    {},
+  );
+  return result.data;
+}
+
 export async function updatePlatformAiSettings(
   client: ApiClient,
   settings: {

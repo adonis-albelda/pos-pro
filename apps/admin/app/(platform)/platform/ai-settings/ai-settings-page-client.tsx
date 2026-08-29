@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Save, Sparkles } from "lucide-react";
+import { BrainCircuit, Save, Sparkles } from "lucide-react";
 import type { AiPlanId, AiSubscriptionPlan } from "@double-a/shared-types";
 import { Button, Card, CardHeader, ErrorNote, Field, Input } from "@/components/ui";
+import { toast } from "sonner";
 import {
+  useEmbedAllProducts,
   usePlatformAiSettings,
+  useProductEmbeddingCoverage,
   useUpdatePlatformAiSettings,
 } from "@/lib/query/platform-ai-settings";
 
@@ -26,7 +29,88 @@ export function PlatformAiSettingsPageClient() {
     );
   }
 
-  return <PlatformAiSettingsForm settings={settingsQuery.data} />;
+  return (
+    <div className="space-y-6">
+      <PlatformAiSettingsForm settings={settingsQuery.data} />
+      <ProductEmbeddingCard />
+    </div>
+  );
+}
+
+/**
+ * Coverage across every company. Products created/renamed after this
+ * feature shipped embed themselves automatically (ProductObserver) — this
+ * is only for backfilling whatever predates it.
+ */
+function ProductEmbeddingCard() {
+  const coverageQuery = useProductEmbeddingCoverage();
+  const embedAll = useEmbedAllProducts();
+
+  function run() {
+    embedAll.mutate(undefined, {
+      onSuccess: ({ queued }) => {
+        toast.success(
+          queued > 0
+            ? `Queued ${queued} product${queued === 1 ? "" : "s"} for embedding.`
+            : "Every active product already has an embedding.",
+        );
+      },
+      onError: (error) => {
+        toast.error(error instanceof Error ? error.message : "Could not queue embedding.");
+      },
+    });
+  }
+
+  return (
+    <Card>
+      <CardHeader
+        icon={BrainCircuit}
+        title="Product embeddings"
+        description="Backfills smart search's vector for products created before the feature shipped. Queued jobs run on the worker, not instantly — refresh to see coverage climb."
+      />
+      <div className="space-y-4 px-4 py-5 sm:px-6">
+        {coverageQuery.isPending ? (
+          <p className="text-body text-ink-muted">Loading…</p>
+        ) : coverageQuery.isError ? (
+          <p className="text-body text-danger">
+            {coverageQuery.error instanceof Error
+              ? coverageQuery.error.message
+              : "Could not load coverage."}
+          </p>
+        ) : (
+          <>
+            <div className="flex items-baseline justify-between">
+              <span className="text-body text-ink-muted">
+                {coverageQuery.data.embedded} of {coverageQuery.data.total} active products
+                embedded
+              </span>
+              <span className="num text-body-lg font-semibold text-ink">
+                {coverageQuery.data.percent}%
+              </span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-border/60">
+              <div
+                className="h-full rounded-full bg-primary transition-[width]"
+                style={{ width: `${Math.min(100, coverageQuery.data.percent)}%` }}
+              />
+            </div>
+          </>
+        )}
+
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            icon={Sparkles}
+            loading={embedAll.isPending}
+            disabled={coverageQuery.isPending || coverageQuery.isError}
+            onClick={run}
+          >
+            Embed all missing products
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
 }
 
 function PlatformAiSettingsForm({

@@ -569,13 +569,13 @@ export function ProductForm({
         </SuccessNote>
       ) : null}
 
-      <div className="flex flex-col-reverse gap-2 sm:flex-row">
-        <Button type="submit" loading={pending} icon={Check} className="w-full sm:w-auto">
-          {pending ? "Saving..." : product ? "Save changes" : "Add product"}
-        </Button>
+      <div className="sticky bottom-0 z-10 flex flex-col-reverse gap-2 rounded-md border border-border bg-surface px-4 py-4 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] sm:flex-row sm:justify-end sm:px-6">
         <ButtonLink href={cancelHref} variant="secondary" className="w-full sm:w-auto">
           Cancel
         </ButtonLink>
+        <Button type="submit" loading={pending} icon={Check} className="w-full sm:w-auto">
+          {pending ? "Saving..." : product ? "Save changes" : "Add product"}
+        </Button>
       </div>
     </form>
   );

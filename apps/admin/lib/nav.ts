@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   MapPin,
   Package,
+  Plus,
   Printer,
   QrCode,
   Receipt,
@@ -112,6 +113,13 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Receipt,
         blurb: "Every receipt on file",
         tone: "accent",
+      },
+      {
+        href: "/sales/new" as Route,
+        label: "New sale",
+        icon: Plus,
+        blurb: "Ring up a phone order",
+        tone: "primary",
       },
       {
         href: "/customers" as Route,

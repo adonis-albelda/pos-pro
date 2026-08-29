@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Search, Sparkles } from "lucide-react";
+import { Loader2, Sparkles } from "lucide-react";
 import { ApiError } from "@double-a/api-client";
 import { listProductsByIds, vectorSearchProducts } from "@double-a/api-client/queries";
 import type { Product } from "@double-a/shared-types";
 import { formatQuantity } from "@double-a/shared-types";
-import { Button, ErrorNote, Field, Input, Money } from "@/components/ui";
+import { Button, ErrorNote, Field, Money, Textarea } from "@/components/ui";
 import { Dialog } from "@/components/overlay";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 
@@ -139,15 +139,18 @@ export function AiSearchDialog({
       ) : (
         <div className="space-y-4">
           <Field label="What are you looking for?" required={false}>
-            <Input
-              icon={Search}
+            <Textarea
               autoFocus
+              rows={4}
               value={term}
               placeholder="e.g. “blue paint for wood”"
               autoComplete="off"
               onChange={(event) => setTerm(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === "Enter") void submit();
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  void submit();
+                }
               }}
             />
           </Field>
