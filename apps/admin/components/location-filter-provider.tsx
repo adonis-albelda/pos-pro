@@ -48,6 +48,7 @@ export function LocationFilterProvider({ children }: { children: ReactNode }) {
       void queryClient.invalidateQueries({ queryKey: ["sales"] });
       void queryClient.invalidateQueries({ queryKey: ["inventory"] });
       void queryClient.invalidateQueries({ queryKey: ["reports"] });
+      void queryClient.invalidateQueries({ queryKey: ["expenses"] });
     },
     [queryClient],
   );

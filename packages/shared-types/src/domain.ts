@@ -430,6 +430,8 @@ export interface Product {
   bulkPrice: number | null;
   bulkMinQuantity: number | null;
   isActive: boolean;
+  /** Public URL of a resized WebP, or null if no photo was uploaded. */
+  photoUrl: string | null;
   updatedAt: string;
 }
 
@@ -496,6 +498,8 @@ export interface Expense {
   createdBy: string | null;
   /** Set when this ledger row was created via Mark paid on a bill. */
   expenseBillId: string | null;
+  /** Null = company-wide. Set = this outlay belongs to one branch/warehouse. */
+  locationId: string | null;
   createdAt: string;
   updatedAt: string;
 }

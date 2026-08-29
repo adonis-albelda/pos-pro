@@ -12,6 +12,8 @@ export interface ExpenseInput {
   /** Shop calendar day (yyyy-mm-dd), Asia/Manila. */
   expenseDate?: string | null;
   note?: string | null;
+  /** Null/omitted = company-wide. Set = this outlay belongs to one branch/warehouse. */
+  locationId?: string | null;
 }
 
 function toPayload(input: Partial<ExpenseInput>): Record<string, unknown> {
@@ -21,6 +23,7 @@ function toPayload(input: Partial<ExpenseInput>): Record<string, unknown> {
   if (input.category !== undefined) payload.category = input.category;
   if (input.expenseDate !== undefined) payload.expense_date = input.expenseDate;
   if (input.note !== undefined) payload.note = input.note;
+  if (input.locationId !== undefined) payload.location_id = input.locationId;
   return payload;
 }
 
@@ -31,7 +34,12 @@ export interface ExpenseDayRange {
   toDay: string;
 }
 
-export interface ListExpensesPageOptions extends Partial<ExpenseDayRange> {
+export interface ExpenseFilterOptions {
+  /** Branch/warehouse to filter to. Company-wide expenses (location_id null) are excluded when set. */
+  locationId?: string | null;
+}
+
+export interface ListExpensesPageOptions extends Partial<ExpenseDayRange>, ExpenseFilterOptions {
   page?: number;
   pageSize?: number;
 }
@@ -49,6 +57,7 @@ export async function listExpensesPage(
   const page = await client.get<JsonApiPage<ExpenseAttrs>>("/expenses", {
     from: options.fromDay,
     to: options.toDay,
+    location_id: options.locationId ?? undefined,
     page: options.page ?? 1,
     per_page: options.pageSize ?? 200,
   });
@@ -66,12 +75,17 @@ export async function listExpensesPage(
  * every page so callers get the same "everything in range" contract the old
  * un-paginated Postgres query gave them.
  */
-export async function listExpenses(client: ApiClient, range?: ExpenseDayRange): Promise<Expense[]> {
+export async function listExpenses(
+  client: ApiClient,
+  range?: ExpenseDayRange,
+  filter?: ExpenseFilterOptions,
+): Promise<Expense[]> {
   const expenses: Expense[] = [];
   let page = 1;
   for (;;) {
     const result = await listExpensesPage(client, {
       ...range,
+      ...filter,
       page,
       pageSize: 200,
     });
@@ -87,8 +101,12 @@ export async function listExpenses(client: ApiClient, range?: ExpenseDayRange): 
  * `listExpenses` and sums client-side — fine for a shop-sized expense list;
  * ask backend for a real aggregate if this gets slow.
  */
-export async function sumExpenses(client: ApiClient, range: ExpenseDayRange): Promise<number> {
-  const expenses = await listExpenses(client, range);
+export async function sumExpenses(
+  client: ApiClient,
+  range: ExpenseDayRange,
+  filter?: ExpenseFilterOptions,
+): Promise<number> {
+  const expenses = await listExpenses(client, range, filter);
   return roundMoney(expenses.reduce((sum, expense) => sum + expense.amount, 0));
 }
 

@@ -36,6 +36,7 @@ export async function saveExpense(
   const categoryRaw = text(formData, "category");
   const noteRaw = text(formData, "note");
   const expenseDate = text(formData, "expense_date");
+  const locationId = text(formData, "location_id");
   const amount = Number(formData.get("amount") ?? 0);
 
   if (!description) {
@@ -61,6 +62,7 @@ export async function saveExpense(
       : null,
     expenseDate,
     note: noteRaw ? noteRaw.slice(0, EXPENSE_NOTE_MAX) : null,
+    locationId: locationId || null,
   };
 
   try {

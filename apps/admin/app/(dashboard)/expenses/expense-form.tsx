@@ -7,19 +7,29 @@ import {
   EXPENSE_DESCRIPTION_MAX,
   EXPENSE_NOTE_MAX,
 } from "@double-a/shared-types";
-import type { Expense } from "@double-a/shared-types";
+import type { Expense, Location } from "@double-a/shared-types";
 import { ConfirmDialog } from "@/components/overlay";
-import { Button, ErrorNote, Field, Input, MoneyInput, SuccessNote } from "@/components/ui";
+import {
+  Button,
+  Combobox,
+  ErrorNote,
+  Field,
+  Input,
+  MoneyInput,
+  SuccessNote,
+} from "@/components/ui";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
 import { useInvalidateExpenses } from "@/lib/query/expenses";
 import { removeExpense, saveExpense } from "./actions";
 
 export function ExpenseForm({
   expense,
+  locations,
   defaultDate,
   onDone,
 }: {
   expense?: Expense;
+  locations: Location[];
   /** Shop today, yyyy-mm-dd — used when creating. */
   defaultDate: string;
   onDone?: () => void;
@@ -100,6 +110,22 @@ export function ExpenseForm({
             name="note"
             defaultValue={expense?.note ?? ""}
             maxLength={EXPENSE_NOTE_MAX}
+          />
+        </Field>
+
+        <Field
+          label="Branch"
+          hint="Optional — leave as company-wide for rent, wages, or anything not tied to one branch."
+          required={false}
+        >
+          <Combobox
+            name="location_id"
+            defaultValue={expense?.locationId ?? ""}
+            placeholder="Company-wide"
+            options={[
+              { value: "", label: "Company-wide" },
+              ...locations.map((location) => ({ value: location.id, label: location.name })),
+            ]}
           />
         </Field>
 

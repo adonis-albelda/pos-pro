@@ -4,7 +4,8 @@ import type { Route } from "next";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useState } from "react";
-import { Check, Info, TriangleAlert } from "lucide-react";
+import { Camera, Check, ImageOff, Info, TriangleAlert } from "lucide-react";
+import { toast } from "sonner";
 import type { Product } from "@double-a/shared-types";
 import {
   defaultAllowDecimal,
@@ -25,6 +26,7 @@ import {
   Combobox,
   ErrorNote,
   Field,
+  FileInput,
   Input,
   MoneyInput,
   Select,
@@ -34,7 +36,11 @@ import {
 import { indentLabel, type CategoryOption } from "@/lib/category-options";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
 import { useLocations } from "@/lib/query/locations";
-import { useInvalidateProducts } from "@/lib/query/products";
+import {
+  useDeleteProductPhoto,
+  useInvalidateProducts,
+  useUploadProductPhoto,
+} from "@/lib/query/products";
 import { saveProduct } from "./actions";
 
 function FormSection({
@@ -51,6 +57,93 @@ function FormSection({
       <CardHeader title={title} description={description} />
       <CardBody>
         <div className="grid gap-4 sm:grid-cols-2">{children}</div>
+      </CardBody>
+    </Card>
+  );
+}
+
+/**
+ * Uploads immediately on file pick (own mutation, not part of the surrounding
+ * form's submit) — same reasoning as the toggle buttons elsewhere in admin:
+ * an ApiError needs to reach a toast directly, not Next's generic error
+ * boundary. Server resizes + converts to WebP; nothing happens client-side.
+ */
+function ProductPhotoSection({ product }: { product?: Product }) {
+  const uploadPhoto = useUploadProductPhoto();
+  const deletePhoto = useDeleteProductPhoto();
+  const [preview, setPreview] = useState<string | null>(null);
+  const busy = uploadPhoto.isPending || deletePhoto.isPending;
+
+  const shown = preview ?? product?.photoUrl ?? null;
+
+  function onPick(file: File | undefined) {
+    if (!file || !product) return;
+    setPreview(URL.createObjectURL(file));
+    uploadPhoto.mutate(
+      { id: product.id, photo: file },
+      {
+        onSuccess: () => toast.success("Photo updated."),
+        onError: (error) =>
+          toast.error(error instanceof Error ? error.message : "Could not upload this photo."),
+        onSettled: () => setPreview(null),
+      },
+    );
+  }
+
+  function onRemove() {
+    if (!product) return;
+    deletePhoto.mutate(product.id, {
+      onSuccess: () => toast.success("Photo removed."),
+      onError: (error) =>
+        toast.error(error instanceof Error ? error.message : "Could not remove this photo."),
+    });
+  }
+
+  return (
+    <Card>
+      <CardHeader
+        title="Photo"
+        description="Shown on mobile terminals and the product list. Resized and converted automatically."
+      />
+      <CardBody>
+        {!product ? (
+          <p className="flex items-start gap-2 rounded-md border border-border bg-paper px-4 py-3 text-body text-ink-muted">
+            <Info size={16} className="mt-0.5 shrink-0" />
+            Save the product first, then come back here to add a photo.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+            <span className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-paper">
+              {shown ? (
+                // Plain img: the URL is an arbitrary MinIO/S3 host, same reasoning as the store logo.
+                <img src={shown} alt="" className="size-full object-cover" />
+              ) : (
+                <Camera size={22} strokeWidth={2} className="text-ink-muted" />
+              )}
+            </span>
+
+            <div className="min-w-0 flex-1 space-y-2">
+              <Field label="Upload a photo" hint="JPEG, PNG or WebP, under 8 MB." required={false}>
+                <FileInput
+                  accept="image/jpeg,image/png,image/webp"
+                  disabled={busy}
+                  onChange={(event) => onPick(event.currentTarget.files?.[0])}
+                />
+              </Field>
+              {product.photoUrl && !preview ? (
+                <button
+                  type="button"
+                  onClick={onRemove}
+                  disabled={busy}
+                  className="flex items-center gap-2 text-caption text-ink-muted hover:text-danger disabled:opacity-50"
+                >
+                  <ImageOff size={14} strokeWidth={2} />
+                  Remove photo
+                </button>
+              ) : null}
+            </div>
+          </div>
+        )}
       </CardBody>
     </Card>
   );
@@ -165,6 +258,8 @@ export function ProductForm({
           </Field>
         </div>
       </FormSection>
+
+      <ProductPhotoSection product={product} />
 
       <FormSection
         title="Pricing"

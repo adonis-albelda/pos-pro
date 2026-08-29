@@ -57,6 +57,7 @@ export interface ProductAttrs {
   bulk_price: number | null;
   bulk_min_quantity: number | null;
   allow_decimal: boolean;
+  photo_url: string | null;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -82,6 +83,7 @@ export function toProduct(resource: JsonApiResource<ProductAttrs>): Product {
     bulkPrice: a.bulk_price === null ? null : Number(a.bulk_price),
     bulkMinQuantity: a.bulk_min_quantity === null ? null : Number(a.bulk_min_quantity),
     isActive: a.is_active,
+    photoUrl: a.photo_url,
     updatedAt: a.updated_at ?? "",
   };
 }
@@ -178,6 +180,7 @@ export interface ExpenseAttrs {
   note: string | null;
   created_by: string | null;
   expense_bill_id?: string | null;
+  location_id: string | null;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -193,6 +196,7 @@ export function toExpense(resource: JsonApiResource<ExpenseAttrs>): Expense {
     note: a.note,
     createdBy: a.created_by,
     expenseBillId: a.expense_bill_id ?? null,
+    locationId: a.location_id,
     createdAt: a.created_at ?? "",
     updatedAt: a.updated_at ?? "",
   };

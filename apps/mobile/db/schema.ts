@@ -315,6 +315,11 @@ CREATE TABLE IF NOT EXISTS ai_settings (
 INSERT OR IGNORE INTO ai_settings (id) VALUES (1);
 `;
 
+/** v16: public URL of a resized WebP, same one admin uploaded. Null = no photo. */
+const V16_PRODUCT_PHOTO = `
+ALTER TABLE products ADD COLUMN photo_url TEXT;
+`;
+
 /** Ordered, append-only. Never edit a step that has shipped. */
 export const MIGRATIONS: Migration[] = [
   { version: 1, sql: V1_INITIAL },
@@ -332,6 +337,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 13, sql: V13_SALE_LOCATION },
   { version: 14, sql: V14_PRODUCT_NOTES },
   { version: 15, sql: V15_AI_SETTINGS },
+  { version: 16, sql: V16_PRODUCT_PHOTO },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.reduce(

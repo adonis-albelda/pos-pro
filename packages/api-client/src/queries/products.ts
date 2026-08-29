@@ -319,6 +319,22 @@ export async function setProductActive(client: ApiClient, id: string, isActive: 
   await updateProduct(client, id, { isActive });
 }
 
+/** Server resizes to a mobile-friendly size and re-encodes as WebP — send the original file as-is. */
+export async function uploadProductPhoto(client: ApiClient, id: string, photo: File): Promise<Product> {
+  const formData = new FormData();
+  formData.set("photo", photo);
+  const { data } = await client.postMultipart<{ data: JsonApiResource<ProductAttrs> }>(
+    `/products/${id}/photo`,
+    formData,
+  );
+  return toProduct(data);
+}
+
+export async function deleteProductPhoto(client: ApiClient, id: string): Promise<Product> {
+  const { data } = await client.delete<{ data: JsonApiResource<ProductAttrs> }>(`/products/${id}/photo`);
+  return toProduct(data);
+}
+
 export type AdjustStockReason = "restock" | "adjustment" | "oversell_correction";
 
 export async function adjustStock(

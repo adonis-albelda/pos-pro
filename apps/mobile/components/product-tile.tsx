@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import { Pressable, Text, View } from "react-native";
+import { Image } from "expo-image";
 import { Minus, Package, Tag, Trash2 } from "lucide-react-native";
 import { formatMoney, stockLevel, type ProductWithEstimatedStock } from "@double-a/shared-types";
 import { color, fontSize, radius, space, styles } from "@/theme";
@@ -96,7 +97,23 @@ export function ProductTile({
         {/* On a phone the tile is too narrow to carry the icon and still leave
             room for a readable product name, so the icon is dropped there. */}
         <View style={{ flexDirection: "row", alignItems: "flex-start", gap: space.sm }}>
-          {compact ? null : (
+          {compact ? (
+            product.photoUrl ? (
+              <Image
+                source={{ uri: product.photoUrl }}
+                style={{ width: 22, height: 22, borderRadius: radius.sm }}
+                contentFit="cover"
+                cachePolicy="disk"
+              />
+            ) : null
+          ) : product.photoUrl ? (
+            <Image
+              source={{ uri: product.photoUrl }}
+              style={{ width: 30, height: 30, borderRadius: radius.sm }}
+              contentFit="cover"
+              cachePolicy="disk"
+            />
+          ) : (
             <View style={[styles.iconWell, { width: 30, height: 30 }]}>
               <Package size={15} color={color.primary} strokeWidth={2} />
             </View>

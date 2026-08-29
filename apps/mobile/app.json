@@ -53,7 +53,8 @@
         {
           "cameraPermission": "Used to scan a product's barcode."
         }
-      ]
+      ],
+      "expo-image"
     ],
     "experiments": {
       "typedRoutes": true

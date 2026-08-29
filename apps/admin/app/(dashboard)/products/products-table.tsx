@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { Route } from "next";
-import { Eye, EyeOff, Pencil } from "lucide-react";
+import { Camera, Eye, EyeOff, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { ApiError } from "@double-a/api-client";
 import type { Product } from "@double-a/shared-types";
@@ -60,7 +60,18 @@ export function ProductsTable({
 
             return (
               <tr key={product.id} className={product.isActive ? "" : "opacity-60"}>
-                <Td className="font-medium">{product.name}</Td>
+                <Td className="font-medium">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border bg-paper">
+                      {product.photoUrl ? (
+                        <img src={product.photoUrl} alt="" className="size-full object-cover" />
+                      ) : (
+                        <Camera size={14} strokeWidth={2} className="text-ink-muted" />
+                      )}
+                    </span>
+                    {product.name}
+                  </div>
+                </Td>
                 <Td className="num text-ink-muted">{product.sku ?? "—"}</Td>
                 <Td className="text-ink-muted">{product.category ?? "—"}</Td>
                 <Td className="text-ink-muted">{product.unit}</Td>

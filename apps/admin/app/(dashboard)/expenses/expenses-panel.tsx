@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Pencil, Wallet } from "lucide-react";
 import { formatMoney } from "@double-a/shared-types";
-import type { Expense } from "@double-a/shared-types";
+import type { Expense, Location } from "@double-a/shared-types";
 import { Card, EmptyState, IconButton, Money, Table, Td, Th } from "@/components/ui";
 import { Sheet } from "@/components/overlay";
 import { Pagination, RecordToolbar } from "@/components/record-list";
@@ -13,6 +13,7 @@ import { ExpenseForm } from "./expense-form";
 
 export function ExpensesPanel({
   expenses,
+  locations,
   defaultDate,
   query,
   page,
@@ -21,6 +22,7 @@ export function ExpensesPanel({
   pageSize,
 }: {
   expenses: Expense[];
+  locations: Location[];
   defaultDate: string;
   query: string;
   page: number;
@@ -31,6 +33,7 @@ export function ExpensesPanel({
   const mutationsLocked = useLocationMutationsLocked();
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
+  const locationsById = new Map(locations.map((location) => [location.id, location.name]));
 
   return (
     <>
@@ -60,6 +63,7 @@ export function ExpensesPanel({
                 <Th>Date</Th>
                 <Th>Description</Th>
                 <Th>Category</Th>
+                <Th>Branch</Th>
                 <Th numeric>Amount</Th>
                 <Th />
               </tr>
@@ -79,6 +83,11 @@ export function ExpensesPanel({
                     ) : null}
                   </Td>
                   <Td className="text-ink-muted">{expense.category ?? "—"}</Td>
+                  <Td className="text-ink-muted">
+                    {expense.locationId
+                      ? (locationsById.get(expense.locationId) ?? "—")
+                      : "Company-wide"}
+                  </Td>
                   <Td numeric>
                     <Money value={expense.amount} />
                   </Td>
@@ -115,6 +124,7 @@ export function ExpensesPanel({
         description="Counts against revenue on the date you pick."
       >
         <ExpenseForm
+          locations={locations}
           defaultDate={defaultDate}
           onDone={() => setCreating(false)}
         />
@@ -129,6 +139,7 @@ export function ExpensesPanel({
           <ExpenseForm
             key={editing.id}
             expense={editing}
+            locations={locations}
             defaultDate={defaultDate}
             onDone={() => setEditing(null)}
           />

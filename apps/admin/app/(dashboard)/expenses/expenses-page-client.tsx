@@ -2,10 +2,12 @@
 
 import { useSearchParams } from "next/navigation";
 import { Wallet } from "lucide-react";
-import type { Expense, ExpenseBill } from "@double-a/shared-types";
+import type { Expense, ExpenseBill, Location } from "@double-a/shared-types";
 import { matchesQuery, paginateItems, parseListQuery } from "@/lib/list-query";
 import { storeToday } from "@/lib/date-range";
 import { Card, PageHeader } from "@/components/ui";
+import { useLocationFilter } from "@/components/location-filter-provider";
+import { useLocations } from "@/lib/query/locations";
 import { ExpensesPanel } from "./expenses-panel";
 import { ExpenseBillsPanel } from "./expense-bills-panel";
 import { ExpenseForecast } from "./expense-forecast";
@@ -14,13 +16,15 @@ import { useExpenseBills } from "@/lib/query/expense-bills";
 
 export function ExpensesPageClient() {
   const searchParams = useSearchParams();
+  const { locationId } = useLocationFilter();
   const { q, page } = parseListQuery({
     q: searchParams.get("q") ?? undefined,
     page: searchParams.get("page") ?? undefined,
   });
 
-  const expensesQuery = useExpenses();
+  const expensesQuery = useExpenses(undefined, { locationId: locationId ?? undefined });
   const billsQuery = useExpenseBills();
+  const locationsQuery = useLocations({ includeInactive: false });
 
   const loading = expensesQuery.isPending || billsQuery.isPending;
   const error = expensesQuery.isError
@@ -47,6 +51,7 @@ export function ExpensesPageClient() {
         <ExpensesBody
           expenses={expensesQuery.data ?? []}
           bills={billsQuery.data ?? []}
+          locations={locationsQuery.data ?? []}
           q={q}
           page={page}
         />
@@ -58,11 +63,13 @@ export function ExpensesPageClient() {
 function ExpensesBody({
   expenses,
   bills,
+  locations,
   q,
   page,
 }: {
   expenses: Expense[];
   bills: ExpenseBill[];
+  locations: Location[];
   q: string;
   page: number;
 }) {
@@ -78,6 +85,7 @@ function ExpensesBody({
       <ExpenseBillsPanel bills={bills} defaultDueDate={today} />
       <ExpensesPanel
         expenses={pageItems}
+        locations={locations}
         defaultDate={today}
         query={q}
         page={safePage}

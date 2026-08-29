@@ -67,11 +67,14 @@ export default function UnlockScreen() {
       await ensureFreshSession();
       const client = getApiClient();
       const [next, profile] = await Promise.all([listCashiers(client), me(client)]);
+      // A terminal (role "device") only ever hands the shift to a cashier —
+      // admins sign in to the dashboard, not a shop-floor POS.
+      const onShift = profile.role === "device" ? next.filter((c) => c.role === "cashier") : next;
       setEnrolled(profile);
-      setCashiers(next);
+      setCashiers(onShift);
       setSelected((prev) =>
-        prev && next.some((c) => c.id === prev.id)
-          ? (next.find((c) => c.id === prev.id) ?? null)
+        prev && onShift.some((c) => c.id === prev.id)
+          ? (onShift.find((c) => c.id === prev.id) ?? null)
           : null,
       );
     } catch (err) {

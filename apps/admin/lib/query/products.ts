@@ -3,12 +3,14 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   countProducts,
+  deleteProductPhoto,
   getProduct,
   getProductStats,
   listBelowReorder,
   listProductLabelsPage,
   listProductsPage,
   setProductActive,
+  uploadProductPhoto,
   type ListProductsPageOptions,
 } from "@double-a/api-client/queries";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
@@ -106,6 +108,27 @@ export function useSetProductActive() {
   return useMutation({
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
       setProductActive(getBrowserApiClient(), id, isActive),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
+    },
+  });
+}
+
+export function useUploadProductPhoto() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, photo }: { id: string; photo: File }) =>
+      uploadProductPhoto(getBrowserApiClient(), id, photo),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
+    },
+  });
+}
+
+export function useDeleteProductPhoto() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteProductPhoto(getBrowserApiClient(), id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
     },

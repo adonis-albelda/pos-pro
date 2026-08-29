@@ -24,6 +24,7 @@ interface ProductRow {
   bulk_price: number | null;
   bulk_min_quantity: number | null;
   is_active: number;
+  photo_url: string | null;
   updated_at: string | null;
   pending_quantity: number;
 }
@@ -38,6 +39,8 @@ function toProductWithEstimate(row: ProductRow): ProductWithEstimatedStock {
     id: row.id,
     name: row.name,
     sku: row.sku,
+    // Not stored locally — mobile POS never displays or matches on this, unlike admin.
+    supplierSku: null,
     price: row.price,
     costPrice: row.cost_price,
     stockQuantity: row.stock_quantity,
@@ -52,6 +55,7 @@ function toProductWithEstimate(row: ProductRow): ProductWithEstimatedStock {
     bulkPrice: row.bulk_price,
     bulkMinQuantity: row.bulk_min_quantity,
     isActive: row.is_active === 1,
+    photoUrl: row.photo_url,
     updatedAt: row.updated_at ?? "",
     pendingQuantity: row.pending_quantity,
     estimatedStock: row.stock_quantity - row.pending_quantity,
@@ -84,6 +88,7 @@ SELECT p.id,
        p.bulk_price,
        p.bulk_min_quantity,
        p.is_active,
+       p.photo_url,
        p.updated_at,
        COALESCE((
          SELECT SUM(si.quantity)
@@ -229,8 +234,8 @@ async function insertOrReplaceProduct(
     `INSERT INTO products
        (id, name, sku, price, cost_price, stock_quantity, category, category_id,
         unit, allow_decimal, barcode, reorder_point, replenish_quantity, description,
-        bulk_price, bulk_min_quantity, is_active, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        bulk_price, bulk_min_quantity, is_active, photo_url, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (id) DO UPDATE SET
        name = excluded.name,
        sku = excluded.sku,
@@ -248,6 +253,7 @@ async function insertOrReplaceProduct(
        bulk_price = excluded.bulk_price,
        bulk_min_quantity = excluded.bulk_min_quantity,
        is_active = excluded.is_active,
+       photo_url = excluded.photo_url,
        updated_at = excluded.updated_at`,
     product.id,
     product.name,
@@ -266,6 +272,7 @@ async function insertOrReplaceProduct(
     product.bulkPrice,
     product.bulkMinQuantity,
     product.isActive ? 1 : 0,
+    product.photoUrl,
     product.updatedAt,
   );
 }
