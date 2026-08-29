@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Search, X } from "lucide-react";
+import { Search, Sparkles, X } from "lucide-react";
 import type { Product } from "@double-a/shared-types";
 import { formatQuantity, stockLevel } from "@double-a/shared-types";
 import { Badge, Button, Field, Input, Money } from "@/components/ui";
+import { AiSearchDialog } from "@/components/ai-search-dialog";
 
 /**
  * A shop with hundreds of lines cannot be scrolled in a `<select>`, and
@@ -18,15 +19,19 @@ export function ProductPicker({
   onSelect,
   search,
   label = "Product",
+  enableAiSearch = false,
 }: {
   selected: Product | null;
   onSelect: (product: Product | null) => void;
   search: (term: string) => Promise<Product[]>;
   label?: string;
+  /** Gate behind the `product_vector_search` feature flag at the call site. */
+  enableAiSearch?: boolean;
 }) {
   const [term, setTerm] = useState("");
   const [open, setOpen] = useState(false);
   const [matches, setMatches] = useState<Product[]>([]);
+  const [aiSearchOpen, setAiSearchOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -100,19 +105,43 @@ export function ProductPicker({
 
   return (
     <div ref={rootRef} className="relative">
-      <Field label={label} hint="Search by name, SKU or barcode.">
-        <Input
-          icon={Search}
-          value={term}
-          placeholder="Start typing a product…"
-          autoComplete="off"
-          onFocus={() => setOpen(true)}
-          onChange={(event) => {
-            setTerm(event.target.value);
-            setOpen(true);
-          }}
+      <div className="flex items-end gap-2">
+        <div className="min-w-0 flex-1">
+          <Field label={label} hint="Search by name, SKU or barcode.">
+            <Input
+              icon={Search}
+              value={term}
+              placeholder="Start typing a product…"
+              autoComplete="off"
+              onFocus={() => setOpen(true)}
+              onChange={(event) => {
+                setTerm(event.target.value);
+                setOpen(true);
+              }}
+            />
+          </Field>
+        </div>
+        {enableAiSearch ? (
+          <Button
+            type="button"
+            variant="secondary"
+            icon={Sparkles}
+            aria-label="Smart search with AI"
+            onClick={() => {
+              setOpen(false);
+              setAiSearchOpen(true);
+            }}
+          />
+        ) : null}
+      </div>
+
+      {enableAiSearch ? (
+        <AiSearchDialog
+          open={aiSearchOpen}
+          onClose={() => setAiSearchOpen(false)}
+          onSelect={(product) => onSelect(product)}
         />
-      </Field>
+      ) : null}
 
       {open ? (
         <ul className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-sm border border-border bg-surface py-1 shadow-lg">

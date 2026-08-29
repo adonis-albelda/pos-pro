@@ -40,6 +40,7 @@ import { toast } from "sonner";
 import { Dialog } from "@/components/overlay";
 import { ProductPicker } from "@/components/product-picker";
 import { useCustomers } from "@/lib/query/customers";
+import { useFeatureFlags } from "@/lib/query/features";
 import {
   deleteSaleDraft,
   listSaleDrafts,
@@ -69,6 +70,7 @@ const PAYMENT_METHODS = [
 export function CreateSaleForm() {
   const router = useRouter();
   const customersQuery = useCustomers();
+  const { isEnabled: isFeatureEnabled } = useFeatureFlags();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -275,6 +277,7 @@ export function CreateSaleForm() {
                     selected={row.product}
                     onSelect={(product) => updateItem(row.key, { product })}
                     search={searchProductsForSale}
+                    enableAiSearch={isFeatureEnabled("product_vector_search")}
                   />
                 </div>
                 {items.length > 1 ? (

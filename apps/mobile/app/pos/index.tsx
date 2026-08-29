@@ -86,6 +86,7 @@ import {
   removeCartDraft,
   type CartDraft,
 } from "@/lib/cart-draft";
+import { getApiClient } from "@/lib/api/session";
 import { getDeviceId } from "@/lib/device";
 import { useFeatureFlags } from "@/lib/features";
 import { useLayout } from "@/lib/layout";
@@ -93,6 +94,7 @@ import { useSession } from "@/lib/session";
 import { printReceipt } from "@/printing/receipt";
 import { useSync } from "@/sync/sync-provider";
 import { BottomSheet } from "@/components/bottom-sheet";
+import { AiSearchModal } from "@/components/ai-search-modal";
 import { BarcodeScanModal } from "@/components/barcode-scan-modal";
 import { CategoryDialog, type CategoryFilter } from "@/components/category-tabs";
 import { LoadingState } from "@/components/loading-state";
@@ -212,11 +214,27 @@ export default function SellScreen() {
   const [voiceSearchOpen, setVoiceSearchOpen] = useState(false);
   const [voiceVocabulary, setVoiceVocabulary] = useState<string[]>([]);
   const [barcodeScanOpen, setBarcodeScanOpen] = useState(false);
+  const [aiSearchOpen, setAiSearchOpen] = useState(false);
+  // Ranked product ids from the last smart search — while set, the grid shows
+  // exactly these (in this order) instead of the normal query/category list.
+  const [aiResultIds, setAiResultIds] = useState<string[] | null>(null);
+  const [aiResultLabel, setAiResultLabel] = useState("");
 
   /** Product names, fetched fresh each time the mic opens — biases recognition toward this shop's actual catalogue. */
   function openVoiceSearch() {
     void listLocalProducts().then((rows) => setVoiceVocabulary(rows.map((row) => row.name)));
     setVoiceSearchOpen(true);
+  }
+
+  /** Typing, scanning, or picking a category all mean "back to the normal list". */
+  function clearAiSearch() {
+    setAiResultIds(null);
+    setAiResultLabel("");
+  }
+
+  function applyManualSearch(text: string) {
+    if (aiResultIds) clearAiSearch();
+    setSearch(text);
   }
 
   const refreshDrafts = useCallback(async () => {
@@ -286,6 +304,31 @@ export default function SellScreen() {
     loadingMoreRef.current = false;
     setLoadingPage(true);
     setLoadingMore(false);
+    setHasMore(false);
+
+    if (aiResultIds) {
+      void listLocalProductsByIds(aiResultIds)
+        .then((rows) => {
+          if (id !== requestId.current) return;
+          const byIdRow = new Map(rows.map((row) => [row.id, row]));
+          const ordered = aiResultIds
+            .map((productId) => byIdRow.get(productId))
+            .filter((row): row is ProductWithEstimatedStock => row !== undefined);
+          setProducts(ordered);
+          setLoadingPage(false);
+          setReady(true);
+        })
+        .catch(() => {
+          if (id !== requestId.current) return;
+          setLoadingPage(false);
+          setReady(true);
+        });
+
+      return () => {
+        requestId.current += 1;
+      };
+    }
+
     setHasMore(true);
 
     void listLocalProductsPage({
@@ -310,7 +353,7 @@ export default function SellScreen() {
     return () => {
       requestId.current += 1;
     };
-  }, [query, categoryIds, dataVersion, focusEpoch]);
+  }, [query, categoryIds, dataVersion, focusEpoch, aiResultIds]);
 
   useEffect(() => {
     const ids = [...heldById.current.keys()];
@@ -792,7 +835,7 @@ export default function SellScreen() {
           <Search size={18} color={color.onPrimary} strokeWidth={2} />
           <TextInput
             value={search}
-            onChangeText={setSearch}
+            onChangeText={applyManualSearch}
             onSubmitEditing={() => void submitSearch()}
             // Focus stays put so a scanner can fire code after code.
             submitBehavior="submit"
@@ -811,13 +854,24 @@ export default function SellScreen() {
           />
           {search ? (
             <Pressable
-              onPress={() => setSearch("")}
+              onPress={() => applyManualSearch("")}
               accessibilityRole="button"
               accessibilityLabel="Clear search"
               hitSlop={4}
               style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}
             >
               <X size={20} color={color.onPrimary} strokeWidth={2} />
+            </Pressable>
+          ) : null}
+          {isEnabled("product_vector_search") ? (
+            <Pressable
+              onPress={() => setAiSearchOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Smart search with AI"
+              hitSlop={4}
+              style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}
+            >
+              <Sparkles size={20} color={color.onPrimary} strokeWidth={2} />
             </Pressable>
           ) : null}
           {isEnabled("voice_search") ? (
@@ -842,20 +896,40 @@ export default function SellScreen() {
               <ScanBarcode size={20} color={color.onPrimary} strokeWidth={2} />
             </Pressable>
           ) : null}
-          {isEnabled("product_photo_ai") ? (
-            <View
-              accessibilityRole="image"
-              accessibilityLabel="AI features enabled for this shop"
-              style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}
-            >
-              <Sparkles size={20} color={color.onPrimary} strokeWidth={2} />
-            </View>
-          ) : null}
         </View>
 
-        {/* Hidden while searching: the results already ignore the filter, so a
-            lit-up button beside them would be a lie. */}
-        {search.trim() ? null : (
+        {aiResultIds ? (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: space.sm,
+              paddingHorizontal: space.md,
+              paddingVertical: space.sm,
+              borderRadius: radius.sm,
+              backgroundColor: color.primarySoft,
+            }}
+          >
+            <Sparkles size={16} color={color.primary} strokeWidth={2} />
+            <Text
+              numberOfLines={1}
+              style={{ flex: 1, fontSize: fontSize.body, fontWeight: "600", color: color.primaryDark }}
+            >
+              Smart search: “{aiResultLabel}” ({aiResultIds.length})
+            </Text>
+            <Pressable
+              onPress={clearAiSearch}
+              accessibilityRole="button"
+              accessibilityLabel="Clear smart search"
+              hitSlop={4}
+              style={{ width: 28, height: 28, alignItems: "center", justifyContent: "center" }}
+            >
+              <X size={18} color={color.primaryDark} strokeWidth={2} />
+            </Pressable>
+          </View>
+        ) : /* Hidden while searching: the results already ignore the filter, so a
+               lit-up button beside them would be a lie. */
+        search.trim() ? null : (
           <View style={{ flexDirection: "row", gap: space.sm }}>
             <Button
               label={
@@ -886,7 +960,7 @@ export default function SellScreen() {
         <View style={{ flex: 1, minHeight: 0, gap: space.sm }}>
           {!ready || (loadingPage && products.length === 0) ? (
             <LoadingState text="Loading products…" />
-          ) : products.length === 0 && !query && category === null ? (
+          ) : products.length === 0 && !query && category === null && !aiResultIds ? (
             <EmptyState
               icon={PackageSearch}
               title="No products on this terminal"
@@ -1347,6 +1421,7 @@ export default function SellScreen() {
         value={category}
         onClose={() => setCategoryDialogOpen(false)}
         onPick={(next) => {
+          clearAiSearch();
           setCategory(next);
           setCategoryDialogOpen(false);
         }}
@@ -1355,14 +1430,26 @@ export default function SellScreen() {
       <VoiceSearchModal
         open={voiceSearchOpen}
         onClose={() => setVoiceSearchOpen(false)}
-        onResult={(text) => setSearch(text)}
+        onResult={applyManualSearch}
         contextualStrings={voiceVocabulary}
       />
 
       <BarcodeScanModal
         open={barcodeScanOpen}
         onClose={() => setBarcodeScanOpen(false)}
-        onResult={(code) => setSearch(code)}
+        onResult={applyManualSearch}
+      />
+
+      <AiSearchModal
+        open={aiSearchOpen}
+        onClose={() => setAiSearchOpen(false)}
+        client={getApiClient()}
+        onResult={(productIds, label) => {
+          setSearch("");
+          setCategory(null);
+          setAiResultIds(productIds);
+          setAiResultLabel(label);
+        }}
       />
     </View>
   );

@@ -259,6 +259,34 @@ export async function findProductIdsMatching(
   return ids;
 }
 
+export interface VectorSearchResult {
+  id: string;
+  score: number;
+}
+
+/**
+ * `GET /products/vector-search` — meaning-based match (Laravel AI / OpenAI
+ * embeddings), ranked by cosine similarity server-side. Callers only need
+ * `id`/`score`: the mobile POS re-reads the actual product rows from its own
+ * local SQLite copy, same as every other lookup there (CLAUDE.md — Supabase-
+ * era wording aside, still "device DB stays the read source after a pull").
+ */
+export async function vectorSearchProducts(
+  client: ApiClient,
+  q: string,
+  options: { limit?: number } = {},
+): Promise<VectorSearchResult[]> {
+  const needle = q.trim();
+  if (!needle) return [];
+
+  const { data } = await client.get<{ data: { id: string; score: number }[] }>(
+    "/products/vector-search",
+    { q: needle, limit: options.limit ?? 20 },
+  );
+
+  return data.map((row) => ({ id: row.id, score: row.score }));
+}
+
 /**
  * One grouped query server-side (`GET /categories/product-counts`) — used
  * to walk the entire catalogue client-side just to tally this (same cost as
