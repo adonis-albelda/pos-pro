@@ -63,21 +63,41 @@ function FormSection({
 }
 
 /**
- * Uploads immediately on file pick (own mutation, not part of the surrounding
- * form's submit) — same reasoning as the toggle buttons elsewhere in admin:
- * an ApiError needs to reach a toast directly, not Next's generic error
- * boundary. Server resizes + converts to WebP; nothing happens client-side.
+ * Editing an existing product uploads immediately on file pick (own
+ * mutation, not part of the surrounding form's submit) — same reasoning as
+ * the toggle buttons elsewhere in admin: an ApiError needs to reach a toast
+ * directly, not Next's generic error boundary. Server resizes + converts to
+ * WebP; nothing happens client-side.
+ *
+ * Creating a new product has no id to upload against yet, so the picked
+ * file is held here and handed back to the parent form via
+ * onPendingFileChange — it uploads once saveProduct returns the new id.
  */
-function ProductPhotoSection({ product }: { product?: Product }) {
+function ProductPhotoSection({
+  product,
+  pendingFile,
+  onPendingFileChange,
+}: {
+  product?: Product;
+  pendingFile?: File | null;
+  onPendingFileChange?: (file: File | null) => void;
+}) {
   const uploadPhoto = useUploadProductPhoto();
   const deletePhoto = useDeleteProductPhoto();
   const [preview, setPreview] = useState<string | null>(null);
   const busy = uploadPhoto.isPending || deletePhoto.isPending;
 
-  const shown = preview ?? product?.photoUrl ?? null;
+  const pendingPreview = pendingFile ? URL.createObjectURL(pendingFile) : null;
+  const shown = product ? (preview ?? product.photoUrl) : pendingPreview;
 
   function onPick(file: File | undefined) {
-    if (!file || !product) return;
+    if (!file) return;
+
+    if (!product) {
+      onPendingFileChange?.(file);
+      return;
+    }
+
     setPreview(URL.createObjectURL(file));
     uploadPhoto.mutate(
       { id: product.id, photo: file },
@@ -91,7 +111,10 @@ function ProductPhotoSection({ product }: { product?: Product }) {
   }
 
   function onRemove() {
-    if (!product) return;
+    if (!product) {
+      onPendingFileChange?.(null);
+      return;
+    }
     deletePhoto.mutate(product.id, {
       onSuccess: () => toast.success("Photo removed."),
       onError: (error) =>
@@ -106,44 +129,45 @@ function ProductPhotoSection({ product }: { product?: Product }) {
         description="Shown on mobile terminals and the product list. Resized and converted automatically."
       />
       <CardBody>
-        {!product ? (
-          <p className="flex items-start gap-2 rounded-md border border-border bg-paper px-4 py-3 text-body text-ink-muted">
-            <Info size={16} className="mt-0.5 shrink-0" />
-            Save the product first, then come back here to add a photo.
-          </p>
-        ) : (
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-            <span className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-paper">
-              {shown ? (
-                // Plain img: the URL is an arbitrary MinIO/S3 host, same reasoning as the store logo.
-                <img src={shown} alt="" className="size-full object-cover" />
-              ) : (
-                <Camera size={22} strokeWidth={2} className="text-ink-muted" />
-              )}
-            </span>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+          <span className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-paper">
+            {shown ? (
+              // Plain img: the URL is an arbitrary MinIO/S3 host, same reasoning as the store logo.
+              <img src={shown} alt="" className="size-full object-cover" />
+            ) : (
+              <Camera size={22} strokeWidth={2} className="text-ink-muted" />
+            )}
+          </span>
 
-            <div className="min-w-0 flex-1 space-y-2">
-              <Field label="Upload a photo" hint="JPEG, PNG or WebP, under 8 MB." required={false}>
-                <FileInput
-                  accept="image/jpeg,image/png,image/webp"
-                  disabled={busy}
-                  onChange={(event) => onPick(event.currentTarget.files?.[0])}
-                />
-              </Field>
-              {product.photoUrl && !preview ? (
-                <button
-                  type="button"
-                  onClick={onRemove}
-                  disabled={busy}
-                  className="flex items-center gap-2 text-caption text-ink-muted hover:text-danger disabled:opacity-50"
-                >
-                  <ImageOff size={14} strokeWidth={2} />
-                  Remove photo
-                </button>
-              ) : null}
-            </div>
+          <div className="min-w-0 flex-1 space-y-2">
+            <Field
+              label="Upload a photo"
+              hint={
+                product
+                  ? "JPEG, PNG or WebP, under 8 MB."
+                  : "JPEG, PNG or WebP, under 8 MB. Uploaded once you save."
+              }
+              required={false}
+            >
+              <FileInput
+                accept="image/jpeg,image/png,image/webp"
+                disabled={busy}
+                onChange={(event) => onPick(event.currentTarget.files?.[0])}
+              />
+            </Field>
+            {(product?.photoUrl && !preview) || (!product && pendingFile) ? (
+              <button
+                type="button"
+                onClick={onRemove}
+                disabled={busy}
+                className="flex items-center gap-2 text-caption text-ink-muted hover:text-danger disabled:opacity-50"
+              >
+                <ImageOff size={14} strokeWidth={2} />
+                Remove photo
+              </button>
+            ) : null}
           </div>
-        )}
+        </div>
       </CardBody>
     </Card>
   );
@@ -163,6 +187,8 @@ export function ProductForm({
   const router = useRouter();
   const [state, action, pending] = useActionState(saveProduct, EMPTY_FORM_STATE);
   const invalidate = useInvalidateProducts();
+  const uploadPhoto = useUploadProductPhoto();
+  const [pendingPhoto, setPendingPhoto] = useState<File | null>(null);
   const locationsQuery = useLocations({ type: "branch" });
   const branches = locationsQuery.data ?? [];
   const singleBranch = branches.length === 1 ? branches[0] : null;
@@ -183,10 +209,27 @@ export function ProductForm({
   }
 
   useEffect(() => {
-    if (state.ok) {
+    if (!state.ok) return;
+
+    async function finish() {
+      if (pendingPhoto && state.id) {
+        try {
+          await uploadPhoto.mutateAsync({ id: state.id, photo: pendingPhoto });
+        } catch (error) {
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "Product saved, but the photo could not be uploaded — add it from the product's edit page.",
+          );
+        }
+      }
       invalidate();
       if (saveRedirectHref) router.push(saveRedirectHref as Route);
     }
+
+    void finish();
+    // pendingPhoto/uploadPhoto/state.id are read once per successful submit, not re-run on their own changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.ok, saveRedirectHref, invalidate, router]);
 
   const priceValue = Number(price);
@@ -259,7 +302,11 @@ export function ProductForm({
         </div>
       </FormSection>
 
-      <ProductPhotoSection product={product} />
+      <ProductPhotoSection
+        product={product}
+        pendingFile={pendingPhoto}
+        onPendingFileChange={setPendingPhoto}
+      />
 
       <FormSection
         title="Pricing"

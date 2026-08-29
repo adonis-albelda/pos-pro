@@ -20,7 +20,7 @@ import {
   Th,
   EmptyState,
 } from "@/components/ui";
-import { Pagination, RecordToolbar } from "@/components/record-list";
+import { Pagination, RecordToolbar, SearchField } from "@/components/record-list";
 import { useLocationMutationsLocked } from "@/components/location-mutations-banner";
 import { indentLabel, type CategoryOption } from "@/lib/category-options";
 import { RestockSheet } from "./restock-sheet";
@@ -88,15 +88,33 @@ export function StockPanel({
   return (
     <>
       <Card>
-        <RecordToolbar
-          searchPlaceholder="Search products…"
-          query={query}
-          addLabel="Restock or adjust"
-          onAdd={() => setRestocking({})}
-          addDisabled={mutationsLocked}
-          exportHref="/api/export/valuation"
-          preserve={preserve}
-        />
+        <div className="flex flex-col gap-4 border-b border-border px-4 py-4 sm:px-6 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0 shrink-0">
+            <h1 className="text-heading-md font-semibold text-ink">Inventory</h1>
+            <p className="mt-1 max-w-xl text-body text-ink-muted">
+              Stock changes are recorded as movements, never edited directly.
+            </p>
+          </div>
+
+          <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center lg:justify-end">
+            <SearchField
+              placeholder="Search products…"
+              defaultValue={query}
+              preserve={preserve}
+              className="sm:max-w-xs"
+            />
+            <RecordToolbar
+              searchPlaceholder=""
+              hideSearch
+              embedded
+              addLabel="Restock or adjust"
+              onAdd={() => setRestocking({})}
+              addDisabled={mutationsLocked}
+              exportHref="/api/export/valuation"
+              preserve={preserve}
+            />
+          </div>
+        </div>
 
         <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-end sm:px-6">
           <label className="block min-w-0 flex-1">

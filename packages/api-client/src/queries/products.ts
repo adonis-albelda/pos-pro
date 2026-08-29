@@ -389,6 +389,14 @@ export interface ProductImportRowPayload {
   stock_quantity?: number | null;
 }
 
+export type ProductImportRollbackStatus = "processing" | "completed" | "failed";
+
+export interface ProductImportRollbackSkip {
+  product_id: string;
+  sku: string | null;
+  reason: string;
+}
+
 export interface ProductImportStatus {
   importId: string;
   status: "queued" | "processing" | "completed" | "failed";
@@ -400,6 +408,29 @@ export interface ProductImportStatus {
   stockAdjusted: number;
   failures: { line: number; sku: string; error: string }[];
   errorMessage: string | null;
+  rollbackStatus: ProductImportRollbackStatus | null;
+  rolledBackAt: string | null;
+  productsRestored: number;
+  productsRemoved: number;
+  stockReversed: number;
+  rollbackSkips: ProductImportRollbackSkip[];
+}
+
+/** Lean history-list row — no rows/failures payload, see getProductImportStatus for the full detail shape. */
+export interface ProductImportSummary {
+  id: string;
+  status: ProductImportStatus["status"];
+  rollbackStatus: ProductImportRollbackStatus | null;
+  totalRows: number;
+  createdCount: number;
+  updatedCount: number;
+  stockAdjustedCount: number;
+  productsRestored: number;
+  productsRemoved: number;
+  stockReversed: number;
+  rolledBackAt: string | null;
+  createdBy: string | null;
+  createdAt: string | null;
 }
 
 export async function startProductImport(
@@ -460,6 +491,12 @@ export async function getProductImportStatus(
       stock_adjusted: number;
       failures: { line: number; sku: string; error: string }[];
       error_message: string | null;
+      rollback_status: ProductImportRollbackStatus | null;
+      rolled_back_at: string | null;
+      products_restored: number;
+      products_removed: number;
+      stock_reversed: number;
+      rollback_skips: ProductImportRollbackSkip[];
     };
   }>(`/products/import/${importId}`);
 
@@ -474,6 +511,69 @@ export async function getProductImportStatus(
     stockAdjusted: data.stock_adjusted,
     failures: data.failures ?? [],
     errorMessage: data.error_message,
+    rollbackStatus: data.rollback_status,
+    rolledBackAt: data.rolled_back_at,
+    productsRestored: data.products_restored,
+    productsRemoved: data.products_removed,
+    stockReversed: data.stock_reversed,
+    rollbackSkips: data.rollback_skips ?? [],
+  };
+}
+
+/** Runs in the background — poll getProductImportStatus for progress, same as a fresh import. */
+export async function rollbackProductImport(
+  client: ApiClient,
+  importId: string,
+): Promise<{ importId: string; rollbackStatus: string }> {
+  const { data } = await client.post<{
+    data: { import_id: string; rollback_status: string };
+  }>(`/products/import/${importId}/rollback`);
+
+  return { importId: data.import_id, rollbackStatus: data.rollback_status };
+}
+
+export async function listProductImports(
+  client: ApiClient,
+  options: { page?: number; pageSize?: number } = {},
+): Promise<{ imports: ProductImportSummary[]; total: number; lastPage: number }> {
+  const page = await client.get<
+    JsonApiPage<{
+      status: ProductImportStatus["status"];
+      rollback_status: ProductImportRollbackStatus | null;
+      total_rows: number;
+      created_count: number;
+      updated_count: number;
+      stock_adjusted_count: number;
+      products_restored_count: number;
+      products_removed_count: number;
+      stock_reversed_count: number;
+      rolled_back_at: string | null;
+      created_by: string | null;
+      created_at: string | null;
+    }>
+  >("/products/import", {
+    page: options.page ?? 1,
+    per_page: options.pageSize ?? 25,
+  });
+
+  return {
+    imports: page.data.map((row) => ({
+      id: row.id,
+      status: row.attributes.status,
+      rollbackStatus: row.attributes.rollback_status,
+      totalRows: row.attributes.total_rows,
+      createdCount: row.attributes.created_count,
+      updatedCount: row.attributes.updated_count,
+      stockAdjustedCount: row.attributes.stock_adjusted_count,
+      productsRestored: row.attributes.products_restored_count,
+      productsRemoved: row.attributes.products_removed_count,
+      stockReversed: row.attributes.stock_reversed_count,
+      rolledBackAt: row.attributes.rolled_back_at,
+      createdBy: row.attributes.created_by,
+      createdAt: row.attributes.created_at,
+    })),
+    total: page.meta?.total ?? page.data.length,
+    lastPage: page.meta?.last_page ?? 1,
   };
 }
 

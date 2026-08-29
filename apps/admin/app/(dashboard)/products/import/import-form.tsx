@@ -8,10 +8,15 @@ import {
   ArrowRight,
   Ban,
   Check,
+  Columns3,
   Download,
+  Eye,
   FolderPlus,
   Info,
+  Loader2,
+  RotateCcw,
   Search,
+  SlidersHorizontal,
   Sparkles,
   TriangleAlert,
   Upload,
@@ -38,11 +43,15 @@ import {
   importIssuesFilename,
   rejectedRowsFromPlan,
 } from "@/lib/product-import-export";
+import { toast } from "sonner";
+import { ApiError } from "@double-a/api-client";
+import { useRollbackProductImport } from "@/lib/query/product-imports";
 import { ColumnMappingForm, ColumnMappingSummary } from "./column-mapping-form";
-import { AiProcessingOverlay } from "@/components/overlay";
+import { AiProcessingOverlay, ConfirmDialog } from "@/components/overlay";
 import { FileColumnsTable } from "./file-columns-table";
 import { ImportInfoCards } from "./import-info-cards";
 import { ImportProgress } from "./import-progress";
+import { RollbackProgress } from "./rollback-progress";
 import { EMPTY_IMPORT_STATE } from "./import-state";
 import { importProducts } from "./actions";
 
@@ -79,24 +88,61 @@ function AiFixButton({ disabled }: { disabled?: boolean }) {
   );
 }
 
+const IMPORT_STEPS: Array<{ label: string; icon: LucideIcon }> = [
+  { label: "Upload", icon: Upload },
+  { label: "Connect columns", icon: Columns3 },
+  { label: "Options", icon: SlidersHorizontal },
+  { label: "Review", icon: Eye },
+  { label: "Importing", icon: Loader2 },
+];
+
+/** Big centered nodes + connecting line, done/current/upcoming — every state change transitions instead of snapping. */
 function StepBar({ step }: { step: number }) {
-  const labels = ["Upload", "Connect columns", "Options", "Review", "Importing"];
   return (
-    <ol className="flex flex-wrap gap-2 text-caption">
-      {labels.map((label, index) => (
-        <li
-          key={label}
-          className={
-            index === step
-              ? "rounded-sm bg-primary/12 px-2 py-1 font-medium text-primary"
-              : index < step
-                ? "rounded-sm px-2 py-1 text-ink-muted"
-                : "rounded-sm px-2 py-1 text-ink-muted/70"
-          }
-        >
-          {index + 1}. {label}
-        </li>
-      ))}
+    <ol className="flex flex-wrap items-start justify-center gap-y-4">
+      {IMPORT_STEPS.map(({ label, icon: Icon }, index) => {
+        const done = index < step;
+        const current = index === step;
+        const spinning = current && label === "Importing";
+        return (
+          <li key={label} className="flex items-center">
+            <div className="flex flex-col items-center gap-2 px-1">
+              <span
+                className={
+                  "flex size-12 shrink-0 items-center justify-center rounded-full transition-all duration-300 ease-out sm:size-14 " +
+                  (done
+                    ? "scale-100 bg-primary text-white"
+                    : current
+                      ? "scale-110 border-2 border-primary text-primary shadow-[0_0_0_4px] shadow-primary/15"
+                      : "scale-100 border border-border text-ink-muted")
+                }
+              >
+                {done ? (
+                  <Check size={22} strokeWidth={3} />
+                ) : (
+                  <Icon size={22} strokeWidth={2} className={spinning ? "animate-spin" : ""} />
+                )}
+              </span>
+              <span
+                className={
+                  "text-center text-caption transition-colors duration-300 " +
+                  (current ? "font-semibold text-ink" : done ? "text-ink-muted" : "text-ink-muted/60")
+                }
+              >
+                {label}
+              </span>
+            </div>
+            {index < IMPORT_STEPS.length - 1 ? (
+              <span
+                className={
+                  "mx-2 mb-6 h-0.5 w-8 shrink-0 rounded-full transition-colors duration-500 sm:w-14 " +
+                  (done ? "bg-primary" : "bg-border")
+                }
+              />
+            ) : null}
+          </li>
+        );
+      })}
     </ol>
   );
 }
@@ -183,6 +229,9 @@ export function ImportForm() {
   const { locationId } = useLocationFilter();
   const locationsQuery = useLocations({ type: "branch" });
   const [finished, setFinished] = useState<ProductImportStatus | null>(null);
+  const rollback = useRollbackProductImport();
+  const [confirmingRollback, setConfirmingRollback] = useState(false);
+  const [rollingBack, setRollingBack] = useState(false);
 
   const plan = state.plan;
   const branches = locationsQuery.data ?? [];
@@ -207,13 +256,17 @@ export function ImportForm() {
     return headers;
   }, [state.mapping, state.sourceHeaders]);
 
-  const currentStep = state.importing
-    ? 4
-    : plan
-      ? 3
-      : state.sourceHeaders.length > 0
-        ? 1
-        : 0;
+  const currentStep = finished
+    ? IMPORT_STEPS.length
+    : state.importing
+      ? 4
+      : plan
+        ? 3
+        : state.mapping && hasStockColumn
+          ? 2
+          : state.sourceHeaders.length > 0
+            ? 1
+            : 0;
 
   const onImportComplete = useCallback((status: ProductImportStatus) => {
     setFinished(status);
@@ -243,6 +296,17 @@ export function ImportForm() {
       importIssuesFilename("failed-save"),
     );
   };
+
+  function confirmRollback() {
+    if (!finished) return;
+    rollback.mutate(finished.importId, {
+      onSuccess: () => setRollingBack(true),
+      onError: (error) => {
+        toast.error(error instanceof ApiError ? error.message : "Could not start the rollback.");
+      },
+    });
+    setConfirmingRollback(false);
+  }
 
   return (
     <div className="space-y-6">
@@ -533,6 +597,28 @@ export function ImportForm() {
               : ""}
           </SuccessNote>
 
+          {rollingBack ? (
+            <RollbackProgress
+              importId={finished.importId}
+              onComplete={(status) => setFinished(status)}
+            />
+          ) : finished.rolledBackAt ? (
+            <p className="text-body text-ink-muted">
+              Rolled back — {finished.productsRestored} restored, {finished.productsRemoved} removed
+              {finished.stockReversed > 0 ? `, ${finished.stockReversed} stock movements reversed` : ""}.
+            </p>
+          ) : (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              icon={RotateCcw}
+              onClick={() => setConfirmingRollback(true)}
+            >
+              Rollback this import
+            </Button>
+          )}
+
           {finished.failures.length > 0 ? (
             <div className="space-y-2 rounded-sm border border-danger/50 bg-danger/8 px-3 py-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -571,6 +657,20 @@ export function ImportForm() {
           </Link>
         </div>
       ) : null}
+
+      <ConfirmDialog
+        open={confirmingRollback}
+        onClose={() => setConfirmingRollback(false)}
+        onConfirm={confirmRollback}
+        pending={rollback.isPending}
+        title="Roll back this import?"
+        description={
+          finished
+            ? `Restores the ${finished.updated} product${finished.updated === 1 ? "" : "s"} it updated, removes the ${finished.created} it created, and reverses any stock it wrote. A product changed again since this import is left alone, not clobbered.`
+            : ""
+        }
+        confirmLabel="Roll back"
+      />
     </div>
   );
 }

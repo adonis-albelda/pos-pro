@@ -23,6 +23,11 @@ export const queryKeys = {
     belowReorder: () => ["products", "below-reorder"] as const,
     count: (params?: Record<string, unknown>) => ["products", "count", params] as const,
   },
+  productImports: {
+    all: ["product-imports"] as const,
+    list: (params?: Record<string, unknown>) => ["product-imports", "list", params] as const,
+    detail: (id: string) => ["product-imports", "detail", id] as const,
+  },
   customers: {
     all: ["customers"] as const,
     list: () => ["customers", "list"] as const,

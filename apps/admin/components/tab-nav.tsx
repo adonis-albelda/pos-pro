@@ -20,6 +20,13 @@ export interface TabItem {
  * back button and a shared link all land on the same view. Filters travel in
  * the same query string, which is why each caller builds its own hrefs.
  */
+/**
+ * Underline style — matches the tab bar on the supplier detail page
+ * (Supplier's info / Products / Purchase orders): active tab gets a
+ * border-primary underline, no pill background. Kept as real links (not
+ * button+state), same reasoning as before — the URL still owns which tab
+ * is open.
+ */
 export function TabNav({
   items,
   active,
@@ -34,14 +41,11 @@ export function TabNav({
   return (
     <div
       className={cx(
-        "-mx-1 overflow-x-auto overscroll-x-contain px-1 [-webkit-overflow-scrolling:touch]",
+        "-mx-1 overflow-x-auto overscroll-x-contain border-b border-border px-1 [-webkit-overflow-scrolling:touch]",
         className,
       )}
     >
-      <nav
-        aria-label={ariaLabel}
-        className="inline-flex min-w-full gap-1 rounded-md border border-border bg-paper p-1 sm:min-w-0"
-      >
+      <nav aria-label={ariaLabel} className="inline-flex min-w-full gap-1 sm:min-w-0">
         {items.map((item) => {
           const current = item.key === active;
           const Icon = item.icon;
@@ -52,11 +56,11 @@ export function TabNav({
               href={item.href as Route}
               aria-current={current ? "page" : undefined}
               className={cx(
-                "inline-flex flex-1 items-center justify-center gap-2 rounded-sm px-3 py-2 text-body font-medium whitespace-nowrap transition-colors sm:flex-none sm:px-4",
+                "flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-body font-medium whitespace-nowrap transition-colors",
                 "focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none",
                 current
-                  ? "bg-surface text-ink shadow-xs"
-                  : "text-ink-muted hover:text-ink",
+                  ? "border-primary text-ink"
+                  : "border-transparent text-ink-muted hover:text-ink",
               )}
             >
               {Icon ? <Icon size={16} strokeWidth={2} /> : null}

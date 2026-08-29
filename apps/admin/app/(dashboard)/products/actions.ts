@@ -136,6 +136,8 @@ export async function saveProduct(
     }
   }
 
+  let createdId: string | null = null;
+
   try {
     if (id) {
       // stock_quantity is deliberately absent: stock only moves through the
@@ -143,6 +145,7 @@ export async function saveProduct(
       await updateProduct(client, id, row);
     } else {
       const created = await createProduct(client, row);
+      createdId = created.id;
 
       if (openingStockLocationId && openingStock !== null && openingStock > 0) {
         await adjustStock(client, created.id, {
@@ -160,5 +163,5 @@ export async function saveProduct(
   revalidatePath("/products");
   revalidatePath("/inventory");
   revalidatePath("/reports");
-  return { error: null, ok: true };
+  return { error: null, ok: true, id: createdId ?? undefined };
 }

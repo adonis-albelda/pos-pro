@@ -15,7 +15,7 @@ import { formatMoney } from "@double-a/shared-types";
 import { DEFAULT_PAGE_SIZE, isInitialQueryLoad } from "@/lib/list-query";
 import { toCategoryOptions } from "@/lib/category-options";
 import { resolveDayWindow } from "@/lib/date-range";
-import { Card, PageHeader, StatCard } from "@/components/ui";
+import { Card, StatCard } from "@/components/ui";
 import { TabNav } from "@/components/tab-nav";
 import { isReason } from "@/lib/inventory-reasons";
 import { useCategories } from "@/lib/query/categories";
@@ -173,31 +173,15 @@ export default function InventoryPage() {
     .map((q2) => q2.error)
     .find((error) => error instanceof Error);
 
-  const header = (
-    <PageHeader
-      icon={Boxes}
-      title="Inventory"
-      description="Stock changes are recorded as movements, never edited directly. Sales from terminals appear here once they sync."
-    />
-  );
-
   if (pending) {
-    return (
-      <div className="space-y-6">
-        {header}
-        <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>
-      </div>
-    );
+    return <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>;
   }
 
   if (isError) {
     return (
-      <div className="space-y-6">
-        {header}
-        <Card className="px-4 py-8 text-center text-body text-danger">
-          {firstError instanceof Error ? firstError.message : "Could not load inventory."}
-        </Card>
-      </div>
+      <Card className="px-4 py-8 text-center text-body text-danger">
+        {firstError instanceof Error ? firstError.message : "Could not load inventory."}
+      </Card>
     );
   }
 
@@ -246,9 +230,6 @@ export default function InventoryPage() {
   if (tab === "movements") {
     return (
       <div className="space-y-6">
-        {header}
-        <TabNav items={tabs} active={tab} />
-
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
             icon={ArrowUpRight}
@@ -279,6 +260,8 @@ export default function InventoryPage() {
           />
         </div>
 
+        <TabNav items={tabs} active={tab} />
+
         <MovementsPanel
           movements={movementPage.movements}
           total={movementPage.total}
@@ -305,9 +288,6 @@ export default function InventoryPage() {
 
   return (
     <div className="space-y-6">
-      {header}
-      <TabNav items={tabs} active={tab} />
-
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           icon={Warehouse}
@@ -337,6 +317,8 @@ export default function InventoryPage() {
           tone={stats.oversold > 0 ? "danger" : "success"}
         />
       </div>
+
+      <TabNav items={tabs} active={tab} />
 
       <StockPanel
         products={stockPage.products}

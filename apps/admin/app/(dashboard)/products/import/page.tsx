@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, Download, FileUp, TableProperties } from "lucide-react";
+import { ArrowLeft, Download, FileUp, History, TableProperties } from "lucide-react";
 import { ButtonLink, Card, CardHeader, PageHeader } from "@/components/ui";
 import { OPTIONAL_COLUMNS, REQUIRED_COLUMNS } from "@/lib/product-import";
 import { ImportForm } from "./import-form";
@@ -33,9 +33,14 @@ export default function ImportProductsPage() {
         title="Import products"
         description="Bring a supplier price list into the catalogue. Connect your file columns, review every row, then import in the background."
         action={
-          <ButtonLink href="/api/export/products-template" icon={Download} download>
-            Download template
-          </ButtonLink>
+          <div className="flex flex-wrap gap-2">
+            <ButtonLink href="/products/import/history" icon={History} variant="secondary">
+              Import history
+            </ButtonLink>
+            <ButtonLink href="/api/export/products-template" icon={Download} download>
+              Download template
+            </ButtonLink>
+          </div>
         }
       />
 

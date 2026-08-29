@@ -16,7 +16,7 @@ import {
   Td,
   Th,
 } from "@/components/ui";
-import { Pagination, RecordToolbar } from "@/components/record-list";
+import { Pagination, RecordToolbar, SearchField } from "@/components/record-list";
 import { useLocationMutationsLocked } from "@/components/location-mutations-banner";
 import { DateRangePicker, type DayWindowValue } from "@/components/date-range-picker";
 import { formatStoreDay, storeDayOf } from "@/lib/date-range";
@@ -105,17 +105,35 @@ export function MovementsPanel({
   return (
     <>
       <Card>
-        <RecordToolbar
-          searchPlaceholder="Search by product or SKU…"
-          query={query}
-          addLabel="Record movement"
-          onAdd={() => setRestocking({})}
-          addDisabled={mutationsLocked}
-          exportHref={
-            exportQuery ? `/api/export/movements?${exportQuery}` : "/api/export/movements"
-          }
-          preserve={filters}
-        />
+        <div className="flex flex-col gap-4 border-b border-border px-4 py-4 sm:px-6 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0 shrink-0">
+            <h1 className="text-heading-md font-semibold text-ink">Movement history</h1>
+            <p className="mt-1 max-w-xl text-body text-ink-muted">
+              Every stock change, newest first.
+            </p>
+          </div>
+
+          <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center lg:justify-end">
+            <SearchField
+              placeholder="Search by product or SKU…"
+              defaultValue={query}
+              preserve={filters}
+              className="sm:max-w-xs"
+            />
+            <RecordToolbar
+              searchPlaceholder=""
+              hideSearch
+              embedded
+              addLabel="Record movement"
+              onAdd={() => setRestocking({})}
+              addDisabled={mutationsLocked}
+              exportHref={
+                exportQuery ? `/api/export/movements?${exportQuery}` : "/api/export/movements"
+              }
+              preserve={filters}
+            />
+          </div>
+        </div>
 
         <div className="space-y-2 border-b border-border px-4 py-3 sm:px-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
