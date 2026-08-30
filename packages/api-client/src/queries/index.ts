@@ -1,3 +1,4 @@
+export * from "./app-version";
 export * from "./products";
 export * from "./categories";
 export * from "./customers";

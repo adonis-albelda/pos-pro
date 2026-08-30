@@ -17,15 +17,22 @@ import { queryKeys } from "@/lib/query/keys";
 /**
  * Admin-enrolled tablets only. Device terminals stay locked to their
  * enrolled branch — no control rendered.
+ *
+ * "header" (default) is the small pill on StoreHeader's primary-color chrome
+ * row — phone hides it there entirely (too crowded next to the sync chip),
+ * tablet keeps it. "drawer" is a full-width light-background list row,
+ * rendered instead inside AccountDrawer on phone.
  */
-export function LocationSwitcher() {
+export function LocationSwitcher({ variant = "header" }: { variant?: "header" | "drawer" }) {
   const { canSwitch, locationId, locations, setLocationId, refresh } = useLocationScope();
   const { replaceAll } = useSync();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
 
-  if (!canSwitch) return null;
+  // Nothing to switch between with one (or zero) active branch — the
+  // picker would just be a dead tap target showing the same name forever.
+  if (!canSwitch || locations.length <= 1) return null;
 
   const selected = locations.find((row) => row.id === locationId) ?? null;
   const title = selected?.name ?? "Choose branch";
@@ -50,6 +57,11 @@ export function LocationSwitcher() {
     }
   }
 
+  const isDrawer = variant === "drawer";
+  const iconColor = isDrawer ? color.primary : color.onPrimary;
+  const titleColor = isDrawer ? color.ink : color.onPrimary;
+  const subtitleColor = isDrawer ? color.inkMuted : "rgba(255,255,255,0.75)";
+
   return (
     <>
       <Pressable
@@ -57,34 +69,51 @@ export function LocationSwitcher() {
         disabled={switching}
         accessibilityRole="button"
         accessibilityLabel={`Location ${title}. Change branch.`}
-        style={({ pressed }) => ({
-          maxWidth: 160,
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 6,
-          paddingHorizontal: space.sm,
-          paddingVertical: 6,
-          borderRadius: radius.sm,
-          backgroundColor: "rgba(255,255,255,0.15)",
-          opacity: pressed || switching ? 0.7 : 1,
-        })}
+        style={({ pressed }) =>
+          isDrawer
+            ? {
+                minHeight: 48,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: space.md,
+                paddingHorizontal: space.md,
+                borderRadius: 14,
+                backgroundColor: pressed ? color.surfacePressed : "transparent",
+                opacity: switching ? 0.7 : 1,
+              }
+            : {
+                maxWidth: 160,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                paddingHorizontal: space.sm,
+                paddingVertical: 6,
+                borderRadius: radius.sm,
+                backgroundColor: "rgba(255,255,255,0.15)",
+                opacity: pressed || switching ? 0.7 : 1,
+              }
+        }
       >
-        <MapPin size={14} color={color.onPrimary} strokeWidth={2.25} />
+        <MapPin size={isDrawer ? 20 : 14} color={iconColor} strokeWidth={isDrawer ? 2 : 2.25} />
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text
             numberOfLines={1}
-            style={{ color: color.onPrimary, fontSize: fontSize.caption, fontWeight: "700" }}
+            style={{
+              color: titleColor,
+              fontSize: isDrawer ? fontSize.bodyLg : fontSize.caption,
+              fontWeight: isDrawer ? "600" : "700",
+            }}
           >
             {title}
           </Text>
-          <Text numberOfLines={1} style={{ color: "rgba(255,255,255,0.75)", fontSize: 10 }}>
+          <Text numberOfLines={1} style={{ color: subtitleColor, fontSize: isDrawer ? fontSize.caption : 10 }}>
             {subtitle}
           </Text>
         </View>
         {switching ? (
-          <ActivityIndicator size="small" color={color.onPrimary} />
+          <ActivityIndicator size="small" color={iconColor} />
         ) : (
-          <ChevronDown size={14} color={color.onPrimary} strokeWidth={2.25} />
+          <ChevronDown size={isDrawer ? 18 : 14} color={iconColor} strokeWidth={2.25} />
         )}
       </Pressable>
 

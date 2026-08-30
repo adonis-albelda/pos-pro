@@ -165,6 +165,14 @@ export default function SellScreen() {
   const { compact, columns } = layout;
 
   const [products, setProducts] = useState<ProductWithEstimatedStock[]>([]);
+  // Pads the last row up to a full `columns` width with invisible fillers —
+  // otherwise a lone leftover tile's flex:1 stretches it across the whole
+  // row instead of sitting at the same width as its row-mates above.
+  const paddedProducts = useMemo<(ProductWithEstimatedStock | null)[]>(() => {
+    const remainder = products.length % columns;
+    if (remainder === 0) return products;
+    return [...products, ...Array<null>(columns - remainder).fill(null)];
+  }, [products, columns]);
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
   const [hasMore, setHasMore] = useState(true);
@@ -969,9 +977,9 @@ export default function SellScreen() {
             />
           ) : (
             <FlatList
-              data={products}
+              data={paddedProducts}
               style={{ flex: 1 }}
-              keyExtractor={(item) => item.id}
+              keyExtractor={(item, index) => item?.id ?? `filler-${index}`}
               // numColumns cannot change on a mounted list, so the column count is
               // part of the key and a rotation remounts the grid.
               key={`grid-${columns}`}
@@ -1003,19 +1011,26 @@ export default function SellScreen() {
                   instruction="Check the spelling, or scan the barcode on the item itself."
                 />
               }
-              renderItem={({ item }) => (
-                <ProductTile
-                  product={item}
-                  inCart={inCart.get(item.id) ?? 0}
-                  compact={compact}
-                  minHeight={layout.tileMinHeight}
-                  padding={space.md}
-                  onPress={() => addToCart(item)}
-                  onRemove={() => changeQuantity(item.id, -1)}
-                  onHoldRemove={() => confirmRemoveLine(item.id, item.name)}
-                  onHoldView={() => setViewingProduct(item)}
-                />
-              )}
+              renderItem={({ item }) =>
+                item ? (
+                  <ProductTile
+                    product={item}
+                    inCart={inCart.get(item.id) ?? 0}
+                    compact={compact}
+                    minHeight={layout.tileMinHeight}
+                    padding={space.md}
+                    onPress={() => addToCart(item)}
+                    onRemove={() => changeQuantity(item.id, -1)}
+                    onHoldRemove={() => confirmRemoveLine(item.id, item.name)}
+                    onHoldView={() => setViewingProduct(item)}
+                  />
+                ) : (
+                  // Invisible filler so an incomplete last row keeps every
+                  // real tile at the same column width instead of the lone
+                  // survivor stretching flex:1 across the whole row.
+                  <View style={{ flex: 1 }} />
+                )
+              }
             />
           )}
 

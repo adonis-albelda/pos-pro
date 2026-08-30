@@ -40,6 +40,14 @@
       "expo-sqlite",
       "expo-secure-store",
       "expo-notifications",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#F5F5F3"
+        }
+      ],
       "./plugins/with-gradle-jvm-args.js",
       [
         "expo-speech-recognition",

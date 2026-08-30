@@ -27,10 +27,12 @@ import {
   type LucideIcon,
 } from "lucide-react-native";
 import { APP_VERSION } from "@/lib/api/client";
+import { useLayout } from "@/lib/layout";
 import { useSession } from "@/lib/session";
 import { useStoreSettings } from "@/lib/store";
 import { useSync } from "@/sync/sync-provider";
 import { Button } from "@/components/ui";
+import { LocationSwitcher } from "@/components/location-switcher";
 import { color, fontSize, space, styles } from "@/theme";
 
 const POS_TABS = [
@@ -79,6 +81,7 @@ export function AccountDrawer({
   const { cashier, lock } = useSession();
   const store = useStoreSettings();
   const { offlineModeEnabled, setOfflineModeEnabled } = useSync();
+  const { compact } = useLayout();
   const { width } = useWindowDimensions();
   const panelWidth = Math.min(width * DRAWER_WIDTH_RATIO, DRAWER_MAX_WIDTH);
 
@@ -218,6 +221,8 @@ export function AccountDrawer({
               />
             ) : null}
           </View>
+
+          {compact ? <LocationSwitcher variant="drawer" /> : null}
 
           <View style={[styles.ledgerLine, { marginVertical: space.xs }]} />
 

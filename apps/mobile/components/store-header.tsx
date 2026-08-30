@@ -107,7 +107,9 @@ export function StoreHeader() {
           {store.name}
         </Text>
 
-        <LocationSwitcher />
+        {/* Phone: too crowded next to store name + sync chip — moved into
+            the account drawer instead. Tablet keeps it here. */}
+        {compact ? null : <LocationSwitcher />}
 
         <Pressable
           onPress={() => router.replace("/pos/sync")}
