@@ -17,8 +17,12 @@ export interface CreateUserInput {
    * "superadmin" cannot be created through this endpoint — platform
    * superadmin creation lives on its own flow, not here.
    */
-  role: Extract<UserRole, "cashier" | "admin" | "device">;
-  /** Required for role "admin"/"device" server-side; ignored/optional for "cashier" (random password generated if omitted). */
+  role: Extract<UserRole, "cashier" | "admin" | "manager" | "driver" | "helper" | "device">;
+  /**
+   * Required for role "admin"/"manager"/"device" server-side; ignored/optional
+   * for "cashier"/"driver"/"helper" (random password generated if omitted —
+   * driver/helper never sign in, so it's simply unusable for them).
+   */
   password?: string | null;
   canSell?: boolean;
   isActive?: boolean;

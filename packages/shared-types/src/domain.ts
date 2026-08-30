@@ -7,7 +7,21 @@
 
 import { roundMoney } from "./money";
 
-export type UserRole = "cashier" | "admin" | "device" | "superadmin";
+/**
+ * manager is a near-admin dashboard/POS login (see User::actsAsAdmin() and
+ * the stricter User::actsAsOwner(), Laravel). driver/helper are staff
+ * records only — they can never sign in to the dashboard or unlock a POS
+ * terminal (LoginController rejects them outright; they're absent from the
+ * PIN-unlock role whitelist).
+ */
+export type UserRole =
+  | "cashier"
+  | "admin"
+  | "manager"
+  | "driver"
+  | "helper"
+  | "device"
+  | "superadmin";
 export type PaymentMethod = "cash" | "gcash" | "card" | "other" | "credit";
 export type SaleStatus = "completed" | "voided" | "refunded";
 /** How the customer takes the goods. Default pickup — delivery is opt-in. */
@@ -405,6 +419,8 @@ export interface Product {
   sku: string | null;
   /** Supplier's item code on price lists — matched on import and photo extract too. */
   supplierSku: string | null;
+  /** Flattened, comma-joined names of every linked supplier — "" if none. */
+  supplierNames: string;
   /** The shelf price. What the attendant charges may be lower — see CartLine. */
   price: number;
   /** What the supplier charges us. The owner's margin hangs off this. */

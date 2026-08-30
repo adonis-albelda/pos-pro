@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Shield, Smartphone, UserRound, Users } from "lucide-react";
+import { HandHelping, Shield, Smartphone, Truck, UserCog, UserRound, Users } from "lucide-react";
 import type { User, UserRole } from "@double-a/shared-types";
 import { matchesQuery, paginateItems, parseListQuery } from "@/lib/list-query";
 import { Card, PageHeader } from "@/components/ui";
@@ -11,9 +11,21 @@ import { useUsers } from "@/lib/query/users";
 
 const USER_TABS: { key: Exclude<UserRole, "superadmin">; label: string }[] = [
   { key: "admin", label: "Admins" },
+  { key: "manager", label: "Managers" },
   { key: "cashier", label: "Cashiers" },
+  { key: "driver", label: "Drivers" },
+  { key: "helper", label: "Helpers" },
   { key: "device", label: "Terminals" },
 ];
+
+const TAB_ICONS: Record<Exclude<UserRole, "superadmin">, typeof UserRound> = {
+  admin: Shield,
+  manager: UserCog,
+  cashier: UserRound,
+  driver: Truck,
+  helper: HandHelping,
+  device: Smartphone,
+};
 
 function buildHref(params: Record<string, string | undefined>): string {
   const search = new URLSearchParams();
@@ -25,7 +37,16 @@ function buildHref(params: Record<string, string | undefined>): string {
 }
 
 function parseTab(raw: string | undefined): Exclude<UserRole, "superadmin"> {
-  if (raw === "admin" || raw === "cashier" || raw === "device") return raw;
+  if (
+    raw === "admin" ||
+    raw === "manager" ||
+    raw === "cashier" ||
+    raw === "driver" ||
+    raw === "helper" ||
+    raw === "device"
+  ) {
+    return raw;
+  }
   return "cashier";
 }
 
@@ -73,7 +94,10 @@ function UsersBody({
 }) {
   const counts = {
     admin: users.filter((user) => user.role === "admin").length,
+    manager: users.filter((user) => user.role === "manager").length,
     cashier: users.filter((user) => user.role === "cashier").length,
+    driver: users.filter((user) => user.role === "driver").length,
+    helper: users.filter((user) => user.role === "helper").length,
     device: users.filter((user) => user.role === "device").length,
   };
 
@@ -84,7 +108,7 @@ function UsersBody({
   const tabs = USER_TABS.map((entry) => ({
     key: entry.key,
     label: entry.label,
-    icon: entry.key === "admin" ? Shield : entry.key === "device" ? Smartphone : UserRound,
+    icon: TAB_ICONS[entry.key],
     count: counts[entry.key],
     href: buildHref({ tab: entry.key, q: q || undefined }),
   }));

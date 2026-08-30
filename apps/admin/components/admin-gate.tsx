@@ -3,7 +3,7 @@
 import type { LucideIcon } from "lucide-react";
 import { TriangleAlert } from "lucide-react";
 import { useCurrentUser } from "@/lib/query/session";
-import { isShopAdmin } from "@/lib/authz";
+import { isShopAdmin, isShopOwner } from "@/lib/authz";
 import { Card, EmptyState, PageHeader } from "@/components/ui";
 
 /**
@@ -20,12 +20,15 @@ export function AdminGate({
   title,
   forbiddenTitle,
   instruction,
+  /** Owner tier (admin/acting superadmin) only — excludes manager. See isShopOwner(). */
+  ownerOnly = false,
   children,
 }: {
   icon: LucideIcon;
   title: string;
   forbiddenTitle: string;
   instruction: string;
+  ownerOnly?: boolean;
   children: React.ReactNode;
 }) {
   const { data: user, isPending } = useCurrentUser();
@@ -39,7 +42,9 @@ export function AdminGate({
     );
   }
 
-  if (!isShopAdmin(user)) {
+  const allowed = ownerOnly ? isShopOwner(user) : isShopAdmin(user);
+
+  if (!allowed) {
     return (
       <div className="space-y-6">
         <PageHeader icon={Icon} title={title} />

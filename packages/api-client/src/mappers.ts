@@ -44,6 +44,7 @@ export interface ProductAttrs {
   description: string | null;
   sku: string | null;
   supplier_sku: string | null;
+  supplier_names?: string;
   price: number;
   stock_quantity: number;
   category: string | null;
@@ -70,6 +71,7 @@ export function toProduct(resource: JsonApiResource<ProductAttrs>): Product {
     description: a.description,
     sku: a.sku,
     supplierSku: a.supplier_sku,
+    supplierNames: a.supplier_names ?? "",
     price: Number(a.price),
     costPrice: Number(a.cost_price),
     stockQuantity: Number(a.stock_quantity),

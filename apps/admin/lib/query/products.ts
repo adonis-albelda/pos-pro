@@ -23,10 +23,14 @@ import { queryKeys } from "./keys";
  * products/page.tsx used to do inline as a Server Component) so callers
  * always get a page that actually has rows on it, without a second useQuery.
  */
-export function useProducts(options: ListProductsPageOptions = {}) {
+export function useProducts(
+  options: ListProductsPageOptions = {},
+  queryOptions: { enabled?: boolean } = {},
+) {
   return useQuery({
     queryKey: queryKeys.products.list({ ...options }),
     placeholderData: keepPreviousData,
+    enabled: queryOptions.enabled ?? true,
     queryFn: async () => {
       const client = getBrowserApiClient();
       const pageSize = options.pageSize ?? 25;

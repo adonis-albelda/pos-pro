@@ -61,6 +61,7 @@ export function ProductsTable({
             <Th>Product</Th>
             <Th>SKU</Th>
             <Th>Category</Th>
+            <Th>Supplier</Th>
             <Th>Sold by</Th>
             <Th numeric>Supplier price</Th>
             <Th numeric>Shelf price</Th>
@@ -91,6 +92,7 @@ export function ProductsTable({
                 </Td>
                 <Td className="num text-ink-muted">{product.sku ?? "—"}</Td>
                 <Td className="text-ink-muted">{product.category ?? "—"}</Td>
+                <Td className="text-ink-muted">{product.supplierNames || "—"}</Td>
                 <Td className="text-ink-muted">{product.unit}</Td>
                 <Td numeric className="text-ink-muted">
                   <Money value={product.costPrice} />

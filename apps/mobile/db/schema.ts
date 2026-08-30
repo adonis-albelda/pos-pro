@@ -320,6 +320,16 @@ const V16_PRODUCT_PHOTO = `
 ALTER TABLE products ADD COLUMN photo_url TEXT;
 `;
 
+/**
+ * v17: flattened, comma-joined names of every supplier linked to a product —
+ * same "server pre-joins it, device just stores the string" spirit as
+ * `category`. A product can carry more than one supplier_products link
+ * server-side; this column is always the joined, read-only display text.
+ */
+const V17_PRODUCT_SUPPLIER_NAMES = `
+ALTER TABLE products ADD COLUMN supplier_names TEXT;
+`;
+
 /** Ordered, append-only. Never edit a step that has shipped. */
 export const MIGRATIONS: Migration[] = [
   { version: 1, sql: V1_INITIAL },
@@ -338,6 +348,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 14, sql: V14_PRODUCT_NOTES },
   { version: 15, sql: V15_AI_SETTINGS },
   { version: 16, sql: V16_PRODUCT_PHOTO },
+  { version: 17, sql: V17_PRODUCT_SUPPLIER_NAMES },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.reduce(

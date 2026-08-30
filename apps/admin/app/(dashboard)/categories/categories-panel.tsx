@@ -76,6 +76,7 @@ export function CategoriesPanel({
         onClose={() => setCreating(false)}
         title="Add a category"
         description="How the shop is laid out — Plumbing / Pipes / PVC."
+        wide
       >
         <CategoryForm
           categories={allCategories}

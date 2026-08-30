@@ -10,6 +10,7 @@ interface ProductRow {
   id: string;
   name: string;
   sku: string | null;
+  supplier_names: string | null;
   price: number;
   cost_price: number;
   stock_quantity: number;
@@ -41,6 +42,7 @@ function toProductWithEstimate(row: ProductRow): ProductWithEstimatedStock {
     sku: row.sku,
     // Not stored locally — mobile POS never displays or matches on this, unlike admin.
     supplierSku: null,
+    supplierNames: row.supplier_names ?? "",
     price: row.price,
     costPrice: row.cost_price,
     stockQuantity: row.stock_quantity,
@@ -74,6 +76,7 @@ const SELECT_SQL = `
 SELECT p.id,
        p.name,
        p.sku,
+       p.supplier_names,
        p.price,
        p.cost_price,
        p.stock_quantity,
@@ -232,13 +235,14 @@ async function insertOrReplaceProduct(
 ): Promise<void> {
   await db.runAsync(
     `INSERT INTO products
-       (id, name, sku, price, cost_price, stock_quantity, category, category_id,
+       (id, name, sku, supplier_names, price, cost_price, stock_quantity, category, category_id,
         unit, allow_decimal, barcode, reorder_point, replenish_quantity, description,
         bulk_price, bulk_min_quantity, is_active, photo_url, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (id) DO UPDATE SET
        name = excluded.name,
        sku = excluded.sku,
+       supplier_names = excluded.supplier_names,
        price = excluded.price,
        cost_price = excluded.cost_price,
        stock_quantity = excluded.stock_quantity,
@@ -258,6 +262,7 @@ async function insertOrReplaceProduct(
     product.id,
     product.name,
     product.sku,
+    product.supplierNames || null,
     product.price,
     product.costPrice,
     product.stockQuantity,
@@ -341,13 +346,14 @@ export async function updateProductStock(productId: string, quantity: number): P
 export async function updateProductCatalogFields(product: Product): Promise<void> {
   await getDb().runAsync(
     `UPDATE products SET
-       name = ?, sku = ?, price = ?, cost_price = ?, category = ?, category_id = ?,
+       name = ?, sku = ?, supplier_names = ?, price = ?, cost_price = ?, category = ?, category_id = ?,
        unit = ?, allow_decimal = ?, barcode = ?, reorder_point = ?, replenish_quantity = ?,
        description = ?, bulk_price = ?, bulk_min_quantity = ?, is_active = ?, photo_url = ?,
        updated_at = ?
      WHERE id = ?`,
     product.name,
     product.sku,
+    product.supplierNames || null,
     product.price,
     product.costPrice,
     product.category,

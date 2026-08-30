@@ -12,10 +12,13 @@ import { useMutation } from "@tanstack/react-query";
 import {
   Eye,
   EyeOff,
+  HandHelping,
   KeyRound,
   Pencil,
   Shield,
   Smartphone,
+  Truck,
+  UserCog,
   UserPlus,
   UserRound,
   Users,
@@ -36,19 +39,33 @@ import { color, fontSize, radius, space, styles } from "@/theme";
  * in packages/api-client/src/queries/users.ts: they self-enroll from the POS
  * setup screen and cannot be created, edited, or PIN-managed from here. */
 type StaffRole = Exclude<UserRole, "superadmin">;
-/** What POST /users actually accepts — see CreateUserInput's GAP comment. */
-type CreatableRole = Extract<UserRole, "cashier" | "admin">;
+/** Every role this screen can create — device self-enrolls and is excluded, matching apps/admin's user-form.tsx. */
+type CreatableRole = Extract<UserRole, "cashier" | "admin" | "manager" | "driver" | "helper">;
 
 const TABS: { key: StaffRole; label: string; icon: LucideIcon }[] = [
   { key: "admin", label: "Admins", icon: Shield },
+  { key: "manager", label: "Managers", icon: UserCog },
   { key: "cashier", label: "Cashiers", icon: UserRound },
+  { key: "driver", label: "Drivers", icon: Truck },
+  { key: "helper", label: "Helpers", icon: HandHelping },
   { key: "device", label: "Terminals", icon: Smartphone },
 ];
 
 const ROLE_ICON: Record<StaffRole, LucideIcon> = {
   admin: Shield,
+  manager: UserCog,
   cashier: UserRound,
+  driver: Truck,
+  helper: HandHelping,
   device: Smartphone,
+};
+
+const ROLE_LABEL: Record<CreatableRole, string> = {
+  admin: "Admin",
+  manager: "Manager",
+  cashier: "Cashier",
+  driver: "Driver",
+  helper: "Helper",
 };
 
 const fieldStyle = {
@@ -112,7 +129,10 @@ export default function AdminUsersScreen() {
     const users = usersQuery.data ?? [];
     return {
       admin: users.filter((u) => u.role === "admin").length,
+      manager: users.filter((u) => u.role === "manager").length,
       cashier: users.filter((u) => u.role === "cashier").length,
+      driver: users.filter((u) => u.role === "driver").length,
+      helper: users.filter((u) => u.role === "helper").length,
       device: users.filter((u) => u.role === "device").length,
     };
   }, [usersQuery.data]);
@@ -274,7 +294,9 @@ export default function AdminUsersScreen() {
                       value={item.isActive}
                       onValueChange={(value) => toggleActive.mutate({ id: item.id, isActive: value })}
                     />
-                    <IconButton icon={KeyRound} label="Set PIN" onPress={() => setSettingPin(item)} />
+                    {item.role === "admin" || item.role === "manager" || item.role === "cashier" ? (
+                      <IconButton icon={KeyRound} label="Set PIN" onPress={() => setSettingPin(item)} />
+                    ) : null}
                     <IconButton icon={Pencil} label="Edit" onPress={() => setEditing(item)} />
                   </>
                 )}
@@ -288,7 +310,7 @@ export default function AdminUsersScreen() {
         {editing ? (
           <UserForm
             user={editing === "new" ? null : editing}
-            defaultRole={tab === "device" ? "cashier" : tab}
+            defaultRole={tab === "device" ? "cashier" : (tab as CreatableRole)}
             onDone={() => setEditing(null)}
           />
         ) : null}
@@ -318,7 +340,13 @@ function UserForm({
 }) {
   const invalidate = useInvalidateUsers();
   const [role, setRole] = useState<CreatableRole>(
-    user?.role === "admin" || user?.role === "cashier" ? user.role : defaultRole,
+    user?.role === "admin" ||
+      user?.role === "manager" ||
+      user?.role === "cashier" ||
+      user?.role === "driver" ||
+      user?.role === "helper"
+      ? user.role
+      : defaultRole,
   );
   const [name, setName] = useState(user?.name ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
@@ -338,14 +366,15 @@ function UserForm({
         return updateUser(client, user.id, { name: trimmedName, email: trimmedEmail, canSell });
       }
 
-      if (role === "admin" && password.length < 8) {
-        throw new Error("Set a password of at least 8 characters so this admin can sign in.");
+      const needsPassword = role === "admin" || role === "manager";
+      if (needsPassword && password.length < 8) {
+        throw new Error("Set a password of at least 8 characters so this person can sign in.");
       }
       return createUser(client, {
         name: trimmedName,
         email: trimmedEmail,
         role,
-        password: role === "admin" ? password : undefined,
+        password: needsPassword ? password : undefined,
         canSell,
       });
     },
@@ -363,15 +392,16 @@ function UserForm({
       </Text>
 
       {user ? null : (
-        <View style={{ flexDirection: "row", gap: space.xs }}>
-          {(["cashier", "admin"] as const).map((r) => {
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space.xs }}>
+          {(["cashier", "admin", "manager", "driver", "helper"] as const).map((r) => {
             const active = r === role;
             return (
               <Pressable
                 key={r}
                 onPress={() => setRole(r)}
                 style={{
-                  flex: 1,
+                  flexGrow: 1,
+                  minWidth: 90,
                   paddingVertical: space.sm,
                   alignItems: "center",
                   borderRadius: radius.sm,
@@ -381,7 +411,7 @@ function UserForm({
                 }}
               >
                 <Text style={{ color: active ? color.primary : color.inkMuted, fontWeight: "600" }}>
-                  {r === "admin" ? "Admin" : "Cashier"}
+                  {ROLE_LABEL[r]}
                 </Text>
               </Pressable>
             );
@@ -406,7 +436,7 @@ function UserForm({
         style={fieldStyle}
       />
 
-      {!user && role === "admin" ? (
+      {!user && (role === "admin" || role === "manager") ? (
         <MaskedField
           value={password}
           onChangeText={setPassword}

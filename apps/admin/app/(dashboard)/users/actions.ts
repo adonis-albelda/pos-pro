@@ -7,9 +7,19 @@ import { createUser, setUserPin, updateUser } from "@double-a/api-client/queries
 import type { FormState } from "@/lib/form-state";
 import { getAuthedClient } from "@/lib/api/session";
 
-/** Roles that unlock a terminal with a PIN. Admins optionally. */
+/** Roles that unlock a terminal with a PIN. Admin/manager optionally. */
 function canUnlockWithPin(role: string): boolean {
-  return role === "cashier" || role === "admin";
+  return role === "cashier" || role === "admin" || role === "manager";
+}
+
+/** Roles that get a real dashboard/terminal password. Driver/helper are staff records only — never sign in. */
+function hasPassword(role: string): boolean {
+  return role === "admin" || role === "manager" || role === "device";
+}
+
+/** Every role this form can actually create/edit — anything else silently falling back to "cashier" was a real bug. */
+function isCreatableRole(role: string): role is "cashier" | "admin" | "manager" | "driver" | "helper" | "device" {
+  return ["cashier", "admin", "manager", "driver", "helper", "device"].includes(role);
 }
 
 function errorMessage(error: unknown): string {
@@ -64,8 +74,8 @@ export async function saveCashier(
     return { error: "Set a PIN so this cashier can unlock a terminal.", ok: false };
   }
 
-  if (!id && role === "admin" && !password) {
-    return { error: "Set a password so this admin can sign in to the dashboard.", ok: false };
+  if (!id && (role === "admin" || role === "manager") && !password) {
+    return { error: "Set a password so this person can sign in to the dashboard.", ok: false };
   }
   if (!id && role === "device" && !password) {
     return { error: "Set a password so this terminal can sign in on the POS app.", ok: false };
@@ -102,8 +112,8 @@ export async function saveCashier(
       const created = await createUser(client, {
         name,
         email,
-        role: role === "admin" || role === "device" ? role : "cashier",
-        password: role === "admin" || role === "device" ? password : undefined,
+        role: isCreatableRole(role) ? role : "cashier",
+        password: hasPassword(role) ? password : undefined,
         canSell,
         locationId: role === "device" ? locationId : undefined,
       });

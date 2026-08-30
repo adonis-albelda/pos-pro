@@ -4,11 +4,14 @@ import { useActionState, useEffect, useState } from "react";
 import {
   Ban,
   CircleCheck,
+  HandHelping,
   KeyRound,
   Lock,
   Pencil,
   Shield,
   Smartphone,
+  Truck,
+  UserCog,
   UserRound,
   type LucideIcon,
 } from "lucide-react";
@@ -37,6 +40,9 @@ import { UserForm } from "./user-form";
 const ROLE_ICONS: Record<string, LucideIcon> = {
   cashier: UserRound,
   admin: Shield,
+  manager: UserCog,
+  driver: Truck,
+  helper: HandHelping,
   device: Smartphone,
 };
 
@@ -141,8 +147,10 @@ export function UsersTable({
         <tbody>
           {users.map((user) => {
             const RoleIcon = ROLE_ICONS[user.role] ?? UserRound;
-            const canResetPassword = user.role === "admin" || user.role === "device";
-            const showSellToggle = user.role !== "device";
+            const canResetPassword =
+              user.role === "admin" || user.role === "manager" || user.role === "device";
+            const showSellToggle =
+              user.role === "cashier" || user.role === "admin" || user.role === "manager";
 
             return (
               <tr
@@ -169,7 +177,7 @@ export function UsersTable({
                   <span className="flex flex-wrap gap-1.5">
                     {!user.isActive ? (
                       <Badge tone="neutral">Inactive</Badge>
-                    ) : !user.canSell && user.role !== "device" ? (
+                    ) : !user.canSell && showSellToggle ? (
                       <Badge tone="warning">Sales off</Badge>
                     ) : (
                       <Badge tone="success">Active</Badge>

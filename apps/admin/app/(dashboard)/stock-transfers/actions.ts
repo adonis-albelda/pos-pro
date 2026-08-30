@@ -25,8 +25,6 @@ export async function saveTransfer(
 ): Promise<FormState> {
   const fromLocationId = String(formData.get("from_location_id") ?? "").trim();
   const toLocationId = String(formData.get("to_location_id") ?? "").trim();
-  const productId = String(formData.get("product_id") ?? "").trim();
-  const quantity = Number(formData.get("quantity") ?? 0);
   const receiveNow = formData.get("receive_now") === "true";
 
   if (!fromLocationId || !toLocationId) {
@@ -35,15 +33,34 @@ export async function saveTransfer(
   if (fromLocationId === toLocationId) {
     return { error: "From and to must differ.", ok: false };
   }
-  if (!productId || !(quantity > 0)) {
-    return { error: "Pick a product and a quantity greater than zero.", ok: false };
+
+  let rawItems: unknown;
+  try {
+    rawItems = JSON.parse(String(formData.get("items_json") ?? "[]"));
+  } catch {
+    return { error: "Something went wrong reading the item list. Try again.", ok: false };
+  }
+
+  const items = (Array.isArray(rawItems) ? rawItems : [])
+    .filter(
+      (item): item is { productId: string; quantity: number } =>
+        typeof item === "object" &&
+        item !== null &&
+        typeof (item as { productId?: unknown }).productId === "string" &&
+        (item as { productId: string }).productId !== "" &&
+        typeof (item as { quantity?: unknown }).quantity === "number" &&
+        (item as { quantity: number }).quantity > 0,
+    );
+
+  if (items.length === 0) {
+    return { error: "Add at least one product with a quantity greater than zero.", ok: false };
   }
 
   try {
     await createStockTransfer(getAuthedClient(), {
       fromLocationId,
       toLocationId,
-      items: [{ productId, quantity }],
+      items,
       receiveNow,
     });
   } catch (error) {

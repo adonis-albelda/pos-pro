@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { Settings, ShieldCheck, Sparkles, Store } from "lucide-react";
 import { Card, CardHeader, PageHeader } from "@/components/ui";
 import { TabNav } from "@/components/tab-nav";
+import { AdminGate } from "@/components/admin-gate";
 import { StoreForm } from "./store-form";
 import { AiSettingsCard } from "./ai-settings-card";
 import { SecuritySettingsCard } from "./security-settings-card";
@@ -30,6 +31,20 @@ function buildHref(tab: SettingsTab): string {
 }
 
 export default function SettingsPage() {
+  return (
+    <AdminGate
+      icon={Settings}
+      title="Company settings"
+      forbiddenTitle="Company settings are for the owner's account"
+      instruction="Only an admin can view or change these — not a manager."
+      ownerOnly
+    >
+      <SettingsPageClient />
+    </AdminGate>
+  );
+}
+
+function SettingsPageClient() {
   const searchParams = useSearchParams();
   const tab = parseTab(searchParams.get("tab") ?? undefined);
   const settingsQuery = useStoreSettings();

@@ -1,10 +1,11 @@
 import { useRef } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Image } from "expo-image";
-import { Minus, Package, Tag, Trash2 } from "lucide-react-native";
+import { Minus, Package, Tag, Trash2, Truck, X } from "lucide-react-native";
 import { formatMoney, stockLevel, type ProductWithEstimatedStock } from "@double-a/shared-types";
 import { color, fontSize, radius, space, styles } from "@/theme";
-import { Badge } from "./ui";
+import { BottomSheet } from "./bottom-sheet";
+import { Badge, IconButton } from "./ui";
 
 export function ProductTile({
   product,
@@ -16,6 +17,7 @@ export function ProductTile({
   onPress,
   onRemove,
   onHoldRemove,
+  onHoldView,
 }: {
   product: ProductWithEstimatedStock;
   inCart: number;
@@ -26,6 +28,8 @@ export function ProductTile({
   onRemove: () => void;
   /** Holding a tile already in the cart drops the whole line, with confirmation. */
   onHoldRemove: () => void;
+  /** Holding a tile not yet in the cart opens the full name/description/supplier detail sheet. */
+  onHoldView: () => void;
 }) {
   // Per product, not one shop-wide number: a box of screws and a length of GI
   // pipe run out at very different counts.
@@ -54,12 +58,14 @@ export function ProductTile({
       onPressIn={() => {
         clearHoldTimer();
         didHold.current = false;
-        if (inCartNow) {
-          holdTimer.current = setTimeout(() => {
-            didHold.current = true;
+        holdTimer.current = setTimeout(() => {
+          didHold.current = true;
+          if (inCartNow) {
             onHoldRemove();
-          }, 500);
-        }
+          } else {
+            onHoldView();
+          }
+        }, 500);
       }}
       onPressOut={clearHoldTimer}
       onPress={() => {
@@ -71,7 +77,9 @@ export function ProductTile({
       }}
       accessibilityRole="button"
       accessibilityLabel={
-        inCartNow ? `${product.name}, hold to remove from cart` : product.name
+        inCartNow
+          ? `${product.name}, hold to remove from cart`
+          : `${product.name}, hold for details`
       }
       style={({ pressed }) => [
         styles.card,
@@ -256,5 +264,105 @@ export function ProductTile({
         ) : null}
       </View>
     </Pressable>
+  );
+}
+
+/**
+ * Holding a tile that isn't in the cart opens this — the tile itself
+ * truncates the name to two lines and never shows a description at all.
+ */
+export function ProductDetailSheet({
+  product,
+  onClose,
+}: {
+  product: ProductWithEstimatedStock | null;
+  onClose: () => void;
+}) {
+  return (
+    <BottomSheet open={product !== null} onClose={onClose} scroll={false}>
+      {product ? (
+        <View style={{ gap: space.md }}>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
+              gap: space.sm,
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "flex-start", gap: space.sm, flex: 1 }}>
+              {product.photoUrl ? (
+                <Image
+                  source={{ uri: product.photoUrl }}
+                  style={{ width: 44, height: 44, borderRadius: radius.sm }}
+                  contentFit="cover"
+                  cachePolicy="disk"
+                />
+              ) : (
+                <View style={[styles.iconWell, { width: 44, height: 44 }]}>
+                  <Package size={20} color={color.primary} strokeWidth={2} />
+                </View>
+              )}
+              <Text
+                style={{
+                  flex: 1,
+                  fontSize: fontSize.headingSm,
+                  fontWeight: "700",
+                  color: color.ink,
+                }}
+              >
+                {product.name}
+              </Text>
+            </View>
+            <IconButton icon={X} label="Close" onPress={onClose} />
+          </View>
+
+          {product.sku ? (
+            <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
+              SKU: {product.sku}
+            </Text>
+          ) : null}
+
+          <Text
+            style={[
+              styles.price,
+              { fontSize: fontSize.headingSm },
+            ]}
+          >
+            {formatMoney(product.price)}
+            {product.unit === "pc" ? "" : ` / ${product.unit}`}
+          </Text>
+
+          {product.description ? (
+            <View style={{ gap: space.xs }}>
+              <Text
+                style={{ fontSize: fontSize.caption, fontWeight: "600", color: color.inkMuted }}
+              >
+                Description
+              </Text>
+              <Text style={{ fontSize: fontSize.body, color: color.ink, lineHeight: 20 }}>
+                {product.description}
+              </Text>
+            </View>
+          ) : null}
+
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: space.xs,
+              paddingTop: space.xs,
+              borderTopWidth: 1,
+              borderTopColor: color.border,
+            }}
+          >
+            <Truck size={14} color={color.inkMuted} strokeWidth={2} />
+            <Text style={{ fontSize: fontSize.caption, color: color.inkMuted, flex: 1 }}>
+              {product.supplierNames || "No supplier on file"}
+            </Text>
+          </View>
+        </View>
+      ) : null}
+    </BottomSheet>
   );
 }

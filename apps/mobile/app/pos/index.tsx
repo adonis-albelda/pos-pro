@@ -98,7 +98,7 @@ import { AiSearchModal } from "@/components/ai-search-modal";
 import { BarcodeScanModal } from "@/components/barcode-scan-modal";
 import { CategoryDialog, type CategoryFilter } from "@/components/category-tabs";
 import { LoadingState } from "@/components/loading-state";
-import { ProductTile } from "@/components/product-tile";
+import { ProductDetailSheet, ProductTile } from "@/components/product-tile";
 import { SelectField } from "@/components/select-field";
 import { VoiceSearchModal } from "@/components/voice-search-modal";
 import {
@@ -215,6 +215,7 @@ export default function SellScreen() {
   const [voiceVocabulary, setVoiceVocabulary] = useState<string[]>([]);
   const [barcodeScanOpen, setBarcodeScanOpen] = useState(false);
   const [aiSearchOpen, setAiSearchOpen] = useState(false);
+  const [viewingProduct, setViewingProduct] = useState<ProductWithEstimatedStock | null>(null);
   // Ranked product ids from the last smart search — while set, the grid shows
   // exactly these (in this order) instead of the normal query/category list.
   const [aiResultIds, setAiResultIds] = useState<string[] | null>(null);
@@ -1012,6 +1013,7 @@ export default function SellScreen() {
                   onPress={() => addToCart(item)}
                   onRemove={() => changeQuantity(item.id, -1)}
                   onHoldRemove={() => confirmRemoveLine(item.id, item.name)}
+                  onHoldView={() => setViewingProduct(item)}
                 />
               )}
             />
@@ -1453,6 +1455,8 @@ export default function SellScreen() {
           setAiResultLabel(label);
         }}
       />
+
+      <ProductDetailSheet product={viewingProduct} onClose={() => setViewingProduct(null)} />
     </View>
   );
 }
