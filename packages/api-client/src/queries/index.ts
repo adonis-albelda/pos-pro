@@ -13,6 +13,7 @@ export * from "./pos";
 export * from "./auth";
 export * from "./sales";
 export * from "./purchase-orders";
+export * from "./goods-receipts";
 export * from "./features";
 export * from "./backups";
 export * from "./ai-settings";

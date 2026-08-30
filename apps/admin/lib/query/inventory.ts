@@ -21,10 +21,14 @@ import { queryKeys } from "./keys";
  * invalidates this too; the underlying data is products, this page is just
  * one more reader of it.
  */
-export function useInventoryProducts(options: { includeInactive?: boolean } = {}) {
+export function useInventoryProducts(
+  options: { includeInactive?: boolean; enabled?: boolean } = {},
+) {
+  const { enabled = true, ...listOptions } = options;
   return useQuery({
-    queryKey: ["products", "catalogue", options] as const,
-    queryFn: () => listProducts(getBrowserApiClient(), options),
+    queryKey: ["products", "catalogue", listOptions] as const,
+    queryFn: () => listProducts(getBrowserApiClient(), listOptions),
+    enabled,
   });
 }
 

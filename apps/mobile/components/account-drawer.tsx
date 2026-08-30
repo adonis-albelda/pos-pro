@@ -4,6 +4,7 @@ import {
   Image,
   Modal,
   Pressable,
+  ScrollView,
   Switch,
   Text,
   View,
@@ -130,10 +131,6 @@ export function AccountDrawer({
           style={{
             width: panelWidth,
             backgroundColor: color.surface,
-            paddingTop: insets.top + space.md,
-            paddingBottom: insets.bottom + space.lg,
-            paddingHorizontal: space.lg,
-            gap: space.lg,
             // Floats over the scrim now — shadow does the separation, not a flat border.
             shadowColor: "#000",
             shadowOpacity: 0.18,
@@ -143,6 +140,27 @@ export function AccountDrawer({
             transform: [{ translateX }],
           }}
         >
+          {/*
+            Everything below scrolls — a fixed-height column with no
+            fallback used to clip "On shift"/Offline mode/End shift/version
+            off-screen on a short viewport (tablet landscape, split-screen,
+            a small phone with the keyboard-avoiding inset eating space).
+            flexGrow:1 on the content container keeps the flex:1 spacer
+            below still pinning the footer to the bottom on a tall screen,
+            same look as before — it only becomes a real scroll once
+            content genuinely doesn't fit.
+          */}
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{
+              flexGrow: 1,
+              paddingTop: insets.top + space.md,
+              paddingBottom: insets.bottom + space.lg,
+              paddingHorizontal: space.lg,
+              gap: space.lg,
+            }}
+            showsVerticalScrollIndicator={false}
+          >
           <View style={{ alignItems: "center", gap: space.sm }}>
             <Pressable
               onPress={onClose}
@@ -317,6 +335,7 @@ export function AccountDrawer({
           <Text style={{ fontSize: fontSize.caption, color: color.inkMuted, textAlign: "center" }}>
             Copyright © 2026 PROPos - All Rights Reserved.
           </Text>
+          </ScrollView>
         </Animated.View>
 
         <Animated.View style={{ flex: 1, opacity: scrim }}>

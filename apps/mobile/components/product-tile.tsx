@@ -172,42 +172,50 @@ export function ProductTile({
         ) : null}
       </View>
 
+      {/*
+        No flexWrap here on purpose — with it, adding the last item's "N in
+        cart" pill on the right could push this row past the tile's width
+        and wrap onto a second line, growing the tile's height and shoving
+        every tile after it in the grid. The stock indicator on the left
+        shrinks/truncates instead, so this row is always exactly one line
+        and the tile's height never changes between empty-cart and in-cart.
+      */}
       <View
         style={{
           flexDirection: "row",
           alignItems: "center",
           gap: space.xs,
-          rowGap: space.xs,
-          flexWrap: "wrap",
           marginTop: space.xs,
         }}
       >
-        {level === "out" ? (
-          <Badge tone="danger" label="Out of stock" />
-        ) : level === "low" ? (
-          <Badge tone="warning" label={`${product.estimatedStock}${unitSuffix} left`} />
-        ) : (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: space.xs }}>
-            <View
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: 3,
-                backgroundColor: color.success,
-              }}
-            />
-            <Text
-              numberOfLines={1}
-              style={[
-                styles.numeric,
-                { fontSize: fontSize.caption, color: color.inkMuted },
-              ]}
-            >
-              {product.estimatedStock}
-              {unitSuffix} in stock
-            </Text>
-          </View>
-        )}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          {level === "out" ? (
+            <Badge tone="danger" label="Out of stock" />
+          ) : level === "low" ? (
+            <Badge tone="warning" label={`${product.estimatedStock}${unitSuffix} left`} />
+          ) : (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: space.xs }}>
+              <View
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: 3,
+                  backgroundColor: color.success,
+                }}
+              />
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.numeric,
+                  { flexShrink: 1, fontSize: fontSize.caption, color: color.inkMuted },
+                ]}
+              >
+                {product.estimatedStock}
+                {unitSuffix} in stock
+              </Text>
+            </View>
+          )}
+        </View>
 
         {/* The count doubles as the take-one-off control: the whole tile adds,
             this corner of it subtracts. Nested Pressable, so a hit here never

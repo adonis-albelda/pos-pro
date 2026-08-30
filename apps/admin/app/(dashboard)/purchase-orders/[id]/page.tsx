@@ -4,7 +4,7 @@ import type { Route } from "next";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Boxes, ListOrdered, Wallet } from "lucide-react";
+import { ArrowLeft, Boxes, ListOrdered, PackageCheck, Wallet } from "lucide-react";
 import {
   formatMoney,
   formatQuantity,
@@ -19,6 +19,7 @@ import { usePurchaseOrder, usePurchaseOrderMovements } from "@/lib/query/purchas
 import { PO_STATUS_TONE } from "@/lib/purchase-order-status";
 import {
   Badge,
+  buttonClass,
   Card,
   CardHeader,
   EmptyState,
@@ -126,6 +127,15 @@ export default function PurchaseOrderDetailPage() {
                 View supplier
               </Link>
               <PdfPreviewButton purchaseOrderId={order.id} filenameSlug={pdfSlug} />
+              {canReceive ? (
+                <Link
+                  href={`/receiving?purchase_order_id=${order.id}` as Route}
+                  className={buttonClass("secondary", "sm")}
+                >
+                  <PackageCheck size={14} strokeWidth={2} />
+                  Receive delivery
+                </Link>
+              ) : null}
               {order.status === "draft" ? (
                 <UpdateStatusButton id={order.id} status="ordered" label="Mark as ordered" />
               ) : null}
