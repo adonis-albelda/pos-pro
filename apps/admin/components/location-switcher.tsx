@@ -59,6 +59,11 @@ export function LocationSwitcher({
     ? selected.address?.trim() || (selected.type === "warehouse" ? "Warehouse" : "Branch")
     : "Company-wide stock and sales";
 
+  // Nothing to switch between — one location and "all locations" mean the
+  // same thing, so the picker is dead weight. Still shown while pending
+  // (count isn't known yet) so it doesn't flash in and out on load.
+  if (!locationsQuery.isPending && locations.length <= 1) return null;
+
   return (
     <div ref={rootRef} className={cx("relative min-w-0", className)}>
       <button

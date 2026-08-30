@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useCallback, useMemo, useState } from "react";
+import { Fragment, useActionState, useCallback, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 import type { ProductImportStatus } from "@double-a/api-client/queries";
 import {
@@ -14,6 +14,7 @@ import {
   FolderPlus,
   Info,
   Loader2,
+  Pencil,
   RotateCcw,
   Search,
   SlidersHorizontal,
@@ -28,6 +29,7 @@ import {
   ErrorNote,
   Field,
   FileInput,
+  Input,
   Select,
   SuccessNote,
   Table,
@@ -38,6 +40,8 @@ import {
 import { useLocationFilter } from "@/components/location-filter-provider";
 import { useLocations } from "@/lib/query/locations";
 import type { ProductStockMode } from "@/lib/product-import";
+import { IMPORT_FIELD_META, type ColumnMapping } from "@/lib/product-import-mapping";
+import { mappedCellsFromSource, sourceCellsForLine } from "@/lib/product-import-fix";
 import {
   downloadImportIssuesCsv,
   importIssuesFilename,
@@ -47,7 +51,7 @@ import { toast } from "sonner";
 import { ApiError } from "@double-a/api-client";
 import { useRollbackProductImport } from "@/lib/query/product-imports";
 import { ColumnMappingForm, ColumnMappingSummary } from "./column-mapping-form";
-import { AiProcessingOverlay, ConfirmDialog } from "@/components/overlay";
+import { AiProcessingOverlay, ConfirmDialog, Dialog } from "@/components/overlay";
 import { FileColumnsTable } from "./file-columns-table";
 import { ImportInfoCards } from "./import-info-cards";
 import { ImportProgress } from "./import-progress";
@@ -85,6 +89,77 @@ function AiFixButton({ disabled }: { disabled?: boolean }) {
         {pending ? "Fixing with AI..." : "Fix with AI"}
       </Button>
     </>
+  );
+}
+
+function SaveEditButton() {
+  const { pending } = useFormStatus();
+  return (
+    <Button type="submit" icon={Check} loading={pending} className="w-full sm:w-auto">
+      {pending ? "Saving..." : "Save changes"}
+    </Button>
+  );
+}
+
+/**
+ * One row, manually corrected — the fields prefill from whatever's actually
+ * in the file's mapped columns for this line (works the same whether the
+ * row currently passes or is turned away), submits as a single-row "fix"
+ * through the same intent="edit_row" path AI fixes use (applyImportRowFixes
+ * + re-plan), so a manual correction and an AI one land the same way.
+ */
+function EditRowDialog({
+  line,
+  csv,
+  mapping,
+  mappingJson,
+  stockMode,
+  stockLocationId,
+  submit,
+  onClose,
+}: {
+  line: number | null;
+  csv: string;
+  mapping: ColumnMapping;
+  mappingJson: string;
+  stockMode: ProductStockMode;
+  stockLocationId: string | null;
+  submit: (formData: FormData) => void;
+  onClose: () => void;
+}) {
+  const prefill = line !== null ? mappedCellsFromSource(sourceCellsForLine(csv, line), mapping) : {};
+
+  return (
+    <Dialog
+      open={line !== null}
+      onClose={onClose}
+      title={line !== null ? `Edit row ${line}` : ""}
+      description="Correct any value below, then save. This writes back into the file the same way an AI fix does."
+    >
+      <form action={submit} onSubmit={onClose} className="space-y-4">
+        <input type="hidden" name="intent" value="edit_row" />
+        <input type="hidden" name="csv" value={csv} />
+        <input type="hidden" name="mapping_json" value={mappingJson} />
+        <input type="hidden" name="stock_mode" value={stockMode} />
+        {stockLocationId ? <input type="hidden" name="location_id" value={stockLocationId} /> : null}
+        <input type="hidden" name="edit_line" value={line ?? ""} />
+
+        <div className="grid max-h-[60vh] gap-3 overflow-y-auto sm:grid-cols-2">
+          {IMPORT_FIELD_META.map((field) => (
+            <Field key={field.key} label={field.label}>
+              <Input name={`edit_${field.key}`} defaultValue={prefill[field.key] ?? ""} />
+            </Field>
+          ))}
+        </div>
+
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <SaveEditButton />
+        </div>
+      </form>
+    </Dialog>
   );
 }
 
@@ -232,6 +307,8 @@ export function ImportForm() {
   const rollback = useRollbackProductImport();
   const [confirmingRollback, setConfirmingRollback] = useState(false);
   const [rollingBack, setRollingBack] = useState(false);
+  const [activeRowTab, setActiveRowTab] = useState<"valid" | "broken">("valid");
+  const [editingLine, setEditingLine] = useState<number | null>(null);
 
   const plan = state.plan;
   const branches = locationsQuery.data ?? [];
@@ -275,6 +352,16 @@ export function ImportForm() {
   const rowCount = plan?.rows.length ?? 0;
   const acceptedCount = plan ? plan.createCount + plan.updateCount : 0;
   const rejectedIssues = plan ? rejectedRowsFromPlan(plan) : [];
+  const visibleRows = useMemo(() => {
+    if (!plan) return [];
+    return activeRowTab === "broken"
+      ? plan.rows.filter((row) => row.action === "reject")
+      : plan.rows.filter((row) => row.action !== "reject");
+  }, [plan, activeRowTab]);
+  const fixByLine = useMemo(
+    () => new Map((state.lastFixes ?? []).map((fix) => [fix.line, fix])),
+    [state.lastFixes],
+  );
 
   const downloadRejected = () => {
     if (!state.csv || rejectedIssues.length === 0) return;
@@ -413,38 +500,6 @@ export function ImportForm() {
 
               {state.error ? <ErrorNote>{state.error}</ErrorNote> : null}
 
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge tone="success" icon={FolderPlus}>
-                  {plan.createCount} new
-                </Badge>
-                <Badge tone="neutral" icon={Upload}>
-                  {plan.updateCount} updated
-                </Badge>
-                <Badge tone={plan.rejectCount > 0 ? "danger" : "neutral"} icon={Ban}>
-                  {plan.rejectCount} turned away
-                </Badge>
-                {plan.rejectCount > 0 ? (
-                  <>
-                    <Button type="button" variant="secondary" size="sm" icon={Download} onClick={downloadRejected}>
-                      Download turned-away rows
-                    </Button>
-                    <form action={submit} className="inline">
-                      <input type="hidden" name="intent" value="ai_fix" />
-                      <input type="hidden" name="csv" value={state.csv} />
-                      <input type="hidden" name="mapping_json" value={mappingJson} />
-                      <input type="hidden" name="stock_mode" value={state.stockMode} />
-                      {stockLocationId ? (
-                        <input type="hidden" name="location_id" value={stockLocationId} />
-                      ) : null}
-                      <AiFixButton />
-                    </form>
-                  </>
-                ) : null}
-                {rowCount > 0 ? (
-                  <Badge tone="neutral">{rowCount.toLocaleString()} rows in file</Badge>
-                ) : null}
-              </div>
-
               {plan.newCategoryPaths.length > 0 ? (
                 <p className="flex items-start gap-2 rounded-sm border border-border bg-paper px-3 py-2 text-body text-ink-muted">
                   <FolderPlus size={16} className="mt-0.5 shrink-0" />
@@ -479,16 +534,97 @@ export function ImportForm() {
                 </p>
               ) : null}
 
-              {plan.rejectCount > 0 ? (
-                <p className="text-caption text-ink-muted">
-                  Turned-away rows can be downloaded as a separate CSV with an{" "}
-                  <span className="font-medium text-ink">import_errors</span> column, or use{" "}
-                  <span className="font-medium text-ink">Fix with AI</span> when SKU and name look
-                  merged or columns shifted. Fix offline and re-upload if AI cannot recover them.
-                </p>
+              {/* Everything below stays put — only the row table (inside
+                  its own bounded, scrollable box) moves when you scroll
+                  through a large file. */}
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone="success" icon={FolderPlus}>
+                  {plan.createCount} new
+                </Badge>
+                <Badge tone="neutral" icon={Upload}>
+                  {plan.updateCount} updated
+                </Badge>
+                <Badge tone={plan.rejectCount > 0 ? "danger" : "neutral"} icon={Ban}>
+                  {plan.rejectCount} turned away
+                </Badge>
+                {rowCount > 0 ? (
+                  <Badge tone="neutral">{rowCount.toLocaleString()} rows in file</Badge>
+                ) : null}
+              </div>
+
+              <div className="flex gap-1 border-b border-border">
+                <button
+                  type="button"
+                  onClick={() => setActiveRowTab("valid")}
+                  aria-current={activeRowTab === "valid" ? "page" : undefined}
+                  className={
+                    "flex items-center gap-1.5 border-b-2 px-3 py-2 text-body font-medium transition-colors " +
+                    (activeRowTab === "valid"
+                      ? "border-primary text-ink"
+                      : "border-transparent text-ink-muted hover:text-ink")
+                  }
+                >
+                  Valid rows
+                  <span
+                    className={
+                      "num rounded-sm px-1.5 py-0.5 text-caption " +
+                      (activeRowTab === "valid" ? "bg-primary/10 text-primary" : "bg-border/60 text-ink-muted")
+                    }
+                  >
+                    {acceptedCount}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveRowTab("broken")}
+                  aria-current={activeRowTab === "broken" ? "page" : undefined}
+                  className={
+                    "flex items-center gap-1.5 border-b-2 px-3 py-2 text-body font-medium transition-colors " +
+                    (activeRowTab === "broken"
+                      ? "border-primary text-ink"
+                      : "border-transparent text-ink-muted hover:text-ink")
+                  }
+                >
+                  Broken products
+                  <span
+                    className={
+                      "num rounded-sm px-1.5 py-0.5 text-caption " +
+                      (activeRowTab === "broken" ? "bg-primary/10 text-primary" : "bg-border/60 text-ink-muted")
+                    }
+                  >
+                    {plan.rejectCount}
+                  </span>
+                </button>
+              </div>
+
+              {activeRowTab === "broken" && plan.rejectCount > 0 ? (
+                <div className="space-y-3">
+                  <p className="text-caption text-ink-muted">
+                    Turned-away rows can be downloaded as a separate CSV with an{" "}
+                    <span className="font-medium text-ink">import_errors</span> column, or use{" "}
+                    <span className="font-medium text-ink">Fix with AI</span> when SKU and name
+                    look merged or columns shifted. Fix offline and re-upload if AI cannot recover
+                    them.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button type="button" variant="secondary" size="sm" icon={Download} onClick={downloadRejected}>
+                      Download turned-away rows
+                    </Button>
+                    <form action={submit} className="inline">
+                      <input type="hidden" name="intent" value="ai_fix" />
+                      <input type="hidden" name="csv" value={state.csv} />
+                      <input type="hidden" name="mapping_json" value={mappingJson} />
+                      <input type="hidden" name="stock_mode" value={state.stockMode} />
+                      {stockLocationId ? (
+                        <input type="hidden" name="location_id" value={stockLocationId} />
+                      ) : null}
+                      <AiFixButton />
+                    </form>
+                  </div>
+                </div>
               ) : null}
 
-              <div className="overflow-hidden rounded-md border border-border">
+              <div className="max-h-[32rem] overflow-y-auto rounded-md border border-border">
                 <Table>
                   <thead>
                     <tr>
@@ -497,47 +633,86 @@ export function ImportForm() {
                       <Th>SKU</Th>
                       <Th>What happens</Th>
                       <Th>Detail</Th>
+                      <Th>&nbsp;</Th>
                     </tr>
                   </thead>
                   <tbody>
-                    {plan.rows.slice(0, 100).map((row) => (
-                      <tr key={row.line}>
-                        <Td numeric className="text-ink-muted">
-                          {row.line}
-                        </Td>
-                        <Td className="font-medium">{row.name || "—"}</Td>
-                        <Td className="num text-ink-muted">{row.sku || "—"}</Td>
-                        <Td>
-                          {row.action === "create" ? (
-                            <Badge tone="success" icon={FolderPlus}>
-                              New product
-                            </Badge>
-                          ) : row.action === "update" ? (
-                            <Badge tone="neutral" icon={Upload}>
-                              Update
-                            </Badge>
-                          ) : (
-                            <Badge tone="danger" icon={Ban}>
-                              Turned away
-                            </Badge>
-                          )}
-                        </Td>
-                        <Td
-                          className={
-                            row.action === "reject" ? "text-danger" : "text-ink-muted"
-                          }
-                        >
-                          {row.notes.join(" ")}
-                        </Td>
-                      </tr>
-                    ))}
+                    {visibleRows.slice(0, 100).map((row) => {
+                      const fix = fixByLine.get(row.line);
+                      return (
+                        <Fragment key={row.line}>
+                          <tr>
+                            <Td numeric className="text-ink-muted">
+                              {row.line}
+                            </Td>
+                            <Td className="font-medium">{row.name || "—"}</Td>
+                            <Td className="num text-ink-muted">{row.sku || "—"}</Td>
+                            <Td>
+                              {row.action === "create" ? (
+                                <Badge tone="success" icon={FolderPlus}>
+                                  New product
+                                </Badge>
+                              ) : row.action === "update" ? (
+                                <Badge tone="neutral" icon={Upload}>
+                                  Update
+                                </Badge>
+                              ) : (
+                                <Badge tone="danger" icon={Ban}>
+                                  Turned away
+                                </Badge>
+                              )}
+                            </Td>
+                            <Td
+                              className={
+                                row.action === "reject" ? "text-danger" : "text-ink-muted"
+                              }
+                            >
+                              {row.notes.join(" ")}
+                            </Td>
+                            <Td>
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                icon={Pencil}
+                                onClick={() => setEditingLine(row.line)}
+                              >
+                                Edit
+                              </Button>
+                            </Td>
+                          </tr>
+                          {fix ? (
+                            <tr className="bg-primary-tint/40">
+                              <Td />
+                              <Td colSpan={5}>
+                                <div className="flex items-start gap-2 py-1 text-caption text-ink-muted">
+                                  <Sparkles size={13} className="mt-0.5 shrink-0 text-primary" />
+                                  <span>
+                                    <span className="font-medium text-ink">Updated: </span>
+                                    {Object.entries(fix.fields)
+                                      .map(([key, value]) => {
+                                        const label =
+                                          IMPORT_FIELD_META.find((meta) => meta.key === key)?.label ??
+                                          key;
+                                        return `${label}: ${value}`;
+                                      })
+                                      .join(" · ")}
+                                    {fix.reason ? ` (${fix.reason})` : ""}
+                                  </span>
+                                </div>
+                              </Td>
+                            </tr>
+                          ) : null}
+                        </Fragment>
+                      );
+                    })}
                   </tbody>
                 </Table>
               </div>
 
-              {plan.rows.length > 100 ? (
+              {visibleRows.length > 100 ? (
                 <p className="text-caption text-ink-muted">
-                  Showing first 100 rows of {plan.rows.length.toLocaleString()}.
+                  Showing first 100 rows of {visibleRows.length.toLocaleString()}.
                 </p>
               ) : null}
 
@@ -546,12 +721,14 @@ export function ImportForm() {
                   <input type="hidden" name="intent" value="import" />
                   <input type="hidden" name="csv" value={state.csv} />
                   <input type="hidden" name="mapping_json" value={mappingJson} />
-                  <StockOptionsForm
-                    stockMode={state.stockMode}
-                    stockLocationId={stockLocationId}
-                    branches={branches}
-                    hasStockColumn={hasStockColumn}
-                  />
+                  {/* Stock mode was already chosen once, above, at the mapping
+                      step — this form just carries the same values forward
+                      in its own POST body rather than showing the picker a
+                      second time. */}
+                  <input type="hidden" name="stock_mode" value={state.stockMode} />
+                  {stockLocationId ? (
+                    <input type="hidden" name="location_id" value={stockLocationId} />
+                  ) : null}
 
                   <div className="flex flex-wrap items-center gap-3">
                     <SubmitButton
@@ -566,10 +743,29 @@ export function ImportForm() {
                           !stockLocationId)
                       }
                     />
+                    {plan.rejectCount > 0 ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        icon={Ban}
+                        onClick={() => setActiveRowTab("broken")}
+                      >
+                        Fix broken rows first ({plan.rejectCount})
+                      </Button>
+                    ) : null}
                     <span className="text-caption text-ink-muted">
                       Import runs in the background — you will see progress below.
                     </span>
                   </div>
+
+                  {plan.rejectCount > 0 ? (
+                    <p className="text-caption text-ink-muted">
+                      {plan.rejectCount} row{plan.rejectCount === 1 ? "" : "s"} still turned
+                      away. Import now brings in only the {acceptedCount.toLocaleString()} valid
+                      rows and skips those — or fix them first (Fix with AI, or edit one by one)
+                      and import everything together.
+                    </p>
+                  ) : null}
 
                   {state.error ? <ErrorNote>{state.error}</ErrorNote> : null}
                 </form>
@@ -656,6 +852,19 @@ export function ImportForm() {
             <ArrowRight size={14} />
           </Link>
         </div>
+      ) : null}
+
+      {state.mapping ? (
+        <EditRowDialog
+          line={editingLine}
+          csv={state.csv}
+          mapping={state.mapping}
+          mappingJson={mappingJson}
+          stockMode={state.stockMode}
+          stockLocationId={stockLocationId}
+          submit={submit}
+          onClose={() => setEditingLine(null)}
+        />
       ) : null}
 
       <ConfirmDialog

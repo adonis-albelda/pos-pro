@@ -222,6 +222,68 @@ export async function extractProductsFromPhoto(
   }));
 }
 
+export interface FixImportRowsInput {
+  fieldGuide: string;
+  rejected: Array<{
+    line: number;
+    errors: string[];
+    sourceCells: Record<string, string>;
+    mapped: Partial<Record<string, string>>;
+  }>;
+  samples: Array<{
+    line: number;
+    sourceCells: Record<string, string>;
+    mapped: Partial<Record<string, string>>;
+  }>;
+}
+
+export interface ImportRowFix {
+  line: number;
+  fields: Record<string, string>;
+  reason?: string;
+}
+
+/**
+ * AI fix-suggestions for CSV import rows the wizard turned away — runs
+ * server-side via Laravel AI (App\Actions\FixImportRowsAction), gated by the
+ * same product_photo_ai feature flag and weekly quota as photo extraction.
+ * Stateless: nothing about the rejected rows is persisted, this just returns
+ * whatever fixes the AI could confidently suggest.
+ */
+export async function fixImportRows(
+  client: ApiClient,
+  input: FixImportRowsInput,
+): Promise<{ fixes: ImportRowFix[]; attempted: number }> {
+  const { data } = await client.post<{
+    data: {
+      fixes: Array<{ line: number; fields: Record<string, string>; reason: string | null }>;
+      attempted: number;
+    };
+  }>("/products/import/fix-rows", {
+    field_guide: input.fieldGuide,
+    rejected: input.rejected.map((row) => ({
+      line: row.line,
+      errors: row.errors,
+      source_cells: row.sourceCells,
+      mapped: row.mapped,
+    })),
+    samples: input.samples.map((row) => ({
+      line: row.line,
+      source_cells: row.sourceCells,
+      mapped: row.mapped,
+    })),
+  });
+
+  return {
+    fixes: data.fixes.map((fix) => ({
+      line: fix.line,
+      fields: fix.fields,
+      reason: fix.reason ?? undefined,
+    })),
+    attempted: data.attempted,
+  };
+}
+
 /**
  * No batch-by-id endpoint on the Tally API. Falls back to N parallel
  * `GET /products/{id}` calls — fine for a cart-sized list, not for a large

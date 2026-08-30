@@ -11,12 +11,14 @@ import {
 } from "@double-a/api-client/queries";
 import type { ProductStockMode } from "@/lib/product-import";
 import {
+  IMPORT_FIELDS,
   prepareImportTable,
   readColumnMapping,
+  type ImportField,
 } from "@/lib/product-import-mapping";
 import { planProductImportFromTable } from "@/lib/product-import";
 import { suggestImportRowFixes } from "@/lib/product-import-ai-fix";
-import { applyImportRowFixes } from "@/lib/product-import-fix";
+import { applyImportRowFixes, type ImportRowFix } from "@/lib/product-import-fix";
 import { getAuthedClient } from "@/lib/api/session";
 import { EMPTY_IMPORT_STATE, type ImportState } from "./import-state";
 
@@ -89,7 +91,8 @@ export async function importProducts(
   const writing = intent === "import";
   const remapping = intent === "map";
   const aiFixing = intent === "ai_fix";
-  const csv = writing || remapping || aiFixing
+  const editingRow = intent === "edit_row";
+  const csv = writing || remapping || aiFixing || editingRow
     ? String(formData.get("csv") ?? "")
     : await readUpload(formData);
 
@@ -105,7 +108,8 @@ export async function importProducts(
     };
   }
 
-  const mapping = remapping || writing || aiFixing ? readColumnMapping(formData) : undefined;
+  const mapping =
+    remapping || writing || aiFixing || editingRow ? readColumnMapping(formData) : undefined;
   const prepared = prepareImportTable(csv, mapping);
   const ignored = ignoredSourceColumns(prepared.sourceHeaders, prepared.mapping);
 
@@ -163,7 +167,7 @@ export async function importProducts(
     };
   }
 
-  if (!aiFixing && hasStockColumn && stockMode !== "skip" && !stockLocationId) {
+  if (!aiFixing && !editingRow && hasStockColumn && stockMode !== "skip" && !stockLocationId) {
     return {
       ...EMPTY_IMPORT_STATE,
       csv,
@@ -181,37 +185,21 @@ export async function importProducts(
     };
   }
 
-  if (aiFixing) {
-    const rejected = plan.rows.filter((row) => row.action === "reject");
-    if (rejected.length === 0) {
-      return {
-        ...EMPTY_IMPORT_STATE,
-        csv,
-        plan,
-        sourceHeaders: prepared.sourceHeaders,
-        mapping: prepared.mapping,
-        sampleRow: prepared.sampleRow,
-        ignoredSourceColumns: ignored,
-        stockMode,
-        locationId: stockLocationId,
-        error: "No turned-away rows to fix.",
-      };
-    }
+  if (aiFixing || editingRow) {
+    let fixes: ImportRowFix[];
+    let attempted = 0;
 
-    try {
-      const acceptedSamples = plan.rows
-        .filter((row) => row.action !== "reject")
-        .slice(0, 5)
-        .map((row) => ({ line: row.line }));
+    if (editingRow) {
+      const line = Number(formData.get("edit_line") ?? 0);
+      const fields: Partial<Record<ImportField, string>> = {};
+      for (const field of IMPORT_FIELDS) {
+        const raw = formData.get(`edit_${field}`);
+        if (typeof raw === "string" && raw.trim() !== "") {
+          fields[field] = raw.trim();
+        }
+      }
 
-      const { fixes, attempted } = await suggestImportRowFixes({
-        csv,
-        mapping: prepared.mapping,
-        rejected: rejected.map((row) => ({ line: row.line, errors: row.notes })),
-        acceptedSamples,
-      });
-
-      if (fixes.length === 0) {
+      if (!line || Object.keys(fields).length === 0) {
         return {
           ...EMPTY_IMPORT_STATE,
           csv,
@@ -222,10 +210,74 @@ export async function importProducts(
           ignoredSourceColumns: ignored,
           stockMode,
           locationId: stockLocationId,
-          error: `AI could not confidently fix any of the ${attempted} turned-away rows.`,
+          error: "Nothing to save.",
         };
       }
 
+      fixes = [{ line, fields }];
+    } else {
+      const rejected = plan.rows.filter((row) => row.action === "reject");
+      if (rejected.length === 0) {
+        return {
+          ...EMPTY_IMPORT_STATE,
+          csv,
+          plan,
+          sourceHeaders: prepared.sourceHeaders,
+          mapping: prepared.mapping,
+          sampleRow: prepared.sampleRow,
+          ignoredSourceColumns: ignored,
+          stockMode,
+          locationId: stockLocationId,
+          error: "No turned-away rows to fix.",
+        };
+      }
+
+      try {
+        const acceptedSamples = plan.rows
+          .filter((row) => row.action !== "reject")
+          .slice(0, 5)
+          .map((row) => ({ line: row.line }));
+
+        const result = await suggestImportRowFixes({
+          csv,
+          mapping: prepared.mapping,
+          rejected: rejected.map((row) => ({ line: row.line, errors: row.notes })),
+          acceptedSamples,
+        });
+        fixes = result.fixes;
+        attempted = result.attempted;
+
+        if (fixes.length === 0) {
+          return {
+            ...EMPTY_IMPORT_STATE,
+            csv,
+            plan,
+            sourceHeaders: prepared.sourceHeaders,
+            mapping: prepared.mapping,
+            sampleRow: prepared.sampleRow,
+            ignoredSourceColumns: ignored,
+            stockMode,
+            locationId: stockLocationId,
+            error: `AI could not confidently fix any of the ${attempted} turned-away rows.`,
+          };
+        }
+      } catch (error) {
+        return {
+          ...EMPTY_IMPORT_STATE,
+          csv,
+          plan,
+          sourceHeaders: prepared.sourceHeaders,
+          mapping: prepared.mapping,
+          sampleRow: prepared.sampleRow,
+          ignoredSourceColumns: ignored,
+          stockMode,
+          locationId: stockLocationId,
+          error: error instanceof Error ? error.message : "AI fix could not run.",
+        };
+      }
+    }
+
+    try {
       const fixedCsv = applyImportRowFixes(csv, prepared.mapping, fixes);
       const fixedPrepared = prepareImportTable(fixedCsv, prepared.mapping);
       if (!fixedPrepared.table) {
@@ -241,7 +293,9 @@ export async function importProducts(
           ),
           stockMode,
           locationId: stockLocationId,
-          error: "Fixed file could not be read back. Try downloading turned-away rows instead.",
+          error: editingRow
+            ? "Edited file could not be read back."
+            : "Fixed file could not be read back. Try downloading turned-away rows instead.",
         };
       }
 
@@ -284,8 +338,10 @@ export async function importProducts(
         ),
         stockMode,
         locationId: stockLocationId,
-        notice:
-          recovered > 0
+        lastFixes: fixes,
+        notice: editingRow
+          ? `Saved your changes to line ${fixes[0]!.line}.`
+          : recovered > 0
             ? `AI fixed ${fixes.length} row${fixes.length === 1 ? "" : "s"} — ${recovered} now pass preview. Review before importing.`
             : `AI updated ${fixes.length} row${fixes.length === 1 ? "" : "s"}, but they still need manual edits. Check the preview.`,
       };
@@ -300,7 +356,7 @@ export async function importProducts(
         ignoredSourceColumns: ignored,
         stockMode,
         locationId: stockLocationId,
-        error: error instanceof Error ? error.message : "AI fix could not run.",
+        error: error instanceof Error ? error.message : "Could not save the change.",
       };
     }
   }

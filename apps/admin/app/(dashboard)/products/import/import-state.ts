@@ -8,6 +8,13 @@ export interface ImportRowFailure {
   error: string;
 }
 
+/** One row's applied changes — from an AI fix batch or a single manual edit, same shape either way. */
+export interface AppliedRowFix {
+  line: number;
+  fields: Partial<Record<string, string>>;
+  reason?: string;
+}
+
 export interface ImportState extends FormState {
   csv: string;
   plan: ImportPlan | null;
@@ -26,6 +33,8 @@ export interface ImportState extends FormState {
   stockAdjusted: number | null;
   failures: ImportRowFailure[] | null;
   notice: string | null;
+  /** Rows changed by the most recent AI fix or manual edit — shown inline under each affected row. Cleared on any other action (upload, remap, import). */
+  lastFixes: AppliedRowFix[] | null;
 }
 
 export const EMPTY_IMPORT_STATE: ImportState = {
@@ -48,4 +57,5 @@ export const EMPTY_IMPORT_STATE: ImportState = {
   stockAdjusted: null,
   failures: null,
   notice: null,
+  lastFixes: null,
 };

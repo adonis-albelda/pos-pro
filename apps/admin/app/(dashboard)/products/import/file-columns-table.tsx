@@ -16,13 +16,13 @@ export function FileColumnsTable({
   if (headers.length === 0) return null;
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
+    <details className="space-y-3">
+      <summary className="flex cursor-pointer flex-wrap items-center gap-2">
         <p className="text-body font-medium text-ink">Columns in your file</p>
         <Badge tone="neutral">{headers.length} columns</Badge>
-      </div>
+      </summary>
 
-      <div className="overflow-hidden rounded-md border border-border">
+      <div className="mt-3 overflow-hidden rounded-md border border-border">
         <Table>
           <thead>
             <tr>
@@ -53,6 +53,6 @@ export function FileColumnsTable({
           </tbody>
         </Table>
       </div>
-    </div>
+    </details>
   );
 }
