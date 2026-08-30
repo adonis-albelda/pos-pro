@@ -2,6 +2,7 @@
 
 import { useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import type { AiPlanId, CompanyStats, InvoiceNumberMode } from "@double-a/shared-types";
 import {
@@ -140,8 +141,9 @@ export function useCreateCompany() {
       await bootstrapCompanyAdmin(company.id, input.adminPassword, input.adminPin);
       return company;
     },
-    onSuccess: async () => {
+    onSuccess: async (company) => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.companies.stats() });
+      toast.success(`${company.name} created.`);
       router.push("/platform");
     },
   });
