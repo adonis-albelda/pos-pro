@@ -65,6 +65,14 @@ export class ApiError extends Error {
   get isConflict(): boolean {
     return this.status === 409;
   }
+
+  get isTooManyRequests(): boolean {
+    return this.status === 429;
+  }
+
+  get isServerError(): boolean {
+    return this.status >= 500;
+  }
 }
 
 export interface RequestOptions {

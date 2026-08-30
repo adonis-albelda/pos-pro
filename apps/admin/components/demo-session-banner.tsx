@@ -2,11 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Clock } from "lucide-react";
+import { Clock, TriangleAlert } from "lucide-react";
 import { DemoAccount } from "@double-a/shared-types";
 import { endBrowserSession, readCookie } from "@/lib/api/browser-client";
 import { SESSION_EXPIRES_AT_COOKIE } from "@/lib/api/cookie-names";
 import { useCurrentUser } from "@/lib/query/session";
+import { onRateLimited } from "@/lib/rate-limit-notice";
+
+/** How long the escalated "you're being throttled" state stays up after the last 429/5xx before reverting to the normal countdown look. */
+const RATE_LIMIT_NOTICE_MS = 8_000;
 
 function formatRemaining(ms: number): string {
   if (ms <= 0) return "0s";
@@ -37,6 +41,23 @@ export function DemoSessionBanner() {
   const [remainingMs, setRemainingMs] = useState<number | null>(null);
 
   const isDemo = user?.isDemo ?? false;
+  const [rateLimited, setRateLimited] = useState(false);
+
+  useEffect(() => {
+    if (!isDemo) return;
+
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const unsubscribe = onRateLimited(() => {
+      setRateLimited(true);
+      clearTimeout(timeout);
+      timeout = setTimeout(() => setRateLimited(false), RATE_LIMIT_NOTICE_MS);
+    });
+
+    return () => {
+      unsubscribe();
+      clearTimeout(timeout);
+    };
+  }, [isDemo]);
 
   useEffect(() => {
     if (!isDemo) return;
@@ -61,12 +82,26 @@ export function DemoSessionBanner() {
 
   if (!isDemo || remainingMs === null) return null;
 
+  if (rateLimited) {
+    return (
+      <div className="flex items-center justify-center gap-2 border-b border-danger/50 bg-danger/15 px-4 py-2 text-center text-caption font-medium text-danger">
+        <TriangleAlert size={14} strokeWidth={2} className="shrink-0" />
+        <span>
+          Please slow down — this is a shared demo account, so we intentionally limit how fast it
+          can be used to keep the server available for every other demo running at the same time.
+          Wait a few seconds and try again.
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-center justify-center gap-2 border-b border-warning/50 bg-warning/18 px-4 py-2 text-center text-caption font-medium text-[#8a6516]">
       <Clock size={14} strokeWidth={2} className="shrink-0" />
       <span>
-        Demo account — this app is available for {DemoAccount.SESSION_DAYS} days for demo
-        purposes only. Time remaining: <span className="num font-semibold">{formatRemaining(remainingMs)}</span>
+        Demo account — available for {DemoAccount.SESSION_DAYS} days, demo purposes only. Please
+        don&apos;t navigate too fast — we intentionally throttle demo sessions to protect the
+        server. Time remaining: <span className="num font-semibold">{formatRemaining(remainingMs)}</span>
       </span>
     </div>
   );

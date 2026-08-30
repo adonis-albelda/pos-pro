@@ -1,7 +1,15 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from "@tanstack/react-query";
+import { ApiError } from "@double-a/api-client";
+import { notifyRateLimited } from "@/lib/rate-limit-notice";
+
+function handleGlobalError(error: unknown): void {
+  if (error instanceof ApiError && (error.isTooManyRequests || error.isServerError)) {
+    notifyRateLimited();
+  }
+}
 
 /**
  * One QueryClient per browser session, created inside the component (not at
@@ -22,6 +30,8 @@ export function QueryProvider({ children }: { children: ReactNode }) {
   const [client] = useState(
     () =>
       new QueryClient({
+        queryCache: new QueryCache({ onError: handleGlobalError }),
+        mutationCache: new MutationCache({ onError: handleGlobalError }),
         defaultOptions: {
           queries: {
             staleTime: 5 * 60_000,
