@@ -1,3 +1,4 @@
+import { ChevronRight } from "lucide-react";
 import { Badge, Table, Td, Th } from "@/components/ui";
 
 function formatHeader(header: string): string {
@@ -16,8 +17,12 @@ export function FileColumnsTable({
   if (headers.length === 0) return null;
 
   return (
-    <details className="space-y-3">
-      <summary className="flex cursor-pointer flex-wrap items-center gap-2">
+    <details className="group space-y-3">
+      <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 [&::-webkit-details-marker]:hidden">
+        <ChevronRight
+          size={16}
+          className="shrink-0 text-ink-muted transition-transform group-open:rotate-90"
+        />
         <p className="text-body font-medium text-ink">Columns in your file</p>
         <Badge tone="neutral">{headers.length} columns</Badge>
       </summary>

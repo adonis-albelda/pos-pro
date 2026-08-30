@@ -1,7 +1,7 @@
 "use client";
 
 import { useFormStatus } from "react-dom";
-import { Columns3, type LucideIcon } from "lucide-react";
+import { ChevronRight, Columns3, type LucideIcon } from "lucide-react";
 import { Button, Select, Table, Td, Th } from "@/components/ui";
 import {
   IMPORT_FIELD_META,
@@ -81,53 +81,59 @@ export function ColumnMappingForm({
       {stockMode ? <input type="hidden" name="stock_mode" value={stockMode} /> : null}
       {locationId ? <input type="hidden" name="location_id" value={locationId} /> : null}
 
-      <p className="flex items-start gap-2 text-body text-ink-muted">
-        <Columns3 size={16} className="mt-0.5 shrink-0" />
-        <span>
-          Match each catalogue field to a column from your file. Column order does not
-          matter. We guessed the obvious ones — adjust anything that looks wrong.
-        </span>
-      </p>
+      <details className="group space-y-3">
+        <summary className="flex cursor-pointer list-none items-start gap-2 text-body text-ink-muted [&::-webkit-details-marker]:hidden">
+          <ChevronRight
+            size={16}
+            className="mt-0.5 shrink-0 transition-transform group-open:rotate-90"
+          />
+          <Columns3 size={16} className="mt-0.5 shrink-0" />
+          <span>
+            Match each catalogue field to a column from your file. Column order does not
+            matter. We guessed the obvious ones — adjust anything that looks wrong.
+          </span>
+        </summary>
 
-      <div className="overflow-hidden rounded-md border border-border">
-        <Table>
-          <thead>
-            <tr>
-              <Th>Catalogue field</Th>
-              <Th>File column</Th>
-              <Th>Sample value</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {IMPORT_FIELD_META.map((field) => {
-              const source = mapping[field.key];
-              const sample = source ? (sampleRow[source] ?? "—") : "—";
+        <div className="mt-3 overflow-hidden rounded-md border border-border">
+          <Table>
+            <thead>
+              <tr>
+                <Th>Catalogue field</Th>
+                <Th>File column</Th>
+                <Th>Sample value</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {IMPORT_FIELD_META.map((field) => {
+                const source = mapping[field.key];
+                const sample = source ? (sampleRow[source] ?? "—") : "—";
 
-              return (
-                <tr key={field.key}>
-                  <Td>
-                    <span className="font-medium text-ink">{field.label}</span>
-                    {field.required ? (
-                      <span className="ml-1 text-caption text-danger">Required</span>
-                    ) : null}
-                    <p className="mt-0.5 text-caption text-ink-muted">{field.hint}</p>
-                  </Td>
-                  <Td>
-                    <MappingSelect
-                      fieldKey={field.key}
-                      sourceHeaders={sourceHeaders}
-                      value={mapping[field.key]}
-                    />
-                  </Td>
-                  <Td className="max-w-xs truncate text-ink-muted" title={sample}>
-                    {sample || "—"}
-                  </Td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </Table>
-      </div>
+                return (
+                  <tr key={field.key}>
+                    <Td>
+                      <span className="font-medium text-ink">{field.label}</span>
+                      {field.required ? (
+                        <span className="ml-1 text-caption text-danger">Required</span>
+                      ) : null}
+                      <p className="mt-0.5 text-caption text-ink-muted">{field.hint}</p>
+                    </Td>
+                    <Td>
+                      <MappingSelect
+                        fieldKey={field.key}
+                        sourceHeaders={sourceHeaders}
+                        value={mapping[field.key]}
+                      />
+                    </Td>
+                    <Td className="max-w-xs truncate text-ink-muted" title={sample}>
+                      {sample || "—"}
+                    </Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </Table>
+        </div>
+      </details>
 
       <MappingSubmitButton icon={submitIcon} label={submitLabel} busyLabel={busyLabel} />
     </form>
