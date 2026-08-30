@@ -330,6 +330,44 @@ export async function updateProductStock(productId: string, quantity: number): P
 }
 
 /**
+ * The live-broadcast write for a catalogue field change (ProductUpdated,
+ * backend) — name/price/unit/etc, everything except stock_quantity.
+ * Deliberately excludes it: this event's payload carries a company-wide
+ * total (ProductUpdated has no location to scope to), while the column
+ * here means "this branch's stock" — writing it would clobber the
+ * per-branch estimate ProductStockUpdated is the only correct writer of.
+ * A no-op if the product hasn't been pulled to this device yet.
+ */
+export async function updateProductCatalogFields(product: Product): Promise<void> {
+  await getDb().runAsync(
+    `UPDATE products SET
+       name = ?, sku = ?, price = ?, cost_price = ?, category = ?, category_id = ?,
+       unit = ?, allow_decimal = ?, barcode = ?, reorder_point = ?, replenish_quantity = ?,
+       description = ?, bulk_price = ?, bulk_min_quantity = ?, is_active = ?, photo_url = ?,
+       updated_at = ?
+     WHERE id = ?`,
+    product.name,
+    product.sku,
+    product.price,
+    product.costPrice,
+    product.category,
+    product.categoryId,
+    product.unit,
+    product.allowDecimal ? 1 : 0,
+    product.barcode,
+    product.reorderPoint,
+    product.replenishQuantity,
+    product.description,
+    product.bulkPrice,
+    product.bulkMinQuantity,
+    product.isActive ? 1 : 0,
+    product.photoUrl ?? null,
+    product.updatedAt,
+    product.id,
+  );
+}
+
+/**
  * How each product on a sale is sold by, for receipts and the sale detail
  * screen. Sale lines snapshot prices, not the unit — "m" or "bag" is a property
  * of the product and does not change under a completed sale.

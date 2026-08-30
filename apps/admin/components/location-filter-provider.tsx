@@ -17,6 +17,7 @@ import {
   parseLocationFilterCookie,
 } from "@/lib/location-filter";
 import { connectRealtime, disconnectRealtime } from "@/lib/realtime";
+import { useCurrentUser } from "@/lib/query/session";
 
 const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
 
@@ -37,26 +38,39 @@ const LocationFilterContext = createContext<LocationFilterContextValue | null>(n
 
 export function LocationFilterProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
+  const { data: currentUser } = useCurrentUser();
   const [locationId, setLocationIdState] = useState<string | null>(() =>
     parseLocationFilterCookie(readCookie(LOCATION_FILTER_COOKIE)),
   );
 
-  // Live stock ticks for whichever single branch is selected — "all
-  // locations" (locationId === null) has no one channel to subscribe to,
-  // so this simply stays disconnected until a specific branch is picked.
+  // Live stock ticks need one concrete branch — "all locations"
+  // (locationId === null) has no single stock channel to subscribe to. The
+  // catalogue channel (product renames/price changes) has no such
+  // requirement and connects as soon as the company is known, regardless of
+  // location filter. A superadmin who hasn't opened a company has no
+  // companyId at all — stays disconnected, same fail-quiet spirit as the
+  // rest of this file.
+  const companyId = currentUser?.companyId ?? null;
   useEffect(() => {
-    if (!locationId) {
+    if (!companyId) {
       disconnectRealtime();
       return;
     }
 
-    connectRealtime(locationId, () => {
-      void queryClient.invalidateQueries({ queryKey: ["products"] });
-      void queryClient.invalidateQueries({ queryKey: ["inventory"] });
-    });
+    connectRealtime(
+      locationId,
+      companyId,
+      () => {
+        void queryClient.invalidateQueries({ queryKey: ["products"] });
+        void queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      },
+      () => {
+        void queryClient.invalidateQueries({ queryKey: ["products"] });
+      },
+    );
 
     return () => disconnectRealtime();
-  }, [locationId, queryClient]);
+  }, [locationId, companyId, queryClient]);
 
   const setLocationId = useCallback(
     (id: string | null) => {

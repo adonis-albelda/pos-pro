@@ -11,7 +11,12 @@ import { AppState } from "react-native";
 import { SYNC_MESSAGES, type SyncPhase, type SyncState } from "@double-a/shared-types";
 import { getSyncMeta } from "@/db/meta";
 import { countPendingSales } from "@/db/sales";
-import { getActiveLocationId, getOfflineModeEnabled, setOfflineModeEnabled as persistOfflineMode } from "@/lib/device";
+import {
+  getActiveLocationId,
+  getEnrolledCompanyId,
+  getOfflineModeEnabled,
+  setOfflineModeEnabled as persistOfflineMode,
+} from "@/lib/device";
 import { useNetworkStatus } from "@/lib/network";
 import { runAutoPush, runPullOnly, runReplaceAll, runSync } from "./index";
 import { connectRealtime, disconnectRealtime } from "./realtime";
@@ -85,8 +90,11 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const locationId = await getActiveLocationId();
-      if (cancelled || !locationId) {
+      const [locationId, companyId] = await Promise.all([
+        getActiveLocationId(),
+        getEnrolledCompanyId(),
+      ]);
+      if (cancelled || !locationId || !companyId) {
         disconnectRealtime();
         if (!cancelled) setRealtimeConnected(false);
         return;
@@ -94,6 +102,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
 
       await connectRealtime(
         locationId,
+        companyId,
         () => setDataVersion((version) => version + 1),
         (connected) => {
           if (!cancelled) setRealtimeConnected(connected);

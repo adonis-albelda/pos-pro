@@ -33,6 +33,7 @@ function apiUrl(): string {
 
 let echo: Echo<"reverb"> | null = null;
 let connectedLocationId: string | null = null;
+let connectedCompanyId: string | null = null;
 /** The real Pusher-protocol socket state — "connected" is the only state that means an actual live connection, not just "Echo got constructed." */
 let socketState = "disconnected";
 
@@ -41,19 +42,22 @@ interface PusherConnectionLike {
 }
 
 /**
- * Live stock ticks for one branch (ProductStockUpdated, backend) — the
- * dashboard counterpart to apps/mobile/sync/realtime.ts. Only ever connects
- * to a single concrete location; when the admin's location filter is "all
- * locations" (LocationFilterProvider's `locationId === null`) there is no
- * one channel to subscribe to, so this simply stays disconnected — picking
- * a specific branch is what turns live updates on.
+ * Live stock ticks for one branch (ProductStockUpdated) plus company-wide
+ * catalogue edits (ProductUpdated — name/price/unit/etc) — the dashboard
+ * counterpart to apps/mobile/sync/realtime.ts. The stock channel needs one
+ * concrete location (LocationFilterProvider's `locationId === null` means
+ * "all locations," no single branch to subscribe to); the catalogue channel
+ * has no such requirement and connects whenever a companyId is known, so a
+ * product rename shows up live even while viewing "all locations."
  */
 export function connectRealtime(
-  locationId: string,
+  locationId: string | null,
+  companyId: string,
   onStockTick: (payload: StockUpdatedPayload) => void,
+  onCatalogUpdate: () => void,
   onStateChange?: (connected: boolean) => void,
 ): void {
-  if (echo && connectedLocationId === locationId) return;
+  if (echo && connectedLocationId === locationId && connectedCompanyId === companyId) return;
   disconnectRealtime();
 
   const token = readCookie(SESSION_COOKIE);
@@ -100,25 +104,38 @@ export function connectRealtime(
     });
   }
 
-  const channel: Channel = echo.private(`location.${locationId}.stock`);
-  channel.listen(".stock.updated", (payload: StockUpdatedPayload) => {
-    if (process.env.NODE_ENV !== "production") console.warn("[realtime] stock.updated", payload);
-    onStockTick(payload);
+  if (locationId) {
+    const stockChannel: Channel = echo.private(`location.${locationId}.stock`);
+    stockChannel.listen(".stock.updated", (payload: StockUpdatedPayload) => {
+      if (process.env.NODE_ENV !== "production") console.warn("[realtime] stock.updated", payload);
+      onStockTick(payload);
+    });
+    stockChannel.error((error: unknown) => {
+      // Almost always a 403/422 from /broadcasting/auth — an admin viewing a
+      // branch outside their own acting company, an expired session, or
+      // NEXT_PUBLIC_REVERB_* pointed at the wrong host.
+      console.warn("[realtime] channel auth failed", error);
+    });
+  }
+
+  const catalogChannel: Channel = echo.private(`company.${companyId}`);
+  catalogChannel.listen(".product.updated", (payload: unknown) => {
+    if (process.env.NODE_ENV !== "production") console.warn("[realtime] product.updated", payload);
+    onCatalogUpdate();
   });
-  channel.error((error: unknown) => {
-    // Almost always a 403/422 from /broadcasting/auth — an admin viewing a
-    // branch outside their own acting company, an expired session, or
-    // NEXT_PUBLIC_REVERB_* pointed at the wrong host.
-    console.warn("[realtime] channel auth failed", error);
+  catalogChannel.error((error: unknown) => {
+    console.warn("[realtime] catalog channel auth failed", error);
   });
 
   connectedLocationId = locationId;
+  connectedCompanyId = companyId;
 }
 
 export function disconnectRealtime(): void {
   echo?.disconnect();
   echo = null;
   connectedLocationId = null;
+  connectedCompanyId = null;
   socketState = "disconnected";
 }
 

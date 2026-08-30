@@ -1,6 +1,7 @@
 import type Echo from "laravel-echo";
 import type { Channel } from "laravel-echo";
-import { updateProductStock } from "@/db/products";
+import { toProduct, type ProductAttrs } from "@double-a/api-client";
+import { updateProductCatalogFields, updateProductStock } from "@/db/products";
 import { apiUrl } from "@/lib/api/client";
 import { getSessionToken } from "@/lib/api/session";
 
@@ -32,24 +33,34 @@ interface StockUpdatedPayload {
   quantity: number;
 }
 
+interface ProductUpdatedPayload {
+  id: string;
+  type: string;
+  attributes: ProductAttrs;
+}
+
 let echo: Echo<"reverb"> | null = null;
 let connectedLocationId: string | null = null;
+let connectedCompanyId: string | null = null;
 /** The real Pusher-protocol socket state — "connected" is the only state that means what the store-header dot promises. Not the same as `echo !== null`, which is true the instant Echo is constructed, well before the handshake finishes (or fails). */
 let socketState = "disconnected";
 
 /**
- * Live stock ticks for one branch (ProductStockUpdated, backend). Connects
- * only while effective-online (see sync-provider.tsx's lifecycle effect) —
- * offline mode or no connectivity means this never runs, same spirit as
- * CLAUDE.md's old "no real-time subscriptions on mobile" rule, just now
- * scoped to "unless online mode says otherwise."
+ * Live stock ticks for one branch (ProductStockUpdated) plus company-wide
+ * catalogue edits (ProductUpdated — name/price/unit/etc, never stock; see
+ * updateProductCatalogFields's own comment for why those two stay separate
+ * writers). Connects only while effective-online (see sync-provider.tsx's
+ * lifecycle effect) — offline mode or no connectivity means this never
+ * runs, same spirit as CLAUDE.md's old "no real-time subscriptions on
+ * mobile" rule, just now scoped to "unless online mode says otherwise."
  */
 export async function connectRealtime(
   locationId: string,
+  companyId: string,
   onStockTick: () => void,
   onStateChange?: (connected: boolean) => void,
 ): Promise<void> {
-  if (echo && connectedLocationId === locationId) return;
+  if (echo && connectedLocationId === locationId && connectedCompanyId === companyId) return;
   disconnectRealtime();
 
   const token = await getSessionToken();
@@ -98,24 +109,35 @@ export async function connectRealtime(
     });
   }
 
-  const channel: Channel = echo.private(`location.${locationId}.stock`);
-  channel.listen(".stock.updated", (payload: StockUpdatedPayload) => {
+  const stockChannel: Channel = echo.private(`location.${locationId}.stock`);
+  stockChannel.listen(".stock.updated", (payload: StockUpdatedPayload) => {
     if (__DEV__) console.warn("[realtime] stock.updated", payload);
     void updateProductStock(payload.product_id, payload.quantity).then(onStockTick);
   });
-  channel.error((error: unknown) => {
+  stockChannel.error((error: unknown) => {
     // Almost always a 403/422 from /broadcasting/auth — wrong location_id
     // scoping, an expired token, or REVERB_* env pointed at the wrong host.
     console.warn("[realtime] channel auth failed", error);
   });
 
+  const catalogChannel: Channel = echo.private(`company.${companyId}`);
+  catalogChannel.listen(".product.updated", (payload: ProductUpdatedPayload) => {
+    if (__DEV__) console.warn("[realtime] product.updated", payload);
+    void updateProductCatalogFields(toProduct(payload)).then(onStockTick);
+  });
+  catalogChannel.error((error: unknown) => {
+    console.warn("[realtime] catalog channel auth failed", error);
+  });
+
   connectedLocationId = locationId;
+  connectedCompanyId = companyId;
 }
 
 export function disconnectRealtime(): void {
   echo?.disconnect();
   echo = null;
   connectedLocationId = null;
+  connectedCompanyId = null;
   socketState = "disconnected";
 }
 
