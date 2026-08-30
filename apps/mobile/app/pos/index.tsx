@@ -156,7 +156,7 @@ function stockCapFor(estimatedStock: number, allowDecimal: boolean): number {
 export default function SellScreen() {
   const router = useRouter();
   const { cashier } = useSession();
-  const { refresh, autoPush, dataVersion } = useSync();
+  const { refresh, autoPush, dataVersion, offlineModeEnabled } = useSync();
   const { isEnabled } = useFeatureFlags();
 
   // A phone cannot hold a grid and a cart side by side, so below the compact
@@ -1017,23 +1017,25 @@ export default function SellScreen() {
             />
           )}
 
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              alignSelf: "flex-start",
-              gap: space.xs,
-              paddingHorizontal: space.sm,
-              paddingVertical: space.xs,
-              borderRadius: radius.sm,
-              backgroundColor: color.primarySoft,
-            }}
-          >
-            <Info size={13} color={color.primary} strokeWidth={2.5} />
-            <Text style={{ fontSize: fontSize.caption, color: color.primary }}>
-              Stock counts are an estimate until you sync.
-            </Text>
-          </View>
+          {offlineModeEnabled ? (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                alignSelf: "flex-start",
+                gap: space.xs,
+                paddingHorizontal: space.sm,
+                paddingVertical: space.xs,
+                borderRadius: radius.sm,
+                backgroundColor: color.primarySoft,
+              }}
+            >
+              <Info size={13} color={color.primary} strokeWidth={2.5} />
+              <Text style={{ fontSize: fontSize.caption, color: color.primary }}>
+                Stock counts are an estimate until you sync.
+              </Text>
+            </View>
+          ) : null}
         </View>
       </View>
 
