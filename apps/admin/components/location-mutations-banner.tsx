@@ -3,6 +3,7 @@
 import { MapPin } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useOptionalLocationFilter } from "@/components/location-filter-provider";
+import { useLocations } from "@/lib/query/locations";
 
 /** Paths where catalog CRUD stays allowed even when location filter is All. */
 const CATALOG_PATH_PREFIXES = ["/products", "/categories", "/suppliers"];
@@ -10,9 +11,19 @@ const CATALOG_PATH_PREFIXES = ["/products", "/categories", "/suppliers"];
 export function useLocationMutationsLocked(): boolean {
   const { locationId } = useOptionalLocationFilter();
   const pathname = usePathname();
+  const locationsQuery = useLocations({ includeInactive: false });
+
   if (CATALOG_PATH_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
     return false;
   }
+
+  // One branch total — nothing to disambiguate, so "All locations" and
+  // "that one branch" mean the same thing. Same threshold LocationSwitcher
+  // uses to hide the picker entirely.
+  if (!locationsQuery.isPending && (locationsQuery.data ?? []).length <= 1) {
+    return false;
+  }
+
   return locationId === null;
 }
 
