@@ -18,6 +18,7 @@ import {
 } from "@/lib/location-filter";
 import { connectRealtime, disconnectRealtime } from "@/lib/realtime";
 import { useCurrentUser } from "@/lib/query/session";
+import { useLocations } from "@/lib/query/locations";
 
 const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
 
@@ -85,6 +86,21 @@ export function LocationFilterProvider({ children }: { children: ReactNode }) {
     },
     [queryClient],
   );
+
+  // The filter cookie is a single global cookie, not keyed by company — a
+  // superadmin opening a different company (or the same browser logging
+  // into a different shop) keeps whatever location_id was last picked. If
+  // that id isn't one of THIS company's own branches (deleted/deactivated,
+  // or simply belongs to a different company), every location_id-scoped
+  // list (sales, products, inventory) silently returns zero rows even
+  // though the data is really there. Reconcile against the real list once
+  // it loads and fall back to "all locations" instead.
+  const locationsQuery = useLocations({ type: "branch", includeInactive: false });
+  useEffect(() => {
+    if (!locationId || locationsQuery.isPending) return;
+    const stillValid = (locationsQuery.data ?? []).some((location) => location.id === locationId);
+    if (!stillValid) setLocationId(null);
+  }, [locationId, locationsQuery.data, locationsQuery.isPending, setLocationId]);
 
   const value = useMemo(
     () => ({ locationId, setLocationId }),
