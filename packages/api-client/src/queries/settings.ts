@@ -7,17 +7,6 @@ import {
 import { ApiError, type ApiClient, type JsonApiResource } from "../http";
 import { type ReceiptLayoutAttrs, type StoreSettingAttrs, toReceiptLayout, toStoreSettings } from "../mappers";
 
-/**
- * GAP: no file-upload/storage endpoint on the Tally API. `store_settings.logo_url`
- * is a plain string column — unlike Supabase Storage's `store-logos` bucket, which
- * had a dedicated `uploadStoreLogo()` call turning a File/Blob into a public URL.
- * `updateStoreSettings` below only ever PATCHes `logoUrl` as a string field, same
- * as any other setting; there is nothing here to call with a file. The logo-upload
- * UI needs another way to obtain a URL first — a direct-to-S3 (or similar) upload
- * wired up admin-side, or a future Laravel endpoint — before it can call
- * `updateStoreSettings({ logoUrl })` with the result.
- */
-
 export interface StoreSettingsInput {
   name?: string;
   logoUrl?: string | null;
@@ -63,6 +52,23 @@ export async function updateStoreSettings(client: ApiClient, patch: StoreSetting
     "/store-settings",
     toStoreSettingsPayload(patch),
   );
+  return toStoreSettings(data);
+}
+
+/** Uploads a logo to S3 and returns the updated settings row. */
+export async function uploadStoreLogo(client: ApiClient, logo: File | Blob): Promise<StoreSettings> {
+  const formData = new FormData();
+  formData.set("logo", logo);
+  const { data } = await client.postMultipart<{ data: JsonApiResource<StoreSettingAttrs> }>(
+    "/store-settings/logo",
+    formData,
+  );
+  return toStoreSettings(data);
+}
+
+/** Deletes the logo object from S3 and clears logo_url. */
+export async function deleteStoreLogo(client: ApiClient): Promise<StoreSettings> {
+  const { data } = await client.delete<{ data: JsonApiResource<StoreSettingAttrs> }>("/store-settings/logo");
   return toStoreSettings(data);
 }
 

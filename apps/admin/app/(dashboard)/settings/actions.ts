@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { ApiError } from "@double-a/api-client";
-import { updateStoreSettings } from "@double-a/api-client/queries";
+import { deleteStoreLogo, updateStoreSettings, uploadStoreLogo } from "@double-a/api-client/queries";
 import type { FormState } from "@/lib/form-state";
 import { getAuthedClient } from "@/lib/api/session";
 
@@ -42,20 +42,6 @@ export async function saveStoreSettings(
     if (file.size > MAX_LOGO_BYTES) {
       return { error: "The logo must be under 1 MB.", ok: false };
     }
-    // GAP (see packages/api-client/src/queries/settings.ts): the Tally API's
-    // `store_settings.logo_url` is a plain string column with no file-upload
-    // endpoint behind it, unlike Supabase Storage's `store-logos` bucket +
-    // `uploadStoreLogo()`. There is nothing to call with a File here, so a
-    // chosen file is refused with a clear message rather than silently
-    // ignored or faked. `StoreForm` (apps/admin/app/(dashboard)/settings/store-form.tsx,
-    // out of scope for this change) still renders a bare file picker with no
-    // URL-text fallback; it should be updated to disable/hide that control,
-    // or to accept a pasted URL instead, once this is picked up.
-    return {
-      error:
-        "Logo upload isn't available yet on the new backend — there is no file storage endpoint. Ask an engineer to add one before setting a new logo. Existing logos can still be removed below.",
-      ok: false,
-    };
   }
 
   const invoiceDigits = Number(formData.get("invoice_digits") ?? 6);
@@ -71,6 +57,12 @@ export async function saveStoreSettings(
   const client = getAuthedClient();
 
   try {
+    if (removeLogo) {
+      await deleteStoreLogo(client);
+    } else if (file) {
+      await uploadStoreLogo(client, file);
+    }
+
     await updateStoreSettings(client, {
       name,
       address: optional(formData, "address"),
@@ -79,8 +71,6 @@ export async function saveStoreSettings(
       invoicePrefix: optional(formData, "invoice_prefix"),
       invoiceDigits,
       invoiceNextNumber,
-      // "remove" clears the column; otherwise leave whatever is there.
-      ...(removeLogo ? { logoUrl: null } : {}),
     });
   } catch (error) {
     if (error instanceof ApiError && error.isForbidden) {
@@ -91,7 +81,6 @@ export async function saveStoreSettings(
   }
 
   revalidatePath("/settings");
-  // The sidebar reads the shop name, and it is rendered by the dashboard layout.
   revalidatePath("/", "layout");
   return { error: null, ok: true };
 }

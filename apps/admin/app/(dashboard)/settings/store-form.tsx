@@ -42,9 +42,7 @@ export function StoreForm({ settings }: { settings: StoreSettings }) {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <span className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-paper">
           {shown ? (
-            // Plain img: the logo is an arbitrary Supabase Storage URL, and
-            // routing it through next/image would mean listing that host in
-            // the build config of every deployment.
+            // Public S3 URL — no next/image host allowlist needed.
             <img src={shown} alt="" className="size-full object-contain" />
           ) : (
             <span className="font-display text-heading-sm font-bold text-primary">
