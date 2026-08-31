@@ -52,7 +52,7 @@ export async function extractGoodsReceiptPhoto(
   purchaseOrderId?: string | null,
 ): Promise<ExtractedReceiptLine[]> {
   const formData = new FormData();
-  appendMultipartFile(formData, "photo", photo);
+  await appendMultipartFile(formData, "photo", photo);
   if (purchaseOrderId) {
     appendMultipartField(formData, "purchase_order_id", purchaseOrderId);
   }
@@ -211,7 +211,7 @@ export async function createGoodsReceipt(
   if (input.purchaseOrderId) appendMultipartField(formData, "purchase_order_id", input.purchaseOrderId);
   if (input.referenceNo) appendMultipartField(formData, "reference_no", input.referenceNo);
   if (input.notes) appendMultipartField(formData, "notes", input.notes);
-  if (input.photo) appendMultipartFile(formData, "photo", input.photo);
+  if (input.photo) await appendMultipartFile(formData, "photo", input.photo);
   if (input.galleryPhotoId) appendMultipartField(formData, "gallery_photo_id", input.galleryPhotoId);
   appendMultipartField(formData, "items_json", toItemsJson(input.items));
 

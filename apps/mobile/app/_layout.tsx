@@ -1,3 +1,4 @@
+import "@/lib/expo-blob-polyfill";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Image, Platform, Text, View } from "react-native";
 import { Stack } from "expo-router";

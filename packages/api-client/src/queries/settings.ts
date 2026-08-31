@@ -60,7 +60,7 @@ export async function updateStoreSettings(client: ApiClient, patch: StoreSetting
 export async function uploadStoreLogo(client: ApiClient, logo: File | Blob): Promise<StoreSettings> {
   const formData = new FormData();
   if (typeof File !== "undefined" && logo instanceof File) {
-    appendMultipartFile(formData, "logo", logo);
+    await appendMultipartFile(formData, "logo", logo);
   } else {
     formData.append("logo", logo);
   }

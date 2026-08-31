@@ -204,7 +204,7 @@ export async function extractProductsFromPhoto(
   options: { locationId?: string | null; applyStock?: boolean } = {},
 ): Promise<ExtractedProductLine[]> {
   const formData = new FormData();
-  appendMultipartFile(formData, "image", image);
+  await appendMultipartFile(formData, "image", image);
   if (options.locationId) {
     appendMultipartField(formData, "location_id", options.locationId);
   }
@@ -446,7 +446,7 @@ export async function restoreProduct(client: ApiClient, id: string): Promise<Pro
 /** Server resizes to a mobile-friendly size and re-encodes as WebP — send the original file as-is. */
 export async function uploadProductPhoto(client: ApiClient, id: string, photo: MultipartFile): Promise<Product> {
   const formData = new FormData();
-  appendMultipartFile(formData, "photo", photo);
+  await appendMultipartFile(formData, "photo", photo);
   const { data } = await client.postMultipart<{ data: JsonApiResource<ProductAttrs> }>(
     `/products/${id}/photo`,
     formData,

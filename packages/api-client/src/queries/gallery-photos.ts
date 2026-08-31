@@ -58,7 +58,7 @@ export async function uploadGalleryPhoto(
   input: { photo: MultipartFile; label?: string | null; locationId?: string | null },
 ): Promise<GalleryPhoto> {
   const formData = new FormData();
-  appendMultipartFile(formData, "photo", input.photo);
+  await appendMultipartFile(formData, "photo", input.photo);
   if (input.label) appendMultipartField(formData, "label", input.label);
   if (input.locationId) appendMultipartField(formData, "location_id", input.locationId);
 
