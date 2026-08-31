@@ -1,9 +1,17 @@
-import { GitMerge, Package, Warehouse } from "lucide-react";
+import { Camera, GitMerge, Package, Warehouse } from "lucide-react";
 import { Card, CardBody, CardHeader } from "@/components/ui";
 
 export function ImportInfoCards() {
   return (
-    <div className="grid gap-4 md:grid-cols-3">
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <Card>
+        <CardHeader icon={Camera} title="From photo" />
+        <CardBody className="text-body text-ink-muted">
+          Upload a notebook list or delivery note photo, then{" "}
+          <span className="font-medium text-ink">Read with AI</span>. Same column mapping and review
+          as CSV — nothing saves until you import.
+        </CardBody>
+      </Card>
       <Card>
         <CardHeader icon={GitMerge} title="Matching" />
         <CardBody className="text-body text-ink-muted">

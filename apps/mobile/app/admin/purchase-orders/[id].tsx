@@ -100,6 +100,14 @@ export default function AdminPurchaseOrderDetailScreen() {
         <Badge tone={PO_STATUS_TONE[order.status]} label={PURCHASE_ORDER_STATUS_LABELS[order.status]} />
       </View>
 
+      {canReceive ? (
+        <Button
+          label="Receive delivery"
+          icon={PackageCheck}
+          onPress={() => router.push(`/admin/receiving?purchase_order_id=${order.id}`)}
+        />
+      ) : null}
+
       {order.status === "draft" || order.status === "ordered" ? (
         <View style={{ flexDirection: "row", gap: space.sm, flexWrap: "wrap" }}>
           {order.status === "draft" ? (

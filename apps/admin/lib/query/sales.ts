@@ -90,18 +90,32 @@ async function fetchSalesStats(filter: SalesListFilter): Promise<SalesPageStats>
 }
 
 /**
- * Single most-recent-N fetch, no date filter server-side — the dashboard's
- * own GAP comment (app/(dashboard)/page.tsx) filters to today client-side on
- * top of this. Not namespaced through queryKeys.sales.list() (that shape is
- * useSalesList's filter object) so the two never collide in cache.
+ * Single most-recent-N fetch, date-filtered server-side (`from`/`to`) so the
+ * dashboard's "today" window doesn't pull days of history just to discard
+ * it client-side — that used to be a GAP here. Not namespaced through
+ * queryKeys.sales.list() (that shape is useSalesList's filter object) so
+ * the two never collide in cache.
  */
-export function useRecentSales(limit = 200, locationId?: string | null) {
+export function useRecentSales(
+  limit = 200,
+  locationId?: string | null,
+  window?: { from?: string; to?: string },
+) {
   return useQuery({
-    queryKey: ["sales", "recent", limit, locationId ?? "all"] as const,
+    queryKey: [
+      "sales",
+      "recent",
+      limit,
+      locationId ?? "all",
+      window?.from ?? null,
+      window?.to ?? null,
+    ] as const,
     queryFn: () =>
       listSales(getBrowserApiClient(), {
         limit,
         locationId: locationId || undefined,
+        from: window?.from,
+        to: window?.to,
       }),
   });
 }

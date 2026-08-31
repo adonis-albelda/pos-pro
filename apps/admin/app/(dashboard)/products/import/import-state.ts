@@ -35,6 +35,8 @@ export interface ImportState extends FormState {
   notice: string | null;
   /** Rows changed by the most recent AI fix or manual edit — shown inline under each affected row. Cleared on any other action (upload, remap, import). */
   lastFixes: AppliedRowFix[] | null;
+  /** Last upload came from photo AI extraction, not a CSV file. */
+  fromPhoto: boolean;
 }
 
 export const EMPTY_IMPORT_STATE: ImportState = {
@@ -58,4 +60,5 @@ export const EMPTY_IMPORT_STATE: ImportState = {
   failures: null,
   notice: null,
   lastFixes: null,
+  fromPhoto: false,
 };

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Route } from "next";
-import { Camera, Expand, Plus, Save, Settings, Sparkles, Trash2, TriangleAlert, X } from "lucide-react";
+import { Camera, Crop, Expand, Plus, Save, Settings, Sparkles, Trash2, TriangleAlert, X } from "lucide-react";
 import { formatQuantity, roundMoney } from "@double-a/shared-types";
 import type { Location, PurchaseOrder, PurchaseOrderItem, Supplier } from "@double-a/shared-types";
 import {
@@ -28,6 +28,7 @@ import {
 import { AiProcessingOverlay, ConfirmDialog, Dialog, Sheet } from "@/components/overlay";
 import { useInvalidateGoodsReceipts } from "@/lib/query/goods-receipts";
 import { useInventoryProducts } from "@/lib/query/inventory";
+import { CropPhoto } from "../products/from-photo/crop-photo";
 import { extractGoodsReceiptPhotoAction, createGoodsReceiptAction } from "./actions";
 
 interface LineRow {
@@ -117,8 +118,15 @@ export function ReceivingForm({
   const [extracting, startExtracting] = useTransition();
   const [saving, startSaving] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // `photo` is always the untouched original — it's what gets saved as the
+  // receipt's own photo_url, never mutated by cropping/rotating. `workingPhoto`
+  // is null until the user explicitly crops/rotates; AI extraction reads
+  // workingPhoto ?? photo, so by default (no edit) both are the same file.
   const [photo, setPhoto] = useState<File | null>(null);
+  const [workingPhoto, setWorkingPhoto] = useState<File | null>(null);
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
+  const [workingPreviewUrl, setWorkingPreviewUrl] = useState<string | null>(null);
+  const [cropOpen, setCropOpen] = useState(false);
   const [photoRead, setPhotoRead] = useState(false);
   const [photoSheetOpen, setPhotoSheetOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -135,6 +143,16 @@ export function ReceivingForm({
     setPhotoPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [photo]);
+
+  useEffect(() => {
+    if (!workingPhoto) {
+      setWorkingPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(workingPhoto);
+    setWorkingPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [workingPhoto]);
 
   const [supplierId, setSupplierId] = useState(linkedOrder?.supplierId ?? "");
   const [supplierName, setSupplierName] = useState("");
@@ -206,22 +224,27 @@ export function ReceivingForm({
   /** Only stages the file for preview — AI extraction is a separate, explicit step below. */
   function handlePhotoChange(file: File | null) {
     setPhoto(file);
+    setWorkingPhoto(null);
+    setCropOpen(false);
     setPhotoRead(false);
     setError(null);
   }
 
   function removePhoto() {
     setPhoto(null);
+    setWorkingPhoto(null);
+    setCropOpen(false);
     setPhotoRead(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   function runExtraction() {
-    if (!photo) return;
+    const source = workingPhoto ?? photo;
+    if (!source) return;
 
     setError(null);
     startExtracting(async () => {
-      const compressed = await compressImage(photo);
+      const compressed = await compressImage(source);
       const formData = new FormData();
       formData.set("photo", compressed);
       if (linkedOrder) formData.set("purchase_order_id", linkedOrder.id);
@@ -379,7 +402,7 @@ export function ReceivingForm({
       >
         {photoPreviewUrl ? (
           <img
-            src={photoPreviewUrl}
+            src={workingPreviewUrl ?? photoPreviewUrl}
             alt="Delivery receipt, full size"
             className="w-full rounded-md border border-border object-contain"
           />
@@ -502,7 +525,19 @@ export function ReceivingForm({
               />
             </Field>
 
-            {photoPreviewUrl ? (
+            {photoPreviewUrl && cropOpen ? (
+              <div className="space-y-2 rounded-md border border-border bg-canvas p-3">
+                <CropPhoto
+                  src={workingPreviewUrl ?? photoPreviewUrl}
+                  onCropped={(file) => {
+                    setWorkingPhoto(file);
+                    setCropOpen(false);
+                    setPhotoRead(false);
+                  }}
+                  onCancel={() => setCropOpen(false)}
+                />
+              </div>
+            ) : photoPreviewUrl ? (
               <div className="space-y-3 rounded-md border border-border bg-canvas p-3">
                 <button
                   type="button"
@@ -510,7 +545,7 @@ export function ReceivingForm({
                   className="group relative block w-full cursor-pointer"
                 >
                   <img
-                    src={photoPreviewUrl}
+                    src={workingPreviewUrl ?? photoPreviewUrl}
                     alt="Delivery receipt preview"
                     className="h-40 w-full rounded-sm border border-border object-cover"
                   />
@@ -521,7 +556,9 @@ export function ReceivingForm({
                 <p className="text-caption text-ink-muted">
                   {photoRead
                     ? "Read — lines added below. Adjust anything before saving."
-                    : "Check this is the right photo, in focus and right-side up, before sending it to AI."}
+                    : workingPhoto
+                      ? "Cropped/rotated version shown — this is what AI reads. The original photo is still saved as your receipt record."
+                      : "Check this is the right photo, in focus and right-side up, before sending it to AI."}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <Button
@@ -533,6 +570,31 @@ export function ReceivingForm({
                   >
                     {extracting ? "Reading…" : photoRead ? "Read again" : "Read with AI"}
                   </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    icon={Crop}
+                    onClick={() => setCropOpen(true)}
+                    disabled={extracting}
+                  >
+                    Crop & rotate
+                  </Button>
+                  {workingPhoto ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      icon={X}
+                      onClick={() => {
+                        setWorkingPhoto(null);
+                        setPhotoRead(false);
+                      }}
+                      disabled={extracting}
+                    >
+                      Reset to original
+                    </Button>
+                  ) : null}
                   <Button
                     type="button"
                     variant="secondary"

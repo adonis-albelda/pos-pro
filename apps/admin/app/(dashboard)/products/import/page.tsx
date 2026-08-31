@@ -31,7 +31,7 @@ export default function ImportProductsPage() {
       <PageHeader
         icon={FileUp}
         title="Import products"
-        description="Bring a supplier price list into the catalogue. Connect your file columns, review every row, then import in the background."
+        description="Bring a supplier CSV or photo into the catalogue. Connect columns, review every row, then import in the background."
         action={
           <div className="flex flex-wrap gap-2">
             <ButtonLink href="/products/import/history" icon={History} variant="secondary">

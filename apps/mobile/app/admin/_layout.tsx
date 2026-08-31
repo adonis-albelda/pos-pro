@@ -38,7 +38,7 @@ export default function AdminLayout() {
   // every domain (categories, suppliers, products, all of it) failing at
   // once with an unclear error, instead of one clear message here.
   useEffect(() => {
-    if (!cashier || cashier.role !== "admin") return;
+    if (!cashier || (cashier.role !== "admin" && cashier.role !== "manager")) return;
     let cancelled = false;
     ensureFreshSession()
       .then(() => {
@@ -55,7 +55,10 @@ export default function AdminLayout() {
   }, [cashier]);
 
   if (!cashier) return <Redirect href="/unlock" />;
-  if (cashier.role !== "admin") return <Redirect href="/pos" />;
+  // Manager gets the same admin dashboard as admin, minus owner-only screens
+  // (Settings) — see that screen's own guard. Cashier/driver/helper never
+  // reach here at all.
+  if (cashier.role !== "admin" && cashier.role !== "manager") return <Redirect href="/pos" />;
 
   if (check === "checking") {
     return <LoadingState text="Opening admin dashboard…" />;

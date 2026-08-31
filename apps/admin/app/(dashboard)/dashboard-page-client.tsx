@@ -69,7 +69,7 @@ export function DashboardPageClient() {
   const { range, fromDay, toDay } = resolveRange({ preset: "today" });
   const { locationId } = useLocationFilter();
 
-  const salesQuery = useRecentSales(200, locationId);
+  const salesQuery = useRecentSales(200, locationId, { from: range.from, to: range.to });
   const lowStockQuery = useBelowReorder();
   const oversoldQuery = useOversoldProducts();
   const usersQuery = useUsers({ includeInactive: true });
@@ -105,7 +105,8 @@ export function DashboardPageClient() {
 
     const profit = profitRows ? summariseProfit(profitRows) : null;
     const cashierNameById = new Map(users.map((user) => [user.id, user.name]));
-    const todaysSales = recentSales.filter((sale) => sale.createdAt >= range.from);
+    // Already scoped to today server-side via useRecentSales' from/to.
+    const todaysSales = recentSales;
     const oversold: OversoldProduct[] = oversoldRows.map((product) => ({
       ...product,
       oversoldBy: product.stockQuantity < 0 ? Math.abs(product.stockQuantity) : 0,
@@ -198,7 +199,6 @@ export function DashboardPageClient() {
     upcomingPaymentsQuery.isError,
     upcomingBillsQuery.data,
     upcomingBillsQuery.isError,
-    range.from,
   ]);
 
   if (isPending || isError) {

@@ -7,8 +7,10 @@ import {
   listProducts,
   listSuppliers,
   startProductImport,
+  extractProductsFromPhoto,
   type ProductImportRowPayload,
 } from "@double-a/api-client/queries";
+import { ApiError } from "@double-a/api-client";
 import type { ProductStockMode } from "@/lib/product-import";
 import {
   IMPORT_FIELDS,
@@ -20,12 +22,62 @@ import { planProductImportFromTable } from "@/lib/product-import";
 import { suggestImportRowFixes } from "@/lib/product-import-ai-fix";
 import { applyImportRowFixes, type ImportRowFix } from "@/lib/product-import-fix";
 import { getAuthedClient } from "@/lib/api/session";
+import {
+  describePhotoExtractError,
+  extractedLinesToCsv,
+} from "@/lib/product-import-from-photo";
 import { EMPTY_IMPORT_STATE, type ImportState } from "./import-state";
 
 async function readUpload(formData: FormData): Promise<string> {
   const file = formData.get("file");
-  if (file instanceof File && file.size > 0) return file.text();
+  if (file instanceof File && file.size > 0) {
+    if (file.type.startsWith("image/")) return "";
+    return file.text();
+  }
   return String(formData.get("pasted") ?? "");
+}
+
+async function readPhotoCsv(formData: FormData): Promise<
+  { ok: true; csv: string; lineCount: number } | { ok: false; error: string }
+> {
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) {
+    return { ok: false, error: "Choose a photo to read." };
+  }
+
+  if (!file.type.startsWith("image/")) {
+    return { ok: false, error: "That file is not an image." };
+  }
+
+  if (file.size > 5.5 * 1024 * 1024) {
+    return {
+      ok: false,
+      error: "Photo is too large (over 5.5 MB). Try a clearer, smaller shot.",
+    };
+  }
+
+  const client = getAuthedClient();
+
+  try {
+    const lines = await extractProductsFromPhoto(client, file, { applyStock: false });
+    if (lines.length === 0) {
+      return {
+        ok: false,
+        error:
+          "No product lines found. Use a clearer photo with one product per row (name and price).",
+      };
+    }
+
+    return { ok: true, csv: extractedLinesToCsv(lines), lineCount: lines.length };
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 403) {
+      return { ok: false, error: error.message };
+    }
+    return {
+      ok: false,
+      error: describePhotoExtractError(error),
+    };
+  }
 }
 
 function readStockMode(formData: FormData): ProductStockMode {
@@ -92,9 +144,29 @@ export async function importProducts(
   const remapping = intent === "map";
   const aiFixing = intent === "ai_fix";
   const editingRow = intent === "edit_row";
-  const csv = writing || remapping || aiFixing || editingRow
-    ? String(formData.get("csv") ?? "")
-    : await readUpload(formData);
+  const extractingPhoto = intent === "extract_photo";
+  const skipExistingUpdates = formData.get("skip_existing_updates") === "1";
+
+  let photoNotice: string | null = null;
+  const fromPhoto = extractingPhoto
+    ? true
+    : intent === "check"
+      ? false
+      : _prev.fromPhoto;
+
+  let csv: string;
+  if (writing || remapping || aiFixing || editingRow) {
+    csv = String(formData.get("csv") ?? "");
+  } else if (extractingPhoto) {
+    const photo = await readPhotoCsv(formData);
+    if (!photo.ok) {
+      return { ...EMPTY_IMPORT_STATE, error: photo.error };
+    }
+    csv = photo.csv;
+    photoNotice = `AI read ${photo.lineCount} product line${photo.lineCount === 1 ? "" : "s"} from your photo. Review the mapping, then import.`;
+  } else {
+    csv = await readUpload(formData);
+  }
 
   const stockMode = readStockMode(formData);
   const locationId = String(formData.get("location_id") ?? "").trim() || null;
@@ -104,7 +176,9 @@ export async function importProducts(
       ...EMPTY_IMPORT_STATE,
       error: writing
         ? "The file was lost. Upload it again."
-        : "Choose a CSV file, or paste the rows.",
+        : extractingPhoto
+          ? "Choose a photo to read."
+          : "Choose a CSV file, paste the rows, or upload a photo.",
     };
   }
 
@@ -128,6 +202,7 @@ export async function importProducts(
       ignoredSourceColumns: ignored,
       stockMode,
       locationId,
+      fromPhoto,
       error: `Map these required columns: ${labels}.`,
     };
   }
@@ -163,6 +238,7 @@ export async function importProducts(
       ignoredSourceColumns: ignored,
       stockMode,
       locationId: stockLocationId,
+      fromPhoto,
       error: plan.error,
     };
   }
@@ -178,6 +254,7 @@ export async function importProducts(
       ignoredSourceColumns: ignored,
       stockMode,
       locationId: stockLocationId,
+      fromPhoto,
       error:
         branches.length === 0
           ? "Add an active branch before importing stock quantities."
@@ -338,6 +415,7 @@ export async function importProducts(
         ),
         stockMode,
         locationId: stockLocationId,
+        fromPhoto,
         lastFixes: fixes,
         notice: editingRow
           ? `Saved your changes to line ${fixes[0]!.line}.`
@@ -372,10 +450,16 @@ export async function importProducts(
       ignoredSourceColumns: ignored,
       stockMode,
       locationId: stockLocationId,
+      fromPhoto,
+      notice: photoNotice,
     };
   }
 
-  const accepted = plan.rows.filter((row) => row.values !== null);
+  const accepted = plan.rows.filter((row) => {
+    if (row.values === null || row.action === "reject") return false;
+    if (skipExistingUpdates && row.action === "update") return false;
+    return true;
+  });
   if (accepted.length === 0) {
     return {
       ...EMPTY_IMPORT_STATE,
@@ -387,7 +471,10 @@ export async function importProducts(
       ignoredSourceColumns: ignored,
       stockMode,
       locationId: stockLocationId,
-      error: "Every row was turned away. Fix the ones listed and upload again.",
+      fromPhoto,
+      error: skipExistingUpdates
+        ? "Every row matches an existing product and updates are skipped. Uncheck skip updates or add new SKUs."
+        : "Every row was turned away. Fix the ones listed and upload again.",
     };
   }
 

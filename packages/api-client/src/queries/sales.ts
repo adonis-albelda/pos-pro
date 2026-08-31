@@ -77,6 +77,8 @@ export async function listSales(
     customerId: filter.customerId,
     status: filter.status,
     locationId: filter.locationId,
+    from: filter.from,
+    to: filter.to,
     page: 1,
     pageSize: Math.min(filter.limit ?? 100, 200),
   });

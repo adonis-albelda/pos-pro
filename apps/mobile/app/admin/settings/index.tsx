@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { ScrollView, Text, TextInput, View } from "react-native";
 import { useMutation } from "@tanstack/react-query";
-import { Check, Store } from "lucide-react-native";
+import { Check, ShieldAlert, Store } from "lucide-react-native";
 import { updateStoreSettings } from "@double-a/api-client/queries";
 import { getAdminApiClient } from "@/lib/api/session";
+import { useSession } from "@/lib/session";
 import { useInvalidateSettings, useStoreSettings } from "@/lib/query/settings";
 import { useSync } from "@/sync/sync-provider";
 import { Button, Card, ErrorNote, SectionTitle, SuccessNote } from "@/components/ui";
@@ -28,6 +29,7 @@ function fieldStyle() {
  * same gap apps/admin's StoreForm hits (its file picker just refuses every
  * upload server-side). Nothing here to build a control against. */
 export default function AdminSettingsScreen() {
+  const { cashier } = useSession();
   const settingsQuery = useStoreSettings();
   const invalidate = useInvalidateSettings();
   const { pullOnly } = useSync();
@@ -69,6 +71,20 @@ export default function AdminSettingsScreen() {
     },
     onError: (cause) => setError(cause instanceof Error ? cause.message : "Could not save."),
   });
+
+  // Manager reaches everything else under /admin (see _layout.tsx) but not
+  // this screen — actsAsOwner() on the server rejects the save anyway
+  // (StoreSettingPolicy), this just skips the dead-end form entirely.
+  if (cashier?.role === "manager") {
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: space.xl, gap: space.md }}>
+        <ShieldAlert size={32} color={color.inkMuted} strokeWidth={1.75} />
+        <Text style={{ fontSize: fontSize.body, color: color.inkMuted, textAlign: "center" }}>
+          Store settings are owner-only.
+        </Text>
+      </View>
+    );
+  }
 
   if (settingsQuery.isPending) {
     return <LoadingState text="Loading store settings…" />;

@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { Crop, RotateCcw } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Crop, RotateCcw, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui";
 
 interface Rect {
@@ -11,7 +11,10 @@ interface Rect {
   height: number;
 }
 
-function normalizeRect(a: { x: number; y: number }, b: { x: number; y: number }): Rect {
+function normalizeRect(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+): Rect {
   return {
     x: Math.min(a.x, b.x),
     y: Math.min(a.y, b.y),
@@ -24,7 +27,13 @@ function normalizeRect(a: { x: number; y: number }, b: { x: number; y: number })
 function getRenderedImageMetrics(img: HTMLImageElement) {
   const { naturalWidth, naturalHeight, clientWidth, clientHeight } = img;
   if (!naturalWidth || !naturalHeight || !clientWidth || !clientHeight) {
-    return { offsetX: 0, offsetY: 0, width: clientWidth, height: clientHeight, scale: 1 };
+    return {
+      offsetX: 0,
+      offsetY: 0,
+      width: clientWidth,
+      height: clientHeight,
+      scale: 1,
+    };
   }
 
   const naturalAspect = naturalWidth / naturalHeight;
@@ -58,8 +67,9 @@ function getRenderedImageMetrics(img: HTMLImageElement) {
 
 /**
  * Draw one rectangle over the photo, then crop to it — not a full editor
- * (no resize handles, no rotate). A notebook photo just needs the table's
- * receipt or the phone's own chrome cut out before OCR sees it.
+ * (no resize handles). A notebook photo just needs the table's receipt or
+ * the phone's own chrome cut out before OCR sees it, and a sideways phone
+ * photo turned upright.
  */
 export function CropPhoto({
   src,
@@ -73,11 +83,75 @@ export function CropPhoto({
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const dragStart = useRef<{ x: number; y: number } | null>(null);
+  // Object URLs *we* create while rotating — never the original `src`
+  // (the parent owns and revokes that one). Cleaned up on unmount.
+  const ownedUrls = useRef<string[]>([]);
 
   const [rect, setRect] = useState<Rect | null>(null);
   const [dragging, setDragging] = useState(false);
   const [cropping, setCropping] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // What's actually rendered — starts as the original pick, replaced by a
+  // rotated bitmap each time Rotate is pressed. Crop reads straight off
+  // whatever <img> currently shows, so it needs no rotation math of its own.
+  const [displaySrc, setDisplaySrc] = useState(src);
+  const [rotating, setRotating] = useState(false);
+  const rotatedFile = useRef<File | null>(null);
+
+  useEffect(() => {
+    return () => {
+      // Intentionally reads ownedUrls.current at unmount time, not mount
+      // time — rotate() keeps pushing onto it for as long as this component
+      // is alive.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      for (const url of ownedUrls.current) URL.revokeObjectURL(url);
+    };
+  }, []);
+
+  async function rotate() {
+    const img = imgRef.current;
+    if (!img || rotating) return;
+
+    setRotating(true);
+    setError(null);
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalHeight;
+      canvas.height = img.naturalWidth;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Canvas is not available.");
+
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate(Math.PI / 2);
+      ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob((next) => resolve(next), "image/jpeg", 0.95),
+      );
+      if (!blob) throw new Error("Could not rotate the photo.");
+
+      const file = new File([blob], "rotated.jpg", { type: "image/jpeg" });
+      const url = URL.createObjectURL(blob);
+      ownedUrls.current.push(url);
+      rotatedFile.current = file;
+      setDisplaySrc(url);
+      setRect(null);
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Could not rotate the photo.",
+      );
+    } finally {
+      setRotating(false);
+    }
+  }
+
+  function useFullPhoto() {
+    // Rotated but never cropped — hand back the rotated bitmap instead of
+    // just closing the cropper, or the rotation would silently be lost.
+    if (rotatedFile.current) onCropped(rotatedFile.current);
+    else onCancel();
+  }
 
   function pointerPos(event: React.PointerEvent): { x: number; y: number } {
     const img = imgRef.current;
@@ -126,8 +200,14 @@ export function CropPhoto({
 
       const selLeft = Math.max(rect.x, metrics.offsetX);
       const selTop = Math.max(rect.y, metrics.offsetY);
-      const selRight = Math.min(rect.x + rect.width, metrics.offsetX + metrics.width);
-      const selBottom = Math.min(rect.y + rect.height, metrics.offsetY + metrics.height);
+      const selRight = Math.min(
+        rect.x + rect.width,
+        metrics.offsetX + metrics.width,
+      );
+      const selBottom = Math.min(
+        rect.y + rect.height,
+        metrics.offsetY + metrics.height,
+      );
       const selWidth = selRight - selLeft;
       const selHeight = selBottom - selTop;
 
@@ -166,7 +246,9 @@ export function CropPhoto({
 
       onCropped(new File([blob], "cropped.jpg", { type: "image/jpeg" }));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not crop the photo.");
+      setError(
+        cause instanceof Error ? cause.message : "Could not crop the photo.",
+      );
     } finally {
       setCropping(false);
     }
@@ -185,7 +267,7 @@ export function CropPhoto({
       >
         <img
           ref={imgRef}
-          src={src}
+          src={displaySrc}
           alt="Notebook photo — drag to select the area to crop"
           className="block max-h-96 w-full object-contain"
           draggable={false}
@@ -194,21 +276,42 @@ export function CropPhoto({
           <div
             aria-hidden
             className="absolute border-2 border-primary bg-primary/15"
-            style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }}
+            style={{
+              left: rect.x,
+              top: rect.y,
+              width: rect.width,
+              height: rect.height,
+            }}
           />
         ) : null}
       </div>
 
       <p className="text-caption text-ink-muted">
-        Drag a box around the part of the photo to keep, then crop. Skip this to read the
-        whole photo as-is.
+        Rotate if it's sideways, drag a box around the part to keep, then crop —
+        or skip both to read the whole photo as-is.
       </p>
 
       {error ? <p className="text-caption text-danger-ink">{error}</p> : null}
 
       <div className="flex flex-col gap-2 sm:flex-row">
-        <Button type="button" icon={Crop} loading={cropping} disabled={!rect} onClick={applyCrop}>
+        <Button
+          type="button"
+          icon={Crop}
+          loading={cropping}
+          disabled={!rect}
+          onClick={applyCrop}
+        >
           Crop and use this
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          icon={RotateCw}
+          loading={rotating}
+          disabled={cropping}
+          onClick={rotate}
+        >
+          Rotate 90°
         </Button>
         <Button
           type="button"
@@ -219,7 +322,12 @@ export function CropPhoto({
         >
           Reset selection
         </Button>
-        <Button type="button" variant="ghost" disabled={cropping} onClick={onCancel}>
+        <Button
+          type="button"
+          variant="ghost"
+          disabled={cropping}
+          onClick={useFullPhoto}
+        >
           Use full photo
         </Button>
       </div>

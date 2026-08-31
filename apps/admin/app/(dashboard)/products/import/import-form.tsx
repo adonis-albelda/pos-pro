@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useActionState, useCallback, useMemo, useState } from "react";
+import { Fragment, useActionState, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import type { ProductImportStatus } from "@double-a/api-client/queries";
 import {
@@ -9,6 +9,7 @@ import {
   Ban,
   Check,
   Columns3,
+  Crop,
   Download,
   Eye,
   FolderPlus,
@@ -17,10 +18,12 @@ import {
   Pencil,
   RotateCcw,
   Search,
+  SearchCheck,
   SlidersHorizontal,
   Sparkles,
   TriangleAlert,
   Upload,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -39,6 +42,8 @@ import {
 } from "@/components/ui";
 import { useLocationFilter } from "@/components/location-filter-provider";
 import { useLocations } from "@/lib/query/locations";
+import { useFeatureFlags } from "@/lib/query/features";
+import { compressImage } from "@/lib/compress-image";
 import type { ProductStockMode } from "@/lib/product-import";
 import { IMPORT_FIELD_META, type ColumnMapping } from "@/lib/product-import-mapping";
 import { mappedCellsFromSource, sourceCellsForLine } from "@/lib/product-import-fix";
@@ -58,6 +63,27 @@ import { ImportProgress } from "./import-progress";
 import { RollbackProgress } from "./rollback-progress";
 import { EMPTY_IMPORT_STATE } from "./import-state";
 import { importProducts } from "./actions";
+import { CropPhoto } from "../from-photo/crop-photo";
+
+function ReadPhotoButton({ disabled }: { disabled?: boolean }) {
+  const { pending } = useFormStatus();
+
+  return (
+    <>
+      <AiProcessingOverlay open={pending} message="AI is reading your photo" />
+      <Button
+        type="submit"
+        name="intent"
+        value="extract_photo"
+        icon={Sparkles}
+        loading={pending}
+        disabled={disabled}
+      >
+        {pending ? "Reading photo..." : "Read with AI"}
+      </Button>
+    </>
+  );
+}
 
 function SubmitButton({
   icon,
@@ -300,7 +326,9 @@ function StockOptionsForm({
 }
 
 export function ImportForm() {
-  const [state, submit] = useActionState(importProducts, EMPTY_IMPORT_STATE);
+  const [state, submitAction] = useActionState(importProducts, EMPTY_IMPORT_STATE);
+  const { isEnabled } = useFeatureFlags();
+  const photoAiEnabled = isEnabled("product_photo_ai");
   const { locationId } = useLocationFilter();
   const locationsQuery = useLocations({ type: "branch" });
   const [finished, setFinished] = useState<ProductImportStatus | null>(null);
@@ -309,6 +337,77 @@ export function ImportForm() {
   const [rollingBack, setRollingBack] = useState(false);
   const [activeRowTab, setActiveRowTab] = useState<"valid" | "broken">("valid");
   const [editingLine, setEditingLine] = useState<number | null>(null);
+  const [activeFile, setActiveFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [showCropper, setShowCropper] = useState(false);
+  const [skipExistingUpdates, setSkipExistingUpdates] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const isImageUpload = Boolean(activeFile?.type.startsWith("image/"));
+
+  const clearPhotoPreview = useCallback(() => {
+    setPreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return null;
+    });
+    setActiveFile(null);
+    setShowCropper(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  function onFilePicked(file: File | null) {
+    setPreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return null;
+    });
+    setShowCropper(false);
+
+    if (!file) {
+      setActiveFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    setActiveFile(file);
+    if (file.type.startsWith("image/")) {
+      setPreviewUrl(URL.createObjectURL(file));
+      setShowCropper(true);
+    }
+  }
+
+  function onPhotoCropped(cropped: File) {
+    setPreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return URL.createObjectURL(cropped);
+    });
+    setActiveFile(cropped);
+    setShowCropper(false);
+  }
+
+  const submit = useCallback(
+    async (formData: FormData) => {
+      const intent = String(formData.get("intent") ?? "");
+      if (intent === "extract_photo") {
+        const file = activeFile;
+        if (file instanceof File && file.type.startsWith("image/")) {
+          try {
+            const compressed = await compressImage(file);
+            formData.set("file", compressed);
+          } catch {
+            formData.set("file", file);
+          }
+        }
+      }
+      submitAction(formData);
+    },
+    [activeFile, submitAction],
+  );
 
   const plan = state.plan;
   const branches = locationsQuery.data ?? [];
@@ -350,6 +449,9 @@ export function ImportForm() {
   }, []);
 
   const rowCount = plan?.rows.length ?? 0;
+  const effectiveAcceptedCount = plan
+    ? plan.createCount + (skipExistingUpdates ? 0 : plan.updateCount)
+    : 0;
   const acceptedCount = plan ? plan.createCount + plan.updateCount : 0;
   const rejectedIssues = plan ? rejectedRowsFromPlan(plan) : [];
   const visibleRows = useMemo(() => {
@@ -408,15 +510,62 @@ export function ImportForm() {
       <StepBar step={currentStep} />
 
       <form action={submit} className="space-y-4">
-        <input type="hidden" name="intent" value="check" />
-
         <Field
-          label="CSV file"
-          hint="Any layout works — connect columns on the next step. Download our template if you prefer."
+          label="CSV or photo"
+          hint={
+            photoAiEnabled
+              ? "Upload a supplier CSV, or a photo of a notebook list — AI reads images on the next step."
+              : "Any layout works — connect columns on the next step. Download our template if you prefer."
+          }
           required={false}
         >
-          <FileInput name="file" accept=".csv,text/csv" />
+          <FileInput
+            ref={fileInputRef}
+            name="file"
+            accept=".csv,text/csv,image/*"
+            onChange={(event) => onFilePicked(event.target.files?.[0] ?? null)}
+          />
         </Field>
+
+        {previewUrl && isImageUpload && photoAiEnabled && !state.csv ? (
+          showCropper ? (
+            <CropPhoto
+              src={previewUrl}
+              onCropped={onPhotoCropped}
+              onCancel={() => setShowCropper(false)}
+            />
+          ) : (
+            <div className="space-y-2">
+              <div className="overflow-hidden rounded-sm border border-border bg-paper">
+                <img
+                  src={previewUrl}
+                  alt="Selected import photo"
+                  className="max-h-72 w-full object-contain"
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  icon={Crop}
+                  onClick={() => setShowCropper(true)}
+                >
+                  Crop or rotate
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  icon={X}
+                  onClick={clearPhotoPreview}
+                >
+                  Clear photo
+                </Button>
+              </div>
+            </div>
+          )
+        ) : null}
 
         <Field
           label="Or paste the rows"
@@ -432,7 +581,21 @@ export function ImportForm() {
 
         {state.error && !state.csv ? <ErrorNote>{state.error}</ErrorNote> : null}
 
-        <SubmitButton icon={Search} label="Read the file" busyLabel="Reading..." />
+        <div className="flex flex-wrap items-center gap-3">
+          {isImageUpload && photoAiEnabled ? (
+            <ReadPhotoButton disabled={showCropper || !activeFile} />
+          ) : (
+            <>
+              <input type="hidden" name="intent" value="check" />
+              <SubmitButton icon={Search} label="Read the file" busyLabel="Reading..." />
+            </>
+          )}
+          {isImageUpload && !photoAiEnabled ? (
+            <p className="text-caption text-ink-muted">
+              Photo import is not enabled for this shop.
+            </p>
+          ) : null}
+        </div>
       </form>
 
       {state.csv && state.sourceHeaders.length > 0 ? (
@@ -541,8 +704,8 @@ export function ImportForm() {
                 <Badge tone="success" icon={FolderPlus}>
                   {plan.createCount} new
                 </Badge>
-                <Badge tone="neutral" icon={Upload}>
-                  {plan.updateCount} updated
+                <Badge tone="warning" icon={SearchCheck}>
+                  {plan.updateCount} in catalogue
                 </Badge>
                 <Badge tone={plan.rejectCount > 0 ? "danger" : "neutral"} icon={Ban}>
                   {plan.rejectCount} turned away
@@ -653,8 +816,8 @@ export function ImportForm() {
                                   New product
                                 </Badge>
                               ) : row.action === "update" ? (
-                                <Badge tone="neutral" icon={Upload}>
-                                  Update
+                                <Badge tone="warning" icon={SearchCheck}>
+                                  In catalogue
                                 </Badge>
                               ) : (
                                 <Badge tone="danger" icon={Ban}>
@@ -721,23 +884,53 @@ export function ImportForm() {
                   <input type="hidden" name="intent" value="import" />
                   <input type="hidden" name="csv" value={state.csv} />
                   <input type="hidden" name="mapping_json" value={mappingJson} />
-                  {/* Stock mode was already chosen once, above, at the mapping
-                      step — this form just carries the same values forward
-                      in its own POST body rather than showing the picker a
-                      second time. */}
-                  <input type="hidden" name="stock_mode" value={state.stockMode} />
-                  {stockLocationId ? (
-                    <input type="hidden" name="location_id" value={stockLocationId} />
+
+                  {plan.updateCount > 0 ? (
+                    <div className="rounded-md border border-border bg-paper px-4 py-4">
+                      <label className="flex items-start gap-2 text-body text-ink-muted">
+                        <input
+                          type="checkbox"
+                          name="skip_existing_updates"
+                          value="1"
+                          checked={skipExistingUpdates}
+                          onChange={(event) => setSkipExistingUpdates(event.target.checked)}
+                          className="mt-1"
+                        />
+                        <span>
+                          <span className="font-medium text-ink">Skip updates for existing products</span>{" "}
+                          — only add new products from this file. Rows already in the catalogue are
+                          left unchanged.
+                        </span>
+                      </label>
+                    </div>
                   ) : null}
+
+                  {hasStockColumn && plan.updateCount > 0 && !skipExistingUpdates ? (
+                    <StockOptionsForm
+                      stockMode={state.stockMode}
+                      stockLocationId={stockLocationId}
+                      branches={branches}
+                      hasStockColumn={hasStockColumn}
+                    />
+                  ) : (
+                    <>
+                      <input type="hidden" name="stock_mode" value={state.stockMode} />
+                      {stockLocationId ? (
+                        <input type="hidden" name="location_id" value={stockLocationId} />
+                      ) : null}
+                    </>
+                  )}
 
                   <div className="flex flex-wrap items-center gap-3">
                     <SubmitButton
                       icon={Check}
-                      label={`Import ${acceptedCount.toLocaleString()} products`}
+                      label={`Import ${effectiveAcceptedCount.toLocaleString()} products`}
                       busyLabel="Starting import..."
                       disabled={
-                        acceptedCount === 0 ||
+                        effectiveAcceptedCount === 0 ||
                         (hasStockColumn &&
+                          !skipExistingUpdates &&
+                          plan.updateCount > 0 &&
                           state.stockMode !== "skip" &&
                           branches.length > 0 &&
                           !stockLocationId)
@@ -761,9 +954,15 @@ export function ImportForm() {
                   {plan.rejectCount > 0 ? (
                     <p className="text-caption text-ink-muted">
                       {plan.rejectCount} row{plan.rejectCount === 1 ? "" : "s"} still turned
-                      away. Import now brings in only the {acceptedCount.toLocaleString()} valid
-                      rows and skips those — or fix them first (Fix with AI, or edit one by one)
+                      away. Import now brings in only the {effectiveAcceptedCount.toLocaleString()}{" "}
+                      valid rows and skips those — or fix them first (Fix with AI, or edit one by one)
                       and import everything together.
+                    </p>
+                  ) : skipExistingUpdates && plan.updateCount > 0 ? (
+                    <p className="text-caption text-ink-muted">
+                      Skipping {plan.updateCount} existing product
+                      {plan.updateCount === 1 ? "" : "s"}. Importing{" "}
+                      {plan.createCount.toLocaleString()} new only.
                     </p>
                   ) : null}
 

@@ -2,7 +2,6 @@ import type { Route } from "next";
 import {
   ArrowLeftRight,
   Boxes,
-  Camera,
   ChartColumn,
   ClipboardList,
   ContactRound,
@@ -66,14 +65,6 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Package,
         blurb: "Prices, cost, barcodes",
         tone: "primary",
-      },
-      {
-        href: "/products/from-photo" as Route,
-        label: "From photo",
-        icon: Camera,
-        blurb: "Read a notebook list into products",
-        tone: "accent",
-        featureKey: "product_photo_ai",
       },
       {
         href: "/inventory",
