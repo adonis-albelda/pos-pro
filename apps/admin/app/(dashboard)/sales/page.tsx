@@ -2,6 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { isInitialQueryLoad } from "@/lib/list-query";
+import { resolveDayWindow } from "@/lib/date-range";
 import { Card } from "@/components/ui";
 import { useLocationFilter } from "@/components/location-filter-provider";
 import { useSalesList } from "@/lib/query/sales";
@@ -11,16 +12,22 @@ import { SalesPanel } from "./sales-panel";
 export default function SalesPage() {
   const searchParams = useSearchParams();
   const { locationId } = useLocationFilter();
-  const from = searchParams.get("from") ?? undefined;
-  const to = searchParams.get("to") ?? undefined;
+  // fromDay/toDay (plain yyyy-mm-dd) drive the DateRangePicker UI; from/to
+  // are the store-timezone instant boundaries the API actually filters on —
+  // a bare "2026-08-15" sent as `to` would cut off at that day's midnight
+  // instead of including the whole day.
+  const dayWindow = resolveDayWindow({
+    from: searchParams.get("from") ?? undefined,
+    to: searchParams.get("to") ?? undefined,
+  });
   const userId = searchParams.get("userId") ?? undefined;
   const deviceId = searchParams.get("deviceId") ?? undefined;
   const status = searchParams.get("status") ?? undefined;
 
   const usersQuery = useUsers({ includeInactive: true });
   const salesQuery = useSalesList({
-    from,
-    to,
+    from: dayWindow.from,
+    to: dayWindow.to,
     userId,
     deviceId,
     status,
@@ -39,5 +46,13 @@ export default function SalesPage() {
     );
   }
 
-  return <SalesPanel sales={salesQuery.data ?? []} users={usersQuery.data ?? []} fetching={salesQuery.isFetching && Boolean(salesQuery.data)} />;
+  return (
+    <SalesPanel
+      sales={salesQuery.data ?? []}
+      users={usersQuery.data ?? []}
+      fetching={salesQuery.isFetching && Boolean(salesQuery.data)}
+      fromDay={dayWindow.fromDay}
+      toDay={dayWindow.toDay}
+    />
+  );
 }

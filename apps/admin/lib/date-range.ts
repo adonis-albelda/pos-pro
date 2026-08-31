@@ -37,6 +37,15 @@ export function firstOfMonth(day: string): string {
   return `${day.slice(0, 7)}-01`;
 }
 
+/** Monday of the week `day` falls in — same Monday-first convention as monthGrid. */
+export function startOfWeek(day: string): string {
+  const [year = 1970, month = 1, date = 1] = day.split("-").map(Number);
+  // getUTCDay: 0 = Sunday. Monday-first means Sunday sits at the end.
+  const weekday = new Date(Date.UTC(year, month - 1, date)).getUTCDay();
+  const lead = (weekday + 6) % 7;
+  return shiftDays(day, -lead);
+}
+
 /** Same day-of-month is not guaranteed to exist, so month steps clamp to the 1st. */
 export function shiftMonths(day: string, months: number): string {
   const [year = 1970, month = 1] = day.split("-").map(Number);

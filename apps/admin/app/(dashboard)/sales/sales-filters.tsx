@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import { ChevronDown, Search, SlidersHorizontal, X } from "lucide-react";
 import type { User } from "@double-a/shared-types";
-import { Button, Field, Input, Select } from "@/components/ui";
+import { Button, Field, Select } from "@/components/ui";
 
 function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(" ");
@@ -17,32 +17,16 @@ const STATUS_LABELS: Record<string, string> = {
   refunded: "Refunded",
 };
 
-function formatFilterDay(value: string | null): string | null {
-  if (!value) return null;
-  const parsed = new Date(`${value}T12:00:00`);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleDateString("en-PH", { dateStyle: "medium" });
-}
-
+/** Date range lives in its own DateRangePicker control now, not this popover. */
 function describeActiveFilters(
   params: URLSearchParams,
   users: User[],
   devices: string[],
 ): string {
   const parts: string[] = [];
-  const from = params.get("from");
-  const to = params.get("to");
   const userId = params.get("userId");
   const deviceId = params.get("deviceId");
   const status = params.get("status");
-
-  if (from && to) {
-    parts.push(`${formatFilterDay(from)} – ${formatFilterDay(to)}`);
-  } else if (from) {
-    parts.push(`From ${formatFilterDay(from)}`);
-  } else if (to) {
-    parts.push(`Until ${formatFilterDay(to)}`);
-  }
 
   if (userId) {
     parts.push(users.find((user) => user.id === userId)?.name ?? "Cashier");
@@ -72,20 +56,27 @@ function SalesFiltersForm({
   const params = useSearchParams();
 
   function apply(formData: FormData) {
+    // Date range is its own DateRangePicker control, outside this form —
+    // preserve from/to (and q) rather than rebuilding the querystring from
+    // just this form's fields, or Apply would silently clear the range.
     const next = new URLSearchParams();
+    for (const key of ["q", "from", "to"]) {
+      const value = params.get(key);
+      if (value) next.set(key, value);
+    }
     for (const [key, value] of formData.entries()) {
       if (typeof value === "string" && value) next.set(key, value);
     }
-    const q = params.get("q");
-    if (q) next.set("q", q);
     router.push(`/sales?${next.toString()}` as Route);
     onApplied();
   }
 
   function clear() {
     const next = new URLSearchParams();
-    const q = params.get("q");
-    if (q) next.set("q", q);
+    for (const key of ["q", "from", "to"]) {
+      const value = params.get(key);
+      if (value) next.set(key, value);
+    }
     const qs = next.toString();
     router.push((qs ? `/sales?${qs}` : "/sales") as Route);
     onApplied();
@@ -94,12 +85,6 @@ function SalesFiltersForm({
   return (
     <form action={apply} className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="From">
-          <Input type="date" name="from" defaultValue={params.get("from") ?? ""} />
-        </Field>
-        <Field label="To">
-          <Input type="date" name="to" defaultValue={params.get("to") ?? ""} />
-        </Field>
         <Field label="Cashier">
           <Select name="userId" defaultValue={params.get("userId") ?? ""}>
             <option value="">Everyone</option>

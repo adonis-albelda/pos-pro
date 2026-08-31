@@ -3,15 +3,18 @@
 import type { Route } from "next";
 import Link from "next/link";
 import { useMemo } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { matchesQuery, paginateItems, parseListQuery } from "@/lib/list-query";
 import {
   Banknote,
   ChevronRight,
   CreditCard,
+  Percent,
   Plus,
   Receipt,
+  TrendingUp,
   UserRound,
+  Wallet,
 } from "lucide-react";
 import { formatMoney } from "@double-a/shared-types";
 import type { SaleWithItems, User } from "@double-a/shared-types";
@@ -21,10 +24,12 @@ import {
   Card,
   EmptyState,
   Money,
+  StatCard,
   Table,
   Td,
   Th,
 } from "@/components/ui";
+import { DateRangePicker, type DayWindowValue } from "@/components/date-range-picker";
 import { Pagination, SearchField } from "@/components/record-list";
 import { useLocationMutationsLocked } from "@/components/location-mutations-banner";
 import { SalesFiltersPopover } from "./sales-filters";
@@ -32,11 +37,16 @@ import { SalesFiltersPopover } from "./sales-filters";
 function SalesPanelHeader({
   users,
   devices,
+  fromDay,
+  toDay,
 }: {
   users: User[];
   devices: string[];
+  fromDay: string | null;
+  toDay: string | null;
 }) {
   const mutationsLocked = useLocationMutationsLocked();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { q } = parseListQuery({
     q: searchParams.get("q") ?? undefined,
@@ -49,6 +59,16 @@ function SalesPanelHeader({
     deviceId: searchParams.get("deviceId") ?? undefined,
     status: searchParams.get("status") ?? undefined,
   };
+
+  function applyWindow(window: DayWindowValue) {
+    const next = new URLSearchParams(searchParams.toString());
+    if (window.fromDay) next.set("from", window.fromDay);
+    else next.delete("from");
+    if (window.toDay) next.set("to", window.toDay);
+    else next.delete("to");
+    next.delete("page");
+    router.push(`/sales?${next.toString()}` as Route);
+  }
 
   return (
     <div className="flex flex-col gap-4 border-b border-border px-4 py-4 sm:px-6 lg:flex-row lg:items-end lg:justify-between">
@@ -65,6 +85,12 @@ function SalesPanelHeader({
           placeholder="Search cashier, customer, terminal…"
           defaultValue={q}
           preserve={listQuery}
+          className="sm:max-w-xs"
+        />
+        <DateRangePicker
+          fromDay={fromDay}
+          toDay={toDay}
+          onApply={applyWindow}
           className="sm:max-w-xs"
         />
         <SalesFiltersPopover users={users} devices={devices} className="sm:max-w-xs" />
@@ -138,13 +164,25 @@ function SalesTableSection({
     [filtered, page],
   );
 
-  const revenue = useMemo(
-    () =>
-      filtered
-        .filter((sale) => sale.status === "completed")
-        .reduce((sum, sale) => sum + sale.totalAmount, 0),
-    [filtered],
-  );
+  // Gross profit reads sale_items.unit_cost — the supplier price snapshotted
+  // at sale time, never today's product cost (CLAUDE.md §6). Voided/refunded
+  // sales are excluded, same as the Reports profit report.
+  const stats = useMemo(() => {
+    const completed = filtered.filter((sale) => sale.status === "completed");
+    const revenue = completed.reduce((sum, sale) => sum + sale.totalAmount, 0);
+    let cost = 0;
+    let discount = 0;
+    for (const sale of completed) {
+      for (const item of sale.items) {
+        cost += item.unitCost * item.quantity;
+        discount += (item.listPrice - item.unitPrice) * item.quantity;
+      }
+    }
+    const grossProfit = revenue - cost;
+    const marginPercent = revenue === 0 ? 0 : (grossProfit / revenue) * 100;
+
+    return { revenue, cost, discount, grossProfit, marginPercent, count: completed.length };
+  }, [filtered]);
 
   const listQuery = {
     q: q || undefined,
@@ -157,10 +195,34 @@ function SalesTableSection({
 
   return (
     <>
-      <div className="border-b border-border px-4 py-3 text-caption text-ink-muted sm:px-6">
-        {formatMoney(revenue)} from completed sales in this range
-        {q ? ` · ${total} match${total === 1 ? "" : "es"}` : ""}
+      <div className="grid gap-3 border-b border-border p-4 sm:grid-cols-2 sm:px-6 xl:grid-cols-4">
+        <StatCard
+          icon={Wallet}
+          label="Gross revenue"
+          value={formatMoney(stats.revenue)}
+          hint={`${stats.count} completed sale${stats.count === 1 ? "" : "s"}`}
+        />
+        <StatCard icon={Receipt} label="Cost of goods" value={formatMoney(stats.cost)} tone="neutral" />
+        <StatCard
+          icon={TrendingUp}
+          label="Gross profit"
+          value={formatMoney(stats.grossProfit)}
+          hint={`${stats.marginPercent.toFixed(1)}% margin`}
+          tone={stats.grossProfit < 0 ? "danger" : "success"}
+        />
+        <StatCard
+          icon={Percent}
+          label="Discounts given"
+          value={formatMoney(stats.discount)}
+          tone={stats.discount > 0 ? "warning" : "neutral"}
+        />
       </div>
+
+      {q ? (
+        <div className="border-b border-border px-4 py-3 text-caption text-ink-muted sm:px-6">
+          {total} match{total === 1 ? "" : "es"}
+        </div>
+      ) : null}
 
       {total === 0 ? (
         <EmptyState
@@ -291,10 +353,14 @@ export function SalesPanel({
   sales,
   users,
   fetching = false,
+  fromDay,
+  toDay,
 }: {
   sales: SaleWithItems[];
   users: User[];
   fetching?: boolean;
+  fromDay: string | null;
+  toDay: string | null;
 }) {
   const devices = useMemo(
     () => [...new Set(sales.map((sale) => sale.deviceId).filter(Boolean))] as string[],
@@ -303,7 +369,7 @@ export function SalesPanel({
 
   return (
     <Card>
-      <SalesPanelHeader users={users} devices={devices} />
+      <SalesPanelHeader users={users} devices={devices} fromDay={fromDay} toDay={toDay} />
       <SalesTableSection sales={sales} users={users} fetching={fetching} />
     </Card>
   );

@@ -19,6 +19,7 @@ import {
   monthLabel,
   shiftDays,
   shiftMonths,
+  startOfWeek,
   storeToday,
   WEEKDAY_LABELS,
 } from "@/lib/date-range";
@@ -47,6 +48,10 @@ const PRESETS: Preset[] = [
   {
     label: "Yesterday",
     window: (today) => ({ fromDay: shiftDays(today, -1), toDay: shiftDays(today, -1) }),
+  },
+  {
+    label: "This week",
+    window: (today) => ({ fromDay: startOfWeek(today), toDay: today }),
   },
   {
     label: "Last 7 days",
