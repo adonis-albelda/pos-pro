@@ -3,26 +3,36 @@
 import { useState } from "react";
 import type { Route } from "next";
 import { useRouter } from "next/navigation";
-import { Camera, Copy, Eye, EyeOff, Pencil } from "lucide-react";
+import { Camera, Copy, Eye, EyeOff, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ApiError } from "@double-a/api-client";
 import type { Product } from "@double-a/shared-types";
 import { formatPercent, marginPercent, stockLevel } from "@double-a/shared-types";
 import { Badge, IconButton, IconLink, Money, Table, Td, Th } from "@/components/ui";
 import { ConfirmDialog } from "@/components/overlay";
-import { useCloneProduct, useSetProductActive } from "@/lib/query/products";
+import {
+  useCloneProduct,
+  useDeleteProduct,
+  useRestoreProduct,
+  useSetProductActive,
+} from "@/lib/query/products";
 
 export function ProductsTable({
   products,
   fetching = false,
+  trashed = false,
 }: {
   products: Product[];
   fetching?: boolean;
+  trashed?: boolean;
 }) {
   const router = useRouter();
   const [hiding, setHiding] = useState<Product | null>(null);
+  const [deleting, setDeleting] = useState<Product | null>(null);
   const setActive = useSetProductActive();
   const cloneProduct = useCloneProduct();
+  const deleteProduct = useDeleteProduct();
+  const restoreProduct = useRestoreProduct();
 
   function clone(product: Product) {
     cloneProduct.mutate(product.id, {
@@ -53,12 +63,38 @@ export function ProductsTable({
     );
   }
 
+  function confirmDelete() {
+    if (!deleting) return;
+    deleteProduct.mutate(deleting.id, {
+      onSuccess: () => {
+        toast.success(`Deleted ${deleting.name}.`);
+        setDeleting(null);
+      },
+      onError: (error) => {
+        const message =
+          error instanceof ApiError ? error.message : "Could not delete this product.";
+        toast.error(message);
+      },
+    });
+  }
+
+  function restore(product: Product) {
+    restoreProduct.mutate(product.id, {
+      onSuccess: () => toast.success(`Restored ${product.name}.`),
+      onError: (error) => {
+        const message =
+          error instanceof ApiError ? error.message : "Could not restore this product.";
+        toast.error(message);
+      },
+    });
+  }
+
   return (
     <>
       <Table fetching={fetching}>
         <thead>
           <tr>
-            <Th>Product</Th>
+            <Th className="sticky left-0 z-10 border-r border-border bg-paper">Product</Th>
             <Th>SKU</Th>
             <Th>Category</Th>
             <Th>Supplier</Th>
@@ -78,7 +114,7 @@ export function ProductsTable({
 
             return (
               <tr key={product.id} className={product.isActive ? "" : "opacity-60"}>
-                <Td className="font-medium">
+                <Td className="sticky left-0 z-10 border-r border-border bg-surface font-medium">
                   <div className="flex items-center gap-2.5">
                     <span className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border bg-paper">
                       {product.photoUrl ? (
@@ -128,24 +164,41 @@ export function ProductsTable({
                 </Td>
                 <Td>
                   <div className="flex justify-end gap-1">
-                    <IconLink
-                      icon={Pencil}
-                      label="Edit product"
-                      href={`/products/${product.id}` as Route}
-                    />
-                    <IconButton
-                      icon={product.isActive ? EyeOff : Eye}
-                      label={
-                        product.isActive ? "Hide from terminals" : "Show on terminals"
-                      }
-                      onClick={() => setHiding(product)}
-                    />
-                    <IconButton
-                      icon={Copy}
-                      label="Clone product"
-                      disabled={cloneProduct.isPending}
-                      onClick={() => clone(product)}
-                    />
+                    {trashed ? (
+                      <IconButton
+                        icon={RotateCcw}
+                        label="Restore product"
+                        disabled={restoreProduct.isPending}
+                        onClick={() => restore(product)}
+                      />
+                    ) : (
+                      <>
+                        <IconLink
+                          icon={Pencil}
+                          label="Edit product"
+                          href={`/products/${product.id}` as Route}
+                        />
+                        <IconButton
+                          icon={product.isActive ? EyeOff : Eye}
+                          label={
+                            product.isActive ? "Hide from terminals" : "Show on terminals"
+                          }
+                          onClick={() => setHiding(product)}
+                        />
+                        <IconButton
+                          icon={Copy}
+                          label="Clone product"
+                          disabled={cloneProduct.isPending}
+                          onClick={() => clone(product)}
+                        />
+                        <IconButton
+                          icon={Trash2}
+                          label="Delete product"
+                          tone="danger"
+                          onClick={() => setDeleting(product)}
+                        />
+                      </>
+                    )}
                   </div>
                 </Td>
               </tr>
@@ -166,6 +219,20 @@ export function ProductsTable({
             : `${hiding?.name ?? "This product"} will show on terminals again after their next sync.`
         }
         confirmLabel={hiding?.isActive ? "Hide product" : "Show product"}
+      />
+
+      <ConfirmDialog
+        open={deleting !== null}
+        onClose={() => setDeleting(null)}
+        onConfirm={confirmDelete}
+        pending={deleteProduct.isPending}
+        title="Delete product?"
+        description={
+          deleting
+            ? `${deleting.name} stops appearing on terminals after their next sync. Stock and sales history stay — restore it from the Deleted filter any time.`
+            : ""
+        }
+        confirmLabel="Delete product"
       />
     </>
   );

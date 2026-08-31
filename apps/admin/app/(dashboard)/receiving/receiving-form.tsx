@@ -607,11 +607,11 @@ export function ReceivingForm({
             <Table>
               <thead>
                 <tr>
-                  <Th>Item</Th>
-                  <Th numeric>Qty</Th>
-                  <Th numeric>Unit cost</Th>
-                  <Th numeric>New price</Th>
-                  <Th>Status</Th>
+                  <Th className="min-w-[18rem]">Item</Th>
+                  <Th numeric className="min-w-[6rem]">Qty</Th>
+                  <Th numeric className="min-w-[7rem]">Unit cost</Th>
+                  <Th numeric className="min-w-[7rem]">New price</Th>
+                  <Th className="min-w-[9rem]">Status</Th>
                   <Th />
                 </tr>
               </thead>
@@ -620,7 +620,7 @@ export function ReceivingForm({
                   const flagged = lineIsFlagged(row);
                   return (
                     <tr key={row.key}>
-                      <Td>
+                      <Td className="min-w-[18rem] align-top">
                         <Input
                           value={row.name}
                           onChange={(event) => updateRow(row.key, { name: event.target.value })}
@@ -629,6 +629,8 @@ export function ReceivingForm({
                         />
                         {row.productId ? (
                           <Combobox
+                            className="w-full"
+                            menuMinWidth={360}
                             value={row.productId}
                             onChange={(productId) => pickProductForRow(row.key, productId)}
                             options={products.map((p) => ({
@@ -639,6 +641,8 @@ export function ReceivingForm({
                           />
                         ) : (
                           <Combobox
+                            className="w-full"
+                            menuMinWidth={360}
                             value=""
                             onChange={(productId) => pickProductForRow(row.key, productId)}
                             options={products.map((p) => ({

@@ -460,6 +460,8 @@ export interface Product {
   /** This bundle's recipe. Empty for a non-bundle, or when not eager-loaded. */
   bundleItems: BundleItem[];
   updatedAt: string;
+  /** Soft delete marker — null unless fetched with trashed=only. */
+  deletedAt: string | null;
 }
 
 export interface BundleItem {

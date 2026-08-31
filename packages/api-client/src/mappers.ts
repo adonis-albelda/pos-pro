@@ -71,6 +71,7 @@ export interface ProductAttrs {
   }[];
   created_at: string | null;
   updated_at: string | null;
+  deleted_at?: string | null;
 }
 
 export function toProduct(resource: JsonApiResource<ProductAttrs>): Product {
@@ -111,6 +112,7 @@ export function toProduct(resource: JsonApiResource<ProductAttrs>): Product {
       }),
     ),
     updatedAt: a.updated_at ?? "",
+    deletedAt: a.deleted_at ?? null,
   };
 }
 

@@ -5,12 +5,14 @@ import {
   assembleBundle,
   cloneProduct,
   countProducts,
+  deleteProduct,
   deleteProductPhoto,
   getProduct,
   getProductStats,
   listBelowReorder,
   listProductLabelsPage,
   listProductsPage,
+  restoreProduct,
   setBundleItems,
   setProductActive,
   uploadProductPhoto,
@@ -125,6 +127,26 @@ export function useCloneProduct() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => cloneProduct(getBrowserApiClient(), id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
+    },
+  });
+}
+
+export function useDeleteProduct() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteProduct(getBrowserApiClient(), id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
+    },
+  });
+}
+
+export function useRestoreProduct() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => restoreProduct(getBrowserApiClient(), id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
     },

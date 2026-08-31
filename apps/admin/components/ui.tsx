@@ -625,6 +625,8 @@ export function Combobox({
   disabled,
   required,
   className,
+  /** Dropdown panel at least this wide (px) — use when trigger sits in a narrow table cell. */
+  menuMinWidth,
 }: {
   name?: string;
   /** Controlled selection — when given, this is authoritative over defaultValue. */
@@ -637,6 +639,7 @@ export function Combobox({
   disabled?: boolean;
   required?: boolean;
   className?: string;
+  menuMinWidth?: number;
 }) {
   const [internal, setInternal] = useState(value ?? defaultValue ?? "");
   const selected = value ?? internal;
@@ -684,7 +687,8 @@ export function Combobox({
     function updatePosition() {
       const rect = rootRef.current?.getBoundingClientRect();
       if (!rect) return;
-      setPanelRect({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+      const width = menuMinWidth ? Math.max(rect.width, menuMinWidth) : rect.width;
+      setPanelRect({ top: rect.bottom + 4, left: rect.left, width });
     }
 
     updatePosition();
@@ -694,7 +698,7 @@ export function Combobox({
       window.removeEventListener("scroll", updatePosition, true);
       window.removeEventListener("resize", updatePosition);
     };
-  }, [open]);
+  }, [open, menuMinWidth]);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -798,7 +802,7 @@ export function Combobox({
               left: panelRect.left,
               width: panelRect.width,
             }}
-            className="z-50 max-h-64 overflow-y-auto rounded-sm border border-border bg-surface p-1 shadow-lg"
+            className="z-50 max-h-80 overflow-y-auto rounded-sm border border-border bg-surface p-1 shadow-lg"
           >
             {filtered.length === 0 ? (
               <p className="px-3 py-2 text-caption text-ink-muted">{emptyLabel}</p>
@@ -810,14 +814,17 @@ export function Combobox({
                   onMouseEnter={() => setHighlighted(index)}
                   onClick={() => commit(option.value)}
                   className={cx(
-                    "flex w-full items-center justify-between gap-2 rounded-sm px-3 py-2 text-left text-body",
+                    "flex w-full rounded-sm px-3 py-2 text-left text-body",
+                    option.sublabel
+                      ? "flex-col items-start gap-0.5"
+                      : "items-center justify-between gap-2",
                     index === highlighted ? "bg-primary-tint text-ink" : "text-ink hover:bg-paper",
                     option.value === selected && "font-medium",
                   )}
                 >
-                  <span className="min-w-0 truncate">{option.label}</span>
+                  <span className="min-w-0 break-words">{option.label}</span>
                   {option.sublabel ? (
-                    <span className="shrink-0 text-caption text-ink-muted">{option.sublabel}</span>
+                    <span className="text-caption text-ink-muted">{option.sublabel}</span>
                   ) : null}
                 </button>
               ))

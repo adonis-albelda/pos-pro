@@ -65,6 +65,8 @@ function toProductWithEstimate(row: ProductRow): ProductWithEstimatedStock {
     // when assembled, which is an admin action, not a POS one).
     bundleItems: [],
     updatedAt: row.updated_at ?? "",
+    // Deleted products never sync to a device — deletion is admin-only.
+    deletedAt: null,
     pendingQuantity: row.pending_quantity,
     estimatedStock: row.stock_quantity - row.pending_quantity,
   };

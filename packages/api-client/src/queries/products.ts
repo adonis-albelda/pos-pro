@@ -43,7 +43,13 @@ function toPayload(input: Partial<ProductInput>): Record<string, unknown> {
 }
 
 export type ProductStockState = "attention" | "low" | "out" | "oversold" | "healthy" | "hidden";
-export type ProductSort = "stock-asc" | "stock-desc" | "short-desc" | "value-desc";
+export type ProductSort =
+  | "stock-asc"
+  | "stock-desc"
+  | "short-desc"
+  | "value-desc"
+  | "price-asc"
+  | "price-desc";
 
 export interface ListProductsPageOptions {
   q?: string;
@@ -56,6 +62,8 @@ export interface ListProductsPageOptions {
   /** Server-computed from stock_quantity/reorder_point/is_active — ignores `includeInactive` when given (see IndexProductsController). */
   state?: ProductStockState;
   sort?: ProductSort;
+  /** "only" lists soft-deleted products instead of live ones — see restoreProduct(). */
+  trashed?: "only";
 }
 
 export async function listProductsPage(
@@ -69,6 +77,7 @@ export async function listProductsPage(
     is_active: options.state || options.includeInactive ? undefined : true,
     state: options.state,
     sort: options.sort,
+    trashed: options.trashed,
     page: options.page ?? 1,
     per_page: options.pageSize ?? 25,
   });
@@ -419,6 +428,17 @@ export async function setProductActive(client: ApiClient, id: string, isActive: 
 /** Copies every field except sku/supplier_sku/barcode (must stay unique) and suffixes the name " Clone". */
 export async function cloneProduct(client: ApiClient, id: string): Promise<Product> {
   const { data } = await client.post<{ data: JsonApiResource<ProductAttrs> }>(`/products/${id}/clone`);
+  return toProduct(data);
+}
+
+/** Soft delete — stock and sales history stay, terminals stop seeing it on their next sync. */
+export async function deleteProduct(client: ApiClient, id: string): Promise<void> {
+  await client.delete(`/products/${id}`);
+}
+
+/** Undoes deleteProduct(). */
+export async function restoreProduct(client: ApiClient, id: string): Promise<Product> {
+  const { data } = await client.post<{ data: JsonApiResource<ProductAttrs> }>(`/products/${id}/restore`);
   return toProduct(data);
 }
 
