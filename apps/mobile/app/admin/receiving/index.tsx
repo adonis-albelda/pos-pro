@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { Image, PanResponder, Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -8,14 +7,16 @@ import { useMutation } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Camera,
+  Clock,
   Crop,
   FolderOpen,
+  Images,
   PackageCheck,
   RotateCcw,
   RotateCw,
   Sparkles,
   Trash2,
-  TriangleAlert,
+  Upload,
   X,
 } from "lucide-react-native";
 import { roundMoney } from "@double-a/shared-types";
@@ -26,8 +27,11 @@ import {
 } from "@double-a/api-client/queries";
 import { getAdminApiClient } from "@/lib/api/session";
 import { useLocationScope } from "@/lib/location-scope";
+import { useGalleryPhotos, useUploadGalleryPhoto } from "@/lib/query/gallery-photos";
 import { useSuppliers } from "@/lib/query/suppliers";
 import { Badge, Button, Card, ErrorNote, IconButton, SuccessNote } from "@/components/ui";
+import { BottomSheet } from "@/components/bottom-sheet";
+import { DocumentScanCameraModal } from "@/components/document-scan-camera-modal";
 import { WaveBackdrop } from "@/components/wave-backdrop";
 import { color, fontSize, radius, space, styles } from "@/theme";
 
@@ -345,88 +349,6 @@ function toReviewRow(line: ExtractedReceiptLine): ReviewRow {
   };
 }
 
-/**
- * Camera capture only, no crop/rotate step (unlike apps/admin's
- * from-photo/crop-photo.tsx) — a straight phone photo is what this needs,
- * and the AI extraction is forgiving of a slight skew. `takePictureAsync`
- * is the still-photo counterpart to BarcodeScanModal's live scan.
- */
-function CameraCapture({ onCaptured, onCancel }: { onCaptured: (uri: string) => void; onCancel: () => void }) {
-  const [permission, requestPermission] = useCameraPermissions();
-  const [requesting, setRequesting] = useState(false);
-  const [capturing, setCapturing] = useState(false);
-  const cameraRef = useRef<CameraView>(null);
-
-  async function askPermission() {
-    setRequesting(true);
-    await requestPermission();
-    setRequesting(false);
-  }
-
-  async function capture() {
-    if (!cameraRef.current || capturing) return;
-    setCapturing(true);
-    try {
-      const photo = await cameraRef.current.takePictureAsync({ quality: 0.85 });
-      if (photo?.uri) onCaptured(photo.uri);
-    } finally {
-      setCapturing(false);
-    }
-  }
-
-  const granted = permission?.granted ?? false;
-  const canAskAgain = permission?.canAskAgain ?? true;
-
-  return (
-    <View style={{ flex: 1, backgroundColor: color.ink }}>
-      {granted ? (
-        <>
-          <CameraView ref={cameraRef} style={{ flex: 1 }} facing="back" />
-          <View style={{ position: "absolute", bottom: space.xl, left: 0, right: 0, alignItems: "center" }}>
-            <Pressable
-              onPress={() => void capture()}
-              disabled={capturing}
-              accessibilityRole="button"
-              accessibilityLabel="Take photo"
-              style={{
-                width: 72,
-                height: 72,
-                borderRadius: 36,
-                backgroundColor: color.onPrimary,
-                borderWidth: 4,
-                borderColor: "rgba(255,255,255,0.4)",
-                opacity: capturing ? 0.6 : 1,
-              }}
-            />
-          </View>
-        </>
-      ) : (
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: space.xl, gap: space.lg }}>
-          <TriangleAlert size={36} color={color.onPrimary} strokeWidth={2} />
-          <Text style={{ fontSize: fontSize.body, color: color.onPrimary, textAlign: "center" }}>
-            {canAskAgain
-              ? "Needs camera access to photograph a delivery receipt."
-              : "Camera access is off for this app. Turn it on in Settings."}
-          </Text>
-          {canAskAgain ? (
-            <Button label="Allow camera" icon={Camera} busy={requesting} onPress={() => void askPermission()} />
-          ) : null}
-        </View>
-      )}
-
-      <Pressable
-        onPress={onCancel}
-        accessibilityRole="button"
-        accessibilityLabel="Cancel"
-        hitSlop={8}
-        style={{ position: "absolute", top: space.xl, right: space.lg }}
-      >
-        <Text style={{ color: color.onPrimary, fontSize: fontSize.body, fontWeight: "600" }}>Cancel</Text>
-      </Pressable>
-    </View>
-  );
-}
-
 export default function ReceivingScreen() {
   const router = useRouter();
   const { purchase_order_id } = useLocalSearchParams<{ purchase_order_id?: string }>();
@@ -434,7 +356,14 @@ export default function ReceivingScreen() {
 
   const locationScope = useLocationScope();
   const suppliersQuery = useSuppliers();
+  const galleryQuery = useGalleryPhotos();
+  const uploadToGallery = useUploadGalleryPhoto();
 
+  // "Choose file" opens this picker sheet; "upload" shows the existing
+  // camera/library buttons, "gallery" shows the pending-photos grid.
+  const [photoModalStep, setPhotoModalStep] = useState<"closed" | "choose" | "upload" | "gallery">(
+    "closed",
+  );
   const [cameraOpen, setCameraOpen] = useState(false);
   // photoUri is always the untouched original — it's what gets saved as the
   // receipt's own photo, never mutated by crop/rotate. workingUri is null
@@ -442,6 +371,10 @@ export default function ReceivingScreen() {
   // workingUri ?? photoUri, so with no edit both are the same file.
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [workingUri, setWorkingUri] = useState<string | null>(null);
+  // Set only when photoUri came from the gallery picker — on submit this is
+  // sent instead of a fresh upload, so the receipt reuses that stored photo
+  // and the gallery entry flips to processed. Cleared by any fresh capture/pick.
+  const [galleryPhotoId, setGalleryPhotoId] = useState<string | null>(null);
   const [cropOpen, setCropOpen] = useState(false);
   const [supplierId, setSupplierId] = useState<string | null>(null);
   const [referenceNo, setReferenceNo] = useState("");
@@ -449,6 +382,7 @@ export default function ReceivingScreen() {
   const [rows, setRows] = useState<ReviewRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [savedForLater, setSavedForLater] = useState(false);
 
   const extract = useMutation({
     mutationFn: async (uri: string) =>
@@ -464,16 +398,48 @@ export default function ReceivingScreen() {
     setCameraOpen(false);
     setPhotoUri(uri);
     setWorkingUri(null);
+    setGalleryPhotoId(null);
     setCropOpen(false);
     setRows([]);
     setSuccess(false);
+    setSavedForLater(false);
     setError(null);
+    setPhotoModalStep("closed");
+  }
+
+  function pickGalleryPhoto(photo: { id: string; photoUrl: string }) {
+    setPhotoUri(photo.photoUrl);
+    setWorkingUri(null);
+    setGalleryPhotoId(photo.id);
+    setCropOpen(false);
+    setRows([]);
+    setSuccess(false);
+    setSavedForLater(false);
+    setError(null);
+    setPhotoModalStep("closed");
   }
 
   function runExtract() {
     const source = workingUri ?? photoUri;
     if (!source) return;
     extract.mutate(source);
+  }
+
+  async function processLater() {
+    if (!photoUri || galleryPhotoId) return;
+    setError(null);
+    try {
+      await uploadToGallery.mutateAsync({
+        photo: toUploadFile(photoUri),
+        locationId: locationScope.locationId,
+      });
+      setPhotoUri(null);
+      setWorkingUri(null);
+      setRows([]);
+      setSavedForLater(true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not save this photo for later.");
+    }
   }
 
   async function pickFromLibrary() {
@@ -527,7 +493,10 @@ export default function ReceivingScreen() {
         purchaseOrderId,
         referenceNo: referenceNo.trim() || null,
         notes: notes.trim() || null,
-        photo: photoUri ? toUploadFile(photoUri) : null,
+        // Gallery-sourced: reuse that stored photo server-side (and mark it
+        // processed) instead of re-uploading the same bytes.
+        photo: galleryPhotoId || !photoUri ? null : toUploadFile(photoUri),
+        galleryPhotoId,
         items,
       });
     },
@@ -538,14 +507,129 @@ export default function ReceivingScreen() {
     onError: (cause) => setError(cause instanceof Error ? cause.message : "Could not save this delivery."),
   });
 
-  if (cameraOpen) {
-    return <CameraCapture onCaptured={onCaptured} onCancel={() => setCameraOpen(false)} />;
-  }
-
   const suppliers = suppliersQuery.data ?? [];
 
   return (
     <View style={{ flex: 1 }}>
+      <DocumentScanCameraModal
+        open={cameraOpen}
+        onCaptured={onCaptured}
+        onClose={() => setCameraOpen(false)}
+      />
+      <BottomSheet open={photoModalStep !== "closed"} onClose={() => setPhotoModalStep("closed")}>
+        {photoModalStep === "choose" ? (
+          <View style={{ gap: space.sm }}>
+            <Text style={{ fontSize: fontSize.headingSm, fontWeight: "700", color: color.ink }}>
+              Add a photo
+            </Text>
+            <Pressable
+              onPress={() => setPhotoModalStep("upload")}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: space.md,
+                padding: space.md,
+                borderRadius: radius.sm,
+                borderWidth: 1,
+                borderColor: color.border,
+                backgroundColor: color.paper,
+              }}
+            >
+              <Camera size={22} color={color.primary} strokeWidth={1.75} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: fontSize.body, fontWeight: "600", color: color.ink }}>
+                  Upload a photo
+                </Text>
+                <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
+                  Take one now, or pick from files
+                </Text>
+              </View>
+            </Pressable>
+            <Pressable
+              onPress={() => setPhotoModalStep("gallery")}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: space.md,
+                padding: space.md,
+                borderRadius: radius.sm,
+                borderWidth: 1,
+                borderColor: color.border,
+                backgroundColor: color.paper,
+              }}
+            >
+              <Images size={22} color={color.primary} strokeWidth={1.75} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: fontSize.body, fontWeight: "600", color: color.ink }}>
+                  From gallery
+                </Text>
+                <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
+                  Saved for later on mobile or web
+                </Text>
+              </View>
+            </Pressable>
+          </View>
+        ) : photoModalStep === "upload" ? (
+          <View style={{ gap: space.sm }}>
+            <Button
+              label="Take a photo"
+              icon={Camera}
+              onPress={() => {
+                setPhotoModalStep("closed");
+                setCameraOpen(true);
+              }}
+            />
+            <Button
+              label="Choose from files"
+              variant="secondary"
+              icon={FolderOpen}
+              onPress={() => void pickFromLibrary()}
+            />
+            <Button label="Back" variant="secondary" onPress={() => setPhotoModalStep("choose")} />
+          </View>
+        ) : photoModalStep === "gallery" ? (
+          <View style={{ gap: space.sm }}>
+            <Text style={{ fontSize: fontSize.headingSm, fontWeight: "700", color: color.ink }}>
+              Pick from gallery
+            </Text>
+            {galleryQuery.isPending ? (
+              <Text style={{ fontSize: fontSize.body, color: color.inkMuted }}>Loading…</Text>
+            ) : (galleryQuery.data ?? []).length === 0 ? (
+              <View style={{ alignItems: "center", gap: space.xs, paddingVertical: space.lg }}>
+                <Images size={28} color={color.inkMuted} strokeWidth={1.75} />
+                <Text style={{ fontSize: fontSize.body, color: color.inkMuted, textAlign: "center" }}>
+                  Nothing waiting to be processed. Take a photo now, or check back once one's been
+                  saved for later.
+                </Text>
+              </View>
+            ) : (
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space.sm }}>
+                {(galleryQuery.data ?? []).map((photo) => (
+                  <Pressable
+                    key={photo.id}
+                    onPress={() => pickGalleryPhoto(photo)}
+                    style={{ width: "31%" }}
+                  >
+                    <Image
+                      source={{ uri: photo.photoUrl }}
+                      resizeMode="cover"
+                      style={{
+                        width: "100%",
+                        aspectRatio: 1,
+                        borderRadius: radius.sm,
+                        borderWidth: 1,
+                        borderColor: color.border,
+                        backgroundColor: color.paper,
+                      }}
+                    />
+                  </Pressable>
+                ))}
+              </View>
+            )}
+            <Button label="Back" variant="secondary" onPress={() => setPhotoModalStep("choose")} />
+          </View>
+        ) : null}
+      </BottomSheet>
       <WaveBackdrop />
       <ScrollView contentContainerStyle={{ padding: space.md, gap: space.md }}>
         <Pressable
@@ -574,8 +658,8 @@ export default function ReceivingScreen() {
         ) : null}
 
         <Card style={[{ gap: space.md }, styles.floatShadow, { borderRadius: radius.sm }]}>
-          <View style={{ flexDirection: "row", gap: space.sm, flexWrap: "wrap" }}>
-            {photoUri ? (
+          {photoUri ? (
+            <View style={{ flexDirection: "row", gap: space.sm, flexWrap: "wrap" }}>
               <Button
                 label="Retake photo"
                 variant="secondary"
@@ -583,22 +667,26 @@ export default function ReceivingScreen() {
                 onPress={() => setCameraOpen(true)}
                 style={{ flex: 1 }}
               />
-            ) : (
               <Button
-                label="Take a photo"
-                icon={Camera}
-                onPress={() => setCameraOpen(true)}
+                label="Choose from files"
+                variant="secondary"
+                icon={FolderOpen}
+                onPress={() => void pickFromLibrary()}
                 style={{ flex: 1 }}
               />
-            )}
-            <Button
-              label="Choose from files"
-              variant="secondary"
-              icon={FolderOpen}
-              onPress={() => void pickFromLibrary()}
-              style={{ flex: 1 }}
-            />
-          </View>
+            </View>
+          ) : (
+            <View style={{ gap: space.md }}>
+              {savedForLater ? (
+                <SuccessNote>Saved to the gallery — pick it up from either app when ready.</SuccessNote>
+              ) : null}
+              <Button
+                label="Choose file"
+                icon={Upload}
+                onPress={() => setPhotoModalStep("choose")}
+              />
+            </View>
+          )}
 
           {photoUri && cropOpen ? (
             <PhotoCropEditor
@@ -649,6 +737,16 @@ export default function ReceivingScreen() {
                     icon={X}
                     disabled={extract.isPending}
                     onPress={() => setWorkingUri(null)}
+                  />
+                ) : null}
+                {!galleryPhotoId ? (
+                  <Button
+                    label="Process it later"
+                    variant="secondary"
+                    icon={Clock}
+                    busy={uploadToGallery.isPending}
+                    disabled={extract.isPending}
+                    onPress={() => void processLater()}
                   />
                 ) : null}
               </View>

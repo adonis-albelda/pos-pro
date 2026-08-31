@@ -24,6 +24,7 @@ import {
   TriangleAlert,
   Upload,
   X,
+  Camera,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -57,6 +58,10 @@ import { ApiError } from "@double-a/api-client";
 import { useRollbackProductImport } from "@/lib/query/product-imports";
 import { ColumnMappingForm, ColumnMappingSummary } from "./column-mapping-form";
 import { AiProcessingOverlay, ConfirmDialog, Dialog } from "@/components/overlay";
+import {
+  canUseDocumentScanCamera,
+  DocumentScanCamera,
+} from "@/components/document-scan-camera";
 import { FileColumnsTable } from "./file-columns-table";
 import { ImportInfoCards } from "./import-info-cards";
 import { ImportProgress } from "./import-progress";
@@ -341,7 +346,13 @@ export function ImportForm() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [showCropper, setShowCropper] = useState(false);
   const [skipExistingUpdates, setSkipExistingUpdates] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [canScan, setCanScan] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setCanScan(canUseDocumentScanCamera());
+  }, []);
 
   const isImageUpload = Boolean(activeFile?.type.startsWith("image/"));
 
@@ -510,6 +521,17 @@ export function ImportForm() {
       <StepBar step={currentStep} />
 
       <form action={submit} className="space-y-4">
+        {photoAiEnabled && canScan && !state.csv ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="secondary" icon={Camera} onClick={() => setCameraOpen(true)}>
+              Scan with camera
+            </Button>
+            <span className="text-caption text-ink-muted">
+              Live hints for light, angle, and blur — like phone text-scan mode.
+            </span>
+          </div>
+        ) : null}
+
         <Field
           label="CSV or photo"
           hint={
@@ -523,6 +545,7 @@ export function ImportForm() {
             ref={fileInputRef}
             name="file"
             accept=".csv,text/csv,image/*"
+            capture={photoAiEnabled ? "environment" : undefined}
             onChange={(event) => onFilePicked(event.target.files?.[0] ?? null)}
           />
         </Field>
@@ -1078,6 +1101,15 @@ export function ImportForm() {
             : ""
         }
         confirmLabel="Roll back"
+      />
+
+      <DocumentScanCamera
+        open={cameraOpen}
+        onCancel={() => setCameraOpen(false)}
+        onCaptured={(file) => {
+          setCameraOpen(false);
+          onFilePicked(file);
+        }}
       />
     </div>
   );

@@ -176,6 +176,8 @@ export interface CreateGoodsReceiptInput {
   referenceNo?: string | null;
   notes?: string | null;
   photo?: File | null;
+  /** Picked from the "process later" gallery instead of a fresh upload — the receipt reuses that photo's own URL. */
+  galleryPhotoId?: string | null;
   items: GoodsReceiptItemInput[];
 }
 
@@ -209,6 +211,7 @@ export async function createGoodsReceipt(
   if (input.referenceNo) formData.set("reference_no", input.referenceNo);
   if (input.notes) formData.set("notes", input.notes);
   if (input.photo) formData.set("photo", input.photo);
+  if (input.galleryPhotoId) formData.set("gallery_photo_id", input.galleryPhotoId);
   formData.set("items_json", toItemsJson(input.items));
 
   const { data } = await client.postMultipart<{ data: JsonApiResource<GoodsReceiptAttrs> }>(

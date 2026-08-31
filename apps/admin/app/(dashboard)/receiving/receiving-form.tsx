@@ -4,7 +4,20 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Route } from "next";
-import { Camera, Crop, Expand, Plus, Save, Settings, Sparkles, Trash2, TriangleAlert, X } from "lucide-react";
+import {
+  Camera,
+  Crop,
+  Expand,
+  Images,
+  Plus,
+  Save,
+  Settings,
+  Sparkles,
+  Trash2,
+  TriangleAlert,
+  Upload,
+  X,
+} from "lucide-react";
 import { formatQuantity, roundMoney } from "@double-a/shared-types";
 import type { Location, PurchaseOrder, PurchaseOrderItem, Supplier } from "@double-a/shared-types";
 import {
@@ -16,7 +29,6 @@ import {
   Combobox,
   ErrorNote,
   Field,
-  FileInput,
   IconButton,
   Input,
   MoneyInput,
@@ -26,6 +38,7 @@ import {
   Th,
 } from "@/components/ui";
 import { AiProcessingOverlay, ConfirmDialog, Dialog, Sheet } from "@/components/overlay";
+import { useGalleryPhotos } from "@/lib/query/gallery-photos";
 import { useInvalidateGoodsReceipts } from "@/lib/query/goods-receipts";
 import { useInventoryProducts } from "@/lib/query/inventory";
 import { CropPhoto } from "../products/from-photo/crop-photo";
@@ -131,6 +144,15 @@ export function ReceivingForm({
   const [photoSheetOpen, setPhotoSheetOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [quotaMessage, setQuotaMessage] = useState<string | null>(null);
+  // "Choose file" opens this modal to pick a source; "gallery" shows the
+  // pending-photos grid inside the same modal rather than a second dialog.
+  const [photoModalStep, setPhotoModalStep] = useState<"closed" | "choose" | "gallery">("closed");
+  // Set only when `photo` was fetched from a gallery pick — on submit this
+  // is sent instead of re-uploading, so the receipt reuses that stored
+  // photo and the gallery entry flips to processed.
+  const [galleryPhotoId, setGalleryPhotoId] = useState<string | null>(null);
+  const [galleryFetchError, setGalleryFetchError] = useState<string | null>(null);
+  const galleryQuery = useGalleryPhotos();
 
   // Preview only, revoked whenever the photo changes or the form unmounts —
   // the file itself isn't sent anywhere until the user chooses to.
@@ -225,17 +247,46 @@ export function ReceivingForm({
   function handlePhotoChange(file: File | null) {
     setPhoto(file);
     setWorkingPhoto(null);
+    setGalleryPhotoId(null);
     setCropOpen(false);
     setPhotoRead(false);
     setError(null);
+    setPhotoModalStep("closed");
   }
 
   function removePhoto() {
     setPhoto(null);
     setWorkingPhoto(null);
+    setGalleryPhotoId(null);
     setCropOpen(false);
     setPhotoRead(false);
+    setGalleryFetchError(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  /**
+   * Fetched into a real File so the rest of this form (crop, compress,
+   * extract, preview) needs zero special-casing for a gallery source —
+   * only the submit step treats it differently (gallery_photo_id instead
+   * of re-uploading the same bytes it just downloaded).
+   */
+  async function pickGalleryPhoto(record: { id: string; photoUrl: string }) {
+    setGalleryFetchError(null);
+    try {
+      const response = await fetch(record.photoUrl);
+      if (!response.ok) throw new Error("Could not load this photo.");
+      const blob = await response.blob();
+      const file = new File([blob], "gallery-photo.jpg", { type: blob.type || "image/jpeg" });
+      setPhoto(file);
+      setWorkingPhoto(null);
+      setGalleryPhotoId(record.id);
+      setCropOpen(false);
+      setPhotoRead(false);
+      setError(null);
+      setPhotoModalStep("closed");
+    } catch {
+      setGalleryFetchError("Could not load this photo. Try uploading it directly instead.");
+    }
   }
 
   function runExtraction() {
@@ -341,7 +392,10 @@ export function ReceivingForm({
     }
     if (referenceNo.trim()) formData.set("reference_no", referenceNo.trim());
     if (notes.trim()) formData.set("notes", notes.trim());
-    if (photo) formData.set("photo", photo);
+    // Gallery-sourced: reuse that stored photo server-side (and mark it
+    // processed) instead of re-uploading the bytes this form just fetched.
+    if (galleryPhotoId) formData.set("gallery_photo_id", galleryPhotoId);
+    else if (photo) formData.set("photo", photo);
     formData.set("items_json", JSON.stringify(items));
 
     startSaving(async () => {
@@ -410,8 +464,8 @@ export function ReceivingForm({
       </Sheet>
 
       <div className="rounded-md border border-border bg-surface p-4 sm:p-6">
-        <div className="flex flex-col gap-6 lg:flex-row">
-          <div className="space-y-4 lg:basis-3/5">
+        <div className="space-y-6">
+          <div className="space-y-4">
             <div>
               <h3 className="text-heading-sm font-semibold">Delivery details</h3>
               <p className="mt-1 text-caption text-ink-muted">
@@ -507,23 +561,103 @@ export function ReceivingForm({
             </Field>
           </div>
 
-          <div className="hidden w-px shrink-0 bg-border lg:block" />
+          <div className="h-px w-full bg-border" />
 
-          <div className="space-y-4 lg:basis-2/5">
+          <div className="space-y-4">
             <div>
               <h3 className="text-heading-sm font-semibold">Receipt photo</h3>
               <p className="mt-1 text-caption text-ink-muted">
                 Optional — upload, review, then let AI read the line items.
               </p>
             </div>
-            <Field label="Photo of the receipt / invoice" required={false}>
-              <FileInput
-                ref={fileInputRef}
-                accept="image/*"
-                capture="environment"
-                onChange={(event) => handlePhotoChange(event.target.files?.[0] ?? null)}
-              />
-            </Field>
+            {/* Stays mounted (hidden) even while nothing's picked, so the
+                "Upload a photo" modal option can trigger it programmatically. */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(event) => handlePhotoChange(event.target.files?.[0] ?? null)}
+            />
+
+            {!photoPreviewUrl ? (
+              <Button
+                type="button"
+                variant="secondary"
+                icon={Upload}
+                onClick={() => setPhotoModalStep("choose")}
+              >
+                Choose file
+              </Button>
+            ) : null}
+
+            <Dialog
+              open={photoModalStep !== "closed"}
+              onClose={() => setPhotoModalStep("closed")}
+              title={photoModalStep === "gallery" ? "Pick from gallery" : "Add a photo"}
+              description={
+                photoModalStep === "gallery"
+                  ? "Photos saved for later from the mobile app."
+                  : "Upload a new photo, or pick one already waiting in the gallery."
+              }
+            >
+              {photoModalStep === "gallery" ? (
+                <div className="space-y-3">
+                  {galleryFetchError ? <ErrorNote>{galleryFetchError}</ErrorNote> : null}
+                  {galleryQuery.isPending ? (
+                    <p className="text-caption text-ink-muted">Loading…</p>
+                  ) : (galleryQuery.data ?? []).length === 0 ? (
+                    <p className="rounded-md border border-dashed border-border bg-canvas px-3 py-6 text-center text-caption text-ink-muted">
+                      Nothing waiting to be processed. A photo saved for later from the mobile app
+                      shows up here.
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2">
+                      {(galleryQuery.data ?? []).map((record) => (
+                        <button
+                          key={record.id}
+                          type="button"
+                          onClick={() => void pickGalleryPhoto(record)}
+                          className="aspect-square overflow-hidden rounded-sm border border-border bg-paper transition-opacity hover:opacity-80"
+                        >
+                          {/* Arbitrary MinIO/S3 host, same reasoning as the product photo grid. */}
+                          <img
+                            src={record.photoUrl}
+                            alt={record.label}
+                            className="size-full object-cover"
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <Button type="button" variant="secondary" onClick={() => setPhotoModalStep("choose")}>
+                    Back
+                  </Button>
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex flex-col items-center gap-2 rounded-md border border-border bg-canvas px-4 py-6 text-center transition-colors hover:border-primary/40 hover:bg-primary/5"
+                  >
+                    <Camera size={22} strokeWidth={1.75} className="text-primary" />
+                    <span className="text-body font-medium text-ink">Upload a photo</span>
+                    <span className="text-caption text-ink-muted">From your camera or files</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPhotoModalStep("gallery")}
+                    className="flex flex-col items-center gap-2 rounded-md border border-border bg-canvas px-4 py-6 text-center transition-colors hover:border-primary/40 hover:bg-primary/5"
+                  >
+                    <Images size={22} strokeWidth={1.75} className="text-primary" />
+                    <span className="text-body font-medium text-ink">From gallery</span>
+                    <span className="text-caption text-ink-muted">Saved for later on mobile</span>
+                  </button>
+                </div>
+              )}
+            </Dialog>
 
             {photoPreviewUrl && cropOpen ? (
               <div className="space-y-2 rounded-md border border-border bg-canvas p-3">

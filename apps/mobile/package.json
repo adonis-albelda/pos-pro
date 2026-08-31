@@ -36,6 +36,7 @@
     "expo-splash-screen": "~57.0.5",
     "expo-sqlite": "~57.0.1",
     "expo-status-bar": "~57.0.1",
+    "jpeg-js": "^0.4.4",
     "laravel-echo": "^1.19.0",
     "lucide-react-native": "^1.28.0",
     "pusher-js": "^8.6.0",

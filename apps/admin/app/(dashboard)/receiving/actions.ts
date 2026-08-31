@@ -117,6 +117,7 @@ export async function createGoodsReceiptAction(
   const notes = String(formData.get("notes") ?? "") || null;
   const photoField = formData.get("photo");
   const photo = photoField instanceof File && photoField.size > 0 ? photoField : null;
+  const galleryPhotoId = String(formData.get("gallery_photo_id") ?? "") || null;
 
   const client = getAuthedClient();
 
@@ -129,6 +130,7 @@ export async function createGoodsReceiptAction(
       referenceNo,
       notes,
       photo,
+      galleryPhotoId,
       items,
     });
 
