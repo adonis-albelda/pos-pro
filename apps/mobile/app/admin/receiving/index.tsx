@@ -11,7 +11,9 @@ import {
   Crop,
   FolderOpen,
   Images,
+  Package,
   PackageCheck,
+  Plus,
   RotateCcw,
   RotateCw,
   Sparkles,
@@ -19,7 +21,7 @@ import {
   Upload,
   X,
 } from "lucide-react-native";
-import { roundMoney } from "@double-a/shared-types";
+import { roundMoney, type Product } from "@double-a/shared-types";
 import {
   createGoodsReceipt,
   extractGoodsReceiptPhoto,
@@ -28,6 +30,8 @@ import {
 import { getAdminApiClient } from "@/lib/api/session";
 import { useLocationScope } from "@/lib/location-scope";
 import { useGalleryPhotos, useUploadGalleryPhoto } from "@/lib/query/gallery-photos";
+import { useProducts } from "@/lib/query/products";
+import { usePurchaseOrders } from "@/lib/query/purchase-orders";
 import { useSuppliers } from "@/lib/query/suppliers";
 import { Badge, Button, Card, ErrorNote, IconButton, SuccessNote } from "@/components/ui";
 import { BottomSheet } from "@/components/bottom-sheet";
@@ -352,12 +356,19 @@ function toReviewRow(line: ExtractedReceiptLine): ReviewRow {
 export default function ReceivingScreen() {
   const router = useRouter();
   const { purchase_order_id } = useLocalSearchParams<{ purchase_order_id?: string }>();
-  const purchaseOrderId = purchase_order_id || null;
+  // Deep-linked from a PO's own detail screen, or picked from the combobox
+  // below — either way this is the one purchase order this receipt is
+  // matched against, so it stays a single piece of state either source can set.
+  const [purchaseOrderId, setPurchaseOrderId] = useState<string | null>(purchase_order_id || null);
 
   const locationScope = useLocationScope();
   const suppliersQuery = useSuppliers();
+  const openPurchaseOrdersQuery = usePurchaseOrders({ status: "ordered" });
   const galleryQuery = useGalleryPhotos();
   const uploadToGallery = useUploadGalleryPhoto();
+  const productsQuery = useProducts({ pageSize: 200, includeInactive: false });
+  const [productPickerRowKey, setProductPickerRowKey] = useState<string | null>(null);
+  const [productSearch, setProductSearch] = useState("");
 
   // "Choose file" opens this picker sheet; "upload" shows the existing
   // camera/library buttons, "gallery" shows the pending-photos grid.
@@ -377,6 +388,12 @@ export default function ReceivingScreen() {
   const [galleryPhotoId, setGalleryPhotoId] = useState<string | null>(null);
   const [cropOpen, setCropOpen] = useState(false);
   const [supplierId, setSupplierId] = useState<string | null>(null);
+  // Free-text alternative to supplierId — an ad-hoc delivery with no
+  // registered supplier. Mutually exclusive with supplierId, same as web.
+  const [supplierName, setSupplierName] = useState("");
+  // null = use the terminal's own enrolled branch (locationScope.locationId).
+  // Only offered as a choice when the acting user can see more than one.
+  const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
   const [referenceNo, setReferenceNo] = useState("");
   const [notes, setNotes] = useState("");
   const [rows, setRows] = useState<ReviewRow[]>([]);
@@ -431,7 +448,7 @@ export default function ReceivingScreen() {
     try {
       await uploadToGallery.mutateAsync({
         photo: toUploadFile(photoUri),
-        locationId: locationScope.locationId,
+        locationId: selectedLocationId ?? locationScope.locationId,
       });
       setPhotoUri(null);
       setWorkingUri(null);
@@ -467,11 +484,62 @@ export default function ReceivingScreen() {
     setRows((previous) => previous.filter((row) => row.key !== key));
   }
 
+  /** Same parity as apps/admin's own "Add line" — a delivery isn't always photographed. */
+  function addManualRow() {
+    setRows((previous) => [
+      ...previous,
+      {
+        key: newKey(),
+        name: "",
+        sku: null,
+        productId: null,
+        matchedBy: null,
+        purchaseOrderItemId: null,
+        quantityOrdered: null,
+        quantityReceived: "1",
+        unitCost: "0",
+        appliedPrice: "",
+        isFlagged: true,
+      },
+    ]);
+  }
+
+  function pickProductForRow(key: string, product: Product) {
+    updateRow(key, {
+      productId: product.id,
+      name: product.name,
+      sku: product.sku,
+      matchedBy: "internal",
+      unitCost: String(product.costPrice),
+      appliedPrice: String(product.price),
+    });
+    setProductPickerRowKey(null);
+    setProductSearch("");
+  }
+
+  const openPurchaseOrders = openPurchaseOrdersQuery.data ?? [];
+  const linkedOrder = purchaseOrderId
+    ? (openPurchaseOrdersQuery.data?.find((order) => order.id === purchaseOrderId) ?? null)
+    : null;
+
+  function selectPurchaseOrder(id: string | null) {
+    setPurchaseOrderId(id);
+    const order = id ? openPurchaseOrders.find((entry) => entry.id === id) : null;
+    if (order) {
+      setSupplierId(order.supplierId);
+      setSupplierName("");
+      setReferenceNo(order.referenceNo ?? "");
+    }
+  }
+
   const submit = useMutation({
     mutationFn: async () => {
-      const locationId = locationScope.locationId;
+      const locationId = selectedLocationId ?? locationScope.locationId;
       if (!locationId) throw new Error("This terminal is not bound to a branch.");
       if (rows.length === 0) throw new Error("Nothing to receive — read a photo first.");
+      if (!linkedOrder && !supplierId && !supplierName.trim()) {
+        throw new Error("Pick a supplier, or type one in for an ad-hoc delivery.");
+      }
 
       const items = rows.map((row) => ({
         name: row.name,
@@ -489,7 +557,8 @@ export default function ReceivingScreen() {
 
       return createGoodsReceipt(getAdminApiClient(), {
         locationId,
-        supplierId,
+        supplierId: linkedOrder ? linkedOrder.supplierId : supplierId,
+        supplierName: linkedOrder || supplierId ? null : supplierName.trim() || null,
         purchaseOrderId,
         referenceNo: referenceNo.trim() || null,
         notes: notes.trim() || null,
@@ -630,6 +699,61 @@ export default function ReceivingScreen() {
           </View>
         ) : null}
       </BottomSheet>
+      <BottomSheet open={productPickerRowKey !== null} onClose={() => setProductPickerRowKey(null)}>
+        <View style={{ gap: space.sm }}>
+          <Text style={{ fontSize: fontSize.headingSm, fontWeight: "700", color: color.ink }}>
+            Match a product
+          </Text>
+          <TextInput
+            value={productSearch}
+            onChangeText={setProductSearch}
+            placeholder="Search name or SKU…"
+            placeholderTextColor={color.inkMuted}
+            style={{
+              minHeight: 44,
+              borderWidth: 1,
+              borderColor: color.border,
+              borderRadius: radius.sm,
+              paddingHorizontal: space.md,
+              color: color.ink,
+            }}
+          />
+          {productsQuery.isPending ? (
+            <Text style={{ fontSize: fontSize.body, color: color.inkMuted }}>Loading…</Text>
+          ) : (
+            (productsQuery.data?.products ?? [])
+              .filter((product) => {
+                const needle = productSearch.trim().toLowerCase();
+                if (!needle) return true;
+                return (
+                  product.name.toLowerCase().includes(needle) ||
+                  (product.sku ?? "").toLowerCase().includes(needle)
+                );
+              })
+              .slice(0, 40)
+              .map((product) => (
+                <Pressable
+                  key={product.id}
+                  onPress={() => {
+                    if (productPickerRowKey) pickProductForRow(productPickerRowKey, product);
+                  }}
+                  style={{
+                    paddingVertical: space.sm,
+                    borderBottomWidth: 1,
+                    borderBottomColor: color.border,
+                  }}
+                >
+                  <Text style={{ fontSize: fontSize.body, fontWeight: "600", color: color.ink }}>
+                    {product.name}
+                  </Text>
+                  {product.sku ? (
+                    <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>{product.sku}</Text>
+                  ) : null}
+                </Pressable>
+              ))
+          )}
+        </View>
+      </BottomSheet>
       <WaveBackdrop />
       <ScrollView contentContainerStyle={{ padding: space.md, gap: space.md }}>
         <Pressable
@@ -656,6 +780,197 @@ export default function ReceivingScreen() {
         {!locationScope.locationId ? (
           <ErrorNote>This terminal is not bound to a branch. Enroll it before receiving stock.</ErrorNote>
         ) : null}
+
+        <Card style={[{ gap: space.md }, styles.floatShadow, { borderRadius: radius.sm }]}>
+          <Text style={{ fontSize: fontSize.body, fontWeight: "700", color: color.ink }}>
+            Delivery details
+          </Text>
+
+          {linkedOrder ? (
+            <View style={{ gap: 2 }}>
+              <Text style={{ fontSize: fontSize.caption, fontWeight: "600", color: color.inkMuted }}>
+                Supplier
+              </Text>
+              <Text style={{ fontSize: fontSize.body, color: color.ink }}>
+                {suppliers.find((s) => s.id === linkedOrder.supplierId)?.name ?? "—"}
+              </Text>
+            </View>
+          ) : (
+            <>
+              {suppliers.length > 0 ? (
+                <View style={{ gap: space.xs }}>
+                  <Text style={{ fontSize: fontSize.caption, fontWeight: "600", color: color.inkMuted }}>
+                    Supplier (optional)
+                  </Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View style={{ flexDirection: "row", gap: space.xs }}>
+                      {suppliers.map((supplier) => (
+                        <Pressable
+                          key={supplier.id}
+                          onPress={() => {
+                            const next = supplierId === supplier.id ? null : supplier.id;
+                            setSupplierId(next);
+                            if (next) setSupplierName("");
+                          }}
+                          style={{
+                            paddingHorizontal: space.md,
+                            paddingVertical: space.sm,
+                            borderRadius: radius.sm,
+                            borderWidth: 1,
+                            borderColor: supplierId === supplier.id ? color.primary : color.border,
+                            backgroundColor:
+                              supplierId === supplier.id ? color.primaryTint : color.surface,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: fontSize.caption,
+                              fontWeight: "600",
+                              color: supplierId === supplier.id ? color.primary : color.ink,
+                            }}
+                          >
+                            {supplier.name}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  </ScrollView>
+                </View>
+              ) : null}
+              <TextInput
+                value={supplierName}
+                onChangeText={(text) => {
+                  setSupplierName(text);
+                  if (text) setSupplierId(null);
+                }}
+                placeholder="Or supplier name — walk-in (optional)"
+                placeholderTextColor={color.inkMuted}
+                style={{
+                  minHeight: 44,
+                  borderWidth: 1,
+                  borderColor: color.border,
+                  borderRadius: radius.sm,
+                  paddingHorizontal: space.md,
+                  color: color.ink,
+                }}
+              />
+            </>
+          )}
+
+          {locationScope.locations.length > 1 ? (
+            <View style={{ gap: space.xs }}>
+              <Text style={{ fontSize: fontSize.caption, fontWeight: "600", color: color.inkMuted }}>
+                Received at
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={{ flexDirection: "row", gap: space.xs }}>
+                  {locationScope.locations.map((location) => {
+                    const active = (selectedLocationId ?? locationScope.locationId) === location.id;
+                    return (
+                      <Pressable
+                        key={location.id}
+                        onPress={() => setSelectedLocationId(location.id)}
+                        style={{
+                          paddingHorizontal: space.md,
+                          paddingVertical: space.sm,
+                          borderRadius: radius.sm,
+                          borderWidth: 1,
+                          borderColor: active ? color.primary : color.border,
+                          backgroundColor: active ? color.primaryTint : color.surface,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: fontSize.caption,
+                            fontWeight: "600",
+                            color: active ? color.primary : color.ink,
+                          }}
+                        >
+                          {location.name}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+            </View>
+          ) : null}
+
+          {openPurchaseOrders.length > 0 ? (
+            <View style={{ gap: space.xs }}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                <Text style={{ fontSize: fontSize.caption, fontWeight: "600", color: color.inkMuted }}>
+                  Link to purchase order (optional)
+                </Text>
+                {purchaseOrderId ? (
+                  <Pressable onPress={() => selectPurchaseOrder(null)}>
+                    <Text style={{ fontSize: fontSize.caption, fontWeight: "600", color: color.primary }}>
+                      Unlink
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={{ flexDirection: "row", gap: space.xs }}>
+                  {openPurchaseOrders.map((order) => (
+                    <Pressable
+                      key={order.id}
+                      onPress={() => selectPurchaseOrder(purchaseOrderId === order.id ? null : order.id)}
+                      style={{
+                        paddingHorizontal: space.md,
+                        paddingVertical: space.sm,
+                        borderRadius: radius.sm,
+                        borderWidth: 1,
+                        borderColor: purchaseOrderId === order.id ? color.primary : color.border,
+                        backgroundColor:
+                          purchaseOrderId === order.id ? color.primaryTint : color.surface,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: fontSize.caption,
+                          fontWeight: "600",
+                          color: purchaseOrderId === order.id ? color.primary : color.ink,
+                        }}
+                      >
+                        {order.referenceNo || `PO ${order.id.slice(0, 8)}`}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </ScrollView>
+            </View>
+          ) : null}
+
+          <TextInput
+            value={referenceNo}
+            onChangeText={setReferenceNo}
+            placeholder="Delivery / invoice reference (optional)"
+            placeholderTextColor={color.inkMuted}
+            style={{
+              minHeight: 44,
+              borderWidth: 1,
+              borderColor: color.border,
+              borderRadius: radius.sm,
+              paddingHorizontal: space.md,
+              color: color.ink,
+            }}
+          />
+          <TextInput
+            value={notes}
+            onChangeText={setNotes}
+            placeholder="Notes (optional)"
+            placeholderTextColor={color.inkMuted}
+            style={{
+              minHeight: 44,
+              borderWidth: 1,
+              borderColor: color.border,
+              borderRadius: radius.sm,
+              paddingHorizontal: space.md,
+              color: color.ink,
+            }}
+          />
+        </Card>
 
         <Card style={[{ gap: space.md }, styles.floatShadow, { borderRadius: radius.sm }]}>
           {photoUri ? (
@@ -753,116 +1068,84 @@ export default function ReceivingScreen() {
             </View>
           ) : null}
 
-          {suppliers.length > 0 ? (
-            <View style={{ gap: space.xs }}>
-              <Text style={{ fontSize: fontSize.caption, fontWeight: "600", color: color.inkMuted }}>
-                Supplier (optional)
-              </Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View style={{ flexDirection: "row", gap: space.xs }}>
-                  {suppliers.map((supplier) => (
-                    <Pressable
-                      key={supplier.id}
-                      onPress={() => setSupplierId(supplierId === supplier.id ? null : supplier.id)}
-                      style={{
-                        paddingHorizontal: space.md,
-                        paddingVertical: space.sm,
-                        borderRadius: radius.sm,
-                        borderWidth: 1,
-                        borderColor: supplierId === supplier.id ? color.primary : color.border,
-                        backgroundColor: supplierId === supplier.id ? color.primaryTint : color.surface,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: fontSize.caption,
-                          fontWeight: "600",
-                          color: supplierId === supplier.id ? color.primary : color.ink,
-                        }}
-                      >
-                        {supplier.name}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </ScrollView>
-            </View>
-          ) : null}
-
-          <TextInput
-            value={referenceNo}
-            onChangeText={setReferenceNo}
-            placeholder="Delivery / invoice reference (optional)"
-            placeholderTextColor={color.inkMuted}
-            style={{
-              minHeight: 44,
-              borderWidth: 1,
-              borderColor: color.border,
-              borderRadius: radius.sm,
-              paddingHorizontal: space.md,
-              color: color.ink,
-            }}
-          />
-          <TextInput
-            value={notes}
-            onChangeText={setNotes}
-            placeholder="Notes (optional)"
-            placeholderTextColor={color.inkMuted}
-            style={{
-              minHeight: 44,
-              borderWidth: 1,
-              borderColor: color.border,
-              borderRadius: radius.sm,
-              paddingHorizontal: space.md,
-              color: color.ink,
-            }}
-          />
         </Card>
 
-        {rows.length > 0 ? (
-          <Card style={[{ gap: space.sm }, styles.floatShadow, { borderRadius: radius.sm }]}>
+        <Card style={[{ gap: space.sm }, styles.floatShadow, { borderRadius: radius.sm }]}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
             <Text style={{ fontSize: fontSize.body, fontWeight: "700", color: color.ink }}>
-              {rows.length} line{rows.length === 1 ? "" : "s"} read
+              {rows.length > 0 ? `${rows.length} line${rows.length === 1 ? "" : "s"}` : "Items received"}
             </Text>
-            {rows.map((row) => (
-              <View
-                key={row.key}
-                style={{ gap: space.xs, paddingVertical: space.sm, borderBottomWidth: 1, borderBottomColor: color.border }}
-              >
-                <View style={{ flexDirection: "row", alignItems: "flex-start", gap: space.sm }}>
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <Text style={{ fontSize: fontSize.body, fontWeight: "600", color: color.ink }}>
-                      {row.name}
+            <Button label="Add line" variant="secondary" icon={Plus} onPress={addManualRow} />
+          </View>
+          {rows.length === 0 ? (
+            <Text style={{ fontSize: fontSize.body, color: color.inkMuted, paddingVertical: space.md }}>
+              Read a photo above, or add a line manually.
+            </Text>
+          ) : null}
+          {rows.map((row) => (
+            <View
+              key={row.key}
+              style={{ gap: space.xs, paddingVertical: space.sm, borderBottomWidth: 1, borderBottomColor: color.border }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "flex-start", gap: space.sm }}>
+                <View style={{ flex: 1, gap: space.xs }}>
+                  <TextInput
+                    value={row.name}
+                    onChangeText={(text) => updateRow(row.key, { name: text })}
+                    placeholder="Item name"
+                    placeholderTextColor={color.inkMuted}
+                    style={{
+                      minHeight: 40,
+                      borderWidth: 1,
+                      borderColor: color.border,
+                      borderRadius: radius.sm,
+                      paddingHorizontal: space.sm,
+                      color: color.ink,
+                      fontWeight: "600",
+                    }}
+                  />
+                  <Pressable
+                    onPress={() => setProductPickerRowKey(row.key)}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: space.xs,
+                      paddingVertical: space.xs,
+                    }}
+                  >
+                    <Package size={14} color={color.primary} strokeWidth={2} />
+                    <Text style={{ fontSize: fontSize.caption, fontWeight: "600", color: color.primary }}>
+                      {row.productId ? `Matched${row.sku ? ` · ${row.sku}` : ""}` : "Match a catalogue product…"}
                     </Text>
-                    <View style={{ flexDirection: "row", gap: space.xs, flexWrap: "wrap" }}>
-                      <Badge
-                        tone={row.productId ? "success" : "warning"}
-                        label={row.productId ? "In catalogue" : "Not yet in catalogue"}
-                      />
-                      {row.isFlagged ? <Badge tone="danger" label="Check this line" /> : null}
-                      {row.quantityOrdered !== null ? (
-                        <Badge tone="neutral" label={`Ordered ${row.quantityOrdered}`} />
-                      ) : null}
-                    </View>
-                  </View>
-                  <IconButton icon={Trash2} label="Remove line" tone="danger" onPress={() => removeRow(row.key)} />
-                </View>
-
-                <View style={{ flexDirection: "row", gap: space.sm }}>
-                  <RowField label="Qty" value={row.quantityReceived} onChangeText={(v) => updateRow(row.key, { quantityReceived: v })} />
-                  <RowField label="Unit cost" value={row.unitCost} onChangeText={(v) => updateRow(row.key, { unitCost: v })} />
-                  {row.productId ? (
-                    <RowField
-                      label="New price"
-                      value={row.appliedPrice}
-                      onChangeText={(v) => updateRow(row.key, { appliedPrice: v })}
+                  </Pressable>
+                  <View style={{ flexDirection: "row", gap: space.xs, flexWrap: "wrap" }}>
+                    <Badge
+                      tone={row.productId ? "success" : "warning"}
+                      label={row.productId ? "In catalogue" : "Not yet in catalogue"}
                     />
-                  ) : null}
+                    {row.isFlagged ? <Badge tone="danger" label="Check this line" /> : null}
+                    {row.quantityOrdered !== null ? (
+                      <Badge tone="neutral" label={`Ordered ${row.quantityOrdered}`} />
+                    ) : null}
+                  </View>
                 </View>
+                <IconButton icon={Trash2} label="Remove line" tone="danger" onPress={() => removeRow(row.key)} />
               </View>
-            ))}
-          </Card>
-        ) : null}
+
+              <View style={{ flexDirection: "row", gap: space.sm }}>
+                <RowField label="Qty" value={row.quantityReceived} onChangeText={(v) => updateRow(row.key, { quantityReceived: v })} />
+                <RowField label="Unit cost" value={row.unitCost} onChangeText={(v) => updateRow(row.key, { unitCost: v })} />
+                {row.productId ? (
+                  <RowField
+                    label="New price"
+                    value={row.appliedPrice}
+                    onChangeText={(v) => updateRow(row.key, { appliedPrice: v })}
+                  />
+                ) : null}
+              </View>
+            </View>
+          ))}
+        </Card>
 
         {error ? <ErrorNote>{error}</ErrorNote> : null}
         {success ? <SuccessNote>Delivery received. Stock and prices updated.</SuccessNote> : null}
