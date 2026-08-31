@@ -450,7 +450,25 @@ export interface Product {
   isActive: boolean;
   /** Public URL of a resized WebP, or null if no photo was uploaded. */
   photoUrl: string | null;
+  /**
+   * A bundle is otherwise a normal product — its own price, cost_price, and
+   * stock. is_bundle only gates whether bundleItems (the recipe) applies and
+   * whether it can be assembled. Selling one decrements its own stock, same
+   * as any product; assembling converts component stock into bundle stock.
+   */
+  isBundle: boolean;
+  /** This bundle's recipe. Empty for a non-bundle, or when not eager-loaded. */
+  bundleItems: BundleItem[];
   updatedAt: string;
+}
+
+export interface BundleItem {
+  productId: string;
+  name: string | null;
+  sku: string | null;
+  unit: string | null;
+  quantity: number;
+  costPrice: number;
 }
 
 /**
@@ -693,6 +711,16 @@ export interface LocalSale extends Sale {
 
 export interface SaleWithItems extends Sale {
   items: SaleItem[];
+}
+
+/** Header stat cards on the sales list — completed sales only, same filters as the list. */
+export interface SalesPageStats {
+  revenue: number;
+  cost: number;
+  discount: number;
+  grossProfit: number;
+  marginPercent: number;
+  count: number;
 }
 
 export interface LocalSaleWithItems extends LocalSale {

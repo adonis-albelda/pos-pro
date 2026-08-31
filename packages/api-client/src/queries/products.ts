@@ -18,6 +18,7 @@ export interface ProductInput {
   bulkMinQuantity?: number | null;
   allowDecimal?: boolean;
   isActive?: boolean;
+  isBundle?: boolean;
 }
 
 function toPayload(input: Partial<ProductInput>): Record<string, unknown> {
@@ -37,6 +38,7 @@ function toPayload(input: Partial<ProductInput>): Record<string, unknown> {
   if (input.bulkMinQuantity !== undefined) payload.bulk_min_quantity = input.bulkMinQuantity;
   if (input.allowDecimal !== undefined) payload.allow_decimal = input.allowDecimal;
   if (input.isActive !== undefined) payload.is_active = input.isActive;
+  if (input.isBundle !== undefined) payload.is_bundle = input.isBundle;
   return payload;
 }
 
@@ -433,6 +435,32 @@ export async function uploadProductPhoto(client: ApiClient, id: string, photo: F
 
 export async function deleteProductPhoto(client: ApiClient, id: string): Promise<Product> {
   const { data } = await client.delete<{ data: JsonApiResource<ProductAttrs> }>(`/products/${id}/photo`);
+  return toProduct(data);
+}
+
+/** Replace-all for a bundle's recipe — mirrors setSupplierProducts. */
+export async function setBundleItems(
+  client: ApiClient,
+  id: string,
+  items: { productId: string; quantity: number }[],
+): Promise<Product> {
+  const { data } = await client.put<{ data: JsonApiResource<ProductAttrs> }>(
+    `/products/${id}/bundle-items`,
+    { items: items.map((item) => ({ product_id: item.productId, quantity: item.quantity })) },
+  );
+  return toProduct(data);
+}
+
+/** Converts component stock into bundle stock at one location. */
+export async function assembleBundle(
+  client: ApiClient,
+  id: string,
+  input: { quantity: number; locationId: string; note?: string | null },
+): Promise<Product> {
+  const { data } = await client.post<{ data: JsonApiResource<ProductAttrs> }>(
+    `/products/${id}/assemble`,
+    { quantity: input.quantity, location_id: input.locationId, note: input.note },
+  );
   return toProduct(data);
 }
 

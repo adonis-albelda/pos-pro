@@ -40,6 +40,7 @@ function readProductForm(formData: FormData) {
     // rather than a price with no minimum that would never apply.
     bulkPrice: optionalNumber(formData, "bulk_price"),
     bulkMinQuantity: optionalNumber(formData, "bulk_min_quantity"),
+    isBundle: formData.get("is_bundle") !== null,
   };
 }
 
@@ -95,6 +96,7 @@ export async function saveProduct(
     replenishQuantity: input.replenishQuantity,
     bulkPrice: input.bulkPrice,
     bulkMinQuantity: input.bulkMinQuantity,
+    isBundle: input.isBundle,
   };
 
   const client = getAuthedClient();

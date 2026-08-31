@@ -330,6 +330,15 @@ const V17_PRODUCT_SUPPLIER_NAMES = `
 ALTER TABLE products ADD COLUMN supplier_names TEXT;
 `;
 
+/**
+ * v18: a bundle is otherwise a normal product row here too — its own price
+ * and stock_quantity. This flag only drives the "Bundle" badge on the tile;
+ * the recipe itself (bundle_items) is admin-only and never synced to POS.
+ */
+const V18_PRODUCT_IS_BUNDLE = `
+ALTER TABLE products ADD COLUMN is_bundle INTEGER NOT NULL DEFAULT 0;
+`;
+
 /** Ordered, append-only. Never edit a step that has shipped. */
 export const MIGRATIONS: Migration[] = [
   { version: 1, sql: V1_INITIAL },
@@ -349,6 +358,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 15, sql: V15_AI_SETTINGS },
   { version: 16, sql: V16_PRODUCT_PHOTO },
   { version: 17, sql: V17_PRODUCT_SUPPLIER_NAMES },
+  { version: 18, sql: V18_PRODUCT_IS_BUNDLE },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.reduce(

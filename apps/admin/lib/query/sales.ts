@@ -1,8 +1,14 @@
 "use client";
 
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getSale, listMovementsPage, listSales, listSalesPage } from "@double-a/api-client/queries";
-import type { SaleWithItems } from "@double-a/shared-types";
+import {
+  getSale,
+  getSalesStats,
+  listMovementsPage,
+  listSales,
+  listSalesPage,
+} from "@double-a/api-client/queries";
+import type { SaleWithItems, SalesPageStats } from "@double-a/shared-types";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 import { queryKeys } from "./keys";
 
@@ -24,6 +30,13 @@ export interface SalesListFilter {
   locationId?: string;
 }
 
+function toApiTimestamps(filter: SalesListFilter) {
+  return {
+    from: filter.from ? new Date(filter.from).toISOString() : undefined,
+    to: filter.to ? new Date(filter.to).toISOString() : undefined,
+  };
+}
+
 export function useSalesList(filter: SalesListFilter = {}) {
   return useQuery({
     queryKey: queryKeys.sales.list({ ...filter }),
@@ -32,10 +45,17 @@ export function useSalesList(filter: SalesListFilter = {}) {
   });
 }
 
+export function useSalesStats(filter: SalesListFilter = {}) {
+  return useQuery({
+    queryKey: queryKeys.sales.stats({ ...filter }),
+    placeholderData: keepPreviousData,
+    queryFn: () => fetchSalesStats(filter),
+  });
+}
+
 async function fetchSales(filter: SalesListFilter): Promise<SaleWithItems[]> {
   const client = getBrowserApiClient();
-  const from = filter.from ? new Date(filter.from).toISOString() : undefined;
-  const to = filter.to ? new Date(`${filter.to}T23:59:59`).toISOString() : undefined;
+  const { from, to } = toApiTimestamps(filter);
 
   const sales: SaleWithItems[] = [];
   for (let apiPage = 1; sales.length < SALES_LIST_CAP; apiPage += 1) {
@@ -53,6 +73,20 @@ async function fetchSales(filter: SalesListFilter): Promise<SaleWithItems[]> {
     if (apiPage >= result.lastPage) break;
   }
   return sales;
+}
+
+async function fetchSalesStats(filter: SalesListFilter): Promise<SalesPageStats> {
+  const client = getBrowserApiClient();
+  const { from, to } = toApiTimestamps(filter);
+
+  return getSalesStats(client, {
+    status: filter.status || undefined,
+    userId: filter.userId || undefined,
+    deviceId: filter.deviceId || undefined,
+    locationId: filter.locationId || undefined,
+    from,
+    to,
+  });
 }
 
 /**

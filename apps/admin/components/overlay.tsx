@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import {
   createContext,
   useCallback,
@@ -361,6 +362,69 @@ export function AiProcessingOverlay({
               <ProcessingDots />
             </p>
             <p className="mt-1 text-caption text-ink-muted">This may take a moment.</p>
+          </div>
+        </div>
+      </div>
+    </OverlayPortal>
+  );
+}
+
+/** Blocks the page while list data refetches after a filter change — no dismiss. */
+export function FetchingDataOverlay({
+  open,
+  message = "Fetching data",
+}: {
+  open: boolean;
+  message?: string;
+}) {
+  const labelId = useId();
+  const { mounted, entered } = usePresence(open);
+
+  useBodyScrollLock(mounted);
+
+  if (!mounted) return null;
+
+  return (
+    <OverlayPortal>
+      <div
+        className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+        role="presentation"
+      >
+        <div
+          className={cx(backdropClass, "z-0", entered ? "opacity-100" : "opacity-0")}
+          aria-hidden
+        />
+        <div
+          role="status"
+          aria-live="polite"
+          aria-labelledby={labelId}
+          data-state={entered ? "open" : "closed"}
+          className={cx(
+            "relative z-10 flex w-full max-w-md flex-col items-center gap-4 rounded-lg border border-border bg-surface px-8 py-10 shadow-lg",
+            "transition-[opacity,transform] duration-[180ms] ease-out motion-reduce:transition-none",
+            entered ? "translate-y-0 scale-100 opacity-100" : "translate-y-1.5 scale-[0.98] opacity-0",
+          )}
+        >
+          <div className="relative flex size-20 items-center justify-center">
+            <Image
+              src="/logo.png"
+              alt=""
+              width={64}
+              height={64}
+              className="size-16 object-contain"
+              priority
+            />
+            <Loader2
+              size={22}
+              className="absolute -right-1 -bottom-1 animate-spin text-primary"
+              aria-hidden
+            />
+          </div>
+          <div className="text-center">
+            <p id={labelId} className="text-heading-sm font-semibold text-ink">
+              {message}
+              <ProcessingDots />
+            </p>
           </div>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import type {
+  BundleItem,
   Category,
   Company,
   CompanyStats,
@@ -59,6 +60,15 @@ export interface ProductAttrs {
   bulk_min_quantity: number | null;
   allow_decimal: boolean;
   photo_url: string | null;
+  is_bundle?: boolean;
+  bundle_items?: {
+    product_id: string;
+    name: string | null;
+    sku: string | null;
+    unit: string | null;
+    quantity: number;
+    cost_price: number;
+  }[];
   created_at: string | null;
   updated_at: string | null;
 }
@@ -89,6 +99,17 @@ export function toProduct(resource: JsonApiResource<ProductAttrs>): Product {
     // which is `undefined` at runtime despite the `string | null` type — and
     // `undefined` crashes expo-sqlite's native bind on the mobile write path.
     photoUrl: a.photo_url ?? null,
+    isBundle: a.is_bundle ?? false,
+    bundleItems: (a.bundle_items ?? []).map(
+      (item): BundleItem => ({
+        productId: item.product_id,
+        name: item.name,
+        sku: item.sku,
+        unit: item.unit,
+        quantity: Number(item.quantity),
+        costPrice: Number(item.cost_price),
+      }),
+    ),
     updatedAt: a.updated_at ?? "",
   };
 }

@@ -323,6 +323,8 @@ export function ProductDetailSheet({
             </Text>
           ) : null}
 
+          {product.isBundle ? <Badge tone="neutral" label="Bundle" /> : null}
+
           <Text
             style={[
               styles.price,

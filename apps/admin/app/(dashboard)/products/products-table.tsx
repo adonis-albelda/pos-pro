@@ -88,6 +88,7 @@ export function ProductsTable({
                       )}
                     </span>
                     {product.name}
+                    {product.isBundle ? <Badge tone="neutral">Bundle</Badge> : null}
                   </div>
                 </Td>
                 <Td className="num text-ink-muted">{product.sku ?? "—"}</Td>

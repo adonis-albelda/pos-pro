@@ -26,6 +26,7 @@ interface ProductRow {
   bulk_min_quantity: number | null;
   is_active: number;
   photo_url: string | null;
+  is_bundle: number;
   updated_at: string | null;
   pending_quantity: number;
 }
@@ -58,6 +59,11 @@ function toProductWithEstimate(row: ProductRow): ProductWithEstimatedStock {
     bulkMinQuantity: row.bulk_min_quantity,
     isActive: row.is_active === 1,
     photoUrl: row.photo_url,
+    isBundle: row.is_bundle === 1,
+    // The recipe is admin-only config, never synced to a device — a bundle
+    // sells like any other product here (rule 2/8: components decrement only
+    // when assembled, which is an admin action, not a POS one).
+    bundleItems: [],
     updatedAt: row.updated_at ?? "",
     pendingQuantity: row.pending_quantity,
     estimatedStock: row.stock_quantity - row.pending_quantity,
@@ -92,6 +98,7 @@ SELECT p.id,
        p.bulk_min_quantity,
        p.is_active,
        p.photo_url,
+       p.is_bundle,
        p.updated_at,
        COALESCE((
          SELECT SUM(si.quantity)
@@ -237,8 +244,8 @@ async function insertOrReplaceProduct(
     `INSERT INTO products
        (id, name, sku, supplier_names, price, cost_price, stock_quantity, category, category_id,
         unit, allow_decimal, barcode, reorder_point, replenish_quantity, description,
-        bulk_price, bulk_min_quantity, is_active, photo_url, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        bulk_price, bulk_min_quantity, is_active, photo_url, is_bundle, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (id) DO UPDATE SET
        name = excluded.name,
        sku = excluded.sku,
@@ -258,6 +265,7 @@ async function insertOrReplaceProduct(
        bulk_min_quantity = excluded.bulk_min_quantity,
        is_active = excluded.is_active,
        photo_url = excluded.photo_url,
+       is_bundle = excluded.is_bundle,
        updated_at = excluded.updated_at`,
     product.id,
     product.name,
@@ -280,6 +288,7 @@ async function insertOrReplaceProduct(
     // expo-sqlite's native bind rejects `undefined` (only null/string/number/
     // Uint8Array are valid) — guard here too, not just at the API mapper.
     product.photoUrl ?? null,
+    product.isBundle ? 1 : 0,
     product.updatedAt,
   );
 }
@@ -349,7 +358,7 @@ export async function updateProductCatalogFields(product: Product): Promise<void
        name = ?, sku = ?, supplier_names = ?, price = ?, cost_price = ?, category = ?, category_id = ?,
        unit = ?, allow_decimal = ?, barcode = ?, reorder_point = ?, replenish_quantity = ?,
        description = ?, bulk_price = ?, bulk_min_quantity = ?, is_active = ?, photo_url = ?,
-       updated_at = ?
+       is_bundle = ?, updated_at = ?
      WHERE id = ?`,
     product.name,
     product.sku,
@@ -368,6 +377,7 @@ export async function updateProductCatalogFields(product: Product): Promise<void
     product.bulkMinQuantity,
     product.isActive ? 1 : 0,
     product.photoUrl ?? null,
+    product.isBundle ? 1 : 0,
     product.updatedAt,
     product.id,
   );

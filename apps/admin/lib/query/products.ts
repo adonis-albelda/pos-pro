@@ -2,6 +2,7 @@
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  assembleBundle,
   cloneProduct,
   countProducts,
   deleteProductPhoto,
@@ -10,6 +11,7 @@ import {
   listBelowReorder,
   listProductLabelsPage,
   listProductsPage,
+  setBundleItems,
   setProductActive,
   uploadProductPhoto,
   type ListProductsPageOptions,
@@ -144,6 +146,37 @@ export function useDeleteProductPhoto() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => deleteProductPhoto(getBrowserApiClient(), id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
+    },
+  });
+}
+
+export function useSetBundleItems() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, items }: { id: string; items: { productId: string; quantity: number }[] }) =>
+      setBundleItems(getBrowserApiClient(), id, items),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
+    },
+  });
+}
+
+export function useAssembleBundle() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      quantity,
+      locationId,
+      note,
+    }: {
+      id: string;
+      quantity: number;
+      locationId: string;
+      note?: string | null;
+    }) => assembleBundle(getBrowserApiClient(), id, { quantity, locationId, note }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
     },

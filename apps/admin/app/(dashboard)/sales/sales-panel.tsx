@@ -17,7 +17,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { formatMoney } from "@double-a/shared-types";
-import type { SaleWithItems, User } from "@double-a/shared-types";
+import type { SaleWithItems, SalesPageStats, User } from "@double-a/shared-types";
 import {
   Badge,
   ButtonLink,
@@ -118,12 +118,12 @@ function SalesPanelHeader({
 /** Reads q/page from the URL — search and pagination stay here, not in the page shell. */
 function SalesTableSection({
   sales,
+  stats,
   users,
-  fetching = false,
 }: {
   sales: SaleWithItems[];
+  stats: SalesPageStats;
   users: User[];
-  fetching?: boolean;
 }) {
   const searchParams = useSearchParams();
   const { q, page } = parseListQuery({
@@ -163,26 +163,6 @@ function SalesTableSection({
     () => paginateItems(filtered, page),
     [filtered, page],
   );
-
-  // Gross profit reads sale_items.unit_cost — the supplier price snapshotted
-  // at sale time, never today's product cost (CLAUDE.md §6). Voided/refunded
-  // sales are excluded, same as the Reports profit report.
-  const stats = useMemo(() => {
-    const completed = filtered.filter((sale) => sale.status === "completed");
-    const revenue = completed.reduce((sum, sale) => sum + sale.totalAmount, 0);
-    let cost = 0;
-    let discount = 0;
-    for (const sale of completed) {
-      for (const item of sale.items) {
-        cost += item.unitCost * item.quantity;
-        discount += (item.listPrice - item.unitPrice) * item.quantity;
-      }
-    }
-    const grossProfit = revenue - cost;
-    const marginPercent = revenue === 0 ? 0 : (grossProfit / revenue) * 100;
-
-    return { revenue, cost, discount, grossProfit, marginPercent, count: completed.length };
-  }, [filtered]);
 
   const listQuery = {
     q: q || undefined,
@@ -235,7 +215,7 @@ function SalesTableSection({
           }
         />
       ) : (
-        <Table fetching={fetching}>
+        <Table>
           <thead>
             <tr>
               <Th>Sold at</Th>
@@ -351,14 +331,14 @@ function SalesTableSection({
 
 export function SalesPanel({
   sales,
+  stats,
   users,
-  fetching = false,
   fromDay,
   toDay,
 }: {
   sales: SaleWithItems[];
+  stats: SalesPageStats;
   users: User[];
-  fetching?: boolean;
   fromDay: string | null;
   toDay: string | null;
 }) {
@@ -370,7 +350,7 @@ export function SalesPanel({
   return (
     <Card>
       <SalesPanelHeader users={users} devices={devices} fromDay={fromDay} toDay={toDay} />
-      <SalesTableSection sales={sales} users={users} fetching={fetching} />
+      <SalesTableSection sales={sales} stats={stats} users={users} />
     </Card>
   );
 }

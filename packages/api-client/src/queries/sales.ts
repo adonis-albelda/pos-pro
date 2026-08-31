@@ -1,4 +1,4 @@
-import type { SaleWithItems } from "@double-a/shared-types";
+import type { SaleWithItems, SalesPageStats } from "@double-a/shared-types";
 import { ApiError, type ApiClient, type JsonApiPage, type JsonApiResource } from "../http";
 import { type SaleAttrs, toSaleWithItems } from "../mappers";
 
@@ -32,7 +32,7 @@ export interface SalesFilter {
   locationId?: string;
   /** ISO timestamp, inclusive lower bound on created_at. */
   from?: string;
-  /** ISO timestamp, inclusive upper bound on created_at. */
+  /** ISO timestamp, exclusive upper bound on created_at. */
   to?: string;
   page?: number;
   pageSize?: number;
@@ -181,4 +181,38 @@ export async function replaceSaleItem(
     { idempotent: true },
   );
   return toSaleWithItems(data);
+}
+
+/** Completed-sale aggregates for the sales list header — same filters as listSalesPage. */
+export async function getSalesStats(
+  client: ApiClient,
+  filter: SalesFilter = {},
+): Promise<SalesPageStats> {
+  const { data } = await client.get<{
+    data: {
+      revenue: number;
+      cost: number;
+      discount: number;
+      gross_profit: number;
+      margin_percent: number;
+      count: number;
+    };
+  }>("/sales/stats", {
+    customer_id: filter.customerId,
+    status: filter.status,
+    user_id: filter.userId,
+    device_id: filter.deviceId,
+    location_id: filter.locationId,
+    from: filter.from,
+    to: filter.to,
+  });
+
+  return {
+    revenue: Number(data.revenue),
+    cost: Number(data.cost),
+    discount: Number(data.discount),
+    grossProfit: Number(data.gross_profit),
+    marginPercent: Number(data.margin_percent),
+    count: data.count,
+  };
 }
