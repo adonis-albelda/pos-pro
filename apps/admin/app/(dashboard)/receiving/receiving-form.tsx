@@ -412,17 +412,20 @@ export function ReceivingForm({
       return;
     }
 
+    // StoreGoodsReceiptController::parseItems() decodes this JSON straight
+    // off the wire and reads snake_case keys — no camelCase conversion
+    // happens server-side, unlike JSON:API resources elsewhere in this app.
     const items = cleanRows.map((row) => ({
       name: row.name.trim(),
       sku: row.sku.trim() || null,
-      quantityReceived: Number(row.quantityReceived) || 0,
-      unitCost: Number(row.unitCost) || 0,
-      productId: row.productId,
-      matchedBy: row.matchedBy,
-      purchaseOrderItemId: row.purchaseOrderItemId,
-      quantityOrdered: row.quantityOrdered,
-      appliedPrice: row.appliedPrice.trim() ? Number(row.appliedPrice) : null,
-      isFlagged: lineIsFlagged(row),
+      quantity_received: Number(row.quantityReceived) || 0,
+      unit_cost: Number(row.unitCost) || 0,
+      product_id: row.productId,
+      matched_by: row.matchedBy,
+      purchase_order_item_id: row.purchaseOrderItemId,
+      quantity_ordered: row.quantityOrdered,
+      applied_price: row.appliedPrice.trim() ? Number(row.appliedPrice) : null,
+      is_flagged: lineIsFlagged(row),
       note: row.note.trim() || null,
     }));
 
@@ -644,9 +647,14 @@ export function ReceivingForm({
               title={photoModalStep === "gallery" ? "Pick from gallery" : "Add a photo"}
               description={
                 photoModalStep === "gallery"
-                  ? "Photos saved for later from the mobile app."
+                  ? `Photos saved for later from the mobile app${
+                      (galleryQuery.data ?? []).length > 0
+                        ? ` — ${galleryQuery.data!.length} waiting`
+                        : ""
+                    }.`
                   : "Upload a new photo, or pick one already waiting in the gallery."
               }
+              className="max-w-3xl"
             >
               {photoModalStep === "gallery" ? (
                 <div className="space-y-3">
@@ -659,20 +667,39 @@ export function ReceivingForm({
                       shows up here.
                     </p>
                   ) : (
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                       {(galleryQuery.data ?? []).map((record) => (
                         <button
                           key={record.id}
                           type="button"
                           onClick={() => void pickGalleryPhoto(record)}
-                          className="aspect-square overflow-hidden rounded-sm border border-border bg-paper transition-opacity hover:opacity-80"
+                          className="overflow-hidden rounded-md border border-border bg-paper text-left transition-colors hover:border-primary/40"
                         >
                           {/* Arbitrary MinIO/S3 host, same reasoning as the product photo grid. */}
-                          <img
-                            src={record.photoUrl}
-                            alt={record.label}
-                            className="size-full object-cover"
-                          />
+                          <div className="aspect-square overflow-hidden">
+                            <img
+                              src={record.photoUrl}
+                              alt={record.label}
+                              className="size-full object-cover"
+                            />
+                          </div>
+                          <div className="space-y-0.5 border-t border-border px-2 py-1.5">
+                            <p className="truncate text-caption font-medium text-ink">
+                              {record.label}
+                            </p>
+                            <p className="truncate text-caption text-ink-muted">
+                              {record.uploadedBy ?? "Unknown uploader"}
+                              {record.locationName ? ` · ${record.locationName}` : ""}
+                            </p>
+                            <p className="text-caption text-ink-muted">
+                              {record.createdAt
+                                ? new Date(record.createdAt).toLocaleString("en-PH", {
+                                    dateStyle: "medium",
+                                    timeStyle: "short",
+                                  })
+                                : "—"}
+                            </p>
+                          </div>
                         </button>
                       ))}
                     </div>
@@ -691,6 +718,7 @@ export function ReceivingForm({
                     <Camera size={22} strokeWidth={1.75} className="text-primary" />
                     <span className="text-body font-medium text-ink">Upload a photo</span>
                     <span className="text-caption text-ink-muted">From your camera or files</span>
+                    <span className="text-caption text-ink-muted">JPG or PNG, up to 5MB</span>
                   </button>
                   <button
                     type="button"
@@ -700,6 +728,12 @@ export function ReceivingForm({
                     <Images size={22} strokeWidth={1.75} className="text-primary" />
                     <span className="text-body font-medium text-ink">From gallery</span>
                     <span className="text-caption text-ink-muted">Saved for later on mobile</span>
+                    {(galleryQuery.data ?? []).length > 0 ? (
+                      <span className="text-caption text-ink-muted">
+                        {galleryQuery.data!.length} photo
+                        {galleryQuery.data!.length === 1 ? "" : "s"} waiting
+                      </span>
+                    ) : null}
                   </button>
                 </div>
               )}
