@@ -1,5 +1,6 @@
 import type { Product } from "@double-a/shared-types";
 import { ApiError, type ApiClient, type JsonApiPage, type JsonApiResource } from "../http";
+import { appendMultipartField, appendMultipartFile, type MultipartFile } from "../multipart";
 import { type ProductAttrs, toProduct } from "../mappers";
 
 export interface ProductInput {
@@ -199,18 +200,18 @@ interface ExtractedProductLineAttrs {
 /** Vision extraction runs server-side (Laravel AI / OpenAI) — see apps/admin from-photo feature. */
 export async function extractProductsFromPhoto(
   client: ApiClient,
-  image: File,
+  image: MultipartFile,
   options: { locationId?: string | null; applyStock?: boolean } = {},
 ): Promise<ExtractedProductLine[]> {
   const formData = new FormData();
-  formData.set("image", image);
+  appendMultipartFile(formData, "image", image);
   if (options.locationId) {
-    formData.set("location_id", options.locationId);
+    appendMultipartField(formData, "location_id", options.locationId);
   }
   // Default true server-side (restock-on-match) — the sale-cart caller sets
   // this false so reading a customer's order photo never restocks a shelf.
   if (options.applyStock === false) {
-    formData.set("apply_stock", "0");
+    appendMultipartField(formData, "apply_stock", "0");
   }
 
   const result = await client.postMultipart<{ data: ExtractedProductLineAttrs[] }>(
@@ -443,9 +444,9 @@ export async function restoreProduct(client: ApiClient, id: string): Promise<Pro
 }
 
 /** Server resizes to a mobile-friendly size and re-encodes as WebP — send the original file as-is. */
-export async function uploadProductPhoto(client: ApiClient, id: string, photo: File): Promise<Product> {
+export async function uploadProductPhoto(client: ApiClient, id: string, photo: MultipartFile): Promise<Product> {
   const formData = new FormData();
-  formData.set("photo", photo);
+  appendMultipartFile(formData, "photo", photo);
   const { data } = await client.postMultipart<{ data: JsonApiResource<ProductAttrs> }>(
     `/products/${id}/photo`,
     formData,

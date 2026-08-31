@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { deleteGalleryPhoto, listGalleryPhotos, uploadGalleryPhoto } from "@double-a/api-client/queries";
+import type { MultipartFile } from "@double-a/api-client";
 import { getAdminApiClient } from "@/lib/api/session";
 
 const GALLERY_PHOTOS_KEY = ["gallery-photos"] as const;
@@ -15,7 +16,7 @@ export function useGalleryPhotos(options: { status?: "pending" | "processed" } =
 export function useUploadGalleryPhoto() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { photo: File; label?: string | null; locationId?: string | null }) =>
+    mutationFn: (input: { photo: MultipartFile; label?: string | null; locationId?: string | null }) =>
       uploadGalleryPhoto(getAdminApiClient(), input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: GALLERY_PHOTOS_KEY });

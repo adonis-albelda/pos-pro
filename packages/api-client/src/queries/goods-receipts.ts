@@ -1,4 +1,5 @@
 import { ApiError, type ApiClient, type JsonApiPage, type JsonApiResource } from "../http";
+import { appendMultipartField, appendMultipartFile, type MultipartFile } from "../multipart";
 
 export interface ExtractedReceiptLine {
   name: string;
@@ -47,13 +48,13 @@ function fromLineAttrs(line: ExtractedReceiptLineAttrs): ExtractedReceiptLine {
 /** Vision extraction runs server-side (DeliveryReceiptExtractor via Laravel AI / OpenAI). */
 export async function extractGoodsReceiptPhoto(
   client: ApiClient,
-  photo: File,
+  photo: MultipartFile,
   purchaseOrderId?: string | null,
 ): Promise<ExtractedReceiptLine[]> {
   const formData = new FormData();
-  formData.set("photo", photo);
+  appendMultipartFile(formData, "photo", photo);
   if (purchaseOrderId) {
-    formData.set("purchase_order_id", purchaseOrderId);
+    appendMultipartField(formData, "purchase_order_id", purchaseOrderId);
   }
 
   const result = await client.postMultipart<{ data: ExtractedReceiptLineAttrs[] }>(
@@ -175,7 +176,7 @@ export interface CreateGoodsReceiptInput {
   purchaseOrderId?: string | null;
   referenceNo?: string | null;
   notes?: string | null;
-  photo?: File | null;
+  photo?: MultipartFile | null;
   /** Picked from the "process later" gallery instead of a fresh upload — the receipt reuses that photo's own URL. */
   galleryPhotoId?: string | null;
   items: GoodsReceiptItemInput[];
@@ -204,15 +205,15 @@ export async function createGoodsReceipt(
   input: CreateGoodsReceiptInput,
 ): Promise<GoodsReceipt> {
   const formData = new FormData();
-  formData.set("location_id", input.locationId);
-  if (input.supplierId) formData.set("supplier_id", input.supplierId);
-  if (input.supplierName) formData.set("supplier_name", input.supplierName);
-  if (input.purchaseOrderId) formData.set("purchase_order_id", input.purchaseOrderId);
-  if (input.referenceNo) formData.set("reference_no", input.referenceNo);
-  if (input.notes) formData.set("notes", input.notes);
-  if (input.photo) formData.set("photo", input.photo);
-  if (input.galleryPhotoId) formData.set("gallery_photo_id", input.galleryPhotoId);
-  formData.set("items_json", toItemsJson(input.items));
+  appendMultipartField(formData, "location_id", input.locationId);
+  if (input.supplierId) appendMultipartField(formData, "supplier_id", input.supplierId);
+  if (input.supplierName) appendMultipartField(formData, "supplier_name", input.supplierName);
+  if (input.purchaseOrderId) appendMultipartField(formData, "purchase_order_id", input.purchaseOrderId);
+  if (input.referenceNo) appendMultipartField(formData, "reference_no", input.referenceNo);
+  if (input.notes) appendMultipartField(formData, "notes", input.notes);
+  if (input.photo) appendMultipartFile(formData, "photo", input.photo);
+  if (input.galleryPhotoId) appendMultipartField(formData, "gallery_photo_id", input.galleryPhotoId);
+  appendMultipartField(formData, "items_json", toItemsJson(input.items));
 
   const { data } = await client.postMultipart<{ data: JsonApiResource<GoodsReceiptAttrs> }>(
     "/goods-receipts",

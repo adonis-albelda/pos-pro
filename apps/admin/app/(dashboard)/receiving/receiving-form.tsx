@@ -10,6 +10,7 @@ import {
   Expand,
   Images,
   Plus,
+  RotateCcw,
   Save,
   Settings,
   Sparkles,
@@ -18,7 +19,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { formatQuantity, roundMoney } from "@double-a/shared-types";
+import { formatMoney, formatQuantity, roundMoney } from "@double-a/shared-types";
 import type { Location, PurchaseOrder, PurchaseOrderItem, Supplier } from "@double-a/shared-types";
 import {
   Badge,
@@ -31,6 +32,7 @@ import {
   Field,
   IconButton,
   Input,
+  Money,
   MoneyInput,
   Table,
   Td,
@@ -58,6 +60,13 @@ interface LineRow {
   quantityOrdered: number | null;
   appliedPrice: string;
   note: string;
+  // Snapshotted once, at extraction/creation — never touched afterward.
+  // What the reset icon on each amount field restores.
+  originalQuantityReceived: string;
+  originalUnitCost: string;
+  originalAppliedPrice: string;
+  /** Soft-remove — stays visible (grayed out, restorable) but dropped from what actually submits. */
+  excluded: boolean;
 }
 
 function newKey(): string {
@@ -92,9 +101,15 @@ async function compressImage(file: File): Promise<File> {
   return new File([blob], file.name.replace(/\.\w+$/, ".jpg"), { type: "image/jpeg" });
 }
 
-/** Preserves the peso margin: new selling price = new cost + (old price − old cost). */
+/**
+ * Asymmetric on purpose: a supplier cost increase passes straight through to
+ * the shelf so the margin doesn't quietly erode, but a cost decrease is
+ * never auto-applied — the owner keeps that margin gain until they choose
+ * to pass it on themselves.
+ */
 function suggestPrice(newCost: number, existingPrice: number, existingCostPrice: number): number {
-  return roundMoney(newCost + (existingPrice - existingCostPrice));
+  const increase = newCost - existingCostPrice;
+  return increase > 0 ? roundMoney(existingPrice + increase) : existingPrice;
 }
 
 function lineIsFlagged(row: LineRow): boolean {
@@ -218,6 +233,10 @@ export function ReceivingForm({
         quantityOrdered: null,
         appliedPrice: "",
         note: "",
+        originalQuantityReceived: "1",
+        originalUnitCost: "",
+        originalAppliedPrice: "",
+        excluded: false,
       },
     ]);
   }
@@ -226,20 +245,35 @@ export function ReceivingForm({
     setRows((previous) => previous.map((row) => (row.key === key ? { ...row, ...patch } : row)));
   }
 
-  function removeRow(key: string) {
-    setRows((previous) => previous.filter((row) => row.key !== key));
+  /** Soft-remove — the row stays put, grayed out, and can be restored; only excluded from submit. */
+  function toggleRowExcluded(key: string) {
+    setRows((previous) =>
+      previous.map((row) => (row.key === key ? { ...row, excluded: !row.excluded } : row)),
+    );
   }
 
+  /**
+   * Links a catalogue product for pricing — doesn't overwrite an existing
+   * `name`, which stays the receipt's own reference text (what the paper
+   * actually said, editable independently of the match). Only fills it in
+   * when a manually-added line hasn't been typed into yet.
+   */
   function pickProductForRow(key: string, productId: string) {
     const product = productsById.get(productId);
     if (!product) return;
+    const row = rows.find((r) => r.key === key);
+    // First time this row has both a cost and a catalogue price to compare —
+    // the unitCost input's own onChange only fires on a later edit, so the
+    // very first match needs to compute the suggestion right here too.
+    const unitCost = Number(row?.unitCost) || 0;
     updateRow(key, {
       productId: product.id,
-      name: product.name,
+      name: row?.name.trim() ? row.name : product.name,
       sku: product.sku ?? "",
       matchedBy: "internal",
       existingPrice: product.price,
       existingCostPrice: product.costPrice,
+      appliedPrice: String(suggestPrice(unitCost, product.price, product.costPrice)),
     });
   }
 
@@ -316,21 +350,28 @@ export function ReceivingForm({
           line.existingPrice !== null && line.existingCostPrice !== null
             ? suggestPrice(unitCost, line.existingPrice, line.existingCostPrice)
             : null;
+        const quantityReceived = line.quantityReceived !== null ? String(line.quantityReceived) : "1";
+        const unitCostStr = line.unitCost !== null ? String(line.unitCost) : "";
+        const appliedPriceStr = appliedPrice !== null ? String(appliedPrice) : "";
 
         return {
           key: newKey(),
           name: line.name,
           sku: line.sku ?? "",
-          quantityReceived: line.quantityReceived !== null ? String(line.quantityReceived) : "1",
-          unitCost: line.unitCost !== null ? String(line.unitCost) : "",
+          quantityReceived,
+          unitCost: unitCostStr,
           productId: line.productId,
           matchedBy: line.matchedBy,
           existingPrice: line.existingPrice,
           existingCostPrice: line.existingCostPrice,
           purchaseOrderItemId: line.purchaseOrderItemId,
           quantityOrdered: line.quantityOrdered,
-          appliedPrice: appliedPrice !== null ? String(appliedPrice) : "",
+          appliedPrice: appliedPriceStr,
           note: "",
+          originalQuantityReceived: quantityReceived,
+          originalUnitCost: unitCostStr,
+          originalAppliedPrice: appliedPriceStr,
+          excluded: false,
         };
       });
 
@@ -350,7 +391,10 @@ export function ReceivingForm({
       setError("Pick a supplier, or type one in for an ad-hoc delivery.");
       return;
     }
-    if (rows.filter((row) => row.name.trim() && Number(row.quantityReceived) > 0).length === 0) {
+    if (
+      rows.filter((row) => !row.excluded && row.name.trim() && Number(row.quantityReceived) > 0)
+        .length === 0
+    ) {
       setError("Add at least one item — upload a photo or add a line manually.");
       return;
     }
@@ -359,7 +403,9 @@ export function ReceivingForm({
   }
 
   function submit() {
-    const cleanRows = rows.filter((row) => row.name.trim() && Number(row.quantityReceived) > 0);
+    const cleanRows = rows.filter(
+      (row) => !row.excluded && row.name.trim() && Number(row.quantityReceived) > 0,
+    );
     if (cleanRows.length === 0) {
       setConfirmOpen(false);
       setError("Add at least one item — upload a photo or add a line manually.");
@@ -804,9 +850,10 @@ export function ReceivingForm({
               <thead>
                 <tr>
                   <Th className="min-w-[18rem]">Item</Th>
-                  <Th numeric className="min-w-[6rem]">Qty</Th>
-                  <Th numeric className="min-w-[7rem]">Unit cost</Th>
-                  <Th numeric className="min-w-[7rem]">New price</Th>
+                  <Th numeric className="min-w-[2rem]">Qty</Th>
+                  <Th numeric className="min-w-[7rem]">Cost price</Th>
+                  <Th numeric className="min-w-[8rem]">New cost price</Th>
+                  <Th numeric className="min-w-[8rem]">Shelf Price</Th>
                   <Th className="min-w-[9rem]">Status</Th>
                   <Th />
                 </tr>
@@ -815,8 +862,13 @@ export function ReceivingForm({
                 {rows.map((row) => {
                   const flagged = lineIsFlagged(row);
                   return (
-                    <tr key={row.key}>
+                    <tr key={row.key} className={row.excluded ? "bg-canvas opacity-50" : undefined}>
                       <Td className="min-w-[18rem] align-top">
+                        {row.excluded ? (
+                          <p className="mb-1 text-caption font-medium text-danger">
+                            This item will not be included
+                          </p>
+                        ) : null}
                         <Input
                           value={row.name}
                           onChange={(event) => updateRow(row.key, { name: event.target.value })}
@@ -851,16 +903,27 @@ export function ReceivingForm({
                         )}
                       </Td>
                       <Td numeric>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.001"
-                          className="num text-right"
-                          value={row.quantityReceived}
-                          onChange={(event) =>
-                            updateRow(row.key, { quantityReceived: event.target.value })
-                          }
-                        />
+                        <div className="flex w-20 items-center gap-1">
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.001"
+                            className="num min-w-0 flex-1 text-right"
+                            value={row.quantityReceived}
+                            onChange={(event) =>
+                              updateRow(row.key, { quantityReceived: event.target.value })
+                            }
+                          />
+                          {row.quantityReceived !== row.originalQuantityReceived ? (
+                            <IconButton
+                              icon={RotateCcw}
+                              label="Reset to original quantity"
+                              onClick={() =>
+                                updateRow(row.key, { quantityReceived: row.originalQuantityReceived })
+                              }
+                            />
+                          ) : null}
+                        </div>
                         {row.quantityOrdered !== null ? (
                           <p className="mt-1 text-caption text-ink-muted">
                             Ordered {formatQuantity(row.quantityOrdered)}
@@ -868,37 +931,114 @@ export function ReceivingForm({
                         ) : null}
                       </Td>
                       <Td numeric>
-                        <MoneyInput
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          className="text-right"
-                          value={row.unitCost}
-                          onChange={(event) => {
-                            const unitCost = Number(event.target.value) || 0;
-                            const nextAppliedPrice =
-                              row.existingPrice !== null && row.existingCostPrice !== null
-                                ? String(suggestPrice(unitCost, row.existingPrice, row.existingCostPrice))
-                                : row.appliedPrice;
-                            updateRow(row.key, {
-                              unitCost: event.target.value,
-                              appliedPrice: nextAppliedPrice,
-                            });
-                          }}
+                        {/* Current catalogue cost — read-only. No match yet: fall back to
+                            whatever's on the receipt, since there's no catalogue figure to show. */}
+                        <Money
+                          value={row.existingCostPrice ?? (Number(row.unitCost) || 0)}
+                          className="text-ink-muted"
                         />
                       </Td>
                       <Td numeric>
-                        <MoneyInput
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          className="text-right"
-                          value={row.appliedPrice}
-                          onChange={(event) =>
-                            updateRow(row.key, { appliedPrice: event.target.value })
-                          }
-                          disabled={!row.productId}
-                        />
+                        <div className="flex items-center gap-1">
+                          <MoneyInput
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className="text-right"
+                            value={row.unitCost}
+                            onChange={(event) => {
+                              const unitCost = Number(event.target.value) || 0;
+                              const nextAppliedPrice =
+                                row.existingPrice !== null && row.existingCostPrice !== null
+                                  ? String(suggestPrice(unitCost, row.existingPrice, row.existingCostPrice))
+                                  : row.appliedPrice;
+                              updateRow(row.key, {
+                                unitCost: event.target.value,
+                                appliedPrice: nextAppliedPrice,
+                              });
+                            }}
+                          />
+                          {row.unitCost !== row.originalUnitCost ? (
+                            <IconButton
+                              icon={RotateCcw}
+                              label="Reset to original cost"
+                              onClick={() => {
+                                const unitCost = Number(row.originalUnitCost) || 0;
+                                const nextAppliedPrice =
+                                  row.existingPrice !== null && row.existingCostPrice !== null
+                                    ? String(suggestPrice(unitCost, row.existingPrice, row.existingCostPrice))
+                                    : row.originalAppliedPrice;
+                                updateRow(row.key, {
+                                  unitCost: row.originalUnitCost,
+                                  appliedPrice: nextAppliedPrice,
+                                });
+                              }}
+                            />
+                          ) : null}
+                        </div>
+                        {row.existingCostPrice !== null ? (
+                          (() => {
+                            const delta = roundMoney((Number(row.unitCost) || 0) - row.existingCostPrice!);
+                            if (delta === 0) {
+                              return <p className="mt-1 text-caption text-ink-muted">No change</p>;
+                            }
+                            return (
+                              <p
+                                className={`mt-1 text-caption ${delta > 0 ? "text-danger" : "text-success"}`}
+                              >
+                                {delta > 0 ? "+" : "−"}
+                                {formatMoney(Math.abs(delta))} vs current
+                              </p>
+                            );
+                          })()
+                        ) : (
+                          <p className="mt-1 text-caption text-ink-muted">New product</p>
+                        )}
+                      </Td>
+                      <Td numeric>
+                        <div className="flex items-center gap-1">
+                          <MoneyInput
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className={`text-right ${
+                              !row.productId && !(Number(row.appliedPrice) > 0)
+                                ? "border-danger focus:ring-danger/30"
+                                : ""
+                            }`}
+                            value={row.appliedPrice}
+                            onChange={(event) =>
+                              updateRow(row.key, { appliedPrice: event.target.value })
+                            }
+                          />
+                          {row.appliedPrice !== row.originalAppliedPrice ? (
+                            <IconButton
+                              icon={RotateCcw}
+                              label="Reset to original selling price"
+                              onClick={() =>
+                                updateRow(row.key, { appliedPrice: row.originalAppliedPrice })
+                              }
+                            />
+                          ) : null}
+                        </div>
+                        {!row.productId && !(Number(row.appliedPrice) > 0) ? (
+                          <p className="mt-1 text-caption font-medium text-danger">Needs a value</p>
+                        ) : row.existingPrice !== null ? (
+                          (() => {
+                            const delta = roundMoney((Number(row.appliedPrice) || 0) - row.existingPrice!);
+                            if (delta === 0) {
+                              return <p className="mt-1 text-caption text-ink-muted">No change</p>;
+                            }
+                            return (
+                              <p
+                                className={`mt-1 text-caption ${delta > 0 ? "text-success" : "text-danger"}`}
+                              >
+                                {delta > 0 ? "+" : "−"}
+                                {formatMoney(Math.abs(delta))} vs current
+                              </p>
+                            );
+                          })()
+                        ) : null}
                       </Td>
                       <Td>
                         {!row.productId ? (
@@ -919,12 +1059,20 @@ export function ReceivingForm({
                       </Td>
                       <Td>
                         <div className="flex justify-end">
-                          <IconButton
-                            icon={Trash2}
-                            label="Remove line"
-                            tone="danger"
-                            onClick={() => removeRow(row.key)}
-                          />
+                          {row.excluded ? (
+                            <IconButton
+                              icon={RotateCcw}
+                              label="Restore line"
+                              onClick={() => toggleRowExcluded(row.key)}
+                            />
+                          ) : (
+                            <IconButton
+                              icon={Trash2}
+                              label="Remove line"
+                              tone="danger"
+                              onClick={() => toggleRowExcluded(row.key)}
+                            />
+                          )}
                         </div>
                       </Td>
                     </tr>

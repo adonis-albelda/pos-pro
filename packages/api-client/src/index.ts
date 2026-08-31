@@ -7,6 +7,8 @@ export type {
   JsonApiResource,
   RequestOptions,
 } from "./http";
+export type { MultipartFile } from "./multipart";
+export { appendMultipartField, appendMultipartFile } from "./multipart";
 export { assertApiUrl } from "./env";
 export * from "./mappers";
 export * from "./queries";

@@ -22,6 +22,7 @@ import {
   X,
 } from "lucide-react-native";
 import { roundMoney, type Product } from "@double-a/shared-types";
+import type { MultipartFile } from "@double-a/api-client";
 import {
   createGoodsReceipt,
   extractGoodsReceiptPhoto,
@@ -43,9 +44,9 @@ function newKey(): string {
   return Math.random().toString(36).slice(2);
 }
 
-/** RN's fetch/FormData accepts this file shape at runtime; api-client's types assume the web File. */
-function toUploadFile(uri: string): File {
-  return { uri, name: "receipt.jpg", type: "image/jpeg" } as unknown as File;
+/** RN upload part — api-client appendMultipartFile sends this shape, not a web File. */
+function toUploadFile(uri: string): MultipartFile {
+  return { uri, name: "receipt.jpg", type: "image/jpeg" };
 }
 
 interface Rect {

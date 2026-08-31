@@ -5,6 +5,7 @@ import {
   type StoreSettings,
 } from "@double-a/shared-types";
 import { ApiError, type ApiClient, type JsonApiResource } from "../http";
+import { appendMultipartFile } from "../multipart";
 import { type ReceiptLayoutAttrs, type StoreSettingAttrs, toReceiptLayout, toStoreSettings } from "../mappers";
 
 export interface StoreSettingsInput {
@@ -58,7 +59,11 @@ export async function updateStoreSettings(client: ApiClient, patch: StoreSetting
 /** Uploads a logo to S3 and returns the updated settings row. */
 export async function uploadStoreLogo(client: ApiClient, logo: File | Blob): Promise<StoreSettings> {
   const formData = new FormData();
-  formData.set("logo", logo);
+  if (typeof File !== "undefined" && logo instanceof File) {
+    appendMultipartFile(formData, "logo", logo);
+  } else {
+    formData.append("logo", logo);
+  }
   const { data } = await client.postMultipart<{ data: JsonApiResource<StoreSettingAttrs> }>(
     "/store-settings/logo",
     formData,

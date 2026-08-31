@@ -1,4 +1,5 @@
 import type { ApiClient, JsonApiPage, JsonApiResource } from "../http";
+import { appendMultipartField, appendMultipartFile, type MultipartFile } from "../multipart";
 
 export interface GalleryPhoto {
   id: string;
@@ -54,12 +55,12 @@ export async function listGalleryPhotos(
 
 export async function uploadGalleryPhoto(
   client: ApiClient,
-  input: { photo: File; label?: string | null; locationId?: string | null },
+  input: { photo: MultipartFile; label?: string | null; locationId?: string | null },
 ): Promise<GalleryPhoto> {
   const formData = new FormData();
-  formData.set("photo", input.photo);
-  if (input.label) formData.set("label", input.label);
-  if (input.locationId) formData.set("location_id", input.locationId);
+  appendMultipartFile(formData, "photo", input.photo);
+  if (input.label) appendMultipartField(formData, "label", input.label);
+  if (input.locationId) appendMultipartField(formData, "location_id", input.locationId);
 
   const { data } = await client.postMultipart<{ data: JsonApiResource<GalleryPhotoAttrs> }>(
     "/gallery-photos",
