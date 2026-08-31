@@ -85,10 +85,12 @@ export default function InventoryPage() {
   const dayWindow = resolveDayWindow(params);
   const isMovementsTab = tab === "movements";
 
-  // Whole-shop figures (header stat cards, tab counts) — one aggregate query,
-  // not a walk of the entire catalogue. Independent of whatever the Stock on
-  // hand table's own filters/page happen to be.
-  const statsQuery = useProductStats();
+  // Header stat cards, tab counts — one aggregate query, not a walk of the
+  // entire catalogue. Independent of the Stock on hand table's own
+  // search/state/page filters, but does follow the location switcher: all
+  // locations sums every branch (ProductStatsController does this
+  // server-side), one branch scopes to just that branch's stock.
+  const statsQuery = useProductStats({ locationId: locationId ?? undefined });
   const categoriesQuery = useCategories({ includeInactive: true });
 
   // Stock on hand tab only, but hooks stay unconditional — gated with
