@@ -1,20 +1,24 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import type { Route } from "next";
+import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Banknote,
   CalendarRange,
   ChartColumn,
+  ChevronLeft,
+  ChevronRight,
   Coins,
   Download,
   HandCoins,
   Package,
   PackageSearch,
   Percent,
+  PiggyBank,
   Receipt,
   Smartphone,
   Snowflake,
-  SlidersHorizontal,
   Trophy,
   TrendingDown,
   TrendingUp,
@@ -27,6 +31,8 @@ import {
 import { formatMoney, formatPercent } from "@double-a/shared-types";
 import { summariseProfit } from "@double-a/api-client/queries";
 import { formatStoreDay, resolveRange } from "@/lib/date-range";
+import { paginateItems } from "@/lib/list-query";
+import { DateRangePicker, type DayWindowValue } from "@/components/date-range-picker";
 import {
   Badge,
   ButtonLink,
@@ -34,7 +40,6 @@ import {
   CardHeader,
   EmptyState,
   Money,
-  PageHeader,
   Skeleton,
   StatCard,
   Table,
@@ -55,7 +60,6 @@ import {
 import { DashboardBarChart } from "../dashboard-bar-chart";
 import { DeadStockDays } from "./dead-stock-days";
 import { DEAD_STOCK_DEFAULT_DAYS, DEAD_STOCK_WINDOWS } from "./dead-stock-windows";
-import { ReportFilters } from "./report-filters";
 
 /** Mirrors the loaded layout's shape (stat row, paired table cards, chart card) so nothing jumps once data lands. */
 function ReportsSkeleton() {
@@ -139,16 +143,26 @@ function ReportsSkeleton() {
 }
 
 export function ReportsPageClient() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const params = {
-    preset: searchParams.get("preset") ?? undefined,
     from: searchParams.get("from") ?? undefined,
     to: searchParams.get("to") ?? undefined,
   };
-  const { preset, fromDay, toDay, range, label } = resolveRange(params);
+  const { fromDay, toDay, range, label } = resolveRange(params);
   const deadStockDays = DEAD_STOCK_WINDOWS.includes(Number(searchParams.get("days")))
     ? Number(searchParams.get("days"))
     : DEAD_STOCK_DEFAULT_DAYS;
+
+  function applyWindow(window: DayWindowValue) {
+    const next = new URLSearchParams(searchParams.toString());
+    if (window.fromDay) next.set("from", window.fromDay);
+    else next.delete("from");
+    if (window.toDay) next.set("to", window.toDay);
+    else next.delete("to");
+    next.delete("preset");
+    router.push(`/reports?${next.toString()}` as Route);
+  }
 
   const profitQuery = useReportProfit(range);
   const topProductsQuery = useReportTopProducts(range, 20);
@@ -171,6 +185,19 @@ export function ReportsPageClient() {
     reorderQuery.isPending ||
     expensesQuery.isPending;
 
+  // Apply re-triggers these same queries under a new range/key — surface the
+  // skeleton for that refetch too, not just the very first load.
+  const isFetching =
+    profitQuery.isFetching ||
+    topProductsQuery.isFetching ||
+    discountsQuery.isFetching ||
+    cashiersQuery.isFetching ||
+    devicesQuery.isFetching ||
+    valuationQuery.isFetching ||
+    deadStockQuery.isFetching ||
+    reorderQuery.isFetching ||
+    expensesQuery.isFetching;
+
   const error =
     profitQuery.error ??
     topProductsQuery.error ??
@@ -186,25 +213,32 @@ export function ReportsPageClient() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        icon={ChartColumn}
-        title="Reports"
-        description="What the shop made, who sold it, and what is sitting on the shelves."
-        action={
-          <ButtonLink href={`/api/export/sales?${rangeQuery}`} icon={Download} download>
-            Export sales
-          </ButtonLink>
-        }
-      />
-
-      <Card>
-        <CardHeader icon={SlidersHorizontal} title="Range" description={label} />
-        <div className="px-4 py-5 sm:px-6">
-          <ReportFilters preset={preset} fromDay={fromDay} toDay={toDay} />
+      <header className="space-y-4">
+        <div className="flex w-full flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+              <ChartColumn size={20} strokeWidth={2} />
+            </span>
+            <h1 className="text-heading-md font-semibold sm:text-heading-lg">Reports</h1>
+          </div>
+          <div className="ml-auto flex w-fit shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center">
+            <ButtonLink href={`/api/export/sales?${rangeQuery}`} icon={Download} download>
+              Export sales
+            </ButtonLink>
+            <DateRangePicker
+              fromDay={fromDay}
+              toDay={toDay}
+              onApply={applyWindow}
+              className="sm:w-64"
+            />
+          </div>
         </div>
-      </Card>
+        <p className="max-w-2xl text-body text-ink-muted">
+          What the shop made, who sold it, and what is sitting on the shelves.
+        </p>
+      </header>
 
-      {isPending ? (
+      {isPending || isFetching ? (
         <ReportsSkeleton />
       ) : error ? (
         <Card className="px-4 py-8 text-center text-body text-danger">
@@ -212,6 +246,7 @@ export function ReportsPageClient() {
         </Card>
       ) : (
         <ReportsBody
+          key={rangeQuery}
           profitRows={profitQuery.data ?? []}
           topProducts={topProductsQuery.data ?? []}
           discounts={discountsQuery.data ?? []}
@@ -226,6 +261,67 @@ export function ReportsPageClient() {
           rangeQuery={rangeQuery}
         />
       )}
+    </div>
+  );
+}
+
+const REPORTS_PAGE_SIZE = 15;
+
+/** Local, non-URL pagination footer — several independent tables share this one page. */
+function TablePagination({
+  page,
+  pageCount,
+  total,
+  pageSize,
+  onPageChange,
+}: {
+  page: number;
+  pageCount: number;
+  total: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
+}) {
+  if (total === 0 || pageCount <= 1) return null;
+
+  const from = (page - 1) * pageSize + 1;
+  const to = Math.min(page * pageSize, total);
+  const linkClass =
+    "inline-flex h-8 items-center gap-1 rounded-sm border border-border bg-surface px-3 text-caption font-medium text-ink hover:bg-paper";
+  const disabledClass =
+    "inline-flex h-8 cursor-not-allowed items-center gap-1 rounded-sm border border-border px-3 text-caption text-ink-muted opacity-50";
+
+  return (
+    <div className="flex flex-col gap-3 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+      <p className="text-caption text-ink-muted">
+        Showing {from}–{to} of {total}
+      </p>
+      <div className="flex items-center gap-2">
+        {page <= 1 ? (
+          <span className={disabledClass}>
+            <ChevronLeft size={14} />
+            Prev
+          </span>
+        ) : (
+          <button type="button" onClick={() => onPageChange(page - 1)} className={linkClass}>
+            <ChevronLeft size={14} />
+            Prev
+          </button>
+        )}
+        <span className="num text-caption text-ink-muted">
+          {page} / {pageCount}
+        </span>
+        {page >= pageCount ? (
+          <span className={disabledClass}>
+            Next
+            <ChevronRight size={14} />
+          </span>
+        ) : (
+          <button type="button" onClick={() => onPageChange(page + 1)} className={linkClass}>
+            Next
+            <ChevronRight size={14} />
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -259,6 +355,7 @@ function ReportsBody({
 }) {
   const totals = summariseProfit(profitRows);
   const net = totals.revenue - expensesTotal;
+  const netProfit = totals.grossProfit - expensesTotal;
 
   const stockCost = valuation.reduce((sum, row) => sum + row.costValue, 0);
   const stockRetail = valuation.reduce((sum, row) => sum + row.retailValue, 0);
@@ -271,6 +368,22 @@ function ReportsBody({
     return { ...row, shortBy, restockCost: shortBy * row.costPrice };
   });
   const restockCost = reorderRows.reduce((sum, row) => sum + row.restockCost, 0);
+
+  const [profitPage, setProfitPage] = useState(1);
+  const [topProductsPage, setTopProductsPage] = useState(1);
+  const [discountsPage, setDiscountsPage] = useState(1);
+  const [cashiersPage, setCashiersPage] = useState(1);
+  const [devicesPage, setDevicesPage] = useState(1);
+  const [deadStockPage, setDeadStockPage] = useState(1);
+  const [reorderPage, setReorderPage] = useState(1);
+
+  const profitPaged = paginateItems(profitRows, profitPage, REPORTS_PAGE_SIZE);
+  const topProductsPaged = paginateItems(topProducts, topProductsPage, REPORTS_PAGE_SIZE);
+  const discountsPaged = paginateItems(discounts, discountsPage, REPORTS_PAGE_SIZE);
+  const cashiersPaged = paginateItems(cashiers, cashiersPage, REPORTS_PAGE_SIZE);
+  const devicesPaged = paginateItems(devices, devicesPage, REPORTS_PAGE_SIZE);
+  const deadStockPaged = paginateItems(deadStock, deadStockPage, REPORTS_PAGE_SIZE);
+  const reorderPaged = paginateItems(reorderRows, reorderPage, REPORTS_PAGE_SIZE);
 
   return (
     <>
@@ -325,10 +438,18 @@ function ReportsBody({
           hint="Revenue minus expenses, separate from gross profit"
           tone={net < 0 ? "danger" : "success"}
         />
+        <StatCard
+          icon={PiggyBank}
+          label="Net profit"
+          value={formatMoney(netProfit)}
+          hint="Revenue minus supplier cost minus expenses"
+          tone={netProfit < 0 ? "danger" : "success"}
+        />
       </div>
       <p className="text-caption text-ink-muted">
-        Net and Gross profit are independent figures, not one derived from the other: Gross
-        profit is revenue minus supplier cost, Net is revenue minus operating expenses.
+        Gross profit, Net, and Net profit are three separate figures, not one derived from
+        another: Gross profit is revenue minus supplier cost, Net is revenue minus operating
+        expenses, and Net profit is revenue minus both — the true bottom line.
       </p>
 
       <div className="grid gap-6 xl:grid-cols-2">
@@ -356,7 +477,7 @@ function ReportsBody({
                 </tr>
               </thead>
               <tbody>
-                {profitRows.map((row) => (
+                {profitPaged.pageItems.map((row) => (
                   <tr key={row.bucket}>
                     <Td className="whitespace-nowrap font-medium">
                       {formatStoreDay(row.bucket)}
@@ -381,6 +502,13 @@ function ReportsBody({
               </tbody>
             </Table>
           )}
+          <TablePagination
+            page={profitPaged.page}
+            pageCount={profitPaged.pageCount}
+            total={profitPaged.total}
+            pageSize={REPORTS_PAGE_SIZE}
+            onPageChange={setProfitPage}
+          />
         </Card>
 
         {/* ------------------------------------------------------------------ */}
@@ -410,7 +538,7 @@ function ReportsBody({
                 </tr>
               </thead>
               <tbody>
-                {topProducts.map((row) => (
+                {topProductsPaged.pageItems.map((row) => (
                   <tr key={row.product_id ?? row.product_name}>
                     <Td className="font-medium">{row.product_name}</Td>
                     <Td numeric>{Number(row.quantity_sold)}</Td>
@@ -426,6 +554,13 @@ function ReportsBody({
               </tbody>
             </Table>
           )}
+          <TablePagination
+            page={topProductsPaged.page}
+            pageCount={topProductsPaged.pageCount}
+            total={topProductsPaged.total}
+            pageSize={REPORTS_PAGE_SIZE}
+            onPageChange={setTopProductsPage}
+          />
         </Card>
       </div>
 
@@ -470,7 +605,7 @@ function ReportsBody({
               </tr>
             </thead>
             <tbody>
-              {discounts.map((row, index) => (
+              {discountsPaged.pageItems.map((row, index) => (
                 <tr key={`${row.sale_id}-${index}`}>
                   <Td className="num whitespace-nowrap text-ink-muted">
                     {new Date(row.sold_at).toLocaleString("en-PH", {
@@ -508,6 +643,13 @@ function ReportsBody({
             </tbody>
           </Table>
         )}
+        <TablePagination
+          page={discountsPaged.page}
+          pageCount={discountsPaged.pageCount}
+          total={discountsPaged.total}
+          pageSize={REPORTS_PAGE_SIZE}
+          onPageChange={setDiscountsPage}
+        />
       </Card>
 
       {/* ------------------------------------------------------------------ */}
@@ -533,7 +675,7 @@ function ReportsBody({
                 </tr>
               </thead>
               <tbody>
-                {cashiers.map((row) => (
+                {cashiersPaged.pageItems.map((row) => (
                   <tr key={row.user_id ?? row.cashier_name}>
                     <Td className="font-medium">{row.cashier_name}</Td>
                     <Td numeric>{Number(row.sales_count)}</Td>
@@ -548,6 +690,13 @@ function ReportsBody({
               </tbody>
             </Table>
           )}
+          <TablePagination
+            page={cashiersPaged.page}
+            pageCount={cashiersPaged.pageCount}
+            total={cashiersPaged.total}
+            pageSize={REPORTS_PAGE_SIZE}
+            onPageChange={setCashiersPage}
+          />
         </Card>
 
         <Card>
@@ -570,7 +719,7 @@ function ReportsBody({
                 </tr>
               </thead>
               <tbody>
-                {devices.map((row) => (
+                {devicesPaged.pageItems.map((row) => (
                   <tr key={row.device_id}>
                     <Td className="num font-medium">{row.device_id}</Td>
                     <Td numeric>{Number(row.sales_count)}</Td>
@@ -593,6 +742,13 @@ function ReportsBody({
               </tbody>
             </Table>
           )}
+          <TablePagination
+            page={devicesPaged.page}
+            pageCount={devicesPaged.pageCount}
+            total={devicesPaged.total}
+            pageSize={REPORTS_PAGE_SIZE}
+            onPageChange={setDevicesPage}
+          />
         </Card>
       </div>
 
@@ -671,7 +827,7 @@ function ReportsBody({
                 </tr>
               </thead>
               <tbody>
-                {deadStock.map((row) => (
+                {deadStockPaged.pageItems.map((row) => (
                   <tr key={row.product_id}>
                     <Td className="font-medium">{row.product_name}</Td>
                     <Td className="text-ink-muted">{row.category ?? "—"}</Td>
@@ -696,6 +852,13 @@ function ReportsBody({
               </tbody>
             </Table>
           )}
+          <TablePagination
+            page={deadStockPaged.page}
+            pageCount={deadStockPaged.pageCount}
+            total={deadStockPaged.total}
+            pageSize={REPORTS_PAGE_SIZE}
+            onPageChange={setDeadStockPage}
+          />
         </Card>
       </div>
 
@@ -733,7 +896,7 @@ function ReportsBody({
               </tr>
             </thead>
             <tbody>
-              {reorderRows.map((row) => (
+              {reorderPaged.pageItems.map((row) => (
                 <tr key={row.id}>
                   <Td className="font-medium">{row.name}</Td>
                   <Td className="text-ink-muted">{row.category ?? "—"}</Td>
@@ -754,6 +917,13 @@ function ReportsBody({
             </tbody>
           </Table>
         )}
+        <TablePagination
+          page={reorderPaged.page}
+          pageCount={reorderPaged.pageCount}
+          total={reorderPaged.total}
+          pageSize={REPORTS_PAGE_SIZE}
+          onPageChange={setReorderPage}
+        />
       </Card>
     </>
   );

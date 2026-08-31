@@ -10,6 +10,16 @@ import type {
   WebViewNavigation,
   WindowsWebViewProps,
 } from "react-native-webview/lib/WebViewTypes";
+import {
+  adminWebDashboardUrl,
+  adminWebUrl,
+  isAllowedAdminWebUrl,
+} from "@/lib/admin-web-url";
+import { buildAdminBootstrapHtml } from "@/lib/admin-web-cookies";
+import { getAdminToken, getAdminTokenExpiresAt } from "@/lib/api/session";
+import { Button } from "@/components/ui";
+import { LoadingState } from "@/components/loading-state";
+import { color, space, styles } from "@/theme";
 
 type AdminWebViewRef = {
   stopLoading: () => void;
@@ -20,24 +30,10 @@ type AdminWebViewProps = IOSWebViewProps & AndroidWebViewProps & WindowsWebViewP
 const WebView = RNWebView as unknown as ForwardRefExoticComponent<
   AdminWebViewProps & RefAttributes<AdminWebViewRef>
 >;
-import {
-  adminWebDashboardUrl,
-  adminWebUrl,
-  isAllowedAdminWebUrl,
-} from "@/lib/admin-web-url";
-import {
-  buildAdminEmbedCookieScript,
-  buildAdminSessionCookieHeader,
-} from "@/lib/admin-web-cookies";
-import { getAdminToken, getAdminTokenExpiresAt } from "@/lib/api/session";
-import { Button } from "@/components/ui";
-import { LoadingState } from "@/components/loading-state";
-import { color, fontSize, space, styles } from "@/theme";
 
 /**
- * Full admin dashboard in a locked-down WebView. Session cookies are injected
- * before first paint on /auth/embed — no token in the URL. incognito clears
- * the jar when this unmounts (shift lock / leave admin).
+ * Admin dashboard WebView. Same-origin bootstrap HTML seeds cookies in JS,
+ * then redirects — works on Android without native cookie modules.
  */
 export function AdminWebView() {
   const router = useRouter();
@@ -54,15 +50,10 @@ export function AdminWebView() {
   const webSource = useMemo(() => {
     if (!token) return undefined;
     return {
-      uri: dashboardUrl,
-      headers: { Cookie: buildAdminSessionCookieHeader(token, expiresAt) },
+      html: buildAdminBootstrapHtml(token, expiresAt, dashboardUrl),
+      baseUrl: `${adminOrigin}/`,
     };
-  }, [token, expiresAt, dashboardUrl, attempt]);
-
-  const injectedBeforeContentLoaded = useMemo(() => {
-    if (!token) return undefined;
-    return buildAdminEmbedCookieScript(token, expiresAt);
-  }, [token, expiresAt]);
+  }, [token, expiresAt, dashboardUrl, adminOrigin, attempt]);
 
   function guardNavigation(url: string): boolean {
     return isAllowedAdminWebUrl(url, adminOrigin);
@@ -73,7 +64,7 @@ export function AdminWebView() {
       webRef.current?.stopLoading();
       return;
     }
-    if (nav.url.includes("/login")) {
+    if (nav.url.includes("/login") && nav.loading === false) {
       setError("Admin session was not accepted. Unlock again with an admin PIN.");
     }
   }
@@ -146,20 +137,22 @@ export function AdminWebView() {
         setSupportMultipleWindows={false}
         allowsInlineMediaPlayback
         mediaPlaybackRequiresUserAction={false}
-        originWhitelist={["https://*"]}
-        injectedJavaScriptBeforeContentLoaded={injectedBeforeContentLoaded}
+        originWhitelist={["https://*", "about:blank"]}
         onShouldStartLoadWithRequest={(request: WebViewNavigation) => guardNavigation(request.url)}
         onNavigationStateChange={onNavigationChange}
         onLoadEnd={() => setReady(true)}
         onHttpError={(event: WebViewHttpErrorEvent) => {
           const { statusCode, url } = event.nativeEvent;
-          if (statusCode >= 400) {
+          if (statusCode >= 400 && guardNavigation(url)) {
             setError(`Server returned ${statusCode} for ${url}`);
           }
         }}
         onError={(event: WebViewErrorEvent) => {
           const { description, url } = event.nativeEvent;
-          setError(description ? `${description} (${url})` : "Could not reach the admin dashboard.");
+          if (url && !guardNavigation(url)) return;
+          setError(
+            description ? `${description} (${url || dashboardUrl})` : "Could not reach the admin dashboard.",
+          );
         }}
         style={{ flex: 1, opacity: ready ? 1 : 0 }}
       />

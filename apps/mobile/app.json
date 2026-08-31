@@ -16,8 +16,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.pospro.app",
-      "googleServicesFile": "./GoogleService-Info.plist"
+      "bundleIdentifier": "com.pospro.app"
     },
     "android": {
       "package": "com.pospro.app",

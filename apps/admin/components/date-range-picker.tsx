@@ -94,6 +94,7 @@ export function DateRangePicker({
   const [draftTo, setDraftTo] = useState(toDay);
   const [hovered, setHovered] = useState<string | null>(null);
   const [month, setMonth] = useState(() => firstOfMonth(fromDay ?? toDay ?? maxDay));
+  const [alignEnd, setAlignEnd] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   // Reopening starts from what the URL currently says, not from an abandoned draft.
@@ -121,6 +122,15 @@ export function DateRangePicker({
       document.removeEventListener("mousedown", onPointerDown);
       document.removeEventListener("keydown", onKey);
     };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !rootRef.current) return;
+
+    const rect = rootRef.current.getBoundingClientRect();
+    const menuWidth = 312; // w-[19.5rem]
+    const viewportPadding = 16;
+    setAlignEnd(rect.left + menuWidth > window.innerWidth - viewportPadding);
   }, [open]);
 
   const today = storeToday();
@@ -171,7 +181,10 @@ export function DateRangePicker({
         <div
           role="dialog"
           aria-label="Pick a date range"
-          className="absolute top-[calc(100%+6px)] left-0 z-40 w-[19.5rem] rounded-md border border-border bg-surface p-3 shadow-lg"
+          className={cx(
+            "absolute top-[calc(100%+6px)] z-40 w-[min(19.5rem,calc(100vw-2rem))] rounded-md border border-border bg-surface p-3 shadow-lg",
+            alignEnd ? "right-0" : "left-0",
+          )}
         >
           <div className="flex flex-wrap gap-1.5">
             {PRESETS.map((preset) => {
