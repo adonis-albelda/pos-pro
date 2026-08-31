@@ -35,6 +35,7 @@ import {
   EmptyState,
   Money,
   PageHeader,
+  Skeleton,
   StatCard,
   Table,
   Td,
@@ -47,13 +48,95 @@ import {
   useReportByDevice,
   useReportDeadStock,
   useReportDiscounts,
-  useReportInventoryValuation,
+  useReportInventoryValuationSummary,
   useReportProfit,
   useReportTopProducts,
 } from "@/lib/query/reports";
+import { DashboardBarChart } from "../dashboard-bar-chart";
 import { DeadStockDays } from "./dead-stock-days";
 import { DEAD_STOCK_DEFAULT_DAYS, DEAD_STOCK_WINDOWS } from "./dead-stock-windows";
 import { ReportFilters } from "./report-filters";
+
+/** Mirrors the loaded layout's shape (stat row, paired table cards, chart card) so nothing jumps once data lands. */
+function ReportsSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 7 }).map((_, index) => (
+          <Card key={index} className="p-4">
+            <Skeleton className="size-8 rounded-full" />
+            <Skeleton className="mt-3 h-3 w-20" />
+            <Skeleton className="mt-2 h-6 w-28" />
+          </Card>
+        ))}
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        {Array.from({ length: 2 }).map((_, index) => (
+          <Card key={index}>
+            <div className="border-b border-border px-4 py-4 sm:px-6">
+              <Skeleton className="h-5 w-40" />
+            </div>
+            <div className="space-y-3 px-4 py-5 sm:px-6">
+              {Array.from({ length: 5 }).map((_, row) => (
+                <Skeleton key={row} className="h-5 w-full" />
+              ))}
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        {Array.from({ length: 2 }).map((_, index) => (
+          <Card key={index}>
+            <div className="border-b border-border px-4 py-4 sm:px-6">
+              <Skeleton className="h-5 w-32" />
+            </div>
+            <div className="space-y-3 px-4 py-5 sm:px-6">
+              {Array.from({ length: 4 }).map((_, row) => (
+                <Skeleton key={row} className="h-5 w-full" />
+              ))}
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Card>
+          <div className="border-b border-border px-4 py-4 sm:px-6">
+            <Skeleton className="h-5 w-44" />
+          </div>
+          <div className="space-y-3 px-4 py-5 sm:px-6">
+            {Array.from({ length: 6 }).map((_, row) => (
+              <Skeleton key={row} className="h-6 w-full" />
+            ))}
+          </div>
+        </Card>
+        <Card>
+          <div className="border-b border-border px-4 py-4 sm:px-6">
+            <Skeleton className="h-5 w-28" />
+          </div>
+          <div className="space-y-3 px-4 py-5 sm:px-6">
+            {Array.from({ length: 4 }).map((_, row) => (
+              <Skeleton key={row} className="h-5 w-full" />
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      <Card>
+        <div className="border-b border-border px-4 py-4 sm:px-6">
+          <Skeleton className="h-5 w-32" />
+        </div>
+        <div className="space-y-3 px-4 py-5 sm:px-6">
+          {Array.from({ length: 5 }).map((_, row) => (
+            <Skeleton key={row} className="h-5 w-full" />
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
 
 export function ReportsPageClient() {
   const searchParams = useSearchParams();
@@ -72,7 +155,7 @@ export function ReportsPageClient() {
   const discountsQuery = useReportDiscounts(range);
   const cashiersQuery = useReportByCashier(range);
   const devicesQuery = useReportByDevice(range);
-  const valuationQuery = useReportInventoryValuation();
+  const valuationQuery = useReportInventoryValuationSummary();
   const deadStockQuery = useReportDeadStock(deadStockDays);
   const reorderQuery = useBelowReorder();
   const expensesQuery = useExpensesTotal({ fromDay, toDay });
@@ -122,7 +205,7 @@ export function ReportsPageClient() {
       </Card>
 
       {isPending ? (
-        <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>
+        <ReportsSkeleton />
       ) : error ? (
         <Card className="px-4 py-8 text-center text-body text-danger">
           {error instanceof Error ? error.message : "Could not load reports."}
@@ -166,7 +249,7 @@ function ReportsBody({
   discounts: NonNullable<ReturnType<typeof useReportDiscounts>["data"]>;
   cashiers: NonNullable<ReturnType<typeof useReportByCashier>["data"]>;
   devices: NonNullable<ReturnType<typeof useReportByDevice>["data"]>;
-  valuation: NonNullable<ReturnType<typeof useReportInventoryValuation>["data"]>;
+  valuation: NonNullable<ReturnType<typeof useReportInventoryValuationSummary>["data"]>;
   deadStock: NonNullable<ReturnType<typeof useReportDeadStock>["data"]>;
   reorder: NonNullable<ReturnType<typeof useBelowReorder>["data"]>;
   expensesTotal: number;
@@ -177,8 +260,9 @@ function ReportsBody({
   const totals = summariseProfit(profitRows);
   const net = totals.revenue - expensesTotal;
 
-  const stockCost = valuation.reduce((sum, row) => sum + Number(row.cost_value), 0);
-  const stockRetail = valuation.reduce((sum, row) => sum + Number(row.retail_value), 0);
+  const stockCost = valuation.reduce((sum, row) => sum + row.costValue, 0);
+  const stockRetail = valuation.reduce((sum, row) => sum + row.retailValue, 0);
+  const stockProductCount = valuation.reduce((sum, row) => sum + row.productCount, 0);
   // GAP: listBelowReorder now returns plain Product rows (see
   // queries/products.ts) — the old view's precomputed `short_by`/`restock_cost`
   // columns are gone, derived here from stockQuantity/reorderPoint/costPrice.
@@ -211,6 +295,7 @@ function ReportsBody({
           icon={Coins}
           label="Gross profit"
           value={formatMoney(totals.grossProfit)}
+          hint="Revenue minus supplier cost"
           tone={totals.grossProfit < 0 ? "danger" : "success"}
         />
         <StatCard
@@ -237,122 +322,112 @@ function ReportsBody({
           icon={TrendingDown}
           label="Net"
           value={formatMoney(net)}
-          hint="Revenue minus expenses"
+          hint="Revenue minus expenses, separate from gross profit"
           tone={net < 0 ? "danger" : "success"}
         />
       </div>
+      <p className="text-caption text-ink-muted">
+        Net and Gross profit are independent figures, not one derived from the other: Gross
+        profit is revenue minus supplier cost, Net is revenue minus operating expenses.
+      </p>
 
-      <Card>
-        <CardHeader
-          icon={CalendarRange}
-          title="Day by day"
-          description={`Completed sales, ${label}.`}
-        />
-        {profitRows.length === 0 ? (
-          <EmptyState
-            icon={Receipt}
-            title="No sales in this range"
-            instruction="Widen the dates, or check that the terminals have synced today's sales."
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Card>
+          <CardHeader
+            icon={CalendarRange}
+            title="Day by day"
+            description={`Completed sales, ${label}.`}
           />
-        ) : (
-          <Table>
-            <thead>
-              <tr>
-                <Th>Day</Th>
-                <Th numeric>Sales</Th>
-                <Th numeric>Items</Th>
-                <Th numeric>Revenue</Th>
-                <Th numeric>Discounts</Th>
-                <Th numeric>Supplier cost</Th>
-                <Th numeric>Gross profit</Th>
-                <Th numeric>Margin</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {profitRows.map((row) => (
-                <tr key={row.bucket}>
-                  <Td className="whitespace-nowrap font-medium">
-                    {formatStoreDay(row.bucket)}
-                  </Td>
-                  <Td numeric>{Number(row.sales_count)}</Td>
-                  <Td numeric>{Number(row.items_sold)}</Td>
-                  <Td numeric>
-                    <Money value={Number(row.revenue)} />
-                  </Td>
-                  <Td numeric className="text-ink-muted">
-                    <Money value={Number(row.discount)} />
-                  </Td>
-                  <Td numeric className="text-ink-muted">
-                    <Money value={Number(row.cost)} />
-                  </Td>
-                  <Td
-                    numeric
-                    className={
-                      Number(row.gross_profit) < 0
-                        ? "font-semibold text-danger"
-                        : "font-semibold"
-                    }
-                  >
-                    <Money value={Number(row.gross_profit)} />
-                  </Td>
-                  <Td numeric>{formatPercent(Number(row.margin_percent))}</Td>
+          {profitRows.length === 0 ? (
+            <EmptyState
+              icon={Receipt}
+              title="No sales in this range"
+              instruction="Widen the dates, or check that the terminals have synced today's sales."
+            />
+          ) : (
+            <Table>
+              <thead>
+                <tr>
+                  <Th>Day</Th>
+                  <Th numeric>Sales</Th>
+                  <Th numeric>Revenue</Th>
+                  <Th numeric>Gross profit</Th>
+                  <Th numeric>Margin</Th>
                 </tr>
-              ))}
-            </tbody>
-          </Table>
-        )}
-      </Card>
+              </thead>
+              <tbody>
+                {profitRows.map((row) => (
+                  <tr key={row.bucket}>
+                    <Td className="whitespace-nowrap font-medium">
+                      {formatStoreDay(row.bucket)}
+                    </Td>
+                    <Td numeric>{Number(row.sales_count)}</Td>
+                    <Td numeric>
+                      <Money value={Number(row.revenue)} />
+                    </Td>
+                    <Td
+                      numeric
+                      className={
+                        Number(row.gross_profit) < 0
+                          ? "font-semibold text-danger"
+                          : "font-semibold"
+                      }
+                    >
+                      <Money value={Number(row.gross_profit)} />
+                    </Td>
+                    <Td numeric>{formatPercent(Number(row.margin_percent))}</Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          )}
+        </Card>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Top products                                                       */}
-      {/* ------------------------------------------------------------------ */}
-      <Card>
-        <CardHeader
-          icon={Trophy}
-          title="Top products by profit"
-          description="What actually earns, not just what sells."
-        />
-        {topProducts.length === 0 ? (
-          <EmptyState
-            icon={Package}
-            title="Nothing sold in this range"
-            instruction="Pick a wider range to see which products earn the most."
+        {/* ------------------------------------------------------------------ */}
+        {/* Top products                                                       */}
+        {/* ------------------------------------------------------------------ */}
+        <Card>
+          <CardHeader
+            icon={Trophy}
+            title="Top products by profit"
+            description="What actually earns, not just what sells."
           />
-        ) : (
-          <Table>
-            <thead>
-              <tr>
-                <Th>Product</Th>
-                <Th>Category</Th>
-                <Th numeric>Sold</Th>
-                <Th numeric>Revenue</Th>
-                <Th numeric>Supplier cost</Th>
-                <Th numeric>Gross profit</Th>
-                <Th numeric>Margin</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {topProducts.map((row) => (
-                <tr key={row.product_id ?? row.product_name}>
-                  <Td className="font-medium">{row.product_name}</Td>
-                  <Td className="text-ink-muted">{row.category ?? "—"}</Td>
-                  <Td numeric>{Number(row.quantity_sold)}</Td>
-                  <Td numeric>
-                    <Money value={Number(row.revenue)} />
-                  </Td>
-                  <Td numeric className="text-ink-muted">
-                    <Money value={Number(row.cost)} />
-                  </Td>
-                  <Td numeric className="font-semibold">
-                    <Money value={Number(row.gross_profit)} />
-                  </Td>
-                  <Td numeric>{formatPercent(Number(row.margin_percent))}</Td>
+          {topProducts.length === 0 ? (
+            <EmptyState
+              icon={Package}
+              title="Nothing sold in this range"
+              instruction="Pick a wider range to see which products earn the most."
+            />
+          ) : (
+            <Table>
+              <thead>
+                <tr>
+                  <Th>Product</Th>
+                  <Th numeric>Sold</Th>
+                  <Th numeric>Revenue</Th>
+                  <Th numeric>Gross profit</Th>
+                  <Th numeric>Margin</Th>
                 </tr>
-              ))}
-            </tbody>
-          </Table>
-        )}
-      </Card>
+              </thead>
+              <tbody>
+                {topProducts.map((row) => (
+                  <tr key={row.product_id ?? row.product_name}>
+                    <Td className="font-medium">{row.product_name}</Td>
+                    <Td numeric>{Number(row.quantity_sold)}</Td>
+                    <Td numeric>
+                      <Money value={Number(row.revenue)} />
+                    </Td>
+                    <Td numeric className="font-semibold">
+                      <Money value={Number(row.gross_profit)} />
+                    </Td>
+                    <Td numeric>{formatPercent(Number(row.margin_percent))}</Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          )}
+        </Card>
+      </div>
 
       {/* ------------------------------------------------------------------ */}
       {/* Discounts                                                          */}
@@ -454,7 +529,6 @@ function ReportsBody({
                   <Th>Cashier</Th>
                   <Th numeric>Sales</Th>
                   <Th numeric>Revenue</Th>
-                  <Th numeric>Discounts</Th>
                   <Th numeric>Profit</Th>
                 </tr>
               </thead>
@@ -465,12 +539,6 @@ function ReportsBody({
                     <Td numeric>{Number(row.sales_count)}</Td>
                     <Td numeric>
                       <Money value={Number(row.revenue)} />
-                      <span className="mt-0.5 block text-caption text-ink-muted">
-                        {formatMoney(Number(row.average_sale))} average
-                      </span>
-                    </Td>
-                    <Td numeric className="text-ink-muted">
-                      <Money value={Number(row.discount)} />
                     </Td>
                     <Td numeric className="font-semibold">
                       <Money value={Number(row.gross_profit)} />
@@ -547,116 +615,89 @@ function ReportsBody({
         />
       </div>
 
-      <Card>
-        <CardHeader
-          icon={Warehouse}
-          title="Stock value"
-          description={`${valuation.length} products in stock, dearest first.`}
-          action={
-            <ButtonLink href="/api/export/valuation" icon={Download} size="sm" download>
-              Export
-            </ButtonLink>
-          }
-        />
-        {valuation.length === 0 ? (
-          <EmptyState
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Card>
+          <CardHeader
             icon={Warehouse}
-            title="Nothing on the shelves"
-            instruction="Add products and record their opening stock in Inventory."
+            title="Stock value by category"
+            description={`${stockProductCount} products across ${valuation.length} categories, dearest first.`}
+            action={
+              <ButtonLink href="/api/export/valuation" icon={Download} size="sm" download>
+                Export detail
+              </ButtonLink>
+            }
           />
-        ) : (
-          <Table>
-            <thead>
-              <tr>
-                <Th>Product</Th>
-                <Th>Category</Th>
-                <Th numeric>Stock</Th>
-                <Th numeric>Supplier price</Th>
-                <Th numeric>At cost</Th>
-                <Th numeric>At shelf price</Th>
-                <Th numeric>Profit if sold</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {valuation.map((row) => (
-                <tr key={row.product_id}>
-                  <Td className="font-medium">{row.product_name}</Td>
-                  <Td className="text-ink-muted">{row.category ?? "—"}</Td>
-                  <Td numeric>
-                    {row.stock_quantity} {row.unit}
-                  </Td>
-                  <Td numeric className="text-ink-muted">
-                    <Money value={Number(row.cost_price)} />
-                  </Td>
-                  <Td numeric>
-                    <Money value={Number(row.cost_value)} />
-                  </Td>
-                  <Td numeric>
-                    <Money value={Number(row.retail_value)} />
-                  </Td>
-                  <Td numeric className="font-semibold">
-                    <Money value={Number(row.potential_profit)} />
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-        )}
-      </Card>
+          <div className="px-4 py-5 sm:px-6">
+            {valuation.length === 0 ? (
+              <EmptyState
+                icon={Warehouse}
+                title="Nothing on the shelves"
+                instruction="Add products and record their opening stock in Inventory."
+              />
+            ) : (
+              <DashboardBarChart
+                items={valuation.map((row) => ({
+                  label: `${row.category} (${row.productCount})`,
+                  value: row.costValue,
+                  display: formatMoney(row.costValue),
+                }))}
+              />
+            )}
+          </div>
+        </Card>
 
-      <Card>
-        <CardHeader
-          icon={Snowflake}
-          title="Dead stock"
-          description="On the shelf, tying up money, not moving."
-          action={<DeadStockDays days={deadStockDays} />}
-        />
-        {deadStock.length === 0 ? (
-          <EmptyState
+        <Card>
+          <CardHeader
             icon={Snowflake}
-            title="Everything is moving"
-            instruction={`Every product in stock has sold within the last ${deadStockDays} days.`}
+            title="Dead stock"
+            description="On the shelf, tying up money, not moving."
+            action={<DeadStockDays days={deadStockDays} />}
           />
-        ) : (
-          <Table>
-            <thead>
-              <tr>
-                <Th>Product</Th>
-                <Th>SKU</Th>
-                <Th>Category</Th>
-                <Th numeric>Stock</Th>
-                <Th numeric>Tied up</Th>
-                <Th>Last sold</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {deadStock.map((row) => (
-                <tr key={row.product_id}>
-                  <Td className="font-medium">{row.product_name}</Td>
-                  <Td className="num text-ink-muted">{row.sku ?? "—"}</Td>
-                  <Td className="text-ink-muted">{row.category ?? "—"}</Td>
-                  <Td numeric>{row.stock_quantity}</Td>
-                  <Td numeric className="font-semibold">
-                    <Money value={Number(row.cost_value)} />
-                  </Td>
-                  <Td className="whitespace-nowrap">
-                    {row.last_sold_at ? (
-                      <span className="text-ink-muted">
-                        {new Date(row.last_sold_at).toLocaleDateString("en-PH", {
-                          dateStyle: "medium",
-                        })}{" "}
-                        ({row.days_since_sale} days ago)
-                      </span>
-                    ) : (
-                      <Badge tone="warning">Never sold</Badge>
-                    )}
-                  </Td>
+          {deadStock.length === 0 ? (
+            <EmptyState
+              icon={Snowflake}
+              title="Everything is moving"
+              instruction={`Every product in stock has sold within the last ${deadStockDays} days.`}
+            />
+          ) : (
+            <Table>
+              <thead>
+                <tr>
+                  <Th>Product</Th>
+                  <Th>Category</Th>
+                  <Th numeric>Stock</Th>
+                  <Th numeric>Tied up</Th>
+                  <Th>Last sold</Th>
                 </tr>
-              ))}
-            </tbody>
-          </Table>
-        )}
-      </Card>
+              </thead>
+              <tbody>
+                {deadStock.map((row) => (
+                  <tr key={row.product_id}>
+                    <Td className="font-medium">{row.product_name}</Td>
+                    <Td className="text-ink-muted">{row.category ?? "—"}</Td>
+                    <Td numeric>{row.stock_quantity}</Td>
+                    <Td numeric className="font-semibold">
+                      <Money value={Number(row.cost_value)} />
+                    </Td>
+                    <Td className="whitespace-nowrap">
+                      {row.last_sold_at ? (
+                        <span className="text-ink-muted">
+                          {new Date(row.last_sold_at).toLocaleDateString("en-PH", {
+                            dateStyle: "medium",
+                          })}{" "}
+                          ({row.days_since_sale} days ago)
+                        </span>
+                      ) : (
+                        <Badge tone="warning">Never sold</Badge>
+                      )}
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          )}
+        </Card>
+      </div>
 
       <Card>
         <CardHeader
@@ -684,7 +725,6 @@ function ReportsBody({
             <thead>
               <tr>
                 <Th>Product</Th>
-                <Th>SKU</Th>
                 <Th>Category</Th>
                 <Th numeric>Stock</Th>
                 <Th numeric>Reorder at</Th>
@@ -696,7 +736,6 @@ function ReportsBody({
               {reorderRows.map((row) => (
                 <tr key={row.id}>
                   <Td className="font-medium">{row.name}</Td>
-                  <Td className="num text-ink-muted">{row.sku ?? "—"}</Td>
                   <Td className="text-ink-muted">{row.category ?? "—"}</Td>
                   <Td numeric className={row.stockQuantity <= 0 ? "font-semibold text-danger" : ""}>
                     {row.stockQuantity} {row.unit}

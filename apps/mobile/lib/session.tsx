@@ -29,7 +29,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const outcome = await verifyPin(user.id, pin);
     if (outcome.result === "ok") {
       setCashier(user);
-      setAdminToken(outcome.adminToken);
+      setAdminToken(outcome.adminToken, outcome.adminTokenExpiresAt);
     }
     return outcome.result;
   }, []);

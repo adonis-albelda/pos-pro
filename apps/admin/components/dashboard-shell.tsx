@@ -25,6 +25,7 @@ export function DashboardShell({
   userEmail,
   initials,
   mode,
+  embedded = false,
   children,
 }: {
   storeName: string;
@@ -33,6 +34,7 @@ export function DashboardShell({
   userEmail: string | null;
   initials: string;
   mode: UiMode;
+  embedded?: boolean;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -156,11 +158,13 @@ export function DashboardShell({
             </div>
           </div>
           <UiModeToggle mode={mode} className="mt-3" />
-          <form action={signOut} className="mt-2">
-            <Button variant="secondary" size="sm" icon={LogOut} type="submit" className="w-full">
-              Sign out
-            </Button>
-          </form>
+          {!embedded ? (
+            <form action={signOut} className="mt-2">
+              <Button variant="secondary" size="sm" icon={LogOut} type="submit" className="w-full">
+                Sign out
+              </Button>
+            </form>
+          ) : null}
         </div>
       </aside>
 

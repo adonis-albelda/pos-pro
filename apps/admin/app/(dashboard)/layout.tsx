@@ -7,17 +7,18 @@ import { HydrateStoreSettings } from "@/components/hydrate-store-settings";
 import { ImpersonationBanner } from "@/components/impersonation-banner";
 import { LocationFilterProvider } from "@/components/location-filter-provider";
 import { PushNotificationRegistrar } from "@/components/push-notification-registrar";
-import { getUiMode } from "@/lib/ui-mode";
+import { getUiMode, isAdminEmbedded } from "@/lib/ui-mode";
 
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const [user, store, mode] = await Promise.all([
+  const [user, store, mode, embedded] = await Promise.all([
     getCurrentUser(),
     getStoreSettings(getAuthedClient()),
     getUiMode(),
+    isAdminEmbedded(),
   ]);
 
   const initials = (user?.name ?? "?")
@@ -54,6 +55,7 @@ export default async function DashboardLayout({
           userName={user?.name ?? null}
           userEmail={user?.email ?? null}
           mode={mode}
+          embedded={embedded}
         >
           {contentWithPush}
         </ClassicShell>
@@ -71,6 +73,7 @@ export default async function DashboardLayout({
         userEmail={user?.email ?? null}
         initials={initials}
         mode={mode}
+        embedded={embedded}
       >
         {contentWithPush}
       </DashboardShell>

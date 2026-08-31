@@ -901,6 +901,15 @@ export function EmptyState({
   );
 }
 
+export function Skeleton({ className, ...props }: ComponentProps<"div">) {
+  return (
+    <div
+      {...props}
+      className={cx("animate-pulse rounded-sm bg-border/60", className)}
+    />
+  );
+}
+
 export function ErrorNote({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (children === DEMO_RESTRICTED_MESSAGE) {

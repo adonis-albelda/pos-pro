@@ -52,9 +52,19 @@ export async function isEnrolled(): Promise<boolean> {
  * expenses, purchase orders, some reports) no matter who unlocked it.
  */
 let adminToken: string | null = null;
+let adminTokenExpiresAt: string | null = null;
 
-export function setAdminToken(token: string | null): void {
+export function setAdminToken(token: string | null, expiresAt: string | null = null): void {
   adminToken = token;
+  adminTokenExpiresAt = token ? expiresAt : null;
+}
+
+export function getAdminToken(): string | null {
+  return adminToken;
+}
+
+export function getAdminTokenExpiresAt(): string | null {
+  return adminTokenExpiresAt;
 }
 
 /**

@@ -15,13 +15,9 @@ const LOGO = require("../../assets/logo.png");
 type SessionCheck = "checking" | "ready" | "error";
 
 /**
- * Admin-mode: the same domains apps/admin manages, reachable from the POS
- * once an admin-role user has unlocked — but strictly online, same as
- * apps/admin itself (CLAUDE.md §5's "no offline mode" applies to every
- * screen under here too, even though it's inside the mobile binary). No
- * local SQLite involvement — every screen under app/admin/** calls the
- * Tally API directly via lib/api/session.ts's getApiClient(), same client
- * the POS sync flow uses.
+ * Admin mode: web dashboard in a WebView at /admin (default), with native
+ * screens kept aside under /admin/native and /admin/*. Online-only — same as
+ * apps/admin (CLAUDE.md §5).
  */
 export default function AdminLayout() {
   const { cashier } = useSession();

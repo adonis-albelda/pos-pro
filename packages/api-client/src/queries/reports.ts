@@ -89,6 +89,15 @@ export interface InventoryValuationReportRow {
   potential_profit: number;
 }
 
+export interface InventoryValuationSummaryRow {
+  category: string;
+  productCount: number;
+  stockQuantity: number;
+  costValue: number;
+  retailValue: number;
+  potentialProfit: number;
+}
+
 export interface DeadStockReportRow {
   product_id: string;
   product_name: string;
@@ -149,6 +158,38 @@ export async function reportByDevice(client: ApiClient, range: DateRange): Promi
 export async function reportInventoryValuation(client: ApiClient): Promise<InventoryValuationReportRow[]> {
   const { data } = await client.get<DataEnvelope<InventoryValuationReportRow[]>>("/reports/inventory-valuation");
   return data;
+}
+
+/**
+ * Grouped by category — a few dozen rows regardless of catalogue size, unlike
+ * reportInventoryValuation() above (one row per product). What the reports
+ * page's own Stock value chart reads; the full per-product breakdown stays
+ * available only through the CSV export, not this endpoint.
+ */
+export async function reportInventoryValuationSummary(
+  client: ApiClient,
+): Promise<InventoryValuationSummaryRow[]> {
+  const { data } = await client.get<
+    DataEnvelope<
+      {
+        category: string;
+        product_count: number;
+        stock_quantity: number;
+        cost_value: number;
+        retail_value: number;
+        potential_profit: number;
+      }[]
+    >
+  >("/reports/inventory-valuation/summary");
+
+  return data.map((row) => ({
+    category: row.category,
+    productCount: row.product_count,
+    stockQuantity: Number(row.stock_quantity),
+    costValue: Number(row.cost_value),
+    retailValue: Number(row.retail_value),
+    potentialProfit: Number(row.potential_profit),
+  }));
 }
 
 export async function reportDeadStock(client: ApiClient, days = 60): Promise<DeadStockReportRow[]> {

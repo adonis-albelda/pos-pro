@@ -7,6 +7,7 @@ import {
   reportDeadStock,
   reportDiscounts,
   reportInventoryValuation,
+  reportInventoryValuationSummary,
   reportProfit,
   reportTopProducts,
   type DateRange,
@@ -63,6 +64,14 @@ export function useReportInventoryValuation() {
   return useQuery({
     queryKey: queryKeys.reports.inventoryValuation(),
     queryFn: () => reportInventoryValuation(getBrowserApiClient()),
+  });
+}
+
+/** Grouped by category — what the reports page's Stock value chart reads instead of the full per-product list. */
+export function useReportInventoryValuationSummary() {
+  return useQuery({
+    queryKey: [...queryKeys.reports.inventoryValuation(), "summary"] as const,
+    queryFn: () => reportInventoryValuationSummary(getBrowserApiClient()),
   });
 }
 

@@ -25,6 +25,7 @@ export function ClassicShell({
   userName,
   userEmail,
   mode,
+  embedded = false,
   children,
 }: {
   storeName: string;
@@ -32,6 +33,7 @@ export function ClassicShell({
   userName: string | null;
   userEmail: string | null;
   mode: UiMode;
+  embedded?: boolean;
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -89,15 +91,17 @@ export function ClassicShell({
           {userEmail ? ` · ${userEmail}` : ""}
         </span>
 
-        <form action={signOut}>
-          <button
-            type="submit"
-            className="inline-flex min-h-9 items-center gap-1.5 rounded-sm border border-white/25 px-2 py-1 text-caption transition-colors hover:bg-white/10"
-          >
-            <LogOut size={13} strokeWidth={2} />
-            <span className="hidden sm:inline">Exit</span>
-          </button>
-        </form>
+        {!embedded ? (
+          <form action={signOut}>
+            <button
+              type="submit"
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-sm border border-white/25 px-2 py-1 text-caption transition-colors hover:bg-white/10"
+            >
+              <LogOut size={13} strokeWidth={2} />
+              <span className="hidden sm:inline">Exit</span>
+            </button>
+          </form>
+        ) : null}
       </div>
 
       {/* Menu bar — desktop */}

@@ -1,9 +1,10 @@
 "use client";
 
+import { readCookie } from "@/lib/api/browser-client";
 import { LayoutGrid, PanelLeft } from "lucide-react";
 import { setUiMode } from "@/app/(dashboard)/ui-mode-actions";
 import { Button } from "@/components/ui";
-import type { UiMode } from "@/lib/ui-mode";
+import { ADMIN_EMBEDDED_COOKIE, type UiMode } from "@/lib/ui-mode-constants";
 
 /**
  * Switches chrome only — same pages, same data. Kept as a plain form post so it
@@ -16,6 +17,10 @@ export function UiModeToggle({
   mode: UiMode;
   className?: string;
 }) {
+  if (readCookie(ADMIN_EMBEDDED_COOKIE) === "1") {
+    return null;
+  }
+
   const next: UiMode = mode === "classic" ? "modern" : "classic";
 
   return (
