@@ -51,6 +51,16 @@ function formatCooldown(ms: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+function formatVerifiedAt(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 const ROLE_ICONS: Record<string, LucideIcon> = {
   cashier: UserRound,
   admin: Shield,
@@ -205,6 +215,7 @@ export function UsersTable({
             // verified, so this never shows for them.
             const isUnverified =
               (user.role === "admin" || user.role === "manager") && !user.emailVerifiedAt;
+            const needsEmailVerification = user.role === "admin" || user.role === "manager";
 
             return (
               <tr
@@ -243,7 +254,7 @@ export function UsersTable({
                   </span>
                 </Td>
                 <Td>
-                  {isUnverified ? (
+                  {needsEmailVerification && isUnverified ? (
                     <Button
                       type="button"
                       variant="secondary"
@@ -257,6 +268,10 @@ export function UsersTable({
                         ? `Resend in ${formatCooldown(remainingCooldown(user.id))}`
                         : "Resend verification email"}
                     </Button>
+                  ) : needsEmailVerification && user.emailVerifiedAt ? (
+                    <span className="text-caption text-ink-muted">
+                      Verified {formatVerifiedAt(user.emailVerifiedAt)}
+                    </span>
                   ) : (
                     <span className="text-caption text-ink-muted">—</span>
                   )}
