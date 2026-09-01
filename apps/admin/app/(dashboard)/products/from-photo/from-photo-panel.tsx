@@ -34,6 +34,7 @@ import {
   SuccessNote,
 } from "@/components/ui";
 import { indentLabel, type CategoryOption } from "@/lib/category-options";
+import { isImageFile, NOT_AN_IMAGE_MESSAGE } from "@/lib/is-image-file";
 import {
   checkSkuExists,
   extractProductsFromImage,
@@ -409,6 +410,15 @@ export function FromPhotoPanel({ categories }: { categories: CategoryOption[] })
     setSuccess(null);
     setRowErrors({});
     setDrafts([]);
+
+    if (file && !isImageFile(file)) {
+      setActiveFile(null);
+      setShowCropper(false);
+      setError(NOT_AN_IMAGE_MESSAGE);
+      if (inputRef.current) inputRef.current.value = "";
+      return;
+    }
+
     setActiveFile(file);
     setShowCropper(file !== null);
     if (!file) return;

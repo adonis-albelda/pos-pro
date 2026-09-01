@@ -45,6 +45,7 @@ import {
   Th,
 } from "@/components/ui";
 import { AiProcessingOverlay, ConfirmDialog, Dialog, Sheet } from "@/components/overlay";
+import { isImageFile, NOT_AN_IMAGE_MESSAGE } from "@/lib/is-image-file";
 import { useGalleryPhotos } from "@/lib/query/gallery-photos";
 import { useCreateGoodsReceipt, useExtractGoodsReceiptPhoto } from "@/lib/query/goods-receipts";
 import { useInventoryProducts } from "@/lib/query/inventory";
@@ -474,6 +475,11 @@ export function ReceivingForm({
 
   /** Only stages the file for preview — AI extraction is a separate, explicit step below. */
   function handlePhotoChange(file: File | null) {
+    if (file && !isImageFile(file)) {
+      toast.error(NOT_AN_IMAGE_MESSAGE);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
     setPhoto(file);
     setWorkingPhoto(null);
     setGalleryPhotoId(null);

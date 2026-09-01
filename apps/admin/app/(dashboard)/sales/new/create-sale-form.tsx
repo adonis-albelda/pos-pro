@@ -57,6 +57,7 @@ import { AiSearchModal } from "@/components/ai-search-modal";
 import { ProductGridTile } from "@/components/product-grid-tile";
 import { CropPhoto } from "../../products/from-photo/crop-photo";
 import { VoiceSearchModal, voiceSearchSupported } from "@/components/voice-search-modal";
+import { isImageFile, NOT_AN_IMAGE_MESSAGE } from "@/lib/is-image-file";
 import { useCategories } from "@/lib/query/categories";
 import { useCustomers } from "@/lib/query/customers";
 import { useFeatureFlags } from "@/lib/query/features";
@@ -1219,7 +1220,15 @@ export function CreateSaleForm() {
             <FileInput
               accept="image/*"
               capture="environment"
-              onChange={(event) => onPhotoPicked(event.target.files?.[0] ?? null)}
+              onChange={(event) => {
+                const file = event.target.files?.[0] ?? null;
+                if (file && !isImageFile(file)) {
+                  setPhotoError(NOT_AN_IMAGE_MESSAGE);
+                  event.target.value = "";
+                  return;
+                }
+                onPhotoPicked(file);
+              }}
             />
           </Field>
 

@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useState } from "react";
 import { Check, Hash, ImageOff, MapPin, Phone, Store } from "lucide-react";
+import { toast } from "sonner";
 import { storeInitial, type StoreSettings } from "@double-a/shared-types";
 import {
   Button,
@@ -13,6 +14,7 @@ import {
   Textarea,
 } from "@/components/ui";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
+import { isImageFile, NOT_AN_IMAGE_MESSAGE } from "@/lib/is-image-file";
 import { useInvalidateSettings } from "@/lib/query/settings";
 import { saveStoreSettings } from "./actions";
 
@@ -58,6 +60,11 @@ export function StoreForm({ settings }: { settings: StoreSettings }) {
               accept="image/png,image/jpeg,image/webp,image/svg+xml"
               onChange={(event) => {
                 const file = event.currentTarget.files?.[0];
+                if (file && !isImageFile(file)) {
+                  toast.error(NOT_AN_IMAGE_MESSAGE);
+                  event.currentTarget.value = "";
+                  return;
+                }
                 setPreview(file ? URL.createObjectURL(file) : null);
                 if (file) setRemoveLogo(false);
               }}

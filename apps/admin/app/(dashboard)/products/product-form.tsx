@@ -45,6 +45,7 @@ import {
 } from "@/components/ui";
 import { indentLabel, type CategoryOption } from "@/lib/category-options";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
+import { isImageFile, NOT_AN_IMAGE_MESSAGE } from "@/lib/is-image-file";
 import { useLocations } from "@/lib/query/locations";
 import {
   useAssembleBundle,
@@ -303,6 +304,11 @@ function ProductPhotoSection({
 
   function onPick(file: File | undefined) {
     if (!file) return;
+
+    if (!isImageFile(file)) {
+      toast.error(NOT_AN_IMAGE_MESSAGE);
+      return;
+    }
 
     if (!product) {
       onPendingFileChange?.(file);
