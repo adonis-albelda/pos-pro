@@ -185,15 +185,27 @@ export interface VerifyEmailInput {
   signature: string;
 }
 
+export interface VerifyEmailResult {
+  message: string;
+  alreadyVerified: boolean;
+}
+
 /**
  * Unauthenticated. The link the verification email points to
  * (AppServiceProvider's VerifyEmail::createUrlUsing override) is a frontend
  * page carrying these same four values in its own query string — this just
  * replays them onto the real signed API route.
  */
-export async function verifyEmail(client: ApiClient, input: VerifyEmailInput): Promise<void> {
-  await client.get<{ message: string }>(`/auth/email/verify/${input.id}/${input.hash}`, {
-    expires: input.expires,
-    signature: input.signature,
-  });
+export async function verifyEmail(client: ApiClient, input: VerifyEmailInput): Promise<VerifyEmailResult> {
+  const body = await client.get<{ message: string; already_verified?: boolean }>(
+    `/auth/email/verify/${input.id}/${input.hash}`,
+    {
+      expires: input.expires,
+      signature: input.signature,
+    },
+  );
+  return {
+    message: body.message,
+    alreadyVerified: body.already_verified === true,
+  };
 }

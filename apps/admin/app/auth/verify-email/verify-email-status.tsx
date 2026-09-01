@@ -7,7 +7,7 @@ import { ApiError } from "@double-a/api-client";
 import { verifyEmail } from "@double-a/api-client/queries";
 import { getBrowserBareClient } from "@/lib/api/browser-client";
 
-type Status = "verifying" | "success" | "error";
+type Status = "verifying" | "success" | "already" | "error";
 
 export function VerifyEmailStatus({
   id,
@@ -32,8 +32,9 @@ export function VerifyEmailStatus({
 
     let cancelled = false;
     void verifyEmail(getBrowserBareClient(), { id, hash, expires, signature })
-      .then(() => {
-        if (!cancelled) setStatus("success");
+      .then((result) => {
+        if (cancelled) return;
+        setStatus(result.alreadyVerified ? "already" : "success");
       })
       .catch((caught: unknown) => {
         if (cancelled) return;
@@ -41,7 +42,7 @@ export function VerifyEmailStatus({
         setError(
           caught instanceof ApiError
             ? caught.message
-            : "Could not verify this email. The link may have expired.",
+            : "This verification link has expired or is no longer valid.",
         );
       });
 
@@ -75,10 +76,28 @@ export function VerifyEmailStatus({
     );
   }
 
+  if (status === "already") {
+    return (
+      <div className="flex flex-col items-center gap-3 py-4 text-center">
+        <CheckCircle2 size={32} strokeWidth={2} className="text-primary" />
+        <h2 className="text-heading-lg font-bold text-ink">Email already verified</h2>
+        <p className="text-body text-ink-muted">
+          This link was already used. Your account is ready — sign in normally.
+        </p>
+        <Link
+          href="/login"
+          className="mt-2 inline-flex h-10 items-center justify-center rounded-sm bg-primary px-4 text-body font-medium text-white transition-colors hover:bg-primary/90"
+        >
+          Go to sign in
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col items-center gap-3 py-4 text-center">
       <TriangleAlert size={32} strokeWidth={2} className="text-danger" />
-      <h2 className="text-heading-lg font-bold text-ink">Verification failed</h2>
+      <h2 className="text-heading-lg font-bold text-ink">Link not valid</h2>
       <p className="text-body text-ink-muted">{error}</p>
       <p className="text-caption text-ink-muted">
         Ask an admin to resend the verification email from the Users page.

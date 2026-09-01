@@ -38,6 +38,19 @@ import { useLocations } from "@/lib/query/locations";
 import { resetUserPassword } from "./actions";
 import { UserForm } from "./user-form";
 
+// Matches the backend default (AUTH_VERIFICATION_RESEND_COOLDOWN_MINUTES,
+// config('auth.verification.resend_cooldown')) — just the client-side UX
+// guess to disable the button early; the server is still the real gate and
+// returns its own message if this drifts from the configured value.
+const RESEND_COOLDOWN_MS = 5 * 60_000;
+
+function formatCooldown(ms: number): string {
+  const totalSeconds = Math.ceil(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
 const ROLE_ICONS: Record<string, LucideIcon> = {
   cashier: UserRound,
   admin: Shield,
@@ -115,10 +128,25 @@ export function UsersTable({
   const toggleCanSell = useToggleUserCanSell();
   const resendVerification = useResendUserEmailVerification();
   const [resendingId, setResendingId] = useState<string | null>(null);
+  const [cooldownUntil, setCooldownUntil] = useState<Record<string, number>>({});
+  const [now, setNow] = useState(() => Date.now());
   const locationsQuery = useLocations({ type: "branch" });
   const branchNameById = new Map(
     (locationsQuery.data ?? []).map((branch) => [branch.id, branch.name]),
   );
+
+  // Only ticks while some button is actually cooling down — no idle timer
+  // running on a page nobody's about to resend anything from.
+  useEffect(() => {
+    if (!Object.values(cooldownUntil).some((until) => until > now)) return;
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [cooldownUntil, now]);
+
+  function remainingCooldown(userId: string): number {
+    const until = cooldownUntil[userId];
+    return until ? Math.max(0, until - now) : 0;
+  }
 
   function resendEmailVerification(user: User) {
     setResendingId(user.id);
@@ -126,6 +154,7 @@ export function UsersTable({
       onSuccess: () => {
         toast.success(`Verification email sent to ${user.email}.`);
         setResendingId(null);
+        setCooldownUntil((previous) => ({ ...previous, [user.id]: Date.now() + RESEND_COOLDOWN_MS }));
       },
       onError: (error) => {
         const message =
@@ -221,10 +250,12 @@ export function UsersTable({
                       size="sm"
                       icon={Mail}
                       loading={resendingId === user.id}
-                      disabled={mutationsLocked}
+                      disabled={mutationsLocked || remainingCooldown(user.id) > 0}
                       onClick={() => resendEmailVerification(user)}
                     >
-                      Resend verification email
+                      {remainingCooldown(user.id) > 0
+                        ? `Resend in ${formatCooldown(remainingCooldown(user.id))}`
+                        : "Resend verification email"}
                     </Button>
                   ) : (
                     <span className="text-caption text-ink-muted">—</span>
