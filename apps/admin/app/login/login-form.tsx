@@ -1,8 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import type { Route } from "next";
 import { useMutation } from "@tanstack/react-query";
 import { KeyRound, LogIn, Lock, Mail, ShieldCheck } from "lucide-react";
 import { ApiError } from "@double-a/api-client";
@@ -12,17 +10,7 @@ import { PasswordInput } from "@/components/password-input";
 import { getBrowserBareClient, startBrowserSession } from "@/lib/api/browser-client";
 
 export function LoginForm({ next }: { next: string }) {
-  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
-  // Set only after the server tells us this login needs an access code (the
-  // demo@store.com account) — email/password stay in memory just long
-  // enough to resubmit alongside the code; never written to storage.
-  const [pendingCredentials, setPendingCredentials] = useState<{
-    email: string;
-    password: string;
-  } | null>(null);
-  // Same shape, for the "enter your 6-digit code" step once MFA is required
-  // and confirmed — 422 on mfa_code instead of access_code.
   const [pendingMfaCredentials, setPendingMfaCredentials] = useState<{
     email: string;
     password: string;
@@ -33,7 +21,6 @@ export function LoginForm({ next }: { next: string }) {
     mutationFn: async (input: {
       email: string;
       password: string;
-      accessCode?: string;
       mfaCode?: string;
       recoveryCode?: string;
     }) => {
@@ -51,30 +38,23 @@ export function LoginForm({ next }: { next: string }) {
 
       startBrowserSession(token, expiresAt);
 
-      // Enrollment gate takes priority over must_change_password: without a
-      // confirmed secret this account can never produce a valid mfa_code on
-      // its next login, so it has to be resolved right now.
-      if (user.mustEnrollMfa) {
-        router.push("/enroll-mfa" as Route);
-        return;
-      }
-      if (user.mustChangePassword) {
-        router.push("/change-password");
-        return;
-      }
-      if (user.role === "superadmin") {
-        router.push((next.startsWith("/platform") ? next : "/platform") as Route);
-        return;
-      }
-      router.push((next.startsWith("/") ? next : "/") as Route);
+      const destination =
+        user.mustEnrollMfa
+          ? "/enroll-mfa"
+          : user.mustChangePassword
+            ? "/change-password"
+            : user.role === "superadmin"
+              ? next.startsWith("/platform")
+                ? next
+                : "/platform"
+              : next.startsWith("/")
+                ? next
+                : "/";
+
+      window.location.assign(destination);
     },
     onError: (cause) => {
       if (cause instanceof ApiError && cause.isValidation) {
-        const accessCodeError = cause.errors?.access_code?.[0];
-        if (accessCodeError) {
-          setError(accessCodeError);
-          return;
-        }
         const mfaCodeError = cause.errors?.mfa_code?.[0];
         if (mfaCodeError) {
           setError(pendingMfaCredentials ? mfaCodeError : null);
@@ -106,14 +86,6 @@ export function LoginForm({ next }: { next: string }) {
       { email, password },
       {
         onError: (cause) => {
-          // The demo account: password was fine, but it needs a code too —
-          // hold onto the credentials and swap to the code screen instead
-          // of leaving this a generic "invalid" error.
-          if (cause instanceof ApiError && cause.isValidation && cause.errors?.access_code) {
-            setPendingCredentials({ email, password });
-            return;
-          }
-          // MFA required + already confirmed: same shape, different field.
           if (cause instanceof ApiError && cause.isValidation && cause.errors?.mfa_code) {
             setPendingMfaCredentials({ email, password });
           }
@@ -138,21 +110,6 @@ export function LoginForm({ next }: { next: string }) {
       ...pendingMfaCredentials,
       ...(useRecoveryCode ? { recoveryCode: value } : { mfaCode: value }),
     });
-  }
-
-  function handleAccessCodeSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-    if (!pendingCredentials) return;
-
-    const formData = new FormData(event.currentTarget);
-    const accessCode = String(formData.get("access_code") ?? "").trim();
-    if (!accessCode) {
-      setError("Enter your access code.");
-      return;
-    }
-
-    mutation.mutate({ ...pendingCredentials, accessCode });
   }
 
   if (pendingMfaCredentials) {
@@ -196,43 +153,6 @@ export function LoginForm({ next }: { next: string }) {
           onClick={() => {
             setPendingMfaCredentials(null);
             setUseRecoveryCode(false);
-            setError(null);
-          }}
-          className="w-full text-center text-caption font-medium text-ink-muted transition-colors hover:text-ink"
-        >
-          Use a different account
-        </button>
-      </form>
-    );
-  }
-
-  if (pendingCredentials) {
-    return (
-      <form onSubmit={handleAccessCodeSubmit} className="space-y-4">
-        <div className="flex items-start gap-3 rounded-md border border-border bg-paper px-4 py-3">
-          <ShieldCheck size={18} className="mt-0.5 shrink-0 text-primary" />
-          <p className="text-caption text-ink-muted">
-            This is a demo account. Enter the one-time access code you were sent to continue.
-          </p>
-        </div>
-        <Field label="Access code" required>
-          <Input
-            icon={KeyRound}
-            name="access_code"
-            autoComplete="one-time-code"
-            placeholder="e.g. AB12CD34EF"
-            autoFocus
-            required
-          />
-        </Field>
-        {error ? <ErrorNote>{error}</ErrorNote> : null}
-        <Button type="submit" className="w-full" loading={mutation.isPending} icon={LogIn}>
-          {mutation.isPending ? "Signing in..." : "Continue"}
-        </Button>
-        <button
-          type="button"
-          onClick={() => {
-            setPendingCredentials(null);
             setError(null);
           }}
           className="w-full text-center text-caption font-medium text-ink-muted transition-colors hover:text-ink"

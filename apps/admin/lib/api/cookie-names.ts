@@ -9,3 +9,5 @@ export const BASE_SESSION_COOKIE = "tally_base_session";
 export const ACTING_COMPANY_COOKIE = "tally_acting_company";
 /** The token's own expiry, mirrored into a readable cookie purely for client display (the demo-session countdown banner) — never used for auth enforcement, that's the token itself expiring server-side. */
 export const SESSION_EXPIRES_AT_COOKIE = "tally_session_expires_at";
+/** Set on demo admin host at login so middleware can route /auth/me to the demo DB even when hostname env is wrong. */
+export const DEMO_MODE_COOKIE = "tally_demo_mode";

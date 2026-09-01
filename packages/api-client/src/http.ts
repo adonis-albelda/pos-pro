@@ -91,6 +91,10 @@ export interface ApiClientOptions {
   onUnauthorized?: () => void | Promise<void>;
   /** Sent on every request, e.g. `{ "X-App-Version": "1.4.0" }` from a mobile terminal — so a support request can start from what's actually installed, not what the store lists as current. */
   extraHeaders?: Record<string, string>;
+  /** Merged on every request after `extraHeaders` — use when headers depend on the current request (e.g. demo host routing). */
+  getExtraHeaders?: () =>
+    | Record<string, string>
+    | Promise<Record<string, string> | undefined | null>;
 }
 
 function buildQueryString(query: RequestOptions["query"]): string {
@@ -117,20 +121,24 @@ export class ApiClient {
   private readonly getToken: ApiClientOptions["getToken"];
   private readonly onUnauthorized: ApiClientOptions["onUnauthorized"];
   private readonly extraHeaders: Record<string, string>;
+  private readonly getExtraHeaders: ApiClientOptions["getExtraHeaders"];
 
   constructor(options: ApiClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
     this.getToken = options.getToken;
     this.onUnauthorized = options.onUnauthorized;
     this.extraHeaders = options.extraHeaders ?? {};
+    this.getExtraHeaders = options.getExtraHeaders;
   }
 
   async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
     const { method = "GET", body, query, idempotent } = options;
     const token = await this.getToken();
+    const dynamicHeaders = (await this.getExtraHeaders?.()) ?? {};
 
     const headers: Record<string, string> = {
       ...this.extraHeaders,
+      ...dynamicHeaders,
       Accept: "application/json",
     };
     if (body !== undefined) headers["Content-Type"] = "application/json";

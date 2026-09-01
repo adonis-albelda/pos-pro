@@ -1,9 +1,15 @@
 import "server-only";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { ApiClient, ApiError, assertApiUrl } from "@double-a/api-client";
 import { me as fetchMe } from "@double-a/api-client/queries";
 import type { User } from "@double-a/shared-types";
-import { ACTING_COMPANY_COOKIE, BASE_SESSION_COOKIE, SESSION_COOKIE } from "./cookie-names";
+import { demoDatabaseHeaders } from "@/lib/demo-host";
+import {
+  ACTING_COMPANY_COOKIE,
+  BASE_SESSION_COOKIE,
+  DEMO_MODE_COOKIE,
+  SESSION_COOKIE,
+} from "./cookie-names";
 
 function apiUrl(): string {
   return assertApiUrl(process.env.NEXT_PUBLIC_TALLY_API_URL, "NEXT_PUBLIC_TALLY_API_URL");
@@ -109,7 +115,16 @@ export async function getSessionToken(): Promise<string | null> {
 
 /** Bound to the current request's session cookie — the one client Server Components/Actions should use for every authenticated call. */
 export function getAuthedClient(): ApiClient {
-  return new ApiClient({ baseUrl: apiUrl(), getToken: () => getSessionToken() });
+  return new ApiClient({
+    baseUrl: apiUrl(),
+    getToken: () => getSessionToken(),
+    getExtraHeaders: async () => {
+      const host = (await headers()).get("host") ?? "";
+      const store = await cookies();
+      const demoModeCookie = store.get(DEMO_MODE_COOKIE)?.value === "1";
+      return demoDatabaseHeaders(host, demoModeCookie);
+    },
+  });
 }
 
 /** Null when there's no session or the token is no longer valid — never throws. */

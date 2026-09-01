@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { ApiClient, ApiError, assertApiUrl } from "@double-a/api-client";
 import { me } from "@double-a/api-client/queries";
-import { ACTING_COMPANY_COOKIE, SESSION_COOKIE } from "@/lib/api/cookie-names";
+import { ACTING_COMPANY_COOKIE, DEMO_MODE_COOKIE, SESSION_COOKIE } from "@/lib/api/cookie-names";
+import { demoDatabaseHeaders } from "@/lib/demo-host";
 
 const PUBLIC_PATHS = ["/login", "/auth"];
 
@@ -20,6 +21,8 @@ export default async function proxy(request: NextRequest) {
 
   const token = request.cookies.get(SESSION_COOKIE)?.value ?? null;
   const acting = Boolean(request.cookies.get(ACTING_COMPANY_COOKIE)?.value);
+  const host = request.headers.get("host") ?? request.nextUrl.hostname;
+  const demoModeCookie = request.cookies.get(DEMO_MODE_COOKIE)?.value === "1";
 
   let user: Awaited<ReturnType<typeof me>> | null = null;
   if (token) {
@@ -27,6 +30,7 @@ export default async function proxy(request: NextRequest) {
       const client = new ApiClient({
         baseUrl: assertApiUrl(process.env.NEXT_PUBLIC_TALLY_API_URL, "NEXT_PUBLIC_TALLY_API_URL"),
         getToken: () => token,
+        extraHeaders: demoDatabaseHeaders(host, demoModeCookie),
       });
       user = await me(client);
     } catch (error) {

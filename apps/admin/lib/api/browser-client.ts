@@ -4,9 +4,11 @@ import { ApiClient, assertApiUrl } from "@double-a/api-client";
 import {
   ACTING_COMPANY_COOKIE,
   BASE_SESSION_COOKIE,
+  DEMO_MODE_COOKIE,
   SESSION_COOKIE,
   SESSION_EXPIRES_AT_COOKIE,
 } from "./cookie-names";
+import { demoDatabaseHeadersForBrowser, isDemoAdminHost } from "../demo-host";
 
 /**
  * For client components calling the Tally API straight from the browser
@@ -31,12 +33,22 @@ function apiUrl(): string {
 
 /** Reads the token fresh on every request — reflects login/logout/open-company without a page reload. */
 export function getBrowserApiClient(): ApiClient {
-  return new ApiClient({ baseUrl: apiUrl(), getToken: () => readCookie(SESSION_COOKIE) });
+  return new ApiClient({
+    baseUrl: apiUrl(),
+    getToken: () => readCookie(SESSION_COOKIE),
+    getExtraHeaders: () =>
+      demoDatabaseHeadersForBrowser(readCookie(DEMO_MODE_COOKIE) === "1"),
+  });
 }
 
 /** Unauthenticated client — login only. */
 export function getBrowserBareClient(): ApiClient {
-  return new ApiClient({ baseUrl: apiUrl(), getToken: () => null });
+  return new ApiClient({
+    baseUrl: apiUrl(),
+    getToken: () => null,
+    getExtraHeaders: () =>
+      demoDatabaseHeadersForBrowser(readCookie(DEMO_MODE_COOKIE) === "1"),
+  });
 }
 
 export function hasBrowserSession(): boolean {
@@ -80,6 +92,11 @@ export function startBrowserSession(token: string, expiresAt: string | null): vo
   } else {
     deleteCookie(SESSION_EXPIRES_AT_COOKIE);
   }
+  if (isDemoAdminHost(window.location.hostname)) {
+    writeCookie(DEMO_MODE_COOKIE, "1", maxAge);
+  } else {
+    deleteCookie(DEMO_MODE_COOKIE);
+  }
 }
 
 export function endBrowserSession(): void {
@@ -87,6 +104,7 @@ export function endBrowserSession(): void {
   deleteCookie(BASE_SESSION_COOKIE);
   deleteCookie(ACTING_COMPANY_COOKIE);
   deleteCookie(SESSION_EXPIRES_AT_COOKIE);
+  deleteCookie(DEMO_MODE_COOKIE);
 }
 
 export interface ActingCompany {
