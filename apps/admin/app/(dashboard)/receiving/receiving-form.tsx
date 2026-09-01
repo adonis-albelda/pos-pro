@@ -1,14 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Route } from "next";
+import { toast } from "sonner";
 import {
   Camera,
   Crop,
   Expand,
   Images,
+  PauseCircle,
+  PlayCircle,
   Plus,
   RotateCcw,
   Save,
@@ -21,6 +24,8 @@ import {
 } from "lucide-react";
 import { formatMoney, formatQuantity, roundMoney } from "@double-a/shared-types";
 import type { Location, PurchaseOrder, PurchaseOrderItem, Supplier } from "@double-a/shared-types";
+import { ApiError } from "@double-a/api-client";
+import type { ExtractedReceiptLine, GoodsReceiptItemInput } from "@double-a/api-client/queries";
 import {
   Badge,
   Button,
@@ -41,10 +46,9 @@ import {
 } from "@/components/ui";
 import { AiProcessingOverlay, ConfirmDialog, Dialog, Sheet } from "@/components/overlay";
 import { useGalleryPhotos } from "@/lib/query/gallery-photos";
-import { useInvalidateGoodsReceipts } from "@/lib/query/goods-receipts";
+import { useCreateGoodsReceipt, useExtractGoodsReceiptPhoto } from "@/lib/query/goods-receipts";
 import { useInventoryProducts } from "@/lib/query/inventory";
 import { CropPhoto } from "../products/from-photo/crop-photo";
-import { extractGoodsReceiptPhotoAction, createGoodsReceiptAction } from "./actions";
 
 interface LineRow {
   key: string;
@@ -112,6 +116,60 @@ function suggestPrice(newCost: number, existingPrice: number, existingCostPrice:
   return increase > 0 ? roundMoney(existingPrice + increase) : existingPrice;
 }
 
+const cleanableRow = (row: LineRow): boolean =>
+  !row.excluded && row.name.trim() !== "" && Number(row.quantityReceived) > 0;
+
+/**
+ * The submit blocker used to just say "Add at least one item" whichever way
+ * zero rows survived — including when rows plainly exist on screen but each
+ * is missing a name or has a zero/blank quantity, which reads as a mystery
+ * bug rather than a fixable data problem. Point at the actual reason.
+ */
+function describeNoSubmittableRows(rows: LineRow[]): string {
+  if (rows.length === 0) {
+    return "Add at least one item — upload a photo or add a line manually.";
+  }
+  if (rows.every((row) => row.excluded)) {
+    return "Every line is marked removed — restore at least one, or add a new line.";
+  }
+  const reasons = new Set<string>();
+  for (const row of rows) {
+    if (row.excluded) continue;
+    if (!row.name.trim()) reasons.add("missing a name");
+    if (!(Number(row.quantityReceived) > 0)) reasons.add("zero or blank quantity");
+  }
+  return reasons.size > 0
+    ? `Every line has a problem (${[...reasons].join(", ")}) — check the Item and Qty columns.`
+    : "Add at least one item — upload a photo or add a line manually.";
+}
+
+/** Ported from the old Server Action verbatim — same ApiError shape either way, only the caller moved client-side. */
+function describeExtractError(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 429) {
+      return "OpenAI is busy. Wait about a minute, then try again.";
+    }
+    if (error.status === 402) {
+      return "OpenAI has no credits left. Check billing or the API key on the server.";
+    }
+    if (error.status === 403) {
+      return error.message;
+    }
+  }
+  return error instanceof Error
+    ? `Could not read the photo: ${error.message}`
+    : "Could not read the photo. Try again.";
+}
+
+function describeSaveError(error: unknown): string {
+  if (error instanceof ApiError && error.isValidation) {
+    const first = Object.values(error.errors ?? {})[0]?.[0];
+    if (first) return first;
+  }
+  const message = error instanceof Error ? error.message : "Unknown error";
+  return `Could not save this receipt: ${message}`;
+}
+
 function lineIsFlagged(row: LineRow): boolean {
   if (!row.productId) return true;
   if (row.quantityOrdered !== null) {
@@ -119,6 +177,53 @@ function lineIsFlagged(row: LineRow): boolean {
     if (Math.abs(received - row.quantityOrdered) > 0.001) return true;
   }
   return false;
+}
+
+/**
+ * "Hold receipt" parks the in-progress form so the attendant can start
+ * another delivery and come back later — one slot, this browser only, never
+ * sent anywhere. A raw uploaded photo (a `File`) can't be JSON-serialized,
+ * so only a gallery-sourced photo (just an id) survives the hold; a direct
+ * upload is dropped and `hadUnkeptPhoto` flags that for the resume toast.
+ */
+const HELD_RECEIPT_KEY = "receiving:held-receipt";
+
+interface HeldReceipt {
+  heldAt: string;
+  locationId: string;
+  supplierId: string;
+  supplierName: string;
+  purchaseOrderId: string;
+  referenceNo: string;
+  notes: string;
+  rows: LineRow[];
+  galleryPhotoId: string | null;
+  hadUnkeptPhoto: boolean;
+}
+
+function loadHeldReceipt(): HeldReceipt | null {
+  try {
+    const raw = window.localStorage.getItem(HELD_RECEIPT_KEY);
+    return raw ? (JSON.parse(raw) as HeldReceipt) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveHeldReceipt(receipt: HeldReceipt): void {
+  try {
+    window.localStorage.setItem(HELD_RECEIPT_KEY, JSON.stringify(receipt));
+  } catch {
+    // Private browsing / storage full — the hold silently doesn't persist.
+  }
+}
+
+function clearHeldReceipt(): void {
+  try {
+    window.localStorage.removeItem(HELD_RECEIPT_KEY);
+  } catch {
+    // Nothing to do if storage is unavailable.
+  }
 }
 
 export function ReceivingForm({
@@ -140,11 +245,13 @@ export function ReceivingForm({
   defaultLocationId: string | null;
 }) {
   const router = useRouter();
-  const invalidateGoodsReceipts = useInvalidateGoodsReceipts();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const submittingRef = useRef(false);
 
-  const [extracting, startExtracting] = useTransition();
-  const [saving, startSaving] = useTransition();
+  const extractPhotoMutation = useExtractGoodsReceiptPhoto();
+  const createReceiptMutation = useCreateGoodsReceipt();
+  const extracting = extractPhotoMutation.isPending;
+  const saving = createReceiptMutation.isPending;
   const [error, setError] = useState<string | null>(null);
   // `photo` is always the untouched original — it's what gets saved as the
   // receipt's own photo_url, never mutated by cropping/rotating. `workingPhoto`
@@ -197,6 +304,15 @@ export function ReceivingForm({
   const [referenceNo, setReferenceNo] = useState(linkedOrder?.referenceNo ?? "");
   const [notes, setNotes] = useState("");
   const [rows, setRows] = useState<LineRow[]>([]);
+  const [heldReceipt, setHeldReceipt] = useState<HeldReceipt | null>(null);
+
+  // Client-only check — matches the null server render, so this never causes
+  // a hydration mismatch. Only offered on a blank form: resuming would
+  // otherwise silently clobber whatever the attendant is already mid-typing.
+  useEffect(() => {
+    if (rows.length > 0) return;
+    setHeldReceipt(loadHeldReceipt());
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Covers picking a PO from the dropdown mid-session, not just the
   // URL-preloaded case the initial useState above already handles.
@@ -205,6 +321,75 @@ export function ReceivingForm({
     setSupplierId(linkedOrder.supplierId);
     setReferenceNo(linkedOrder.referenceNo ?? "");
   }, [linkedOrder]);
+
+  /**
+   * Blanks every field back to a fresh delivery. Navigating to `/receiving`
+   * after a successful ad-hoc (no PO) submit lands on the same URL the form
+   * was already on, so Next.js doesn't remount it — without this, the just
+   * saved lines and header fields sit there untouched, which is exactly
+   * what made a second "Save receipt" click file a duplicate receipt.
+   */
+  function resetForm() {
+    setSupplierId("");
+    setSupplierName("");
+    setReferenceNo("");
+    setNotes("");
+    setRows([]);
+    removePhoto();
+    onSelectPurchaseOrder("");
+  }
+
+  function holdReceipt() {
+    saveHeldReceipt({
+      heldAt: new Date().toISOString(),
+      locationId,
+      supplierId,
+      supplierName,
+      purchaseOrderId,
+      referenceNo,
+      notes,
+      rows,
+      galleryPhotoId,
+      hadUnkeptPhoto: Boolean(photo) && !galleryPhotoId,
+    });
+    toast.success(
+      photo && !galleryPhotoId
+        ? "Receipt held — its photo wasn't kept, you'll need to re-add it on resume."
+        : "Receipt held — resume it anytime from this page.",
+    );
+
+    // Blank the form for the next delivery — the hold already has everything.
+    resetForm();
+    setHeldReceipt(loadHeldReceipt());
+  }
+
+  function resumeHeldReceipt() {
+    if (!heldReceipt) return;
+    setSupplierId(heldReceipt.supplierId);
+    setSupplierName(heldReceipt.supplierName);
+    setLocationId(heldReceipt.locationId);
+    setReferenceNo(heldReceipt.referenceNo);
+    setNotes(heldReceipt.notes);
+    setRows(heldReceipt.rows);
+    onSelectPurchaseOrder(heldReceipt.purchaseOrderId);
+
+    const galleryRecord = heldReceipt.galleryPhotoId
+      ? (galleryQuery.data ?? []).find((record) => record.id === heldReceipt.galleryPhotoId)
+      : undefined;
+    if (galleryRecord) {
+      void pickGalleryPhoto(galleryRecord);
+    } else if (heldReceipt.galleryPhotoId || heldReceipt.hadUnkeptPhoto) {
+      toast.message("This receipt's photo wasn't kept — re-add it if you still need it.");
+    }
+
+    clearHeldReceipt();
+    setHeldReceipt(null);
+  }
+
+  function discardHeldReceipt() {
+    clearHeldReceipt();
+    setHeldReceipt(null);
+  }
 
   // Full-catalogue walk (listProducts pages through everything) — only worth
   // paying for once there is something to match against: a photo on the way,
@@ -277,6 +462,16 @@ export function ReceivingForm({
     });
   }
 
+  /** Products already matched on another row don't show up again — no picking the same product twice. */
+  function availableProductsFor(currentRow: LineRow) {
+    const usedElsewhere = new Set(
+      rows
+        .filter((row) => row.key !== currentRow.key && row.productId)
+        .map((row) => row.productId),
+    );
+    return products.filter((product) => !usedElsewhere.has(product.id));
+  }
+
   /** Only stages the file for preview — AI extraction is a separate, explicit step below. */
   function handlePhotoChange(file: File | null) {
     setPhoto(file);
@@ -328,23 +523,29 @@ export function ReceivingForm({
     if (!source) return;
 
     setError(null);
-    startExtracting(async () => {
+    void (async () => {
       const compressed = await compressImage(source);
-      const formData = new FormData();
-      formData.set("photo", compressed);
-      if (linkedOrder) formData.set("purchase_order_id", linkedOrder.id);
-
-      const result = await extractGoodsReceiptPhotoAction(formData);
-      if (result.error) {
-        if (result.quotaExceeded) {
-          setQuotaMessage(result.error);
+      let lines: ExtractedReceiptLine[];
+      try {
+        lines = await extractPhotoMutation.mutateAsync({
+          photo: compressed,
+          purchaseOrderId: linkedOrder ? linkedOrder.id : null,
+        });
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 403) {
+          setQuotaMessage(error.message);
         } else {
-          setError(result.error);
+          setError(describeExtractError(error));
         }
         return;
       }
 
-      const extractedRows: LineRow[] = result.lines.map((line) => {
+      if (lines.length === 0) {
+        setError("No line items found. Use a clearer shot with one item per row.");
+        return;
+      }
+
+      const extractedRows: LineRow[] = lines.map((line) => {
         const unitCost = line.unitCost ?? 0;
         const appliedPrice =
           line.existingPrice !== null && line.existingCostPrice !== null
@@ -377,7 +578,7 @@ export function ReceivingForm({
 
       setPhotoRead(true);
       setRows((previous) => [...previous, ...extractedRows]);
-    });
+    })();
   }
 
   function requestSubmit() {
@@ -391,11 +592,8 @@ export function ReceivingForm({
       setError("Pick a supplier, or type one in for an ad-hoc delivery.");
       return;
     }
-    if (
-      rows.filter((row) => !row.excluded && row.name.trim() && Number(row.quantityReceived) > 0)
-        .length === 0
-    ) {
-      setError("Add at least one item — upload a photo or add a line manually.");
+    if (rows.filter(cleanableRow).length === 0) {
+      setError(describeNoSubmittableRows(rows));
       return;
     }
 
@@ -403,68 +601,111 @@ export function ReceivingForm({
   }
 
   function submit() {
-    const cleanRows = rows.filter(
-      (row) => !row.excluded && row.name.trim() && Number(row.quantityReceived) > 0,
-    );
+    // Synchronous re-entry guard — mutation.isPending only flips after a
+    // render, so two clicks landing before that repaint both slip past a
+    // `disabled={saving}` check and fire two receipts (double stock, double
+    // record). A ref is set the instant this runs, no render in between.
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+
+    const cleanRows = rows.filter(cleanableRow);
     if (cleanRows.length === 0) {
+      submittingRef.current = false;
       setConfirmOpen(false);
-      setError("Add at least one item — upload a photo or add a line manually.");
+      setError(describeNoSubmittableRows(rows));
       return;
     }
 
-    // StoreGoodsReceiptController::parseItems() decodes this JSON straight
-    // off the wire and reads snake_case keys — no camelCase conversion
-    // happens server-side, unlike JSON:API resources elsewhere in this app.
-    const items = cleanRows.map((row) => ({
+    // Stays camelCase, matching GoodsReceiptItemInput — createGoodsReceiptAction
+    // JSON.parses this straight into that type, then hands it to
+    // createGoodsReceipt()'s toItemsJson() (packages/api-client), which is
+    // the one place that actually converts to snake_case for the wire.
+    // Building snake_case here instead breaks that conversion silently:
+    // toItemsJson() reads camelCase keys, gets `undefined` for everything
+    // but name/sku/note, and JSON.stringify drops undefined keys outright —
+    // Laravel's parseItems() then sees no quantity_received/unit_cost and
+    // skips every row, which is exactly the "Add at least one item." bug.
+    const items: GoodsReceiptItemInput[] = cleanRows.map((row) => ({
       name: row.name.trim(),
       sku: row.sku.trim() || null,
-      quantity_received: Number(row.quantityReceived) || 0,
-      unit_cost: Number(row.unitCost) || 0,
-      product_id: row.productId,
-      matched_by: row.matchedBy,
-      purchase_order_item_id: row.purchaseOrderItemId,
-      quantity_ordered: row.quantityOrdered,
-      applied_price: row.appliedPrice.trim() ? Number(row.appliedPrice) : null,
-      is_flagged: lineIsFlagged(row),
+      quantityReceived: Number(row.quantityReceived) || 0,
+      unitCost: Number(row.unitCost) || 0,
+      productId: row.productId,
+      matchedBy: row.matchedBy,
+      purchaseOrderItemId: row.purchaseOrderItemId,
+      quantityOrdered: row.quantityOrdered,
+      appliedPrice: row.appliedPrice.trim() ? Number(row.appliedPrice) : null,
+      isFlagged: lineIsFlagged(row),
       note: row.note.trim() || null,
     }));
 
-    const formData = new FormData();
-    formData.set("location_id", locationId);
-    if (linkedOrder) {
-      formData.set("purchase_order_id", linkedOrder.id);
-      formData.set("supplier_id", linkedOrder.supplierId);
-    } else if (supplierId) {
-      formData.set("supplier_id", supplierId);
-    } else {
-      formData.set("supplier_name", supplierName.trim());
-    }
-    if (referenceNo.trim()) formData.set("reference_no", referenceNo.trim());
-    if (notes.trim()) formData.set("notes", notes.trim());
-    // Gallery-sourced: reuse that stored photo server-side (and mark it
-    // processed) instead of re-uploading the bytes this form just fetched.
-    if (galleryPhotoId) formData.set("gallery_photo_id", galleryPhotoId);
-    else if (photo) formData.set("photo", photo);
-    formData.set("items_json", JSON.stringify(items));
-
-    startSaving(async () => {
-      const result = await createGoodsReceiptAction(formData);
-      setConfirmOpen(false);
-      if (!result.ok) {
-        setError(result.error);
+    void (async () => {
+      try {
+        await createReceiptMutation.mutateAsync({
+          locationId,
+          supplierId: linkedOrder ? linkedOrder.supplierId : supplierId || null,
+          supplierName: linkedOrder || supplierId ? null : supplierName.trim(),
+          purchaseOrderId: linkedOrder ? linkedOrder.id : null,
+          referenceNo: referenceNo.trim() || null,
+          notes: notes.trim() || null,
+          // Gallery-sourced: reuse that stored photo server-side (and mark it
+          // processed) instead of re-uploading the bytes this form just fetched.
+          galleryPhotoId: galleryPhotoId || null,
+          photo: galleryPhotoId ? null : photo,
+          items,
+        });
+      } catch (error) {
+        submittingRef.current = false;
+        setConfirmOpen(false);
+        setError(describeSaveError(error));
         return;
       }
 
-      invalidateGoodsReceipts();
+      setConfirmOpen(false);
+      toast.success("Receipt saved — stock and prices updated.");
+      // Clear before navigating: an ad-hoc receipt (no PO) lands back on this
+      // same URL, which Next won't remount, so the reset has to happen here
+      // rather than relying on the navigation to blank the form for us.
+      resetForm();
+      submittingRef.current = false;
       router.push(
         (linkedOrder ? `/purchase-orders/${linkedOrder.id}` : "/receiving") as Route,
       );
-    });
+    })();
   }
 
   return (
     <div className="space-y-6">
       <AiProcessingOverlay open={extracting} message="Reading the delivery receipt" />
+
+      {heldReceipt ? (
+        <Card className="flex flex-col gap-3 border-primary/30 bg-primary/5 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div className="flex items-start gap-2.5">
+            <PauseCircle size={18} strokeWidth={2} className="mt-0.5 shrink-0 text-primary" />
+            <div>
+              <p className="text-body font-medium text-ink">
+                Held receipt from{" "}
+                {new Date(heldReceipt.heldAt).toLocaleString("en-PH", {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                })}
+              </p>
+              <p className="mt-0.5 text-caption text-ink-muted">
+                {heldReceipt.rows.length} item{heldReceipt.rows.length === 1 ? "" : "s"}
+                {heldReceipt.hadUnkeptPhoto ? " — photo wasn't kept" : ""}
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button type="button" variant="secondary" size="sm" onClick={discardHeldReceipt}>
+              Discard
+            </Button>
+            <Button type="button" size="sm" icon={PlayCircle} onClick={resumeHeldReceipt}>
+              Resume
+            </Button>
+          </div>
+        </Card>
+      ) : null}
 
       <Dialog
         open={quotaMessage !== null}
@@ -915,7 +1156,7 @@ export function ReceivingForm({
                             menuMinWidth={360}
                             value={row.productId}
                             onChange={(productId) => pickProductForRow(row.key, productId)}
-                            options={products.map((p) => ({
+                            options={availableProductsFor(row).map((p) => ({
                               value: p.id,
                               label: p.name,
                               sublabel: p.sku ?? undefined,
@@ -927,7 +1168,7 @@ export function ReceivingForm({
                             menuMinWidth={360}
                             value=""
                             onChange={(productId) => pickProductForRow(row.key, productId)}
-                            options={products.map((p) => ({
+                            options={availableProductsFor(row).map((p) => ({
                               value: p.id,
                               label: p.name,
                               sublabel: p.sku ?? undefined,
@@ -1138,6 +1379,16 @@ export function ReceivingForm({
             }
           >
             Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            icon={PauseCircle}
+            className="w-full sm:w-auto"
+            disabled={rows.length === 0 && !supplierId && !supplierName.trim() && !notes.trim()}
+            onClick={holdReceipt}
+          >
+            Hold receipt
           </Button>
           <Button icon={Save} loading={saving} onClick={requestSubmit} className="w-full sm:w-auto">
             {saving ? "Saving..." : "Save receipt"}

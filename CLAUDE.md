@@ -48,6 +48,21 @@ packages/
   `packages/shared-types` and `packages/supabase` are for. Type drift between the two apps
   is the #1 risk in this project, since mobile writes the same tables admin reads.
 
+**New/touched data fetching or posting in `apps/admin` should be a direct client-side API
+call, not a `"use server"` Server Action** — a TanStack Query hook in
+`apps/admin/lib/query/*.ts` calling a `packages/api-client` function via
+`getBrowserApiClient()` for reads, and a `useMutation` the same way for writes (invalidate
+query keys on success instead of `revalidatePath`). One hop: component → api-client → API.
+A Server Action adds a second hop (component → action → api-client) with its own JSON
+serialization boundary in between — a receiving-form bug (fields silently dropped because
+the Server Action re-parsed `items_json` as a differently-cased type than what the component
+actually sent) is what prompted this rule. **Not yet true of the existing codebase**: most
+`apps/admin/app/**/actions.ts` files still use `getAuthedClient()` (`lib/api/session.ts`)
+Server Actions today — that's the established pattern elsewhere, not a bug by itself. Apply
+this rule to new work and to any file you're already touching for another reason; converting
+the rest is a separate, not-yet-scheduled cleanup, not something to do opportunistically
+mid-unrelated-task.
+
 **Package manager:** pnpm workspaces. Use `pnpm --filter <app> <command>` to run a command
 scoped to one app (e.g., `pnpm --filter mobile start`).
 

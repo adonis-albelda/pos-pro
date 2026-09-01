@@ -1,11 +1,15 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  createGoodsReceipt,
+  extractGoodsReceiptPhoto,
   getGoodsReceipt,
   listGoodsReceipts,
+  type CreateGoodsReceiptInput,
   type GoodsReceiptsFilter,
 } from "@double-a/api-client/queries";
+import type { MultipartFile } from "@double-a/api-client";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 import { queryKeys } from "./keys";
 
@@ -25,10 +29,10 @@ export function useGoodsReceipt(id: string) {
 }
 
 /**
- * Call after createGoodsReceiptAction succeeds — receiving a PO-linked
- * delivery also changes the PO itself (status, quantity_received, the
- * "Stock effect" movements card) and stock/inventory, so both cache
- * namespaces need to drop too.
+ * Call after a receipt is created — receiving a PO-linked delivery also
+ * changes the PO itself (status, quantity_received, the "Stock effect"
+ * movements card) and stock/inventory, so both cache namespaces need to
+ * drop too.
  */
 export function useInvalidateGoodsReceipts() {
   const queryClient = useQueryClient();
@@ -38,4 +42,25 @@ export function useInvalidateGoodsReceipts() {
     void queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
     void queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
   };
+}
+
+/**
+ * Direct client call, no Server Action in between — the receiving form
+ * used to round-trip this through a `"use server"` action that re-parsed
+ * the JSON as a differently-cased type, which is exactly what caused a
+ * silent field-dropping bug. One hop: component -> api-client -> Laravel.
+ */
+export function useExtractGoodsReceiptPhoto() {
+  return useMutation({
+    mutationFn: (input: { photo: MultipartFile; purchaseOrderId?: string | null }) =>
+      extractGoodsReceiptPhoto(getBrowserApiClient(), input.photo, input.purchaseOrderId),
+  });
+}
+
+export function useCreateGoodsReceipt() {
+  const invalidate = useInvalidateGoodsReceipts();
+  return useMutation({
+    mutationFn: (input: CreateGoodsReceiptInput) => createGoodsReceipt(getBrowserApiClient(), input),
+    onSuccess: () => invalidate(),
+  });
 }
