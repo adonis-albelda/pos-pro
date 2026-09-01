@@ -17,6 +17,7 @@ import {
 } from "@/lib/admin-web-url";
 import { buildAdminBootstrapHtml } from "@/lib/admin-web-cookies";
 import { getAdminToken, getAdminTokenExpiresAt } from "@/lib/api/session";
+import { useSession } from "@/lib/session";
 import { Button } from "@/components/ui";
 import { LoadingState } from "@/components/loading-state";
 import { color, space, styles } from "@/theme";
@@ -38,8 +39,10 @@ const WebView = RNWebView as unknown as ForwardRefExoticComponent<
 export function AdminWebView() {
   const router = useRouter();
   const webRef = useRef<AdminWebViewRef>(null);
-  const adminOrigin = adminWebUrl();
-  const dashboardUrl = adminWebDashboardUrl();
+  const { cashier } = useSession();
+  const isDemo = cashier?.isDemo ?? false;
+  const adminOrigin = adminWebUrl(isDemo);
+  const dashboardUrl = adminWebDashboardUrl(isDemo);
   const token = getAdminToken();
   const expiresAt = getAdminTokenExpiresAt();
 
