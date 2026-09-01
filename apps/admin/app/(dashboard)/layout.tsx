@@ -6,6 +6,7 @@ import { DemoSessionBanner } from "@/components/demo-session-banner";
 import { HydrateStoreSettings } from "@/components/hydrate-store-settings";
 import { ImpersonationBanner } from "@/components/impersonation-banner";
 import { LocationFilterProvider } from "@/components/location-filter-provider";
+import { PriceInquiryFab } from "@/components/price-inquiry-fab";
 import { PushNotificationRegistrar } from "@/components/push-notification-registrar";
 import { getUiMode, isAdminEmbedded } from "@/lib/ui-mode";
 
@@ -41,6 +42,7 @@ export default async function DashboardLayout({
     <>
       <HydrateStoreSettings store={store} />
       <PushNotificationRegistrar />
+      <PriceInquiryFab />
       {content}
     </>
   );

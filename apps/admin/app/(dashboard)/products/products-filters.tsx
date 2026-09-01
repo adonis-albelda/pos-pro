@@ -34,6 +34,7 @@ function describeActiveFilters(params: URLSearchParams): string {
   const state = params.get("state");
   const sort = params.get("sort");
 
+  if (params.get("trashed") === "only") parts.push("Deleted");
   if (state && state in STATE_LABELS) parts.push(STATE_LABELS[state as ProductStockState]);
   if (sort && sort in SORT_LABELS) parts.push(SORT_LABELS[sort as ProductSort]);
 
@@ -45,13 +46,11 @@ function ProductsFiltersForm({ onApplied }: { onApplied: () => void }) {
   const params = useSearchParams();
 
   function apply(formData: FormData) {
-    // q/trashed live outside this form — preserve them rather than
-    // rebuilding the querystring from just this form's fields.
+    // q lives outside this form — preserve it rather than rebuilding the
+    // querystring from just this form's fields.
     const next = new URLSearchParams();
-    for (const key of ["q", "trashed"]) {
-      const value = params.get(key);
-      if (value) next.set(key, value);
-    }
+    const q = params.get("q");
+    if (q) next.set("q", q);
     for (const [key, value] of formData.entries()) {
       if (typeof value === "string" && value) next.set(key, value);
     }
@@ -61,10 +60,8 @@ function ProductsFiltersForm({ onApplied }: { onApplied: () => void }) {
 
   function clear() {
     const next = new URLSearchParams();
-    for (const key of ["q", "trashed"]) {
-      const value = params.get(key);
-      if (value) next.set(key, value);
-    }
+    const q = params.get("q");
+    if (q) next.set("q", q);
     const qs = next.toString();
     router.push((qs ? `/products?${qs}` : "/products") as Route);
     onApplied();
@@ -72,6 +69,12 @@ function ProductsFiltersForm({ onApplied }: { onApplied: () => void }) {
 
   return (
     <form action={apply} className="space-y-4">
+      <Field label="Show">
+        <Select name="trashed" defaultValue={params.get("trashed") ?? ""}>
+          <option value="">Active</option>
+          <option value="only">Deleted</option>
+        </Select>
+      </Field>
       <Field label="Status">
         <Select name="state" defaultValue={params.get("state") ?? ""}>
           <option value="">Any</option>
