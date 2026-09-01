@@ -3,6 +3,7 @@ import { getAuthedClient, getCurrentUser } from "@/lib/api/session";
 import { ClassicShell } from "@/components/classic-shell";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { DemoSessionBanner } from "@/components/demo-session-banner";
+import { DemoUpgradeBanner } from "@/components/demo-upgrade-banner";
 import { HydrateStoreSettings } from "@/components/hydrate-store-settings";
 import { ImpersonationBanner } from "@/components/impersonation-banner";
 import { LocationFilterProvider } from "@/components/location-filter-provider";
@@ -50,6 +51,7 @@ export default async function DashboardLayout({
   if (mode === "classic") {
     return (
       <LocationFilterProvider>
+        <DemoUpgradeBanner />
         <DemoSessionBanner />
         <ClassicShell
           storeName={store.name}
@@ -67,6 +69,7 @@ export default async function DashboardLayout({
 
   return (
     <LocationFilterProvider>
+      <DemoUpgradeBanner />
       <DemoSessionBanner />
       <DashboardShell
         storeName={store.name}

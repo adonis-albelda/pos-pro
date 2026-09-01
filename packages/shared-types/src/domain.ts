@@ -257,7 +257,16 @@ export const DemoAccount = {
   PURGE_AFTER_DAYS: 21,
   /** Days between auto-disable and hard delete (PURGE_AFTER_DAYS − DISABLE_AFTER_DAYS). */
   PURGE_GRACE_DAYS: 7,
+  UPGRADE_URL: "https://www.doubleadigitalsolutions.store/products/pospro#try-it",
+  SUPPORT_EMAIL: "pospro.support@gmail.com",
+  TEAM_LIMIT_MESSAGE:
+    "You've reached the limit for your free trial account. Upgrade to a Business plan to add more team members.",
 } as const;
+
+/** Matches Laravel `api.errors.demo_user_limit_reached` / `demo_user_role_not_available`. */
+export function isDemoTeamLimitMessage(message: string): boolean {
+  return message.includes("free trial account") && message.includes("team members");
+}
 
 export interface User {
   id: string;

@@ -14,7 +14,7 @@ import {
   UserCog,
   UserRound,
 } from "lucide-react";
-import type { User, UserRole } from "@double-a/shared-types";
+import { isDemoTeamLimitMessage, type User, type UserRole } from "@double-a/shared-types";
 import {
   Button,
   ErrorNote,
@@ -26,6 +26,7 @@ import {
 import { ConfirmDialog } from "@/components/overlay";
 import { PasswordInput } from "@/components/password-input";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
+import { notifyDemoUpgradeLimit } from "@/lib/demo-upgrade-notice";
 import { useInvalidateUsers } from "@/lib/query/users";
 import { useLocations } from "@/lib/query/locations";
 import { saveCashier } from "./actions";
@@ -85,6 +86,14 @@ export function UserForm({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.ok, onDone]);
+
+  useEffect(() => {
+    if (!state.error || !isDemoTeamLimitMessage(state.error)) return;
+    notifyDemoUpgradeLimit();
+    onDone?.();
+  }, [state.error, onDone]);
+
+  const showInlineError = state.error && !isDemoTeamLimitMessage(state.error);
 
   const RoleIcon =
     role === "admin"
@@ -294,7 +303,7 @@ export function UserForm({
           </span>
         </p>
 
-        {state.error ? <ErrorNote>{state.error}</ErrorNote> : null}
+        {showInlineError ? <ErrorNote>{state.error}</ErrorNote> : null}
         {state.ok ? <SuccessNote>{successMessage(role)}</SuccessNote> : null}
 
         <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row">

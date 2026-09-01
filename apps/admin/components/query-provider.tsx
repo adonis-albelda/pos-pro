@@ -3,11 +3,19 @@
 import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from "@tanstack/react-query";
 import { ApiError } from "@double-a/api-client";
+import { isDemoTeamLimitMessage } from "@double-a/shared-types";
+import { notifyDemoUpgradeLimit } from "@/lib/demo-upgrade-notice";
 import { notifyRateLimited } from "@/lib/rate-limit-notice";
 
 function handleGlobalError(error: unknown): void {
-  if (error instanceof ApiError && (error.isTooManyRequests || error.isServerError)) {
-    notifyRateLimited();
+  if (error instanceof ApiError) {
+    if (error.isForbidden && isDemoTeamLimitMessage(error.message)) {
+      notifyDemoUpgradeLimit();
+      return;
+    }
+    if (error.isTooManyRequests || error.isServerError) {
+      notifyRateLimited();
+    }
   }
 }
 
