@@ -63,6 +63,22 @@ export function ClassicShell({
     return href === "/" ? pathname === "/" : pathname.startsWith(href);
   }
 
+  if (embedded) {
+    return (
+      <div className="flex min-h-screen flex-col bg-paper">
+        <header className="sticky top-0 z-30 flex items-center justify-end border-t border-border bg-surface px-2 py-1.5">
+          <LocationSwitcher />
+        </header>
+        <LocationMutationsBanner />
+        <main className="flex-1 px-2 py-2 sm:px-3 sm:py-3">{children}</main>
+
+        <footer className="border-t border-border bg-surface px-3 py-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))]">
+          <BrandFooter userEmail={userEmail} />
+        </footer>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-paper">
       <header className="sticky top-0 z-30">

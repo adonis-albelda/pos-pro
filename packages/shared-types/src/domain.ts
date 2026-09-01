@@ -257,7 +257,7 @@ export const DemoAccount = {
   PURGE_AFTER_DAYS: 21,
   /** Days between auto-disable and hard delete (PURGE_AFTER_DAYS − DISABLE_AFTER_DAYS). */
   PURGE_GRACE_DAYS: 7,
-  UPGRADE_URL: "https://www.doubleadigitalsolutions.store/products/pospro#try-it",
+  UPGRADE_URL: "https://www.doubleadigitalsolutions.store/products/pospro",
   SUPPORT_EMAIL: "pospro.support@gmail.com",
   TEAM_LIMIT_MESSAGE:
     "You've reached the limit for your free trial account. Upgrade to a Business plan to add more team members.",
