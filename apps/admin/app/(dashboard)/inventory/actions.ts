@@ -2,13 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { isValidQuantity, QUANTITY_DECIMALS } from "@double-a/shared-types";
-import {
-  adjustStock,
-  getProduct,
-  listProductsPage,
-  type AdjustStockReason,
-} from "@double-a/api-client/queries";
-import type { Product } from "@double-a/shared-types";
+import { adjustStock, getProduct, type AdjustStockReason } from "@double-a/api-client/queries";
 
 function roundQuantity(value: number): number {
   return Number(value.toFixed(QUANTITY_DECIMALS));
@@ -19,27 +13,6 @@ import { getAuthedClient } from "@/lib/api/session";
 const REASONS: AdjustStockReason[] = ["restock", "adjustment", "oversell_correction"];
 const MODES = ["in", "out", "count"] as const;
 type Mode = (typeof MODES)[number];
-
-export async function searchProductsForPicker(
-  q: string,
-  locationId?: string | null,
-): Promise<Product[]> {
-  const client = getAuthedClient();
-  const { products } = await listProductsPage(client, {
-    q,
-    page: 1,
-    pageSize: 8,
-    includeInactive: true,
-    locationId: locationId || undefined,
-  });
-  return products;
-}
-
-export async function loadProductForPicker(id: string): Promise<Product | null> {
-  if (!id) return null;
-  const client = getAuthedClient();
-  return getProduct(client, id);
-}
 
 /**
  * Every stock change goes through this. It writes an inventory_movements row

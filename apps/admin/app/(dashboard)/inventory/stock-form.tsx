@@ -7,9 +7,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { ClipboardCheck, ClipboardList, Search, TriangleAlert, X } from "lucide-react";
+import { useInfiniteQuery } from "@tanstack/react-query";
+import { ClipboardCheck, ClipboardList, Loader2, Search, TriangleAlert, X } from "lucide-react";
 import type { Product } from "@double-a/shared-types";
 import { formatQuantity, stockLevel } from "@double-a/shared-types";
+import { getProduct, listProductsPage } from "@double-a/api-client/queries";
 import {
   Badge,
   Button,
@@ -23,7 +25,12 @@ import {
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
 import { useInvalidateInventory } from "@/lib/query/inventory";
 import { useLocationFilter } from "@/components/location-filter-provider";
-import { loadProductForPicker, moveStock, searchProductsForPicker } from "./actions";
+import { getBrowserApiClient } from "@/lib/api/browser-client";
+import { moveStock } from "./actions";
+
+const PICKER_PAGE_SIZE = 8;
+/** Fetch the next page once the scrolled-past distance from the bottom is under this. */
+const LOAD_MORE_THRESHOLD_PX = 80;
 
 function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(" ");
@@ -88,7 +95,7 @@ export function StockForm({
 
   useEffect(() => {
     if (!defaultProductId) return;
-    void loadProductForPicker(defaultProductId).then((row) => {
+    void getProduct(getBrowserApiClient(), defaultProductId).then((row) => {
       if (!row) return;
       setProduct(row);
       setProductId(row.id);
@@ -274,8 +281,8 @@ function ProductPicker({
   onSelect: (product: Product | null) => void;
 }) {
   const [term, setTerm] = useState("");
+  const [debouncedTerm, setDebouncedTerm] = useState("");
   const [open, setOpen] = useState(false);
-  const [matches, setMatches] = useState<Product[]>([]);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -289,12 +296,41 @@ function ProductPicker({
   }, [open]);
 
   useEffect(() => {
-    if (!open) return;
-    const handle = setTimeout(() => {
-      void searchProductsForPicker(term, locationId).then(setMatches);
-    }, 150);
+    const handle = setTimeout(() => setDebouncedTerm(term), 150);
     return () => clearTimeout(handle);
-  }, [term, open, locationId]);
+  }, [term]);
+
+  // One request per page — only the first page fires while typing/opening;
+  // scrolling near the bottom of the dropdown fetches the next one instead
+  // of the old hardcoded 8-result cap.
+  const pickerQuery = useInfiniteQuery({
+    queryKey: ["stock-form", "product-picker", debouncedTerm, locationId],
+    queryFn: ({ pageParam }) =>
+      listProductsPage(getBrowserApiClient(), {
+        q: debouncedTerm,
+        page: pageParam,
+        pageSize: PICKER_PAGE_SIZE,
+        includeInactive: true,
+        locationId: locationId || undefined,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages) =>
+      allPages.length < lastPage.lastPage ? allPages.length + 1 : undefined,
+    enabled: open,
+  });
+  const matches = pickerQuery.data?.pages.flatMap((page) => page.products) ?? [];
+
+  function onMatchesScroll(event: React.UIEvent<HTMLUListElement>) {
+    const el = event.currentTarget;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (
+      distanceFromBottom < LOAD_MORE_THRESHOLD_PX &&
+      pickerQuery.hasNextPage &&
+      !pickerQuery.isFetchingNextPage
+    ) {
+      void pickerQuery.fetchNextPage();
+    }
+  }
 
   if (selected) {
     const level = stockLevel(selected.stockQuantity, selected.reorderPoint);
@@ -368,7 +404,10 @@ function ProductPicker({
       </Field>
 
       {open ? (
-        <ul className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-sm border border-border bg-surface py-1 shadow-lg">
+        <ul
+          onScroll={onMatchesScroll}
+          className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-sm border border-border bg-surface py-1 shadow-lg"
+        >
           {matches.length === 0 ? (
             <li className="px-3 py-3 text-body text-ink-muted">
               Nothing matches that. Products are added on the Products page.
@@ -400,6 +439,12 @@ function ProductPicker({
               </li>
             ))
           )}
+          {pickerQuery.isFetchingNextPage ? (
+            <li className="flex items-center justify-center gap-1.5 py-2 text-caption text-ink-muted">
+              <Loader2 size={13} className="animate-spin" />
+              Loading more…
+            </li>
+          ) : null}
         </ul>
       ) : null}
     </div>
