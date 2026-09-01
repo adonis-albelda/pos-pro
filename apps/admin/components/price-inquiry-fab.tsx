@@ -1,12 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowLeft, Package, Search, Tag, Truck, Warehouse } from "lucide-react";
+import { useInfiniteQuery } from "@tanstack/react-query";
+import { ArrowLeft, Loader2, Package, Search, Tag, Truck, Warehouse } from "lucide-react";
 import { formatMoney } from "@double-a/shared-types";
 import type { Product } from "@double-a/shared-types";
+import { listProductsPage } from "@double-a/api-client/queries";
 import { IconButton, Input, Money } from "@/components/ui";
 import { Dialog } from "@/components/overlay";
-import { useProducts } from "@/lib/query/products";
+import { getBrowserApiClient } from "@/lib/api/browser-client";
+
+const PAGE_SIZE = 25;
+/** Fetch the next page once the scrolled-past distance from the bottom is under this. */
+const LOAD_MORE_THRESHOLD_PX = 80;
 
 /**
  * A quick lookup any staffer can reach from anywhere in the admin — no
@@ -20,13 +26,36 @@ export function PriceInquiryFab() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selected, setSelected] = useState<Product | null>(null);
 
-  // Company-wide total — locationId deliberately omitted (see
-  // ListProductsPageOptions), matching what "total stock" means here.
-  const query = useProducts(
-    { q: searchTerm, pageSize: 10 },
-    { enabled: searchTerm.trim() !== "" },
-  );
-  const results = query.data?.products ?? [];
+  // One request per page — the server does the name/SKU/barcode match (see
+  // IndexProductsController's `search` param), not a client-side walk of the
+  // whole catalogue. Only the first page fires on Search; scrolling near the
+  // bottom of the results list fetches the next one, so a match count in the
+  // hundreds never means one giant request or a hard 100-row cap.
+  // locationId omitted, so stockQuantity comes back company-wide, matching
+  // "total stock".
+  const query = useInfiniteQuery({
+    queryKey: ["price-inquiry", "products", searchTerm],
+    queryFn: ({ pageParam }) =>
+      listProductsPage(getBrowserApiClient(), { q: searchTerm, page: pageParam, pageSize: PAGE_SIZE }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages) =>
+      allPages.length < lastPage.lastPage ? allPages.length + 1 : undefined,
+    enabled: searchTerm !== "",
+  });
+  const results = query.data?.pages.flatMap((page) => page.products) ?? [];
+  const totalMatches = query.data?.pages[0]?.total ?? 0;
+
+  function onResultsScroll(event: React.UIEvent<HTMLDivElement>) {
+    const el = event.currentTarget;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (
+      distanceFromBottom < LOAD_MORE_THRESHOLD_PX &&
+      query.hasNextPage &&
+      !query.isFetchingNextPage
+    ) {
+      void query.fetchNextPage();
+    }
+  }
 
   function reset() {
     setInputValue("");
@@ -63,6 +92,7 @@ export function PriceInquiryFab() {
         onClose={close}
         title="Price inquiry"
         description="Look up a product's cost, stock, supplier and shelf price."
+        className="max-w-4xl"
       >
         {selected ? (
           <div className="space-y-4">
@@ -136,34 +166,48 @@ export function PriceInquiryFab() {
               <IconButton type="submit" icon={Search} label="Search" />
             </form>
 
-            {query.isFetching ? (
+            {searchTerm && query.isPending ? (
               <p className="py-8 text-center text-body text-ink-muted">Searching…</p>
             ) : searchTerm && results.length === 0 ? (
               <p className="py-8 text-center text-body text-ink-muted">
                 Nothing matches "{searchTerm}".
               </p>
             ) : results.length > 0 ? (
-              <div className="max-h-80 space-y-1 overflow-y-auto">
-                {results.map((product) => (
-                  <button
-                    key={product.id}
-                    type="button"
-                    onClick={() => setSelected(product)}
-                    className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-sm px-3 py-2 text-left transition-colors hover:bg-paper"
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate text-body font-medium text-ink">
-                        {product.name}
+              <div className="space-y-2">
+                <p className="text-caption text-ink-muted">
+                  {totalMatches} match{totalMatches === 1 ? "" : "es"}
+                </p>
+                <div
+                  onScroll={onResultsScroll}
+                  className="max-h-80 space-y-1 overflow-y-auto"
+                >
+                  {results.map((product) => (
+                    <button
+                      key={product.id}
+                      type="button"
+                      onClick={() => setSelected(product)}
+                      className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-sm px-3 py-2 text-left transition-colors hover:bg-paper"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-body font-medium text-ink">
+                          {product.name}
+                        </span>
+                        <span className="block text-caption text-ink-muted">
+                          {product.sku ?? "No SKU"}
+                        </span>
                       </span>
-                      <span className="block text-caption text-ink-muted">
-                        {product.sku ?? "No SKU"}
+                      <span className="shrink-0 text-body font-semibold text-ink">
+                        <Money value={product.price} />
                       </span>
-                    </span>
-                    <span className="shrink-0 text-body font-semibold text-ink">
-                      <Money value={product.price} />
-                    </span>
-                  </button>
-                ))}
+                    </button>
+                  ))}
+                  {query.isFetchingNextPage ? (
+                    <p className="flex items-center justify-center gap-1.5 py-2 text-caption text-ink-muted">
+                      <Loader2 size={13} className="animate-spin" />
+                      Loading more…
+                    </p>
+                  ) : null}
+                </div>
               </div>
             ) : (
               <p className="flex flex-col items-center gap-2 py-8 text-center text-body text-ink-muted">
