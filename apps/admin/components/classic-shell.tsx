@@ -63,51 +63,41 @@ export function ClassicShell({
     return href === "/" ? pathname === "/" : pathname.startsWith(href);
   }
 
-  if (embedded) {
-    return (
-      <div className="flex min-h-screen flex-col bg-paper">
-        <header className="sticky top-0 z-30 flex items-center justify-end border-t border-border bg-surface px-2 py-1.5">
-          <LocationSwitcher />
-        </header>
-        <LocationMutationsBanner />
-        <main className="flex-1 px-2 py-2 sm:px-3 sm:py-3">{children}</main>
-
-        <footer className="border-t border-border bg-surface px-3 py-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))]">
-          <BrandFooter userEmail={userEmail} />
-        </footer>
-      </div>
-    );
-  }
-
   return (
     <div className="flex min-h-screen flex-col bg-paper">
       <header className="sticky top-0 z-30">
-      {/* Title bar */}
-      <div className="flex items-center gap-2 bg-primary px-2 py-2 pt-[calc(0.5rem+env(safe-area-inset-top))] text-white sm:gap-3 sm:px-3">
-        <button
-          type="button"
-          aria-label={drawerOpen ? "Close menu" : "Open menu"}
-          aria-expanded={drawerOpen}
-          onClick={() => setDrawerOpen((value) => !value)}
-          className="inline-flex size-9 shrink-0 items-center justify-center rounded-sm transition-colors hover:bg-white/10 md:hidden"
-        >
-          {drawerOpen ? <X size={18} strokeWidth={2} /> : <Menu size={18} strokeWidth={2} />}
-        </button>
+      {/* Title bar — dropped inside the mobile app's WebView, which already
+          shows its own back button + brand above this; a bare border
+          separates the two instead. */}
+      {embedded ? (
+        <div className="flex items-center justify-end border-t border-border bg-surface px-2 py-1.5">
+          <LocationSwitcher />
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 bg-primary px-2 py-2 pt-[calc(0.5rem+env(safe-area-inset-top))] text-white sm:gap-3 sm:px-3">
+          <button
+            type="button"
+            aria-label={drawerOpen ? "Close menu" : "Open menu"}
+            aria-expanded={drawerOpen}
+            onClick={() => setDrawerOpen((value) => !value)}
+            className="inline-flex size-9 shrink-0 items-center justify-center rounded-sm transition-colors hover:bg-white/10 md:hidden"
+          >
+            {drawerOpen ? <X size={18} strokeWidth={2} /> : <Menu size={18} strokeWidth={2} />}
+          </button>
 
-        <span className="hidden sm:block">{brandMark}</span>
-        <span className="min-w-0 flex-1 truncate text-body font-semibold tracking-tight">
-          <span className="sm:hidden">{storeName}</span>
-          <span className="hidden sm:inline">{storeName} — Back Office</span>
-        </span>
+          <span className="hidden sm:block">{brandMark}</span>
+          <span className="min-w-0 flex-1 truncate text-body font-semibold tracking-tight">
+            <span className="sm:hidden">{storeName}</span>
+            <span className="hidden sm:inline">{storeName} — Back Office</span>
+          </span>
 
-        <LocationSwitcher tone="onPrimary" className="shrink-0" />
+          <LocationSwitcher tone="onPrimary" className="shrink-0" />
 
-        <span className="hidden truncate text-caption text-white/75 lg:block">
-          {userName ?? "Signed in"}
-          {userEmail ? ` · ${userEmail}` : ""}
-        </span>
+          <span className="hidden truncate text-caption text-white/75 lg:block">
+            {userName ?? "Signed in"}
+            {userEmail ? ` · ${userEmail}` : ""}
+          </span>
 
-        {!embedded ? (
           <form action={signOut}>
             <button
               type="submit"
@@ -117,8 +107,8 @@ export function ClassicShell({
               <span className="hidden sm:inline">Exit</span>
             </button>
           </form>
-        ) : null}
-      </div>
+        </div>
+      )}
 
       {/* Menu bar — desktop */}
       <div
@@ -268,7 +258,7 @@ export function ClassicShell({
 
       {/* Status strip */}
       <footer className="border-t border-border bg-surface px-3 py-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))]">
-        <BrandFooter userEmail={userEmail} />
+        <BrandFooter userEmail={userEmail} compact={embedded} />
       </footer>
     </div>
   );

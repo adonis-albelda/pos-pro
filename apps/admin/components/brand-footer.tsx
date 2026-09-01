@@ -39,11 +39,25 @@ function RotatingServices() {
 export function BrandFooter({
   className,
   userEmail,
+  compact = false,
 }: {
   className?: string;
   userEmail?: string | null;
+  /** One quiet line — logo, brand, year. No tagline, no email. For the narrow WebView chrome. */
+  compact?: boolean;
 }) {
   const year = new Date().getFullYear();
+
+  if (compact) {
+    return (
+      <div className={cx("flex items-center justify-center gap-1.5 text-caption text-ink-muted", className)}>
+        <img src={APP_LOGO} alt="" className="size-4 shrink-0 object-contain" />
+        <span>
+          POSPro © {year} Double A Digital Solutions
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div
