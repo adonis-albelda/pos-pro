@@ -12,14 +12,14 @@ import {
   Warehouse,
 } from "lucide-react";
 import { formatMoney } from "@double-a/shared-types";
-import { DEFAULT_PAGE_SIZE, isInitialQueryLoad } from "@/lib/list-query";
+import { isInitialQueryLoad } from "@/lib/list-query";
 import { toCategoryOptions } from "@/lib/category-options";
 import { resolveDayWindow } from "@/lib/date-range";
 import { Card, StatCard } from "@/components/ui";
 import { TabNav } from "@/components/tab-nav";
 import { isReason } from "@/lib/inventory-reasons";
 import { useCategories } from "@/lib/query/categories";
-import { useProducts, useProductStats } from "@/lib/query/products";
+import { useProductStats } from "@/lib/query/products";
 import {
   useInventoryMovements,
   useMovementTotals,
@@ -93,20 +93,9 @@ export default function InventoryPage() {
   const statsQuery = useProductStats({ locationId: locationId ?? undefined });
   const categoriesQuery = useCategories({ includeInactive: true });
 
-  // Stock on hand tab only, but hooks stay unconditional — gated with
-  // `enabled` instead of a conditional call. Filtering/sorting/pagination
-  // all happen server-side now (IndexProductsController) — this fetches
-  // exactly one page of already-matching rows, not the whole catalogue.
-  const stockQuery = useProducts({
-    q: q || undefined,
-    categoryId: params.category,
-    state: state === "all" ? undefined : state,
-    sort: sort === "name" ? undefined : sort,
-    includeInactive: true,
-    page,
-    pageSize: DEFAULT_PAGE_SIZE,
-    locationId: locationId ?? undefined,
-  });
+  // Stock on hand tab's own rows are fetched inside StockPanel now (infinite
+  // scroll owns its own query there), not here — page.tsx only still needs
+  // q/state/category/sort to pass down as the active filters.
 
   // Movements tab only, but hooks stay unconditional — gated with `enabled`
   // instead of a conditional call. A name search reaches inventory_movements
@@ -165,13 +154,9 @@ export default function InventoryPage() {
     isMovementsTab &&
     (searchIdsQuery.isError || (movementsEnabled && (movementsQuery.isError || totalsQuery.isError)));
 
-  const stockTabPending =
-    !isMovementsTab && isInitialQueryLoad(stockQuery.isPending, Boolean(stockQuery.data));
-  const stockTabError = !isMovementsTab && stockQuery.isError;
-
-  const pending = statsQuery.isPending || categoriesQuery.isPending || stockTabPending || movementsTabPending;
-  const isError = statsQuery.isError || categoriesQuery.isError || stockTabError || movementsTabError;
-  const firstError = [statsQuery, categoriesQuery, stockQuery, movementsQuery, totalsQuery, searchIdsQuery]
+  const pending = statsQuery.isPending || categoriesQuery.isPending || movementsTabPending;
+  const isError = statsQuery.isError || categoriesQuery.isError || movementsTabError;
+  const firstError = [statsQuery, categoriesQuery, movementsQuery, totalsQuery, searchIdsQuery]
     .map((q2) => q2.error)
     .find((error) => error instanceof Error);
 
@@ -286,8 +271,6 @@ export default function InventoryPage() {
     );
   }
 
-  const stockPage = stockQuery.data ?? { products: [], total: 0, pageCount: 1, page: 1 };
-
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -323,18 +306,12 @@ export default function InventoryPage() {
       <TabNav items={tabs} active={tab} />
 
       <StockPanel
-        products={stockPage.products}
         categories={categoryOptions}
         query={q}
         state={state}
         sort={sort}
         category={params.category}
-        page={stockPage.page}
-        pageCount={stockPage.pageCount}
-        total={stockPage.total}
-        pageSize={DEFAULT_PAGE_SIZE}
         focusedProduct={focusedProduct}
-        fetching={stockQuery.isFetching && Boolean(stockQuery.data)}
       />
     </div>
   );
