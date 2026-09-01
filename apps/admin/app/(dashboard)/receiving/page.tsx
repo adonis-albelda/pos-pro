@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { PackageCheck } from "lucide-react";
 import { AdminGate } from "@/components/admin-gate";
@@ -10,13 +10,20 @@ import { useLocations } from "@/lib/query/locations";
 import { usePurchaseOrder, usePurchaseOrders } from "@/lib/query/purchase-orders";
 import { useLocationFilter } from "@/components/location-filter-provider";
 import { ReceivingForm } from "./receiving-form";
+import { ReceivingFollowUpBanner } from "./receiving-follow-up-banner";
+import { consumeReceivingFollowUp, type ReceivingFollowUp } from "./receiving-follow-up";
 
 function ReceivingPageClient() {
   const searchParams = useSearchParams();
   const [purchaseOrderId, setPurchaseOrderId] = useState(
     searchParams.get("purchase_order_id") ?? "",
   );
+  const [followUp, setFollowUp] = useState<ReceivingFollowUp | null>(null);
   const { locationId: currentLocationFilter } = useLocationFilter();
+
+  useEffect(() => {
+    setFollowUp(consumeReceivingFollowUp());
+  }, []);
 
   const suppliersQuery = useSuppliers();
   const locationsQuery = useLocations({ type: "branch" });
@@ -67,6 +74,9 @@ function ReceivingPageClient() {
             : "Log a delivery — from a supplier, with or without a purchase order — and restock inventory."
         }
       />
+      {followUp ? (
+        <ReceivingFollowUpBanner followUp={followUp} onDismiss={() => setFollowUp(null)} />
+      ) : null}
       <ReceivingForm
         suppliers={suppliersQuery.data ?? []}
         locations={locationsQuery.data ?? []}
@@ -75,6 +85,7 @@ function ReceivingPageClient() {
         onSelectPurchaseOrder={setPurchaseOrderId}
         linkedOrder={linkedOrder}
         defaultLocationId={currentLocationFilter}
+        onReceiptSaved={setFollowUp}
       />
     </div>
   );

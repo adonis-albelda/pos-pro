@@ -99,9 +99,11 @@ export function DemoSessionBanner() {
     <div className="flex items-center justify-center gap-2 border-b border-warning/50 bg-warning/18 px-4 py-2 text-center text-caption font-medium text-[#8a6516]">
       <Clock size={14} strokeWidth={2} className="shrink-0" />
       <span>
-        Demo account — available for {DemoAccount.SESSION_DAYS} days, demo purposes only. Please
-        don&apos;t navigate too fast — we intentionally throttle demo sessions to protect the
-        server. Time remaining: <span className="num font-semibold">{formatRemaining(remainingMs)}</span>
+        Demo account — you can use this for {DemoAccount.SESSION_DAYS} days. When time is up,
+        login stops. All demo data is permanently deleted {DemoAccount.PURGE_GRACE_DAYS} days
+        after that ({DemoAccount.PURGE_AFTER_DAYS} days total). Please use at a normal pace — we
+        limit speed on shared demos so the server stays available for everyone. Time remaining:{" "}
+        <span className="num font-semibold">{formatRemaining(remainingMs)}</span>
       </span>
     </div>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
 import {
   assembleBundle,
   cloneProduct,
@@ -104,7 +105,10 @@ export function useBelowReorder() {
 /** Call after saveProduct (Server Action) succeeds — revalidatePath doesn't touch this cache. */
 export function useInvalidateProducts() {
   const queryClient = useQueryClient();
-  return () => queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
+  return useCallback(
+    () => queryClient.invalidateQueries({ queryKey: queryKeys.products.all }),
+    [queryClient],
+  );
 }
 
 /**

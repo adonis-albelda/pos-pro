@@ -44,12 +44,17 @@ import {
   Textarea,
   Th,
 } from "@/components/ui";
-import { AiProcessingOverlay, ConfirmDialog, Dialog, Sheet } from "@/components/overlay";
+import { AiProcessingOverlay, Dialog, Sheet } from "@/components/overlay";
 import { isImageFile, NOT_AN_IMAGE_MESSAGE } from "@/lib/is-image-file";
 import { useGalleryPhotos } from "@/lib/query/gallery-photos";
 import { useCreateGoodsReceipt, useExtractGoodsReceiptPhoto } from "@/lib/query/goods-receipts";
 import { useInventoryProducts } from "@/lib/query/inventory";
 import { CropPhoto } from "../products/from-photo/crop-photo";
+import {
+  ReceivingPreviewDialog,
+  type ReceiptPreviewLine,
+} from "./receiving-preview-dialog";
+import { saveReceivingFollowUp, type ReceivingFollowUp } from "./receiving-follow-up";
 
 interface LineRow {
   key: string;
@@ -235,6 +240,7 @@ export function ReceivingForm({
   onSelectPurchaseOrder,
   linkedOrder,
   defaultLocationId,
+  onReceiptSaved,
 }: {
   suppliers: Supplier[];
   locations: Location[];
@@ -244,6 +250,7 @@ export function ReceivingForm({
   onSelectPurchaseOrder: (id: string) => void;
   linkedOrder: (PurchaseOrder & { items: PurchaseOrderItem[] }) | null;
   defaultLocationId: string | null;
+  onReceiptSaved?: (followUp: ReceivingFollowUp) => void;
 }) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -397,10 +404,46 @@ export function ReceivingForm({
   // a supplier/PO picked, or a manual line already added.
   const productsQuery = useInventoryProducts({
     enabled: Boolean(photo) || Boolean(supplierId) || Boolean(linkedOrder) || rows.length > 0,
+    locationId: locationId || undefined,
   });
   const products = useMemo(() => productsQuery.data ?? [], [productsQuery.data]);
 
   const productsById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
+
+  const supplierLabel = useMemo(() => {
+    if (linkedOrder) {
+      return suppliers.find((supplier) => supplier.id === linkedOrder.supplierId)?.name ?? "—";
+    }
+    if (supplierId) {
+      return suppliers.find((supplier) => supplier.id === supplierId)?.name ?? "—";
+    }
+    return supplierName.trim() || "—";
+  }, [linkedOrder, supplierId, supplierName, suppliers]);
+
+  const branchLabel = useMemo(
+    () => locations.find((location) => location.id === locationId)?.name ?? "—",
+    [locationId, locations],
+  );
+
+  const previewLines = useMemo((): ReceiptPreviewLine[] => {
+    return rows.filter(cleanableRow).map((row) => {
+      const product = row.productId ? productsById.get(row.productId) : undefined;
+      return {
+        key: row.key,
+        name: row.name.trim(),
+        sku: row.sku.trim(),
+        quantityReceived: Number(row.quantityReceived) || 0,
+        unitCost: Number(row.unitCost) || 0,
+        appliedPrice: row.appliedPrice.trim() ? Number(row.appliedPrice) : null,
+        productId: row.productId,
+        existingPrice: row.existingPrice,
+        existingCostPrice: row.existingCostPrice,
+        prevStock: product ? product.stockQuantity : null,
+        isFlagged: lineIsFlagged(row),
+        note: row.note,
+      };
+    });
+  }, [rows, productsById]);
 
   function addManualLine() {
     setRows((previous) => [
@@ -460,6 +503,15 @@ export function ReceivingForm({
       existingPrice: product.price,
       existingCostPrice: product.costPrice,
       appliedPrice: String(suggestPrice(unitCost, product.price, product.costPrice)),
+    });
+  }
+
+  function clearProductForRow(key: string) {
+    updateRow(key, {
+      productId: null,
+      matchedBy: null,
+      existingPrice: null,
+      existingCostPrice: null,
     });
   }
 
@@ -646,8 +698,9 @@ export function ReceivingForm({
     }));
 
     void (async () => {
+      let receipt;
       try {
-        await createReceiptMutation.mutateAsync({
+        receipt = await createReceiptMutation.mutateAsync({
           locationId,
           supplierId: linkedOrder ? linkedOrder.supplierId : supplierId || null,
           supplierName: linkedOrder || supplierId ? null : supplierName.trim(),
@@ -669,6 +722,21 @@ export function ReceivingForm({
 
       setConfirmOpen(false);
       toast.success("Receipt saved — stock and prices updated.");
+
+      if (!linkedOrder) {
+        const followUp: ReceivingFollowUp = {
+          savedAt: new Date().toISOString(),
+          catalogProducts: receipt.items
+            .filter((item) => item.productId)
+            .map((item) => ({ id: item.productId!, name: item.name })),
+          uncataloguedItems: receipt.items
+            .filter((item) => !item.productId)
+            .map((item) => ({ name: item.name, sku: item.sku })),
+        };
+        saveReceivingFollowUp(followUp);
+        onReceiptSaved?.(followUp);
+      }
+
       // Clear before navigating: an ad-hoc receipt (no PO) lands back on this
       // same URL, which Next won't remount, so the reset has to happen here
       // rather than relying on the navigation to blank the form for us.
@@ -1131,7 +1199,7 @@ export function ReceivingForm({
               <thead>
                 <tr>
                   <Th className="min-w-[18rem]">Item</Th>
-                  <Th numeric className="min-w-[2rem]">Qty</Th>
+                  <Th numeric className="w-[6.5rem]">Qty</Th>
                   <Th numeric className="min-w-[7rem]">Cost price</Th>
                   <Th numeric className="min-w-[8rem]">New cost price</Th>
                   <Th numeric className="min-w-[8rem]">Shelf Price</Th>
@@ -1156,40 +1224,35 @@ export function ReceivingForm({
                           placeholder="Item name"
                           className="mb-1"
                         />
-                        {row.productId ? (
+                        <div className="flex items-center gap-1">
                           <Combobox
-                            className="w-full"
+                            className="min-w-0 flex-1"
                             menuMinWidth={360}
-                            value={row.productId}
+                            value={row.productId ?? ""}
                             onChange={(productId) => pickProductForRow(row.key, productId)}
                             options={availableProductsFor(row).map((p) => ({
                               value: p.id,
                               label: p.name,
                               sublabel: p.sku ?? undefined,
                             }))}
+                            placeholder="Match an existing product…"
                           />
-                        ) : (
-                          <Combobox
-                            className="w-full"
-                            menuMinWidth={360}
-                            value=""
-                            onChange={(productId) => pickProductForRow(row.key, productId)}
-                            options={availableProductsFor(row).map((p) => ({
-                              value: p.id,
-                              label: p.name,
-                              sublabel: p.sku ?? undefined,
-                            }))}
-                            placeholder="Match a catalogue product…"
-                          />
-                        )}
+                          {row.productId ? (
+                            <IconButton
+                              icon={X}
+                              label="Remove product match"
+                              onClick={() => clearProductForRow(row.key)}
+                            />
+                          ) : null}
+                        </div>
                       </Td>
-                      <Td numeric>
-                        <div className="flex w-20 items-center gap-1">
+                      <Td numeric className="w-[6.5rem] align-top">
+                        <div className="flex items-center gap-1">
                           <Input
                             type="number"
                             min="0"
                             step="0.001"
-                            className="num min-w-0 flex-1 text-right"
+                            className="num w-[5rem] shrink-0 text-right"
                             value={row.quantityReceived}
                             onChange={(event) =>
                               updateRow(row.key, { quantityReceived: event.target.value })
@@ -1323,20 +1386,18 @@ export function ReceivingForm({
                       </Td>
                       <Td>
                         {!row.productId ? (
-                          <Badge tone="neutral">Not yet in catalogue</Badge>
+                          <Badge tone="neutral">New product</Badge>
                         ) : flagged ? (
                           <Badge tone="warning">Review</Badge>
                         ) : (
-                          <Badge tone="success">In catalogue</Badge>
+                          <Badge tone="success">Existing product</Badge>
                         )}
-                        {flagged ? (
-                          <Input
-                            value={row.note}
-                            onChange={(event) => updateRow(row.key, { note: event.target.value })}
-                            placeholder="Note (e.g. short by 2)"
-                            className="mt-1"
-                          />
-                        ) : null}
+                        <Input
+                          value={row.note}
+                          onChange={(event) => updateRow(row.key, { note: event.target.value })}
+                          placeholder={flagged ? "Note (e.g. short by 2)" : "Optional note"}
+                          className="mt-1"
+                        />
                       </Td>
                       <Td>
                         <div className="flex justify-end">
@@ -1366,9 +1427,11 @@ export function ReceivingForm({
       </div>
 
       {rows.some((row) => lineIsFlagged(row)) ? (
-        <div className="flex items-center gap-2 rounded-md border border-warning/30 bg-warning/10 px-4 py-3 text-caption text-warning-ink">
-          <TriangleAlert size={16} />
-          Some lines need review — they still save, but are flagged on the receipt.
+        <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-4 py-3 text-caption text-warning-ink">
+          <TriangleAlert size={16} className="mt-0.5 shrink-0" />
+          Some items are new and not in your product list yet. You can still save this receipt.
+          They will be added as hidden products and will not show in the shop until you finish
+          their full details.
         </div>
       ) : null}
 
@@ -1402,19 +1465,17 @@ export function ReceivingForm({
         </div>
       </div>
 
-      <ConfirmDialog
+      <ReceivingPreviewDialog
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
         onConfirm={submit}
         pending={saving}
-        title="Save this receipt?"
-        description={
-          rows.some((row) => lineIsFlagged(row))
-            ? "This restocks matched items and can adjust their prices. Some lines are flagged for review — they still save. You can't undo it from here."
-            : "This restocks matched items and can adjust their prices. You can't undo it from here."
-        }
-        confirmLabel="Save receipt"
-        confirmIcon={Save}
+        supplierLabel={supplierLabel}
+        branchLabel={branchLabel}
+        notes={notes}
+        referenceNo={referenceNo.trim()}
+        lines={previewLines}
+        hasFlaggedLines={previewLines.some((line) => line.isFlagged)}
       />
     </div>
   );

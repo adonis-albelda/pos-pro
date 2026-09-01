@@ -1122,7 +1122,7 @@ export default function ReceivingScreen() {
                   <View style={{ flexDirection: "row", gap: space.xs, flexWrap: "wrap" }}>
                     <Badge
                       tone={row.productId ? "success" : "warning"}
-                      label={row.productId ? "In catalogue" : "Not yet in catalogue"}
+                      label={row.productId ? "In catalogue" : "New Product"}
                     />
                     {row.isFlagged ? <Badge tone="danger" label="Check this line" /> : null}
                     {row.quantityOrdered !== null ? (

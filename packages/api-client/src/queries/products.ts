@@ -144,7 +144,7 @@ export async function getProductStats(
  */
 export async function listProducts(
   client: ApiClient,
-  options: { includeInactive?: boolean } = {},
+  options: { includeInactive?: boolean; locationId?: string } = {},
 ): Promise<Product[]> {
   const products: Product[] = [];
   let page = 1;
@@ -153,6 +153,7 @@ export async function listProducts(
       page,
       pageSize: 200,
       includeInactive: options.includeInactive,
+      locationId: options.locationId,
     });
     products.push(...result.products);
     if (page >= result.lastPage) return products;

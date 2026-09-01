@@ -3,7 +3,7 @@
 import type { Route } from "next";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import {
   Camera,
   Check,
@@ -442,6 +442,7 @@ export function ProductForm({
         }))
       : [emptyBundleRow()],
   );
+  const finishedSaveIdRef = useRef<string | null>(null);
 
   function onUnitChange(next: string) {
     if (!isProductUnit(next)) return;
@@ -450,12 +451,18 @@ export function ProductForm({
   }
 
   useEffect(() => {
-    if (!state.ok) return;
+    if (!state.ok || !state.id) return;
+    if (finishedSaveIdRef.current === state.id) return;
+    finishedSaveIdRef.current = state.id;
+
+    const productId = state.id;
+    const photoToUpload = pendingPhoto;
+    if (photoToUpload) setPendingPhoto(null);
 
     async function finish() {
-      if (pendingPhoto && state.id) {
+      if (photoToUpload) {
         try {
-          await uploadPhoto.mutateAsync({ id: state.id, photo: pendingPhoto });
+          await uploadPhoto.mutateAsync({ id: productId, photo: photoToUpload });
         } catch (error) {
           toast.error(
             error instanceof Error
@@ -465,7 +472,7 @@ export function ProductForm({
         }
       }
 
-      const bundleId = state.id ?? product?.id;
+      const bundleId = productId ?? product?.id;
       const validRows = bundleRows.filter(
         (row) => row.productId && Number(row.quantity) > 0,
       );
@@ -492,9 +499,8 @@ export function ProductForm({
     }
 
     void finish();
-    // pendingPhoto/uploadPhoto/state.id/isBundle/bundleRows/product are read once per successful submit, not re-run on their own changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.ok, saveRedirectHref, invalidate, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once per successful save (finishedSaveIdRef); bundle rows read at submit time.
+  }, [state.ok, state.id, saveRedirectHref, invalidate, router]);
 
   const priceValue = Number(price);
   const costValue = Number(costPrice);

@@ -22,7 +22,7 @@ import { queryKeys } from "./keys";
  * one more reader of it.
  */
 export function useInventoryProducts(
-  options: { includeInactive?: boolean; enabled?: boolean } = {},
+  options: { includeInactive?: boolean; enabled?: boolean; locationId?: string } = {},
 ) {
   const { enabled = true, ...listOptions } = options;
   return useQuery({

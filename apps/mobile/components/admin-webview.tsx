@@ -138,6 +138,7 @@ export function AdminWebView() {
         thirdPartyCookiesEnabled={false}
         cacheEnabled={false}
         setSupportMultipleWindows={false}
+        pullToRefreshEnabled
         allowsInlineMediaPlayback
         mediaPlaybackRequiresUserAction={false}
         originWhitelist={["https://*", "about:blank"]}
