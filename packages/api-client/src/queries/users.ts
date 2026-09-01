@@ -132,3 +132,9 @@ export async function countUsers(client: ApiClient): Promise<number> {
   const { data } = await client.get<{ data: { count: number } }>("/users/count");
   return data.count;
 }
+
+/** Shop admin resends verification email for an unverified admin/manager. */
+export async function sendUserEmailVerification(client: ApiClient, id: string): Promise<string> {
+  const { message } = await client.post<{ message: string }>(`/users/${id}/email/verification-notification`);
+  return message;
+}

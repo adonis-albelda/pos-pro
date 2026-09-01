@@ -7,6 +7,7 @@ import {
   HandHelping,
   KeyRound,
   Lock,
+  Mail,
   Pencil,
   Shield,
   Smartphone,
@@ -32,7 +33,7 @@ import {
 import { PasswordInput } from "@/components/password-input";
 import { ConfirmDialog, Dialog, Sheet } from "@/components/overlay";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
-import { useToggleUserCanSell } from "@/lib/query/users";
+import { useResendUserEmailVerification, useToggleUserCanSell } from "@/lib/query/users";
 import { useLocations } from "@/lib/query/locations";
 import { resetUserPassword } from "./actions";
 import { UserForm } from "./user-form";
@@ -112,10 +113,28 @@ export function UsersTable({
   const [resetting, setResetting] = useState<User | null>(null);
   const [toggling, setToggling] = useState<User | null>(null);
   const toggleCanSell = useToggleUserCanSell();
+  const resendVerification = useResendUserEmailVerification();
+  const [resendingId, setResendingId] = useState<string | null>(null);
   const locationsQuery = useLocations({ type: "branch" });
   const branchNameById = new Map(
     (locationsQuery.data ?? []).map((branch) => [branch.id, branch.name]),
   );
+
+  function resendEmailVerification(user: User) {
+    setResendingId(user.id);
+    resendVerification.mutate(user.id, {
+      onSuccess: () => {
+        toast.success(`Verification email sent to ${user.email}.`);
+        setResendingId(null);
+      },
+      onError: (error) => {
+        const message =
+          error instanceof ApiError ? error.message : "Could not send verification email.";
+        toast.error(message);
+        setResendingId(null);
+      },
+    });
+  }
 
   function confirmToggleSell() {
     if (!toggling) return;
@@ -141,6 +160,7 @@ export function UsersTable({
             <Th>Email</Th>
             {showBranch ? <Th>Branch</Th> : null}
             <Th>State</Th>
+            <Th>Verification</Th>
             <Th />
           </tr>
         </thead>
@@ -192,6 +212,23 @@ export function UsersTable({
                     ) : null}
                     {isUnverified ? <Badge tone="warning">Email unverified</Badge> : null}
                   </span>
+                </Td>
+                <Td>
+                  {isUnverified ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      icon={Mail}
+                      loading={resendingId === user.id}
+                      disabled={mutationsLocked}
+                      onClick={() => resendEmailVerification(user)}
+                    >
+                      Resend verification email
+                    </Button>
+                  ) : (
+                    <span className="text-caption text-ink-muted">—</span>
+                  )}
                 </Td>
                 <Td>
                   <div className="flex justify-end gap-1">

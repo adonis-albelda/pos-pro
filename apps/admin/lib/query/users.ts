@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { countUsers, listUsers, updateUser } from "@double-a/api-client/queries";
+import { countUsers, listUsers, sendUserEmailVerification, updateUser } from "@double-a/api-client/queries";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 import { queryKeys } from "./keys";
 
@@ -40,5 +40,11 @@ export function useToggleUserCanSell() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
     },
+  });
+}
+
+export function useResendUserEmailVerification() {
+  return useMutation({
+    mutationFn: (id: string) => sendUserEmailVerification(getBrowserApiClient(), id),
   });
 }
