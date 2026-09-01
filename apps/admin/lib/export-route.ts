@@ -1,9 +1,25 @@
 import type { ApiClient } from "@double-a/api-client";
+import { ApiError } from "@double-a/api-client";
 import { getFeatureFlags } from "@double-a/api-client/queries";
 import { toCsv, type CsvValue } from "@/lib/csv";
 import { storeToday } from "@/lib/date-range";
 import { getAuthedClient, getCurrentUser } from "@/lib/api/session";
 import { isShopAdmin } from "@/lib/authz";
+
+/** Blocks demo shops with more than 30 products from exporting product data. */
+export async function assertDemoProductExportAllowed(
+  client: ApiClient,
+): Promise<Response | null> {
+  try {
+    await client.get("/v1/export/products-eligibility");
+    return null;
+  } catch (error) {
+    if (error instanceof ApiError && error.isForbidden) {
+      return new Response(`${error.message}\n`, { status: 403 });
+    }
+    throw error;
+  }
+}
 
 /**
  * Every export route (sales, products, customers, ...) calls this — one

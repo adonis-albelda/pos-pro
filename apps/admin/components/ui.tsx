@@ -118,17 +118,37 @@ export function ButtonLink({
   icon: Icon,
   className,
   children,
+  href,
+  download,
   ...props
 }: ComponentProps<"a"> & {
   variant?: ButtonVariant;
   size?: ButtonSize;
   icon?: LucideIcon;
 }) {
-  return (
-    <a {...props} className={buttonClass(variant, size, className)}>
+  const content = (
+    <>
       {Icon ? <Icon size={size === "sm" ? 14 : 16} strokeWidth={2} /> : null}
       {children}
-    </a>
+    </>
+  );
+
+  // A `download` link (CSV/PDF exports) has to stay a real anchor — the
+  // browser needs a full navigation to save the file, and prefetching an
+  // export URL via Link would be wasted work anyway. Everything else is an
+  // in-app page, so it goes through Link like the rest of the PWA: no reload.
+  if (download || !href) {
+    return (
+      <a {...props} href={href} download={download} className={buttonClass(variant, size, className)}>
+        {content}
+      </a>
+    );
+  }
+
+  return (
+    <Link {...props} href={href as Route} className={buttonClass(variant, size, className)}>
+      {content}
+    </Link>
   );
 }
 

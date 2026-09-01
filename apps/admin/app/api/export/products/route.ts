@@ -1,6 +1,7 @@
 import { marginPercent } from "@double-a/shared-types";
 import { listProducts } from "@double-a/api-client/queries";
-import { csvExport } from "@/lib/export-route";
+import { assertDemoProductExportAllowed, csvExport } from "@/lib/export-route";
+import { getAuthedClient } from "@/lib/api/session";
 
 /**
  * The catalogue, laid out so the same file can be edited and handed back to
@@ -8,6 +9,9 @@ import { csvExport } from "@/lib/export-route";
  * ignores it, because stock moves through Inventory alone.
  */
 export async function GET(): Promise<Response> {
+  const blocked = await assertDemoProductExportAllowed(getAuthedClient());
+  if (blocked) return blocked;
+
   return csvExport("products", async (client) => {
     const products = await listProducts(client, { includeInactive: true });
 

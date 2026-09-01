@@ -274,6 +274,8 @@ export interface User {
   locationId: string | null;
   /** False when the shop account is disabled. Superadmin has no company — true. */
   companyIsActive: boolean;
+  /** Null until the emailed verification link is clicked — only ever sent for admin/manager roles (see StoreUserController). Every other role is created already verified. */
+  emailVerifiedAt: string | null;
   updatedAt: string;
 }
 

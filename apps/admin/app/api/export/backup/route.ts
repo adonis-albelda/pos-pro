@@ -11,6 +11,7 @@ import {
   sheetsToXlsx,
 } from "@/lib/backup-formats";
 import { storeToday } from "@/lib/date-range";
+import { assertDemoProductExportAllowed } from "@/lib/export-route";
 import { getAuthedClient, getCurrentUser } from "@/lib/api/session";
 import { isShopAdmin } from "@/lib/authz";
 
@@ -61,6 +62,11 @@ export async function GET(request: Request): Promise<Response> {
       );
     }
     ids = parts;
+  }
+
+  if (ids.includes("products") || ids.length === BACKUP_DATASETS.length) {
+    const blocked = await assertDemoProductExportAllowed(getAuthedClient());
+    if (blocked) return blocked;
   }
 
   try {

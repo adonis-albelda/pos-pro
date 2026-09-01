@@ -151,6 +151,11 @@ export function UsersTable({
               user.role === "admin" || user.role === "manager" || user.role === "device";
             const showSellToggle =
               user.role === "cashier" || user.role === "admin" || user.role === "manager";
+            // Only admin/manager are ever sent a verification email
+            // (StoreUserController) — every other role is created already
+            // verified, so this never shows for them.
+            const isUnverified =
+              (user.role === "admin" || user.role === "manager") && !user.emailVerifiedAt;
 
             return (
               <tr
@@ -185,6 +190,7 @@ export function UsersTable({
                     {user.mustChangePassword && canResetPassword ? (
                       <Badge tone="warning">Must change password</Badge>
                     ) : null}
+                    {isUnverified ? <Badge tone="warning">Email unverified</Badge> : null}
                   </span>
                 </Td>
                 <Td>

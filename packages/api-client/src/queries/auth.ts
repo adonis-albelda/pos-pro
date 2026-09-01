@@ -176,3 +176,24 @@ export async function resetPassword(client: ApiClient, input: ResetPasswordInput
     password_confirmation: input.password,
   });
 }
+
+export interface VerifyEmailInput {
+  id: string;
+  hash: string;
+  /** Both from the emailed link's own query string — the `signed` route middleware validates them server-side. */
+  expires: string;
+  signature: string;
+}
+
+/**
+ * Unauthenticated. The link the verification email points to
+ * (AppServiceProvider's VerifyEmail::createUrlUsing override) is a frontend
+ * page carrying these same four values in its own query string — this just
+ * replays them onto the real signed API route.
+ */
+export async function verifyEmail(client: ApiClient, input: VerifyEmailInput): Promise<void> {
+  await client.get<{ message: string }>(`/auth/email/verify/${input.id}/${input.hash}`, {
+    expires: input.expires,
+    signature: input.signature,
+  });
+}

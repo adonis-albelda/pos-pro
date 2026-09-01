@@ -41,7 +41,7 @@ export function getBrowserApiClient(): ApiClient {
   });
 }
 
-/** Unauthenticated client — login only. */
+/** Unauthenticated client — login, email verification, and other pre-session public endpoints. */
 export function getBrowserBareClient(): ApiClient {
   return new ApiClient({
     baseUrl: apiUrl(),

@@ -278,6 +278,7 @@ export interface UserAttrs {
   must_change_password: boolean;
   must_enroll_mfa: boolean;
   is_demo: boolean;
+  email_verified_at: string | null;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -297,6 +298,7 @@ export function toUser(resource: JsonApiResource<UserAttrs>): User {
     companyId: a.company_id ?? null,
     locationId: a.location_id ?? null,
     companyIsActive: a.company_is_active ?? true,
+    emailVerifiedAt: a.email_verified_at ?? null,
     updatedAt: a.updated_at ?? "",
   };
 }
