@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { ArrowLeft, Loader2, Package, Search, Tag, Truck, Warehouse } from "lucide-react";
+import { ArrowLeft, Camera, Loader2, Package, Search, Tag, Truck, Warehouse } from "lucide-react";
 import { formatMoney } from "@double-a/shared-types";
 import type { Product } from "@double-a/shared-types";
 import { listProductsPage } from "@double-a/api-client/queries";
@@ -92,7 +92,7 @@ export function PriceInquiryFab() {
         onClose={close}
         title="Price inquiry"
         description="Look up a product's cost, stock, supplier and shelf price."
-        className="max-w-4xl"
+        className="min-w-4xl"
       >
         {selected ? (
           <div className="space-y-4">
@@ -105,12 +105,21 @@ export function PriceInquiryFab() {
               Back to results
             </button>
 
-            <div>
-              <p className="text-body font-semibold text-ink">{selected.name}</p>
-              <p className="mt-0.5 text-caption text-ink-muted">
-                {selected.sku ?? "No SKU"}
-                {selected.category ? ` · ${selected.category}` : ""}
-              </p>
+            <div className="flex items-center gap-3">
+              <span className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-paper">
+                {selected.photoUrl ? (
+                  <img src={selected.photoUrl} alt="" className="size-full object-cover" />
+                ) : (
+                  <Camera size={22} strokeWidth={1.75} className="text-ink-muted" />
+                )}
+              </span>
+              <div className="min-w-0">
+                <p className="text-body font-semibold text-ink">{selected.name}</p>
+                <p className="mt-0.5 text-caption text-ink-muted">
+                  {selected.sku ?? "No SKU"}
+                  {selected.category ? ` · ${selected.category}` : ""}
+                </p>
+              </div>
             </div>
 
             <div className="rounded-md border border-primary/30 bg-primary/5 px-4 py-4 text-center">
@@ -188,12 +197,21 @@ export function PriceInquiryFab() {
                       onClick={() => setSelected(product)}
                       className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-sm px-3 py-2 text-left transition-colors hover:bg-paper"
                     >
-                      <span className="min-w-0">
-                        <span className="block truncate text-body font-medium text-ink">
-                          {product.name}
+                      <span className="flex min-w-0 items-center gap-2.5">
+                        <span className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border bg-paper">
+                          {product.photoUrl ? (
+                            <img src={product.photoUrl} alt="" className="size-full object-cover" />
+                          ) : (
+                            <Camera size={14} strokeWidth={2} className="text-ink-muted" />
+                          )}
                         </span>
-                        <span className="block text-caption text-ink-muted">
-                          {product.sku ?? "No SKU"}
+                        <span className="min-w-0">
+                          <span className="block truncate text-body font-medium text-ink">
+                            {product.name}
+                          </span>
+                          <span className="block text-caption text-ink-muted">
+                            {product.sku ?? "No SKU"}
+                          </span>
                         </span>
                       </span>
                       <span className="shrink-0 text-body font-semibold text-ink">
