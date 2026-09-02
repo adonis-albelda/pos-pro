@@ -177,7 +177,7 @@ export function ReceivingLineAccordion({
   const newShelf = row.appliedPrice.trim() !== "" ? Number(row.appliedPrice) : null;
   const nextStock = row.productId ? stockAfterReceive(currentStock, qty) : null;
   const inputsDisabled = !hasSupplier || row.excluded;
-  const showCategory = !row.productId;
+  const isNewProduct = !row.productId;
 
   const categoryValue = categoryComboboxValue(row, categoryOptions);
   const pendingHint = row.categoryHint.trim();
@@ -577,31 +577,31 @@ export function ReceivingLineAccordion({
               </div>
             </div>
 
-            {showCategory ? (
-              <div className={HALF_ROW}>
-                <div className={HALF_CELL}>
-                  <Field
-                    label="Category"
-                    hint={
-                      selectedCategory?.markupApplied
-                        ? `Markup ${selectedCategory.markupPercent}% fills shelf from cost.`
-                        : pendingHint && showReceiptCategoryOption
-                          ? "From the receipt — pick an existing category or create this one."
-                          : "Optional. Type to search or create a new category."
-                    }
-                  >
-                    <Combobox
-                      value={categoryValue}
-                      onChange={applyCategorySelection}
-                      creatable
-                      createOptionLabel={(typed) => `Create “${typed}”`}
-                      onCreate={onCreateCategory}
-                      disabled={inputsDisabled || creatingCategory}
-                      placeholder={creatingCategory ? "Creating…" : "No category"}
-                      options={categoryComboboxOptions}
-                    />
-                  </Field>
-                </div>
+            <div className={isNewProduct ? HALF_ROW : "w-full"}>
+              <div className={isNewProduct ? HALF_CELL : "w-full"}>
+                <Field
+                  label="Category"
+                  hint={
+                    selectedCategory?.markupApplied
+                      ? `Markup ${selectedCategory.markupPercent}% fills shelf from cost.`
+                      : pendingHint && showReceiptCategoryOption
+                        ? "From the receipt — pick an existing category or create this one."
+                        : "Optional. Type to search or create a new category."
+                  }
+                >
+                  <Combobox
+                    value={categoryValue}
+                    onChange={applyCategorySelection}
+                    creatable
+                    createOptionLabel={(typed) => `Create “${typed}”`}
+                    onCreate={onCreateCategory}
+                    disabled={inputsDisabled || creatingCategory}
+                    placeholder={creatingCategory ? "Creating…" : "No category"}
+                    options={categoryComboboxOptions}
+                  />
+                </Field>
+              </div>
+              {isNewProduct ? (
                 <div className={HALF_CELL}>
                   <Field
                     label="Shop visibility"
@@ -623,8 +623,8 @@ export function ReceivingLineAccordion({
                     </label>
                   </Field>
                 </div>
-              </div>
-            ) : null}
+              ) : null}
+            </div>
 
             <Field label="Note">
               <Input

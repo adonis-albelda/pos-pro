@@ -483,7 +483,7 @@ export function ReceivingForm({
     setRows((previous) => {
       let changed = false;
       const next = previous.map((row) => {
-        if (row.productId || row.categoryId || !row.categoryHint.trim()) return row;
+        if (row.categoryId || !row.categoryHint.trim()) return row;
         const hint = row.categoryHint.trim().toLowerCase();
         const match =
           categoryOptions.find((entry) => entry.name.trim().toLowerCase() === hint) ??
@@ -600,8 +600,8 @@ export function ReceivingForm({
       existingPrice: product.price,
       existingCostPrice: product.costPrice,
       appliedPrice: String(suggestPrice(unitCost, product.price, product.costPrice)),
-      categoryId: null,
-      categoryHint: "",
+      categoryId: product.categoryId ?? row?.categoryId ?? null,
+      categoryHint: product.category ?? row?.categoryHint ?? "",
     });
   }
 
@@ -868,6 +868,8 @@ export function ReceivingForm({
         }
         if (line.productId) {
           const product = productsById.get(line.productId);
+          const productCategoryId = product?.categoryId ?? null;
+          const productCategoryHint = product?.category ?? "";
           return {
             key: newKey(),
             ...withCategory,
@@ -880,8 +882,9 @@ export function ReceivingForm({
                   line.sku ?? undefined,
                 )
               : (line.sku ?? ""),
-            categoryId: null,
-            categoryHint: "",
+            // Prefer receipt/AI category when present; else catalogue category.
+            categoryId: withCategory.categoryId ?? productCategoryId,
+            categoryHint: withCategory.categoryHint || productCategoryHint,
           };
         }
         return { key: newKey(), ...withCategory };
@@ -958,7 +961,7 @@ export function ReceivingForm({
       isFlagged: lineIsFlagged(row),
       note: row.note.trim() || null,
       createHidden: !row.productId ? row.createHidden : undefined,
-      categoryId: !row.productId ? row.categoryId : undefined,
+      categoryId: row.categoryId,
     };
     });
 
@@ -967,7 +970,7 @@ export function ReceivingForm({
         // Pending AI/typed labels → create categories before the receipt save.
         const pendingNames = new Map<string, string>();
         for (const row of cleanRows) {
-          if (row.productId || row.categoryId || !row.categoryHint.trim()) continue;
+          if (row.categoryId || !row.categoryHint.trim()) continue;
           const name = row.categoryHint.trim();
           pendingNames.set(name.toLowerCase(), name);
         }
@@ -985,11 +988,10 @@ export function ReceivingForm({
             createdByLower.set(name.toLowerCase(), created.id);
           }
           for (const item of items) {
-            if (item.productId || item.categoryId) continue;
+            if (item.categoryId) continue;
             const row = cleanRows.find(
               (entry) =>
                 entry.name.trim() === item.name &&
-                !entry.productId &&
                 !entry.categoryId &&
                 entry.categoryHint.trim(),
             );

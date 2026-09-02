@@ -302,6 +302,8 @@ export function buildProductMatchPatch(
     existingPrice: product.price,
     existingCostPrice: product.costPrice,
     appliedPrice,
+    categoryId: row.categoryId ?? product.categoryId ?? null,
+    categoryHint: row.categoryHint.trim() || product.category || "",
   };
 }
 
