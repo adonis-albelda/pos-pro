@@ -405,9 +405,9 @@ export default function ReceivingScreen() {
   const extract = useMutation({
     mutationFn: async (uri: string) =>
       extractGoodsReceiptPhoto(getAdminApiClient(), toUploadFile(uri), purchaseOrderId),
-    onSuccess: (lines) => {
+    onSuccess: (result) => {
       setError(null);
-      setRows(lines.map(toReviewRow));
+      setRows(result.lines.map(toReviewRow));
     },
     onError: (cause) => setError(cause instanceof Error ? cause.message : "Could not read this photo."),
   });

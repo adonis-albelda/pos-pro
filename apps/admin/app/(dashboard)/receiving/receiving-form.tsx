@@ -13,21 +13,20 @@ import {
   PauseCircle,
   PlayCircle,
   Plus,
-  RotateCcw,
   Save,
   Settings,
   Sparkles,
   Trash2,
   TriangleAlert,
   Upload,
+  WandSparkles,
   X,
 } from "lucide-react";
-import { formatMoney, formatQuantity, roundMoney } from "@double-a/shared-types";
+import { formatQuantity } from "@double-a/shared-types";
 import type { Location, PurchaseOrder, PurchaseOrderItem, Supplier } from "@double-a/shared-types";
 import { ApiError } from "@double-a/api-client";
-import type { ExtractedReceiptLine, GoodsReceiptItemInput } from "@double-a/api-client/queries";
+import type { GoodsReceiptItemInput } from "@double-a/api-client/queries";
 import {
-  Badge,
   Button,
   buttonClass,
   Card,
@@ -37,14 +36,12 @@ import {
   Field,
   IconButton,
   Input,
-  Money,
-  MoneyInput,
   Table,
   Td,
   Textarea,
   Th,
 } from "@/components/ui";
-import { AiProcessingOverlay, Dialog, Sheet } from "@/components/overlay";
+import { AiProcessingOverlay, ConfirmDialog, Dialog, Sheet } from "@/components/overlay";
 import { isImageFile, NOT_AN_IMAGE_MESSAGE } from "@/lib/is-image-file";
 import { useGalleryPhotos } from "@/lib/query/gallery-photos";
 import { useCreateGoodsReceipt, useExtractGoodsReceiptPhoto } from "@/lib/query/goods-receipts";
@@ -55,29 +52,36 @@ import {
   type ReceiptPreviewLine,
 } from "./receiving-preview-dialog";
 import { saveReceivingFollowUp, type ReceivingFollowUp } from "./receiving-follow-up";
-
-interface LineRow {
-  key: string;
-  name: string;
-  sku: string;
-  quantityReceived: string;
-  unitCost: string;
-  productId: string | null;
-  matchedBy: "internal" | "supplier" | null;
-  existingPrice: number | null;
-  existingCostPrice: number | null;
-  purchaseOrderItemId: string | null;
-  quantityOrdered: number | null;
-  appliedPrice: string;
-  note: string;
-  // Snapshotted once, at extraction/creation — never touched afterward.
-  // What the reset icon on each amount field restores.
-  originalQuantityReceived: string;
-  originalUnitCost: string;
-  originalAppliedPrice: string;
-  /** Soft-remove — stays visible (grayed out, restorable) but dropped from what actually submits. */
-  excluded: boolean;
-}
+import {
+  clearReceivingDraft,
+  draftHasContent,
+  loadReceivingDraft,
+  saveReceivingDraft,
+  type ReceivingDraft,
+} from "./receiving-draft";
+import { ReceivingLineAccordion } from "./receiving-line-accordion";
+import {
+  allRowsResolved,
+  applyExtractedSupplierName,
+  availableProductsFor,
+  cleanableRow,
+  describeNoSubmittableRows,
+  emptyManualLineRow,
+  hasSupplierSelected,
+  lineIsFlagged,
+  lineIsResolved,
+  lineRowFromExtraction,
+  normalizeHeldRow,
+  productsForSelectedSupplier,
+  receiptSupplierSkuAfterMatch,
+  resolveRowPatch,
+  showInternalSkuField,
+  showProductMatchPicker,
+  suggestPrice,
+  unresolvedCount,
+  supplierSkuForSubmit,
+  type LineRow,
+} from "./receiving-line-utils";
 
 function newKey(): string {
   return Math.random().toString(36).slice(2);
@@ -111,44 +115,6 @@ async function compressImage(file: File): Promise<File> {
   return new File([blob], file.name.replace(/\.\w+$/, ".jpg"), { type: "image/jpeg" });
 }
 
-/**
- * Asymmetric on purpose: a supplier cost increase passes straight through to
- * the shelf so the margin doesn't quietly erode, but a cost decrease is
- * never auto-applied — the owner keeps that margin gain until they choose
- * to pass it on themselves.
- */
-function suggestPrice(newCost: number, existingPrice: number, existingCostPrice: number): number {
-  const increase = newCost - existingCostPrice;
-  return increase > 0 ? roundMoney(existingPrice + increase) : existingPrice;
-}
-
-const cleanableRow = (row: LineRow): boolean =>
-  !row.excluded && row.name.trim() !== "" && Number(row.quantityReceived) > 0;
-
-/**
- * The submit blocker used to just say "Add at least one item" whichever way
- * zero rows survived — including when rows plainly exist on screen but each
- * is missing a name or has a zero/blank quantity, which reads as a mystery
- * bug rather than a fixable data problem. Point at the actual reason.
- */
-function describeNoSubmittableRows(rows: LineRow[]): string {
-  if (rows.length === 0) {
-    return "Add at least one item — upload a photo or add a line manually.";
-  }
-  if (rows.every((row) => row.excluded)) {
-    return "Every line is marked removed — restore at least one, or add a new line.";
-  }
-  const reasons = new Set<string>();
-  for (const row of rows) {
-    if (row.excluded) continue;
-    if (!row.name.trim()) reasons.add("missing a name");
-    if (!(Number(row.quantityReceived) > 0)) reasons.add("zero or blank quantity");
-  }
-  return reasons.size > 0
-    ? `Every line has a problem (${[...reasons].join(", ")}) — check the Item and Qty columns.`
-    : "Add at least one item — upload a photo or add a line manually.";
-}
-
 /** Ported from the old Server Action verbatim — same ApiError shape either way, only the caller moved client-side. */
 function describeExtractError(error: unknown): string {
   if (error instanceof ApiError) {
@@ -174,15 +140,6 @@ function describeSaveError(error: unknown): string {
   }
   const message = error instanceof Error ? error.message : "Unknown error";
   return `Could not save this receipt: ${message}`;
-}
-
-function lineIsFlagged(row: LineRow): boolean {
-  if (!row.productId) return true;
-  if (row.quantityOrdered !== null) {
-    const received = Number(row.quantityReceived) || 0;
-    if (Math.abs(received - row.quantityOrdered) > 0.001) return true;
-  }
-  return false;
 }
 
 /**
@@ -255,6 +212,8 @@ export function ReceivingForm({
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const submittingRef = useRef(false);
+  const pendingGalleryRestoreId = useRef<string | null>(null);
+  const [draftHydrated, setDraftHydrated] = useState(false);
 
   const extractPhotoMutation = useExtractGoodsReceiptPhoto();
   const createReceiptMutation = useCreateGoodsReceipt();
@@ -273,6 +232,8 @@ export function ReceivingForm({
   const [photoRead, setPhotoRead] = useState(false);
   const [photoSheetOpen, setPhotoSheetOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  const [discardHeldConfirmOpen, setDiscardHeldConfirmOpen] = useState(false);
   const [quotaMessage, setQuotaMessage] = useState<string | null>(null);
   // "Choose file" opens this modal to pick a source; "gallery" shows the
   // pending-photos grid inside the same modal rather than a second dialog.
@@ -312,15 +273,42 @@ export function ReceivingForm({
   const [referenceNo, setReferenceNo] = useState(linkedOrder?.referenceNo ?? "");
   const [notes, setNotes] = useState("");
   const [rows, setRows] = useState<LineRow[]>([]);
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [heldReceipt, setHeldReceipt] = useState<HeldReceipt | null>(null);
 
-  // Client-only check — matches the null server render, so this never causes
-  // a hydration mismatch. Only offered on a blank form: resuming would
-  // otherwise silently clobber whatever the attendant is already mid-typing.
+  // Client-only — restore held receipt banner or auto-draft after refresh/exit.
   useEffect(() => {
-    if (rows.length > 0) return;
-    setHeldReceipt(loadHeldReceipt());
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    const held = loadHeldReceipt();
+    if (held) {
+      setHeldReceipt(held);
+      setDraftHydrated(true);
+      return;
+    }
+
+    const draft = loadReceivingDraft();
+    if (draft && draftHasContent(draft)) {
+      setLocationId(draft.locationId || (defaultLocationId ?? locations[0]?.id ?? ""));
+      setSupplierId(draft.supplierId);
+      setSupplierName(draft.supplierName);
+      setReferenceNo(draft.referenceNo);
+      setNotes(draft.notes);
+      setRows(draft.rows);
+      setExpandedKey(draft.expandedKey);
+      setPhotoRead(draft.photoRead);
+      setGalleryPhotoId(draft.galleryPhotoId);
+      pendingGalleryRestoreId.current = draft.galleryPhotoId;
+      onSelectPurchaseOrder(draft.purchaseOrderId);
+
+      if (draft.hadUnkeptPhoto && !draft.galleryPhotoId) {
+        toast.message("Your draft's photo wasn't kept — re-add it if you still need it.");
+      }
+
+      toast.message("Restored your unsaved receipt.");
+    }
+
+    setDraftHydrated(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Covers picking a PO from the dropdown mid-session, not just the
   // URL-preloaded case the initial useState above already handles.
@@ -343,9 +331,30 @@ export function ReceivingForm({
     setReferenceNo("");
     setNotes("");
     setRows([]);
+    setExpandedKey(null);
+    setError(null);
     removePhoto();
     onSelectPurchaseOrder("");
+    clearReceivingDraft();
   }
+
+  function clearAllData() {
+    resetForm();
+    clearHeldReceipt();
+    setHeldReceipt(null);
+    setConfirmOpen(false);
+    setClearConfirmOpen(false);
+    toast.success("Receipt cleared.");
+  }
+
+  const hasClearableData =
+    rows.length > 0 ||
+    Boolean(supplierId) ||
+    Boolean(supplierName.trim()) ||
+    Boolean(referenceNo.trim()) ||
+    Boolean(notes.trim()) ||
+    Boolean(photo) ||
+    Boolean(galleryPhotoId);
 
   function holdReceipt() {
     saveHeldReceipt({
@@ -360,6 +369,7 @@ export function ReceivingForm({
       galleryPhotoId,
       hadUnkeptPhoto: Boolean(photo) && !galleryPhotoId,
     });
+    clearReceivingDraft();
     toast.success(
       photo && !galleryPhotoId
         ? "Receipt held — its photo wasn't kept, you'll need to re-add it on resume."
@@ -378,7 +388,10 @@ export function ReceivingForm({
     setLocationId(heldReceipt.locationId);
     setReferenceNo(heldReceipt.referenceNo);
     setNotes(heldReceipt.notes);
-    setRows(heldReceipt.rows);
+    const normalizedRows = heldReceipt.rows.map(normalizeHeldRow);
+    setRows(normalizedRows);
+    const firstUnresolved = normalizedRows.find((row) => !row.excluded && !lineIsResolved(row));
+    setExpandedKey(firstUnresolved?.key ?? normalizedRows[0]?.key ?? null);
     onSelectPurchaseOrder(heldReceipt.purchaseOrderId);
 
     const galleryRecord = heldReceipt.galleryPhotoId
@@ -391,12 +404,16 @@ export function ReceivingForm({
     }
 
     clearHeldReceipt();
+    clearReceivingDraft();
     setHeldReceipt(null);
   }
 
   function discardHeldReceipt() {
     clearHeldReceipt();
+    clearReceivingDraft();
     setHeldReceipt(null);
+    setDiscardHeldConfirmOpen(false);
+    toast.success("Held receipt discarded.");
   }
 
   // Full-catalogue walk (listProducts pages through everything) — only worth
@@ -409,6 +426,24 @@ export function ReceivingForm({
   const products = useMemo(() => productsQuery.data ?? [], [productsQuery.data]);
 
   const productsById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
+
+  const hasLinkedOrder = Boolean(linkedOrder);
+  const supplierScopedProducts = useMemo(
+    () =>
+      productsForSelectedSupplier(
+        products,
+        suppliers,
+        linkedOrder?.supplierId ?? supplierId,
+        supplierName,
+        hasLinkedOrder,
+      ),
+    [products, suppliers, linkedOrder?.supplierId, supplierId, supplierName, hasLinkedOrder],
+  );
+
+  const showMatchPicker = showProductMatchPicker(supplierId, supplierName, hasLinkedOrder);
+  const hasSupplier = hasSupplierSelected(supplierId, supplierName, hasLinkedOrder);
+  const pendingCount = unresolvedCount(rows);
+  const canSave = allRowsResolved(rows);
 
   const supplierLabel = useMemo(() => {
     if (linkedOrder) {
@@ -446,28 +481,9 @@ export function ReceivingForm({
   }, [rows, productsById]);
 
   function addManualLine() {
-    setRows((previous) => [
-      ...previous,
-      {
-        key: newKey(),
-        name: "",
-        sku: "",
-        quantityReceived: "1",
-        unitCost: "",
-        productId: null,
-        matchedBy: null,
-        existingPrice: null,
-        existingCostPrice: null,
-        purchaseOrderItemId: null,
-        quantityOrdered: null,
-        appliedPrice: "",
-        note: "",
-        originalQuantityReceived: "1",
-        originalUnitCost: "",
-        originalAppliedPrice: "",
-        excluded: false,
-      },
-    ]);
+    const key = newKey();
+    setRows((previous) => [...previous, { key, ...emptyManualLineRow() }]);
+    setExpandedKey(key);
   }
 
   function updateRow(key: string, patch: Partial<LineRow>) {
@@ -491,14 +507,14 @@ export function ReceivingForm({
     const product = productsById.get(productId);
     if (!product) return;
     const row = rows.find((r) => r.key === key);
-    // First time this row has both a cost and a catalogue price to compare —
-    // the unitCost input's own onChange only fires on a later edit, so the
-    // very first match needs to compute the suggestion right here too.
     const unitCost = Number(row?.unitCost) || 0;
+    const priorReceipt =
+      row?.receiptSupplierSku.trim() || (!row?.productId ? row?.sku.trim() : "") || "";
     updateRow(key, {
       productId: product.id,
       name: row?.name.trim() ? row.name : product.name,
       sku: product.sku ?? "",
+      receiptSupplierSku: receiptSupplierSkuAfterMatch(priorReceipt, product, "internal", priorReceipt || undefined),
       matchedBy: "internal",
       existingPrice: product.price,
       existingCostPrice: product.costPrice,
@@ -507,22 +523,61 @@ export function ReceivingForm({
   }
 
   function clearProductForRow(key: string) {
+    const row = rows.find((r) => r.key === key);
     updateRow(key, {
       productId: null,
       matchedBy: null,
       existingPrice: null,
       existingCostPrice: null,
+      receiptSupplierSku: row?.receiptSupplierSku.trim() || "",
+      sku: "",
     });
   }
 
-  /** Products already matched on another row don't show up again — no picking the same product twice. */
-  function availableProductsFor(currentRow: LineRow) {
-    const usedElsewhere = new Set(
-      rows
-        .filter((row) => row.key !== currentRow.key && row.productId)
-        .map((row) => row.productId),
-    );
-    return products.filter((product) => !usedElsewhere.has(product.id));
+  function matchProductsForRow(currentRow: LineRow) {
+    return availableProductsFor(currentRow, rows, supplierScopedProducts);
+  }
+
+  function resolveOneRow(key: string) {
+    setRows((previous) => {
+      const row = previous.find((r) => r.key === key);
+      if (!row) return previous;
+      const pool = availableProductsFor(row, previous, supplierScopedProducts);
+      const patch = resolveRowPatch(row, pool);
+      if (!patch) return previous;
+      return previous.map((r) => (r.key === key ? { ...r, ...patch } : r));
+    });
+  }
+
+  function resolveAllRows() {
+    setRows((previous) => {
+      const supplierProducts = productsForSelectedSupplier(
+        products,
+        suppliers,
+        linkedOrder?.supplierId ?? supplierId,
+        supplierName,
+        hasLinkedOrder,
+      );
+      let resolvedNow = 0;
+      const next = previous.map((row) => {
+        const pool = availableProductsFor(row, previous, supplierProducts);
+        const patch = resolveRowPatch(row, pool);
+        if (patch) {
+          resolvedNow++;
+          return { ...row, ...patch };
+        }
+        return row;
+      });
+      const still = unresolvedCount(next);
+      toast.success(
+        resolvedNow > 0
+          ? `Resolved ${resolvedNow} item${resolvedNow === 1 ? "" : "s"}${still > 0 ? ` — ${still} still need details` : ""}.`
+          : still > 0
+            ? `${still} item${still === 1 ? "" : "s"} still need details.`
+            : "All items are ready.",
+      );
+      return next;
+    });
   }
 
   /** Only stages the file for preview — AI extraction is a separate, explicit step below. */
@@ -558,6 +613,7 @@ export function ReceivingForm({
    * of re-uploading the same bytes it just downloaded).
    */
   async function pickGalleryPhoto(record: { id: string; photoUrl: string }) {
+    pendingGalleryRestoreId.current = null;
     setGalleryFetchError(null);
     try {
       const response = await fetch(record.photoUrl);
@@ -576,6 +632,57 @@ export function ReceivingForm({
     }
   }
 
+  // Gallery list may load after draft restore — fetch the photo once it appears.
+  useEffect(() => {
+    const pendingId = pendingGalleryRestoreId.current;
+    if (!pendingId || photo) return;
+    const record = (galleryQuery.data ?? []).find((item) => item.id === pendingId);
+    if (!record) return;
+    void pickGalleryPhoto(record);
+  }, [galleryQuery.data, photo]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Debounced auto-save — survives refresh/accidental tab close. Direct photo
+  // uploads can't be serialized; gallery picks persist via galleryPhotoId.
+  useEffect(() => {
+    if (!draftHydrated) return;
+
+    const draft: ReceivingDraft = {
+      savedAt: new Date().toISOString(),
+      locationId,
+      supplierId,
+      supplierName,
+      purchaseOrderId,
+      referenceNo,
+      notes,
+      rows,
+      galleryPhotoId,
+      hadUnkeptPhoto: Boolean(photo) && !galleryPhotoId,
+      photoRead,
+      expandedKey,
+    };
+
+    if (!draftHasContent(draft)) {
+      clearReceivingDraft();
+      return;
+    }
+
+    const timeout = window.setTimeout(() => saveReceivingDraft(draft), 500);
+    return () => window.clearTimeout(timeout);
+  }, [
+    draftHydrated,
+    locationId,
+    supplierId,
+    supplierName,
+    purchaseOrderId,
+    referenceNo,
+    notes,
+    rows,
+    galleryPhotoId,
+    photo,
+    photoRead,
+    expandedKey,
+  ]);
+
   function runExtraction() {
     const source = workingPhoto ?? photo;
     if (!source) return;
@@ -583,9 +690,9 @@ export function ReceivingForm({
     setError(null);
     void (async () => {
       const compressed = await compressImage(source);
-      let lines: ExtractedReceiptLine[];
+      let extractResult;
       try {
-        lines = await extractPhotoMutation.mutateAsync({
+        extractResult = await extractPhotoMutation.mutateAsync({
           photo: compressed,
           purchaseOrderId: linkedOrder ? linkedOrder.id : null,
         });
@@ -598,44 +705,48 @@ export function ReceivingForm({
         return;
       }
 
-      if (lines.length === 0) {
+      if (extractResult.lines.length === 0) {
         setError("No line items found. Use a clearer shot with one item per row.");
         return;
       }
 
-      const extractedRows: LineRow[] = lines.map((line) => {
-        const unitCost = line.unitCost ?? 0;
-        const appliedPrice =
-          line.existingPrice !== null && line.existingCostPrice !== null
-            ? suggestPrice(unitCost, line.existingPrice, line.existingCostPrice)
-            : null;
-        const quantityReceived = line.quantityReceived !== null ? String(line.quantityReceived) : "1";
-        const unitCostStr = line.unitCost !== null ? String(line.unitCost) : "";
-        const appliedPriceStr = appliedPrice !== null ? String(appliedPrice) : "";
+      const supplierPatch = applyExtractedSupplierName(
+        extractResult.supplierName,
+        suppliers,
+        supplierId,
+        supplierName,
+        hasLinkedOrder,
+      );
+      if (supplierPatch) {
+        setSupplierId(supplierPatch.supplierId);
+        setSupplierName(supplierPatch.supplierName);
+      }
 
-        return {
-          key: newKey(),
-          name: line.name,
-          sku: line.sku ?? "",
-          quantityReceived,
-          unitCost: unitCostStr,
-          productId: line.productId,
-          matchedBy: line.matchedBy,
-          existingPrice: line.existingPrice,
-          existingCostPrice: line.existingCostPrice,
-          purchaseOrderItemId: line.purchaseOrderItemId,
-          quantityOrdered: line.quantityOrdered,
-          appliedPrice: appliedPriceStr,
-          note: "",
-          originalQuantityReceived: quantityReceived,
-          originalUnitCost: unitCostStr,
-          originalAppliedPrice: appliedPriceStr,
-          excluded: false,
-        };
+      const extractedRows: LineRow[] = extractResult.lines.map((line) => {
+        const base = lineRowFromExtraction(line);
+        if (line.productId) {
+          const product = productsById.get(line.productId);
+          return {
+            key: newKey(),
+            ...base,
+            sku: product?.sku ?? "",
+            receiptSupplierSku: product
+              ? receiptSupplierSkuAfterMatch(
+                  line.sku ?? "",
+                  product,
+                  line.matchedBy ?? "internal",
+                  line.sku ?? undefined,
+                )
+              : (line.sku ?? ""),
+          };
+        }
+        return { key: newKey(), ...base };
       });
 
       setPhotoRead(true);
       setRows((previous) => [...previous, ...extractedRows]);
+      const firstUnresolved = extractedRows.find((row) => !lineIsResolved(row));
+      setExpandedKey(firstUnresolved?.key ?? extractedRows[0]?.key ?? null);
     })();
   }
 
@@ -650,7 +761,11 @@ export function ReceivingForm({
       setError("Pick a supplier, or type one in for an ad-hoc delivery.");
       return;
     }
-    if (rows.filter(cleanableRow).length === 0) {
+    if (rows.filter((row) => !row.excluded).length === 0) {
+      setError(describeNoSubmittableRows(rows));
+      return;
+    }
+    if (!allRowsResolved(rows)) {
       setError(describeNoSubmittableRows(rows));
       return;
     }
@@ -683,19 +798,24 @@ export function ReceivingForm({
     // but name/sku/note, and JSON.stringify drops undefined keys outright —
     // Laravel's parseItems() then sees no quantity_received/unit_cost and
     // skips every row, which is exactly the "Add at least one item." bug.
-    const items: GoodsReceiptItemInput[] = cleanRows.map((row) => ({
+    const items: GoodsReceiptItemInput[] = cleanRows.map((row) => {
+      const product = row.productId ? productsById.get(row.productId) : undefined;
+      return {
       name: row.name.trim(),
       sku: row.sku.trim() || null,
+      supplierSku: supplierSkuForSubmit(row, product),
       quantityReceived: Number(row.quantityReceived) || 0,
       unitCost: Number(row.unitCost) || 0,
-      productId: row.productId,
+      productId: row.productId || null,
       matchedBy: row.matchedBy,
       purchaseOrderItemId: row.purchaseOrderItemId,
       quantityOrdered: row.quantityOrdered,
       appliedPrice: row.appliedPrice.trim() ? Number(row.appliedPrice) : null,
       isFlagged: lineIsFlagged(row),
       note: row.note.trim() || null,
-    }));
+      createHidden: !row.productId ? row.createHidden : undefined,
+    };
+    });
 
     void (async () => {
       let receipt;
@@ -771,7 +891,12 @@ export function ReceivingForm({
             </div>
           </div>
           <div className="flex gap-2">
-            <Button type="button" variant="secondary" size="sm" onClick={discardHeldReceipt}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setDiscardHeldConfirmOpen(true)}
+            >
               Discard
             </Button>
             <Button type="button" size="sm" icon={PlayCircle} onClick={resumeHeldReceipt}>
@@ -1183,245 +1308,76 @@ export function ReceivingForm({
         <Card>
           <CardHeader
             title="Items received"
-            description="From the photo, or added manually."
+            description="From the photo, or added manually. Each item must be complete before saving."
             action={
-              <Button type="button" variant="secondary" size="sm" icon={Plus} onClick={addManualLine}>
-                Add line
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                {rows.length > 0 ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    icon={WandSparkles}
+                    onClick={resolveAllRows}
+                    disabled={!hasSupplier}
+                  >
+                    Resolve all
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  icon={Plus}
+                  onClick={addManualLine}
+                  disabled={!hasSupplier}
+                >
+                  Add line
+                </Button>
+              </div>
             }
           />
+          {!hasSupplier ? (
+            <div
+              role="status"
+              className="mx-4  mt-2 flex items-start gap-3 border-b border-amber-500/30 bg-amber-500/10 px-3 py-2.5 sm:mx-6"
+            >
+              <TriangleAlert size={16} className="mt-0.5 shrink-0 text-amber-700" strokeWidth={2} />
+              <p className="text-caption leading-relaxed text-ink">
+                Pick a supplier first to continue editing the items — choose one from the list
+                above, or type a walk-in supplier name.
+              </p>
+            </div>
+          ) : null}
           {rows.length === 0 ? (
             <p className="px-4 py-8 text-center text-body text-ink-muted sm:px-6">
               Upload a photo above, or add a line manually.
             </p>
           ) : (
-            <Table>
-              <thead>
-                <tr>
-                  <Th className="min-w-[18rem]">Item</Th>
-                  <Th numeric className="w-[6.5rem]">Qty</Th>
-                  <Th numeric className="min-w-[7rem]">Cost price</Th>
-                  <Th numeric className="min-w-[8rem]">New cost price</Th>
-                  <Th numeric className="min-w-[8rem]">Shelf Price</Th>
-                  <Th className="min-w-[9rem]">Status</Th>
-                  <Th />
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => {
-                  const flagged = lineIsFlagged(row);
-                  return (
-                    <tr key={row.key} className={row.excluded ? "bg-canvas opacity-50" : undefined}>
-                      <Td className="min-w-[18rem] align-top">
-                        {row.excluded ? (
-                          <p className="mb-1 text-caption font-medium text-danger">
-                            This item will not be included
-                          </p>
-                        ) : null}
-                        <Input
-                          value={row.name}
-                          onChange={(event) => updateRow(row.key, { name: event.target.value })}
-                          placeholder="Item name"
-                          className="mb-1"
-                        />
-                        <div className="flex items-center gap-1">
-                          <Combobox
-                            className="min-w-0 flex-1"
-                            menuMinWidth={360}
-                            value={row.productId ?? ""}
-                            onChange={(productId) => pickProductForRow(row.key, productId)}
-                            options={availableProductsFor(row).map((p) => ({
-                              value: p.id,
-                              label: p.name,
-                              sublabel: p.sku ?? undefined,
-                            }))}
-                            placeholder="Match an existing product…"
-                          />
-                          {row.productId ? (
-                            <IconButton
-                              icon={X}
-                              label="Remove product match"
-                              onClick={() => clearProductForRow(row.key)}
-                            />
-                          ) : null}
-                        </div>
-                      </Td>
-                      <Td numeric className="w-[6.5rem] align-top">
-                        <div className="flex items-center gap-1">
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.001"
-                            className="num w-[5rem] shrink-0 text-right"
-                            value={row.quantityReceived}
-                            onChange={(event) =>
-                              updateRow(row.key, { quantityReceived: event.target.value })
-                            }
-                          />
-                          {row.quantityReceived !== row.originalQuantityReceived ? (
-                            <IconButton
-                              icon={RotateCcw}
-                              label="Reset to original quantity"
-                              onClick={() =>
-                                updateRow(row.key, { quantityReceived: row.originalQuantityReceived })
-                              }
-                            />
-                          ) : null}
-                        </div>
-                        {row.quantityOrdered !== null ? (
-                          <p className="mt-1 text-caption text-ink-muted">
-                            Ordered {formatQuantity(row.quantityOrdered)}
-                          </p>
-                        ) : null}
-                      </Td>
-                      <Td numeric>
-                        {/* Current catalogue cost — read-only. No match yet: fall back to
-                            whatever's on the receipt, since there's no catalogue figure to show. */}
-                        <Money
-                          value={row.existingCostPrice ?? (Number(row.unitCost) || 0)}
-                          className="text-ink-muted"
-                        />
-                      </Td>
-                      <Td numeric>
-                        <div className="flex items-center gap-1">
-                          <MoneyInput
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            className="text-right"
-                            value={row.unitCost}
-                            onChange={(event) => {
-                              const unitCost = Number(event.target.value) || 0;
-                              const nextAppliedPrice =
-                                row.existingPrice !== null && row.existingCostPrice !== null
-                                  ? String(suggestPrice(unitCost, row.existingPrice, row.existingCostPrice))
-                                  : row.appliedPrice;
-                              updateRow(row.key, {
-                                unitCost: event.target.value,
-                                appliedPrice: nextAppliedPrice,
-                              });
-                            }}
-                          />
-                          {row.unitCost !== row.originalUnitCost ? (
-                            <IconButton
-                              icon={RotateCcw}
-                              label="Reset to original cost"
-                              onClick={() => {
-                                const unitCost = Number(row.originalUnitCost) || 0;
-                                const nextAppliedPrice =
-                                  row.existingPrice !== null && row.existingCostPrice !== null
-                                    ? String(suggestPrice(unitCost, row.existingPrice, row.existingCostPrice))
-                                    : row.originalAppliedPrice;
-                                updateRow(row.key, {
-                                  unitCost: row.originalUnitCost,
-                                  appliedPrice: nextAppliedPrice,
-                                });
-                              }}
-                            />
-                          ) : null}
-                        </div>
-                        {row.existingCostPrice !== null ? (
-                          (() => {
-                            const delta = roundMoney((Number(row.unitCost) || 0) - row.existingCostPrice!);
-                            if (delta === 0) {
-                              return <p className="mt-1 text-caption text-ink-muted">No change</p>;
-                            }
-                            return (
-                              <p
-                                className={`mt-1 text-caption ${delta > 0 ? "text-danger" : "text-success"}`}
-                              >
-                                {delta > 0 ? "+" : "−"}
-                                {formatMoney(Math.abs(delta))} vs current
-                              </p>
-                            );
-                          })()
-                        ) : (
-                          <p className="mt-1 text-caption text-ink-muted">New product</p>
-                        )}
-                      </Td>
-                      <Td numeric>
-                        <div className="flex items-center gap-1">
-                          <MoneyInput
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            className={`text-right ${
-                              !row.productId && !(Number(row.appliedPrice) > 0)
-                                ? "border-danger focus:ring-danger/30"
-                                : ""
-                            }`}
-                            value={row.appliedPrice}
-                            onChange={(event) =>
-                              updateRow(row.key, { appliedPrice: event.target.value })
-                            }
-                          />
-                          {row.appliedPrice !== row.originalAppliedPrice ? (
-                            <IconButton
-                              icon={RotateCcw}
-                              label="Reset to original selling price"
-                              onClick={() =>
-                                updateRow(row.key, { appliedPrice: row.originalAppliedPrice })
-                              }
-                            />
-                          ) : null}
-                        </div>
-                        {!row.productId && !(Number(row.appliedPrice) > 0) ? (
-                          <p className="mt-1 text-caption font-medium text-danger">Needs a value</p>
-                        ) : row.existingPrice !== null ? (
-                          (() => {
-                            const delta = roundMoney((Number(row.appliedPrice) || 0) - row.existingPrice!);
-                            if (delta === 0) {
-                              return <p className="mt-1 text-caption text-ink-muted">No change</p>;
-                            }
-                            return (
-                              <p
-                                className={`mt-1 text-caption ${delta > 0 ? "text-success" : "text-danger"}`}
-                              >
-                                {delta > 0 ? "+" : "−"}
-                                {formatMoney(Math.abs(delta))} vs current
-                              </p>
-                            );
-                          })()
-                        ) : null}
-                      </Td>
-                      <Td>
-                        {!row.productId ? (
-                          <Badge tone="neutral">New product</Badge>
-                        ) : flagged ? (
-                          <Badge tone="warning">Review</Badge>
-                        ) : (
-                          <Badge tone="success">Existing product</Badge>
-                        )}
-                        <Input
-                          value={row.note}
-                          onChange={(event) => updateRow(row.key, { note: event.target.value })}
-                          placeholder={flagged ? "Note (e.g. short by 2)" : "Optional note"}
-                          className="mt-1"
-                        />
-                      </Td>
-                      <Td>
-                        <div className="flex justify-end">
-                          {row.excluded ? (
-                            <IconButton
-                              icon={RotateCcw}
-                              label="Restore line"
-                              onClick={() => toggleRowExcluded(row.key)}
-                            />
-                          ) : (
-                            <IconButton
-                              icon={Trash2}
-                              label="Remove line"
-                              tone="danger"
-                              onClick={() => toggleRowExcluded(row.key)}
-                            />
-                          )}
-                        </div>
-                      </Td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </Table>
+            <div className="space-y-3 px-4 pb-4 sm:px-6">
+              {rows.map((row, index) => {
+                const product = row.productId ? productsById.get(row.productId) : undefined;
+                return (
+                  <ReceivingLineAccordion
+                    key={row.key}
+                    row={row}
+                    index={index}
+                    expanded={expandedKey === row.key}
+                    onToggle={() => setExpandedKey(expandedKey === row.key ? null : row.key)}
+                    hasSupplier={hasSupplier}
+                    showMatchPicker={showMatchPicker}
+                    showInternalSku={showInternalSkuField(row)}
+                    matchedProduct={product}
+                    currentStock={product?.stockQuantity ?? null}
+                    matchProducts={matchProductsForRow(row)}
+                    onUpdate={(patch) => updateRow(row.key, patch)}
+                    onPickProduct={(productId) => pickProductForRow(row.key, productId)}
+                    onClearProduct={() => clearProductForRow(row.key)}
+                    onResolve={() => resolveOneRow(row.key)}
+                    onToggleExcluded={() => toggleRowExcluded(row.key)}
+                  />
+                );
+              })}
+            </div>
           )}
         </Card>
       </div>
@@ -1430,14 +1386,19 @@ export function ReceivingForm({
         <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-4 py-3 text-caption text-warning-ink">
           <TriangleAlert size={16} className="mt-0.5 shrink-0" />
           Some items are new and not in your product list yet. You can still save this receipt.
-          They will be added as hidden products and will not show in the shop until you finish
-          their full details.
+          Use &ldquo;Hide from shop&rdquo; on each new line if you want them off the floor until
+          their full details are finished.
         </div>
       ) : null}
 
       {error ? <ErrorNote>{error}</ErrorNote> : null}
 
       <div className="sticky bottom-0 z-10 rounded-md border border-border bg-surface px-4 py-4 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] sm:px-6">
+        {pendingCount > 0 ? (
+          <p className="mb-3 text-center text-caption text-ink-muted">
+            {pendingCount} item{pendingCount === 1 ? "" : "s"} still need details before you can save.
+          </p>
+        ) : null}
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button
             type="button"
@@ -1452,6 +1413,16 @@ export function ReceivingForm({
           <Button
             type="button"
             variant="ghost"
+            icon={Trash2}
+            className="w-full sm:w-auto"
+            disabled={!hasClearableData || saving}
+            onClick={() => setClearConfirmOpen(true)}
+          >
+            Clear data
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
             icon={PauseCircle}
             className="w-full sm:w-auto"
             disabled={rows.length === 0 && !supplierId && !supplierName.trim() && !notes.trim()}
@@ -1459,11 +1430,37 @@ export function ReceivingForm({
           >
             Hold receipt
           </Button>
-          <Button icon={Save} loading={saving} onClick={requestSubmit} className="w-full sm:w-auto">
+          <Button
+            icon={Save}
+            loading={saving}
+            disabled={!canSave || saving}
+            onClick={requestSubmit}
+            className="w-full sm:w-auto"
+          >
             {saving ? "Saving..." : "Save receipt"}
           </Button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={discardHeldConfirmOpen}
+        onClose={() => setDiscardHeldConfirmOpen(false)}
+        onConfirm={discardHeldReceipt}
+        title="Discard held receipt?"
+        description="This permanently deletes the held receipt saved in this browser, including its line items. This cannot be undone."
+        confirmLabel="Discard"
+        confirmIcon={Trash2}
+      />
+
+      <ConfirmDialog
+        open={clearConfirmOpen}
+        onClose={() => setClearConfirmOpen(false)}
+        onConfirm={clearAllData}
+        title="Clear this receipt?"
+        description="This removes all delivery details and line items on this page, including the auto-saved draft. This cannot be undone."
+        confirmLabel="Clear data"
+        confirmIcon={Trash2}
+      />
 
       <ReceivingPreviewDialog
         open={confirmOpen}

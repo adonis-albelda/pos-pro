@@ -169,8 +169,8 @@ export function ReceivingPreviewDialog({
           <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-caption text-warning-ink">
             <TriangleAlert size={15} className="mt-0.5 shrink-0" />
             Some items are new and not in your product list yet. You can still save this receipt.
-            They will be added as hidden products and will not show in the shop until you finish
-            their full details.
+            Use &ldquo;Hide from shop&rdquo; on each new line if you want them off the floor until
+            their full details are finished.
           </div>
         ) : null}
 

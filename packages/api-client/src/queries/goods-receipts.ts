@@ -45,24 +45,32 @@ function fromLineAttrs(line: ExtractedReceiptLineAttrs): ExtractedReceiptLine {
   };
 }
 
+export interface ExtractedReceiptPhotoResult {
+  lines: ExtractedReceiptLine[];
+  supplierName: string | null;
+}
+
 /** Vision extraction runs server-side (DeliveryReceiptExtractor via Laravel AI / OpenAI). */
 export async function extractGoodsReceiptPhoto(
   client: ApiClient,
   photo: MultipartFile,
   purchaseOrderId?: string | null,
-): Promise<ExtractedReceiptLine[]> {
+): Promise<ExtractedReceiptPhotoResult> {
   const formData = new FormData();
   await appendMultipartFile(formData, "photo", photo);
   if (purchaseOrderId) {
     appendMultipartField(formData, "purchase_order_id", purchaseOrderId);
   }
 
-  const result = await client.postMultipart<{ data: ExtractedReceiptLineAttrs[] }>(
-    "/goods-receipts/extract-photo",
-    formData,
-  );
+  const result = await client.postMultipart<{
+    data: ExtractedReceiptLineAttrs[];
+    meta?: { supplier_name?: string | null };
+  }>("/goods-receipts/extract-photo", formData);
 
-  return result.data.map(fromLineAttrs);
+  return {
+    lines: result.data.map(fromLineAttrs),
+    supplierName: result.meta?.supplier_name ?? null,
+  };
 }
 
 export interface GoodsReceiptItem {
@@ -158,6 +166,7 @@ function toGoodsReceipt(resource: JsonApiResource<GoodsReceiptAttrs>): GoodsRece
 export interface GoodsReceiptItemInput {
   name: string;
   sku: string | null;
+  supplierSku?: string | null;
   quantityReceived: number;
   unitCost: number;
   productId: string | null;
@@ -167,6 +176,7 @@ export interface GoodsReceiptItemInput {
   appliedPrice: number | null;
   isFlagged: boolean;
   note: string | null;
+  createHidden?: boolean;
 }
 
 export interface CreateGoodsReceiptInput {
@@ -187,6 +197,7 @@ function toItemsJson(items: GoodsReceiptItemInput[]): string {
     items.map((item) => ({
       name: item.name,
       sku: item.sku,
+      supplier_sku: item.supplierSku ?? null,
       quantity_received: item.quantityReceived,
       unit_cost: item.unitCost,
       product_id: item.productId,
@@ -196,6 +207,7 @@ function toItemsJson(items: GoodsReceiptItemInput[]): string {
       applied_price: item.appliedPrice,
       is_flagged: item.isFlagged,
       note: item.note,
+      create_hidden: item.createHidden ?? true,
     })),
   );
 }
