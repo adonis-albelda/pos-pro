@@ -53,6 +53,8 @@ import {
 } from "@/components/ui";
 import { toast } from "sonner";
 import { AiProcessingOverlay, ConfirmDialog, Dialog, Sheet } from "@/components/overlay";
+import { visionProcessingHint } from "@/lib/ai-processing-hint";
+import { useCurrentUser } from "@/lib/query/session";
 import { AiSearchModal } from "@/components/ai-search-modal";
 import { ProductGridTile } from "@/components/product-grid-tile";
 import { CropPhoto } from "../../products/from-photo/crop-photo";
@@ -93,6 +95,7 @@ const GRID_PAGE_SIZE = 24;
 
 export function CreateSaleForm() {
   const router = useRouter();
+  const { data: currentUser } = useCurrentUser();
   const customersQuery = useCustomers();
   const categoriesQuery = useCategories();
   const { isEnabled } = useFeatureFlags();
@@ -1274,7 +1277,11 @@ export function CreateSaleForm() {
         </div>
       </Dialog>
 
-      <AiProcessingOverlay open={photoReading} message="AI is reading your photo" />
+      <AiProcessingOverlay
+        open={photoReading}
+        message="AI is reading your photo"
+        hint={visionProcessingHint(currentUser?.isDemo ?? false)}
+      />
     </div>
   );
 

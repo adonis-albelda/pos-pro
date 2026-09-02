@@ -5,7 +5,14 @@ export interface ExtractedReceiptLine {
   name: string;
   sku: string | null;
   quantityReceived: number | null;
+  /** Supplier's un-discounted cost — printed price marked back up by discountPercent, when one applied. */
   unitCost: number | null;
+  /** The price as printed on the receipt, before the discount markup above. Null when unitCost has no discount applied. */
+  printedUnitCost: number | null;
+  /** Discount percent found for this line (its own, or the receipt-wide one) — null when none applied. */
+  discountPercent: number | null;
+  /** Product category/type from the receipt when legible. */
+  category: string | null;
   productId: string | null;
   matchedBy: "internal" | "supplier" | null;
   existingPrice: number | null;
@@ -20,6 +27,9 @@ interface ExtractedReceiptLineAttrs {
   sku: string | null;
   quantity_received: number | null;
   unit_cost: number | null;
+  printed_unit_cost: number | null;
+  discount_percent: number | null;
+  category: string | null;
   product_id: string | null;
   matched_by: "internal" | "supplier" | null;
   existing_price: number | null;
@@ -35,6 +45,9 @@ function fromLineAttrs(line: ExtractedReceiptLineAttrs): ExtractedReceiptLine {
     sku: line.sku,
     quantityReceived: line.quantity_received,
     unitCost: line.unit_cost,
+    printedUnitCost: line.printed_unit_cost,
+    discountPercent: line.discount_percent,
+    category: line.category ?? null,
     productId: line.product_id,
     matchedBy: line.matched_by,
     existingPrice: line.existing_price,
@@ -180,6 +193,8 @@ export interface GoodsReceiptItemInput {
   isFlagged: boolean;
   note: string | null;
   createHidden?: boolean;
+  /** New products only — assigned on catalogue create. */
+  categoryId?: string | null;
 }
 
 export interface CreateGoodsReceiptInput {
@@ -211,6 +226,7 @@ function toItemsJson(items: GoodsReceiptItemInput[]): string {
       is_flagged: item.isFlagged,
       note: item.note,
       create_hidden: item.createHidden ?? true,
+      category_id: item.categoryId ?? null,
     })),
   );
 }

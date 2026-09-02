@@ -316,9 +316,11 @@ function ProcessingDots() {
 export function AiProcessingOverlay({
   open,
   message = "AI is processing",
+  hint = "This may take a moment.",
 }: {
   open: boolean;
   message?: string;
+  hint?: string;
 }) {
   const labelId = useId();
   const { mounted, entered } = usePresence(open);
@@ -361,7 +363,7 @@ export function AiProcessingOverlay({
               {message}
               <ProcessingDots />
             </p>
-            <p className="mt-1 text-caption text-ink-muted">This may take a moment.</p>
+            <p className="mt-1 text-caption text-ink-muted">{hint}</p>
           </div>
         </div>
       </div>

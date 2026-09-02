@@ -33,8 +33,10 @@ import {
   Select,
   SuccessNote,
 } from "@/components/ui";
+import { visionProcessingHint } from "@/lib/ai-processing-hint";
 import { indentLabel, type CategoryOption } from "@/lib/category-options";
 import { isImageFile, NOT_AN_IMAGE_MESSAGE } from "@/lib/is-image-file";
+import { useCurrentUser } from "@/lib/query/session";
 import {
   checkSkuExists,
   extractProductsFromImage,
@@ -384,6 +386,7 @@ function DraftRow({
 }
 
 export function FromPhotoPanel({ categories }: { categories: CategoryOption[] }) {
+  const { data: user } = useCurrentUser();
   const inputRef = useRef<HTMLInputElement>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   // What actually gets read — the original pick, or the cropped result.
@@ -528,7 +531,11 @@ export function FromPhotoPanel({ categories }: { categories: CategoryOption[] })
 
   return (
     <div className="space-y-6">
-      <AiProcessingOverlay open={reading} message="AI is reading your photo" />
+      <AiProcessingOverlay
+        open={reading}
+        message="AI is reading your photo"
+        hint={visionProcessingHint(user?.isDemo ?? false)}
+      />
       <Card>
         <CardHeader
           icon={Camera}

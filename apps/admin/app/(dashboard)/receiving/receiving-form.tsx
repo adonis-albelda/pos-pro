@@ -24,7 +24,7 @@ import {
   WandSparkles,
   X,
 } from "lucide-react";
-import { formatQuantity } from "@double-a/shared-types";
+import { formatQuantity, roundMoney } from "@double-a/shared-types";
 import type { Location, PurchaseOrder, PurchaseOrderItem, Supplier } from "@double-a/shared-types";
 import { ApiError } from "@double-a/api-client";
 import type { GoodsReceiptItemInput } from "@double-a/api-client/queries";
@@ -44,9 +44,13 @@ import {
   Th,
 } from "@/components/ui";
 import { AiProcessingOverlay, ConfirmDialog, Dialog, Sheet } from "@/components/overlay";
+import { visionProcessingHint } from "@/lib/ai-processing-hint";
 import { isImageFile, NOT_AN_IMAGE_MESSAGE } from "@/lib/is-image-file";
 import { useGalleryPhotos } from "@/lib/query/gallery-photos";
+import { useCurrentUser } from "@/lib/query/session";
 import { useCreateGoodsReceipt, useExtractGoodsReceiptPhoto } from "@/lib/query/goods-receipts";
+import { useCategories, useCreateCategory } from "@/lib/query/categories";
+import { toCategoryOptions } from "@/lib/category-options";
 import { listProductsByIds, listProductsPage } from "@double-a/api-client/queries";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 import { CropPhoto } from "../products/from-photo/crop-photo";
@@ -212,6 +216,7 @@ export function ReceivingForm({
   onReceiptSaved?: (followUp: ReceivingFollowUp) => void;
 }) {
   const router = useRouter();
+  const { data: currentUser } = useCurrentUser();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const submittingRef = useRef(false);
   const pendingGalleryRestoreId = useRef<string | null>(null);
@@ -219,6 +224,12 @@ export function ReceivingForm({
 
   const extractPhotoMutation = useExtractGoodsReceiptPhoto();
   const createReceiptMutation = useCreateGoodsReceipt();
+  const categoriesQuery = useCategories({ includeInactive: true });
+  const createCategoryMutation = useCreateCategory();
+  const categoryOptions = useMemo(
+    () => toCategoryOptions(categoriesQuery.data ?? []),
+    [categoriesQuery.data],
+  );
   const extracting = extractPhotoMutation.isPending;
   const saving = createReceiptMutation.isPending;
   const [error, setError] = useState<string | null>(null);
@@ -435,11 +446,9 @@ export function ReceivingForm({
     toast.success("Draft discarded.");
   }
 
-  // Match picker loads pages on demand (supplier_id filter + scroll). Keep
-  // matched/picked rows in a local map for stock, price, and preview lookups.
+  // Match picker loads pages on demand (infinite scroll). Keep matched/picked
+  // rows in a local map for stock, price, and preview lookups.
   const [pickedProducts, setPickedProducts] = useState<Map<string, Product>>(() => new Map());
-
-  const matchSupplierId = linkedOrder?.supplierId ?? (supplierId || undefined);
 
   const matchedProductIds = useMemo(
     () => [...new Set(rows.map((row) => row.productId).filter((id): id is string => Boolean(id)))],
@@ -467,6 +476,25 @@ export function ReceivingForm({
       return next;
     });
   }, [matchedProductsQuery.data]);
+
+  // Extract may land before categories finish loading — bind exact name/path matches after.
+  useEffect(() => {
+    if (categoryOptions.length === 0) return;
+    setRows((previous) => {
+      let changed = false;
+      const next = previous.map((row) => {
+        if (row.productId || row.categoryId || !row.categoryHint.trim()) return row;
+        const hint = row.categoryHint.trim().toLowerCase();
+        const match =
+          categoryOptions.find((entry) => entry.name.trim().toLowerCase() === hint) ??
+          categoryOptions.find((entry) => entry.path.trim().toLowerCase() === hint);
+        if (!match) return row;
+        changed = true;
+        return { ...row, categoryId: match.id };
+      });
+      return changed ? next : previous;
+    });
+  }, [categoryOptions]);
 
   const productsById = pickedProducts;
 
@@ -523,6 +551,27 @@ export function ReceivingForm({
     setRows((previous) => previous.map((row) => (row.key === key ? { ...row, ...patch } : row)));
   }
 
+  async function createCategoryForRow(key: string, name: string) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+
+    const existing = categoryOptions.find(
+      (option) => option.name.trim().toLowerCase() === trimmed.toLowerCase(),
+    );
+    if (existing) {
+      updateRow(key, { categoryId: existing.id, categoryHint: existing.name });
+      return;
+    }
+
+    try {
+      const created = await createCategoryMutation.mutateAsync({ name: trimmed });
+      updateRow(key, { categoryId: created.id, categoryHint: created.name });
+      toast.success(`Category “${created.name}” created.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not create category.");
+    }
+  }
+
   /** Soft-remove — the row stays put, grayed out, and can be restored; only excluded from submit. */
   function toggleRowExcluded(key: string) {
     setRows((previous) =>
@@ -551,6 +600,8 @@ export function ReceivingForm({
       existingPrice: product.price,
       existingCostPrice: product.costPrice,
       appliedPrice: String(suggestPrice(unitCost, product.price, product.costPrice)),
+      categoryId: null,
+      categoryHint: "",
     });
   }
 
@@ -582,7 +633,6 @@ export function ReceivingForm({
         pageSize: 200,
         includeInactive: true,
         locationId: locationId || undefined,
-        supplierId: matchSupplierId,
       });
       products.push(...result.products);
       if (page >= result.lastPage) return products;
@@ -791,11 +841,36 @@ export function ReceivingForm({
 
       const extractedRows: LineRow[] = extractResult.lines.map((line) => {
         const base = lineRowFromExtraction(line);
+        const hint = (line.category ?? "").trim();
+        const matchedCategoryId =
+          categoryOptions.find(
+            (entry) => entry.name.trim().toLowerCase() === hint.toLowerCase(),
+          )?.id ||
+          categoryOptions.find(
+            (entry) => entry.path.trim().toLowerCase() === hint.toLowerCase(),
+          )?.id ||
+          null;
+        const withCategory: Omit<LineRow, "key"> = {
+          ...base,
+          categoryId: matchedCategoryId,
+          categoryHint: hint,
+        };
+        if (matchedCategoryId) {
+          const option = categoryOptions.find((entry) => entry.id === matchedCategoryId);
+          if (option?.markupApplied && withCategory.unitCost.trim() && !withCategory.productId) {
+            const cost = Number(withCategory.unitCost);
+            if (Number.isFinite(cost)) {
+              withCategory.appliedPrice = String(
+                roundMoney(cost * (1 + option.markupPercent / 100)),
+              );
+            }
+          }
+        }
         if (line.productId) {
           const product = productsById.get(line.productId);
           return {
             key: newKey(),
-            ...base,
+            ...withCategory,
             sku: product?.sku ?? "",
             receiptSupplierSku: product
               ? receiptSupplierSkuAfterMatch(
@@ -805,9 +880,11 @@ export function ReceivingForm({
                   line.sku ?? undefined,
                 )
               : (line.sku ?? ""),
+            categoryId: null,
+            categoryHint: "",
           };
         }
-        return { key: newKey(), ...base };
+        return { key: newKey(), ...withCategory };
       });
 
       setPhotoRead(true);
@@ -881,10 +958,53 @@ export function ReceivingForm({
       isFlagged: lineIsFlagged(row),
       note: row.note.trim() || null,
       createHidden: !row.productId ? row.createHidden : undefined,
+      categoryId: !row.productId ? row.categoryId : undefined,
     };
     });
 
     void (async () => {
+      try {
+        // Pending AI/typed labels → create categories before the receipt save.
+        const pendingNames = new Map<string, string>();
+        for (const row of cleanRows) {
+          if (row.productId || row.categoryId || !row.categoryHint.trim()) continue;
+          const name = row.categoryHint.trim();
+          pendingNames.set(name.toLowerCase(), name);
+        }
+        if (pendingNames.size > 0) {
+          const createdByLower = new Map<string, string>();
+          for (const name of pendingNames.values()) {
+            const existing = categoryOptions.find(
+              (option) => option.name.trim().toLowerCase() === name.toLowerCase(),
+            );
+            if (existing) {
+              createdByLower.set(name.toLowerCase(), existing.id);
+              continue;
+            }
+            const created = await createCategoryMutation.mutateAsync({ name });
+            createdByLower.set(name.toLowerCase(), created.id);
+          }
+          for (const item of items) {
+            if (item.productId || item.categoryId) continue;
+            const row = cleanRows.find(
+              (entry) =>
+                entry.name.trim() === item.name &&
+                !entry.productId &&
+                !entry.categoryId &&
+                entry.categoryHint.trim(),
+            );
+            if (!row) continue;
+            const id = createdByLower.get(row.categoryHint.trim().toLowerCase());
+            if (id) item.categoryId = id;
+          }
+        }
+      } catch (err) {
+        submittingRef.current = false;
+        setConfirmOpen(false);
+        setError(err instanceof Error ? err.message : "Could not create category.");
+        return;
+      }
+
       const saveSupplierId = linkedOrder ? linkedOrder.supplierId : supplierId || null;
       const saveSupplierName = saveSupplierId
         ? (suppliers.find((supplier) => supplier.id === saveSupplierId)?.name ?? null)
@@ -942,7 +1062,11 @@ export function ReceivingForm({
 
   return (
     <div className="space-y-6">
-      <AiProcessingOverlay open={extracting} message="Reading the delivery receipt" />
+      <AiProcessingOverlay
+        open={extracting}
+        message="Reading the delivery receipt"
+        hint={visionProcessingHint(currentUser?.isDemo ?? false)}
+      />
 
       {draftPendingRestore && !heldReceipt ? (
         <Card className="flex flex-col gap-3 border-primary/30 bg-primary/5 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
@@ -1472,9 +1596,11 @@ export function ReceivingForm({
                     showInternalSku={showInternalSkuField(row)}
                     matchedProduct={product}
                     currentStock={product?.stockQuantity ?? null}
-                    matchSupplierId={matchSupplierId}
                     matchLocationId={locationId || undefined}
                     excludeMatchProductIds={excludeMatchProductIds(row.key)}
+                    categoryOptions={categoryOptions}
+                    creatingCategory={createCategoryMutation.isPending}
+                    onCreateCategory={(name) => void createCategoryForRow(row.key, name)}
                     onUpdate={(patch) => updateRow(row.key, patch)}
                     onPickProduct={(picked) => pickProductForRow(row.key, picked)}
                     onClearProduct={() => clearProductForRow(row.key)}

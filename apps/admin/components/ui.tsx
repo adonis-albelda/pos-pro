@@ -647,6 +647,10 @@ export function Combobox({
   className,
   /** Dropdown panel at least this wide (px) — use when trigger sits in a narrow table cell. */
   menuMinWidth,
+  /** When true, typing a novel label offers a Create option (Enter / click). */
+  creatable = false,
+  createOptionLabel,
+  onCreate,
 }: {
   name?: string;
   /** Controlled selection — when given, this is authoritative over defaultValue. */
@@ -660,7 +664,11 @@ export function Combobox({
   required?: boolean;
   className?: string;
   menuMinWidth?: number;
+  creatable?: boolean;
+  createOptionLabel?: (query: string) => string;
+  onCreate?: (label: string) => void;
 }) {
+  const CREATE_VALUE = "__combobox_create__";
   const [internal, setInternal] = useState(value ?? defaultValue ?? "");
   const selected = value ?? internal;
 
@@ -722,15 +730,39 @@ export function Combobox({
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    if (!needle) return options;
-    return options.filter(
-      (option) =>
-        option.label.toLowerCase().includes(needle) ||
-        (option.sublabel ?? "").toLowerCase().includes(needle),
-    );
-  }, [options, query]);
+    const base = !needle
+      ? options
+      : options.filter(
+          (option) =>
+            option.label.toLowerCase().includes(needle) ||
+            (option.sublabel ?? "").toLowerCase().includes(needle),
+        );
+
+    if (!creatable) return base;
+
+    const typed = query.trim();
+    if (!typed) return base;
+
+    const exact = options.some((option) => option.label.trim().toLowerCase() === typed.toLowerCase());
+    if (exact) return base;
+
+    return [
+      {
+        value: CREATE_VALUE,
+        label: createOptionLabel?.(typed) ?? `Create “${typed}”`,
+      },
+      ...base,
+    ];
+  }, [options, query, creatable, createOptionLabel]);
 
   function commit(nextValue: string) {
+    if (nextValue === CREATE_VALUE && creatable) {
+      const typed = query.trim();
+      setOpen(false);
+      setQuery("");
+      if (typed) onCreate?.(typed);
+      return;
+    }
     setInternal(nextValue);
     onChange?.(nextValue);
     setOpen(false);

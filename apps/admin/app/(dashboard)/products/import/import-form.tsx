@@ -62,6 +62,8 @@ import {
   canUseDocumentScanCamera,
   DocumentScanCamera,
 } from "@/components/document-scan-camera";
+import { visionProcessingHint } from "@/lib/ai-processing-hint";
+import { useCurrentUser } from "@/lib/query/session";
 import { FileColumnsTable } from "./file-columns-table";
 import { ImportInfoCards } from "./import-info-cards";
 import { ImportProgress } from "./import-progress";
@@ -72,10 +74,15 @@ import { CropPhoto } from "../from-photo/crop-photo";
 
 function ReadPhotoButton({ disabled }: { disabled?: boolean }) {
   const { pending } = useFormStatus();
+  const { data: user } = useCurrentUser();
 
   return (
     <>
-      <AiProcessingOverlay open={pending} message="AI is reading your photo" />
+      <AiProcessingOverlay
+        open={pending}
+        message="AI is reading your photo"
+        hint={visionProcessingHint(user?.isDemo ?? false)}
+      />
       <Button
         type="submit"
         name="intent"

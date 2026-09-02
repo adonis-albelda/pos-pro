@@ -10,7 +10,6 @@ import { IconButton } from "@/components/ui";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 
 const PAGE_SIZE = 50;
-const LOAD_MORE_THRESHOLD_PX = 80;
 const SEARCH_DEBOUNCE_MS = 150;
 
 function cx(...parts: (string | false | null | undefined)[]): string {
@@ -21,8 +20,8 @@ const CONTROL_STYLES =
   "w-full rounded-sm border border-border bg-surface px-3 text-body text-ink shadow-xs outline-none transition-[color,box-shadow,border-color] placeholder:text-ink-muted focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50";
 
 /**
- * Supplier-scoped product picker for receiving lines — paginated API +
- * infinite scroll, same pattern as inventory/stock-form ProductPicker.
+ * Product picker for receiving / PO lines — paginated API + infinite scroll
+ * (IntersectionObserver sentinel at list bottom). Optional supplier_id filter.
  */
 export function MatchProductCombobox({
   supplierId,
@@ -58,6 +57,7 @@ export function MatchProductCombobox({
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   const excluded = useMemo(() => new Set(excludeProductIds), [excludeProductIds]);
 
@@ -107,8 +107,12 @@ export function MatchProductCombobox({
         supplierId: supplierId || undefined,
       }),
     initialPageParam: 1,
-    getNextPageParam: (lastPage, allPages) =>
-      allPages.length < lastPage.lastPage ? allPages.length + 1 : undefined,
+    getNextPageParam: (lastPage, allPages) => {
+      if (allPages.length < lastPage.lastPage) return allPages.length + 1;
+      // Meta missing/wrong but page full — keep walking until a short page.
+      if (lastPage.products.length >= PAGE_SIZE) return allPages.length + 1;
+      return undefined;
+    },
     enabled: open && !disabled,
   });
 
@@ -125,6 +129,32 @@ export function MatchProductCombobox({
     return out;
   }, [pickerQuery.data, excluded]);
 
+  // Sentinel at list bottom — fires even when first page does not overflow
+  // (scroll-only load never runs then). root = the scroll panel.
+  useEffect(() => {
+    if (!open) return;
+    const root = panelRef.current;
+    const sentinel = sentinelRef.current;
+    if (!root || !sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting) return;
+        if (!pickerQuery.hasNextPage || pickerQuery.isFetchingNextPage) return;
+        void pickerQuery.fetchNextPage();
+      },
+      { root, rootMargin: "120px 0px", threshold: 0 },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [
+    open,
+    matches.length,
+    pickerQuery.hasNextPage,
+    pickerQuery.isFetchingNextPage,
+    pickerQuery.fetchNextPage,
+  ]);
+
   const selectedProduct = useMemo(() => {
     if (!value) return null;
     for (const page of pickerQuery.data?.pages ?? []) {
@@ -133,18 +163,6 @@ export function MatchProductCombobox({
     }
     return null;
   }, [pickerQuery.data, value]);
-
-  function onPanelScroll(event: React.UIEvent<HTMLDivElement>) {
-    const el = event.currentTarget;
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    if (
-      distanceFromBottom < LOAD_MORE_THRESHOLD_PX &&
-      pickerQuery.hasNextPage &&
-      !pickerQuery.isFetchingNextPage
-    ) {
-      void pickerQuery.fetchNextPage();
-    }
-  }
 
   function commit(product: Product) {
     onPick(product);
@@ -229,7 +247,6 @@ export function MatchProductCombobox({
         <MatchProductPortal>
           <div
             ref={panelRef}
-            onScroll={onPanelScroll}
             style={{
               position: "fixed",
               top: panelRect.top,
@@ -265,11 +282,14 @@ export function MatchProductCombobox({
                 </button>
               ))
             )}
+            <div ref={sentinelRef} className="h-1 w-full shrink-0" aria-hidden />
             {pickerQuery.isFetchingNextPage ? (
               <p className="flex items-center justify-center gap-1.5 py-2 text-caption text-ink-muted">
                 <Loader2 size={13} className="animate-spin" />
                 Loading more…
               </p>
+            ) : pickerQuery.hasNextPage ? (
+              <p className="px-3 py-1.5 text-center text-caption text-ink-muted">Scroll for more…</p>
             ) : null}
           </div>
         </MatchProductPortal>

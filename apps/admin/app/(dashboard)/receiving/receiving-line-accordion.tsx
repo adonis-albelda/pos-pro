@@ -15,6 +15,7 @@ import type { Product } from "@double-a/shared-types";
 import {
   Badge,
   Button,
+  Combobox,
   Field,
   IconButton,
   Input,
@@ -22,10 +23,16 @@ import {
   MoneyInput,
 } from "@/components/ui";
 import { MatchProductCombobox } from "./match-product-combobox";
+import type { CategoryOption } from "@/lib/category-options";
+import { indentLabel } from "@/lib/category-options";
 import {
+  categoryComboboxValue,
+  categoryHintFromPendingValue,
   headerDisplayName,
   headerSkuSnippet,
   internalSkuDisplay,
+  pendingCategoryValue,
+  receiptCategoryIsNew,
   supplierSkuHint,
   supplierSkuInputValue,
   supplierSkuUsesAiExtraction,
@@ -124,9 +131,11 @@ export function ReceivingLineAccordion({
   showInternalSku,
   matchedProduct,
   currentStock,
-  matchSupplierId,
   matchLocationId,
   excludeMatchProductIds,
+  categoryOptions,
+  creatingCategory,
+  onCreateCategory,
   onUpdate,
   onPickProduct,
   onClearProduct,
@@ -145,9 +154,11 @@ export function ReceivingLineAccordion({
   matchedProduct?: Product;
   /** Branch stock for a matched catalogue product. */
   currentStock: number | null;
-  matchSupplierId?: string;
   matchLocationId?: string;
   excludeMatchProductIds: string[];
+  categoryOptions: CategoryOption[];
+  creatingCategory: boolean;
+  onCreateCategory: (name: string) => void;
   onUpdate: (patch: Partial<LineRow>) => void;
   onPickProduct: (product: Product) => void;
   onClearProduct: () => void;
@@ -166,6 +177,58 @@ export function ReceivingLineAccordion({
   const newShelf = row.appliedPrice.trim() !== "" ? Number(row.appliedPrice) : null;
   const nextStock = row.productId ? stockAfterReceive(currentStock, qty) : null;
   const inputsDisabled = !hasSupplier || row.excluded;
+  const showCategory = !row.productId;
+
+  const categoryValue = categoryComboboxValue(row, categoryOptions);
+  const pendingHint = row.categoryHint.trim();
+  const showReceiptCategoryOption = receiptCategoryIsNew(pendingHint, categoryOptions);
+  const selectedCategory = row.categoryId
+    ? categoryOptions.find((option) => option.id === row.categoryId)
+    : undefined;
+
+  const categoryComboboxOptions = [
+    { value: "", label: "No category" },
+    ...(showReceiptCategoryOption
+      ? [
+          {
+            value: pendingCategoryValue(pendingHint),
+            label: pendingHint,
+            sublabel: "From receipt — create on save",
+          },
+        ]
+      : []),
+    ...categoryOptions.map((category) => ({
+      value: category.id,
+      label: `${indentLabel(category)}${category.isActive ? "" : " (hidden)"}${
+        category.markupApplied ? ` (+${category.markupPercent}%)` : ""
+      }`,
+    })),
+  ];
+
+  function applyCategorySelection(nextValue: string) {
+    const pending = categoryHintFromPendingValue(nextValue);
+    if (pending !== null) {
+      onUpdate({ categoryId: null, categoryHint: pending });
+      return;
+    }
+    if (!nextValue) {
+      onUpdate({ categoryId: null, categoryHint: "" });
+      return;
+    }
+
+    const option = categoryOptions.find((entry) => entry.id === nextValue);
+    const patch: Partial<LineRow> = {
+      categoryId: nextValue,
+      categoryHint: option?.name ?? "",
+    };
+    if (option?.markupApplied && row.unitCost.trim()) {
+      const cost = Number(row.unitCost);
+      if (Number.isFinite(cost)) {
+        patch.appliedPrice = String(roundMoney(cost * (1 + option.markupPercent / 100)));
+      }
+    }
+    onUpdate(patch);
+  }
 
   return (
     <div
@@ -183,7 +246,7 @@ export function ReceivingLineAccordion({
         <button
           type="button"
           onClick={onToggle}
-          className="flex min-w-0 flex-1 items-center gap-3 rounded-sm px-2 py-1 text-left"
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-sm px-2 py-1 text-left transition-colors hover:bg-paper"
           aria-expanded={expanded}
         >
           <span className="shrink-0 text-caption font-semibold text-ink-muted">#{index + 1}</span>
@@ -347,7 +410,6 @@ export function ReceivingLineAccordion({
                 </p>
                 <div className="mt-3 w-full">
                   <MatchProductCombobox
-                    supplierId={matchSupplierId}
                     locationId={matchLocationId}
                     excludeProductIds={excludeMatchProductIds}
                     value={row.productId ?? ""}
@@ -454,6 +516,12 @@ export function ReceivingLineAccordion({
                 ) : (
                   <p className="mt-1 text-caption text-ink-muted">New product</p>
                 )}
+                {row.discountPercent !== null && row.printedUnitCost !== null ? (
+                  <p className="mt-1 text-caption text-ink-muted">
+                    Receipt shows {formatMoney(row.printedUnitCost)} with a {row.discountPercent}% supplier
+                    discount — cost set to the price before the discount.
+                  </p>
+                ) : null}
               </Field>
               </div>
             </div>
@@ -509,26 +577,53 @@ export function ReceivingLineAccordion({
               </div>
             </div>
 
-            {showInternalSku ? (
-              <Field
-                label="Shop visibility"
-                hint={
-                  row.createHidden
-                    ? "Hidden from the shop floor until you finish the full product details."
-                    : "Will show on terminals right away after this receipt saves."
-                }
-              >
-                <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-sm border border-border bg-surface px-3">
-                  <input
-                    type="checkbox"
-                    checked={row.createHidden}
-                    onChange={(event) => onUpdate({ createHidden: event.target.checked })}
-                    disabled={inputsDisabled}
-                    className="h-4 w-4 accent-primary"
-                  />
-                  <span className="text-body">Hide from shop</span>
-                </label>
-              </Field>
+            {showCategory ? (
+              <div className={HALF_ROW}>
+                <div className={HALF_CELL}>
+                  <Field
+                    label="Category"
+                    hint={
+                      selectedCategory?.markupApplied
+                        ? `Markup ${selectedCategory.markupPercent}% fills shelf from cost.`
+                        : pendingHint && showReceiptCategoryOption
+                          ? "From the receipt — pick an existing category or create this one."
+                          : "Optional. Type to search or create a new category."
+                    }
+                  >
+                    <Combobox
+                      value={categoryValue}
+                      onChange={applyCategorySelection}
+                      creatable
+                      createOptionLabel={(typed) => `Create “${typed}”`}
+                      onCreate={onCreateCategory}
+                      disabled={inputsDisabled || creatingCategory}
+                      placeholder={creatingCategory ? "Creating…" : "No category"}
+                      options={categoryComboboxOptions}
+                    />
+                  </Field>
+                </div>
+                <div className={HALF_CELL}>
+                  <Field
+                    label="Shop visibility"
+                    hint={
+                      row.createHidden
+                        ? "Hidden from the shop floor until you finish the full product details."
+                        : "Will show on terminals right away after this receipt saves."
+                    }
+                  >
+                    <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-sm border border-border bg-surface px-3">
+                      <input
+                        type="checkbox"
+                        checked={row.createHidden}
+                        onChange={(event) => onUpdate({ createHidden: event.target.checked })}
+                        disabled={inputsDisabled}
+                        className="h-4 w-4 accent-primary"
+                      />
+                      <span className="text-body">Hide from shop</span>
+                    </label>
+                  </Field>
+                </div>
+              </div>
             ) : null}
 
             <Field label="Note">

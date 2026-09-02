@@ -11,6 +11,10 @@ export interface LineRow {
   originalReceiptSupplierSku: string;
   quantityReceived: string;
   unitCost: string;
+  /** Price as printed on the receipt, before the discount markup AI applied to unitCost. Null when no discount was detected. */
+  printedUnitCost: number | null;
+  /** Discount percent AI found for this line (its own, or the whole receipt's). Null when none. */
+  discountPercent: number | null;
   productId: string | null;
   matchedBy: "internal" | "supplier" | null;
   existingPrice: number | null;
@@ -25,6 +29,10 @@ export interface LineRow {
   excluded: boolean;
   /** New catalogue rows only — when true, product is created with is_active = false. */
   createHidden: boolean;
+  /** Catalogue category for new products (matched or user-picked). */
+  categoryId: string | null;
+  /** AI / typed category label when not yet linked to an existing category id. */
+  categoryHint: string;
 }
 
 /**
@@ -359,6 +367,9 @@ export function lineRowFromExtraction(line: {
   sku: string | null;
   quantityReceived: number | null;
   unitCost: number | null;
+  printedUnitCost?: number | null;
+  discountPercent?: number | null;
+  category?: string | null;
   productId: string | null;
   matchedBy: "internal" | "supplier" | null;
   existingPrice: number | null;
@@ -375,6 +386,7 @@ export function lineRowFromExtraction(line: {
   const unitCostStr = line.unitCost !== null ? String(line.unitCost) : "";
   const appliedPriceStr = appliedPrice !== null ? String(appliedPrice) : "";
   const receiptSku = line.sku ?? "";
+  const categoryHint = (line.category ?? "").trim();
 
   return {
     name: line.name,
@@ -383,6 +395,8 @@ export function lineRowFromExtraction(line: {
     originalReceiptSupplierSku: receiptSku,
     quantityReceived,
     unitCost: unitCostStr,
+    printedUnitCost: line.printedUnitCost ?? null,
+    discountPercent: line.discountPercent ?? null,
     productId: line.productId,
     matchedBy: line.matchedBy,
     existingPrice: line.existingPrice,
@@ -396,6 +410,8 @@ export function lineRowFromExtraction(line: {
     originalAppliedPrice: appliedPriceStr,
     excluded: false,
     createHidden: true,
+    categoryId: null,
+    categoryHint,
   };
 }
 
@@ -407,6 +423,8 @@ export function emptyManualLineRow(): Omit<LineRow, "key"> {
     originalReceiptSupplierSku: "",
     quantityReceived: "1",
     unitCost: "",
+    printedUnitCost: null,
+    discountPercent: null,
     productId: null,
     matchedBy: null,
     existingPrice: null,
@@ -420,6 +438,8 @@ export function emptyManualLineRow(): Omit<LineRow, "key"> {
     originalAppliedPrice: "",
     excluded: false,
     createHidden: true,
+    categoryId: null,
+    categoryHint: "",
   };
 }
 
@@ -435,6 +455,44 @@ export function normalizeHeldRow(row: LineRow): LineRow {
       (legacy ? (row.productId ? "" : row.sku) : row.receiptSupplierSku) ??
       "",
     sku: legacy && !row.productId ? "" : row.sku,
+    printedUnitCost: row.printedUnitCost ?? null,
+    discountPercent: row.discountPercent ?? null,
     createHidden: row.createHidden ?? true,
+    categoryId: row.categoryId ?? null,
+    categoryHint: row.categoryHint ?? "",
   };
+}
+
+/** Sentinel Combobox value for an AI/typed category not yet saved as a row. */
+export const PENDING_CATEGORY_PREFIX = "__pending_category__:";
+
+export function pendingCategoryValue(hint: string): string {
+  return `${PENDING_CATEGORY_PREFIX}${hint.trim()}`;
+}
+
+export function categoryHintFromPendingValue(value: string): string | null {
+  if (!value.startsWith(PENDING_CATEGORY_PREFIX)) return null;
+  return value.slice(PENDING_CATEGORY_PREFIX.length).trim() || null;
+}
+
+export function categoryComboboxValue(
+  row: Pick<LineRow, "categoryId" | "categoryHint">,
+  options: { id: string; name: string }[] = [],
+): string {
+  if (row.categoryId) return row.categoryId;
+  const hint = row.categoryHint.trim();
+  if (!hint) return "";
+  const exact = options.find((option) => option.name.trim().toLowerCase() === hint.toLowerCase());
+  if (exact) return exact.id;
+  return pendingCategoryValue(hint);
+}
+
+/** True when receipt/AI category text is not yet an exact category name in the tree. */
+export function receiptCategoryIsNew(
+  hint: string,
+  options: { name: string }[],
+): boolean {
+  const trimmed = hint.trim();
+  if (!trimmed) return false;
+  return !options.some((option) => option.name.trim().toLowerCase() === trimmed.toLowerCase());
 }

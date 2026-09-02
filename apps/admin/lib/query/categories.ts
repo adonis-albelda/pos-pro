@@ -1,7 +1,7 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { countProductsByCategory, listCategories } from "@double-a/api-client/queries";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { countProductsByCategory, createCategory, listCategories } from "@double-a/api-client/queries";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 import { queryKeys } from "./keys";
 
@@ -23,4 +23,15 @@ export function useCategoryProductCounts(options: { includeInactive?: boolean } 
 export function useInvalidateCategories() {
   const queryClient = useQueryClient();
   return () => queryClient.invalidateQueries({ queryKey: queryKeys.categories.all });
+}
+
+export function useCreateCategory() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Parameters<typeof createCategory>[1]) =>
+      createCategory(getBrowserApiClient(), input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.categories.all });
+    },
+  });
 }
