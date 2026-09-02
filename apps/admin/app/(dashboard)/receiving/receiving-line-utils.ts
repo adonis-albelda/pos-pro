@@ -7,6 +7,8 @@ export interface LineRow {
   sku: string;
   /** Supplier item code from the receipt — kept even after a catalogue match. */
   receiptSupplierSku: string;
+  /** AI extraction snapshot — pencil restore target. */
+  originalReceiptSupplierSku: string;
   quantityReceived: string;
   unitCost: string;
   productId: string | null;
@@ -106,15 +108,22 @@ export function receiptSupplierSkuAfterMatch(
 
 /** Supplier SKU column — never mirror internal sku. */
 export function supplierSkuDisplay(row: LineRow, product?: Product | null): string {
-  if (row.productId) {
-    return product?.supplierSku?.trim() ?? "";
-  }
   const receipt = row.receiptSupplierSku.trim();
   const internal = internalSkuDisplay(row, product);
   if (receipt && !skusAreSame(receipt, internal)) {
     return receipt;
   }
+  if (row.productId) {
+    return product?.supplierSku?.trim() ?? "";
+  }
   return "";
+}
+
+/** Editable supplier SKU input — receipt value wins; matched rows fall back to catalogue. */
+export function supplierSkuInputValue(row: LineRow, product?: Product | null): string {
+  if (row.receiptSupplierSku.trim()) return row.receiptSupplierSku;
+  if (row.productId) return product?.supplierSku?.trim() ?? "";
+  return row.receiptSupplierSku;
 }
 
 export function supplierSkuForSubmit(row: LineRow, product?: Product | null): string | null {
@@ -134,6 +143,12 @@ export function supplierSkuHint(row: LineRow, product?: Product | null): string 
       : "No supplier code saved on this product yet.";
   }
   return "Code from the receipt.";
+}
+
+export function supplierSkuUsesAiExtraction(row: LineRow, product?: Product | null): boolean {
+  const original = row.originalReceiptSupplierSku.trim();
+  if (!original) return false;
+  return normalizeSku(supplierSkuInputValue(row, product)) === normalizeSku(original);
 }
 
 export function headerSkuSnippet(row: LineRow, product?: Product | null): string {
@@ -365,6 +380,7 @@ export function lineRowFromExtraction(line: {
     name: line.name,
     sku: "",
     receiptSupplierSku: receiptSku,
+    originalReceiptSupplierSku: receiptSku,
     quantityReceived,
     unitCost: unitCostStr,
     productId: line.productId,
@@ -388,6 +404,7 @@ export function emptyManualLineRow(): Omit<LineRow, "key"> {
     name: "",
     sku: "",
     receiptSupplierSku: "",
+    originalReceiptSupplierSku: "",
     quantityReceived: "1",
     unitCost: "",
     productId: null,
@@ -413,6 +430,10 @@ export function normalizeHeldRow(row: LineRow): LineRow {
   return {
     ...row,
     receiptSupplierSku: legacy ? (row.productId ? "" : row.sku) : row.receiptSupplierSku,
+    originalReceiptSupplierSku:
+      row.originalReceiptSupplierSku ??
+      (legacy ? (row.productId ? "" : row.sku) : row.receiptSupplierSku) ??
+      "",
     sku: legacy && !row.productId ? "" : row.sku,
     createHidden: row.createHidden ?? true,
   };

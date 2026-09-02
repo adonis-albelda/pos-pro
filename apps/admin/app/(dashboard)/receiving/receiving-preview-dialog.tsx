@@ -14,6 +14,8 @@ export interface ReceiptPreviewLine {
   unitCost: number;
   appliedPrice: number | null;
   productId: string | null;
+  matchedProductName: string | null;
+  matchedProductSku: string | null;
   existingPrice: number | null;
   existingCostPrice: number | null;
   prevStock: number | null;
@@ -213,6 +215,7 @@ export function ReceivingPreviewDialog({
               <thead>
                 <tr>
                   <Th>Item</Th>
+                  <Th>Matched product</Th>
                   <Th>Status</Th>
                   <Th numeric>Qty</Th>
                   <Th numeric>Cost price</Th>
@@ -238,6 +241,18 @@ export function ReceivingPreviewDialog({
                         {row.note.trim() ? (
                           <p className="mt-1 text-caption text-ink-muted">{row.note}</p>
                         ) : null}
+                      </Td>
+                      <Td>
+                        {row.matchedProductName ? (
+                          <>
+                            <p className="font-medium text-ink">{row.matchedProductName}</p>
+                            {row.matchedProductSku ? (
+                              <p className="mt-0.5 text-caption text-ink-muted">{row.matchedProductSku}</p>
+                            ) : null}
+                          </>
+                        ) : (
+                          <span className="text-caption text-ink-muted">New product</span>
+                        )}
                       </Td>
                       <Td>
                         <StatusBadge row={row} />

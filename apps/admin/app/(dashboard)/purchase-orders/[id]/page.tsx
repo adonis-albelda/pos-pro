@@ -129,7 +129,7 @@ export default function PurchaseOrderDetailPage() {
               <PdfPreviewButton purchaseOrderId={order.id} filenameSlug={pdfSlug} />
               {canReceive ? (
                 <Link
-                  href={`/receiving?purchase_order_id=${order.id}` as Route}
+                  href={`/receiving/new?purchase_order_id=${order.id}` as Route}
                   className={buttonClass("secondary", "sm")}
                 >
                   <PackageCheck size={14} strokeWidth={2} />

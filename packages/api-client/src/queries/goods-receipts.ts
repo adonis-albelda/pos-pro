@@ -100,6 +100,7 @@ export interface GoodsReceipt {
   hasDiscrepancy: boolean;
   receivedBy: string | null;
   receivedAt: string;
+  createdAt: string | null;
   items: GoodsReceiptItem[];
 }
 
@@ -129,6 +130,7 @@ interface GoodsReceiptAttrs {
   has_discrepancy: boolean;
   received_by: string | null;
   received_at: string;
+  created_at?: string | null;
   items: GoodsReceiptItemAttrs[];
 }
 
@@ -146,6 +148,7 @@ function toGoodsReceipt(resource: JsonApiResource<GoodsReceiptAttrs>): GoodsRece
     hasDiscrepancy: attrs.has_discrepancy,
     receivedBy: attrs.received_by,
     receivedAt: attrs.received_at,
+    createdAt: attrs.created_at ?? attrs.received_at,
     items: attrs.items.map((item) => ({
       id: item.id,
       productId: item.product_id,

@@ -275,8 +275,9 @@ export function ReceivingForm({
   const [rows, setRows] = useState<LineRow[]>([]);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [heldReceipt, setHeldReceipt] = useState<HeldReceipt | null>(null);
+  const [draftPendingRestore, setDraftPendingRestore] = useState<ReceivingDraft | null>(null);
 
-  // Client-only — restore held receipt banner or auto-draft after refresh/exit.
+  // Client-only — detect held receipt or saved draft; neither loads into the form until the user chooses.
   useEffect(() => {
     const held = loadHeldReceipt();
     if (held) {
@@ -287,23 +288,7 @@ export function ReceivingForm({
 
     const draft = loadReceivingDraft();
     if (draft && draftHasContent(draft)) {
-      setLocationId(draft.locationId || (defaultLocationId ?? locations[0]?.id ?? ""));
-      setSupplierId(draft.supplierId);
-      setSupplierName(draft.supplierName);
-      setReferenceNo(draft.referenceNo);
-      setNotes(draft.notes);
-      setRows(draft.rows);
-      setExpandedKey(draft.expandedKey);
-      setPhotoRead(draft.photoRead);
-      setGalleryPhotoId(draft.galleryPhotoId);
-      pendingGalleryRestoreId.current = draft.galleryPhotoId;
-      onSelectPurchaseOrder(draft.purchaseOrderId);
-
-      if (draft.hadUnkeptPhoto && !draft.galleryPhotoId) {
-        toast.message("Your draft's photo wasn't kept — re-add it if you still need it.");
-      }
-
-      toast.message("Restored your unsaved receipt.");
+      setDraftPendingRestore(draft);
     }
 
     setDraftHydrated(true);
@@ -336,12 +321,14 @@ export function ReceivingForm({
     removePhoto();
     onSelectPurchaseOrder("");
     clearReceivingDraft();
+    setDraftPendingRestore(null);
   }
 
   function clearAllData() {
     resetForm();
     clearHeldReceipt();
     setHeldReceipt(null);
+    setDraftPendingRestore(null);
     setConfirmOpen(false);
     setClearConfirmOpen(false);
     toast.success("Receipt cleared.");
@@ -416,6 +403,36 @@ export function ReceivingForm({
     toast.success("Held receipt discarded.");
   }
 
+  function restoreSavedDraft() {
+    if (!draftPendingRestore) return;
+    const draft = draftPendingRestore;
+
+    setLocationId(draft.locationId || (defaultLocationId ?? locations[0]?.id ?? ""));
+    setSupplierId(draft.supplierId);
+    setSupplierName(draft.supplierName);
+    setReferenceNo(draft.referenceNo);
+    setNotes(draft.notes);
+    setRows(draft.rows);
+    setExpandedKey(draft.expandedKey);
+    setPhotoRead(draft.photoRead);
+    setGalleryPhotoId(draft.galleryPhotoId);
+    pendingGalleryRestoreId.current = draft.galleryPhotoId;
+    onSelectPurchaseOrder(draft.purchaseOrderId);
+    setDraftPendingRestore(null);
+
+    if (draft.hadUnkeptPhoto && !draft.galleryPhotoId) {
+      toast.message("Your draft's photo wasn't kept — re-add it if you still need it.");
+    }
+
+    toast.success("Draft restored.");
+  }
+
+  function discardSavedDraft() {
+    clearReceivingDraft();
+    setDraftPendingRestore(null);
+    toast.success("Draft discarded.");
+  }
+
   // Full-catalogue walk (listProducts pages through everything) — only worth
   // paying for once there is something to match against: a photo on the way,
   // a supplier/PO picked, or a manual line already added.
@@ -471,6 +488,8 @@ export function ReceivingForm({
         unitCost: Number(row.unitCost) || 0,
         appliedPrice: row.appliedPrice.trim() ? Number(row.appliedPrice) : null,
         productId: row.productId,
+        matchedProductName: product?.name ?? null,
+        matchedProductSku: product?.sku ?? null,
         existingPrice: row.existingPrice,
         existingCostPrice: row.existingCostPrice,
         prevStock: product ? product.stockQuantity : null,
@@ -645,6 +664,7 @@ export function ReceivingForm({
   // uploads can't be serialized; gallery picks persist via galleryPhotoId.
   useEffect(() => {
     if (!draftHydrated) return;
+    if (draftPendingRestore) return;
 
     const draft: ReceivingDraft = {
       savedAt: new Date().toISOString(),
@@ -681,6 +701,7 @@ export function ReceivingForm({
     photo,
     photoRead,
     expandedKey,
+    draftPendingRestore,
   ]);
 
   function runExtraction() {
@@ -818,12 +839,17 @@ export function ReceivingForm({
     });
 
     void (async () => {
+      const saveSupplierId = linkedOrder ? linkedOrder.supplierId : supplierId || null;
+      const saveSupplierName = saveSupplierId
+        ? (suppliers.find((supplier) => supplier.id === saveSupplierId)?.name ?? null)
+        : supplierName.trim() || null;
+
       let receipt;
       try {
         receipt = await createReceiptMutation.mutateAsync({
           locationId,
-          supplierId: linkedOrder ? linkedOrder.supplierId : supplierId || null,
-          supplierName: linkedOrder || supplierId ? null : supplierName.trim(),
+          supplierId: saveSupplierId,
+          supplierName: saveSupplierName,
           purchaseOrderId: linkedOrder ? linkedOrder.id : null,
           referenceNo: referenceNo.trim() || null,
           notes: notes.trim() || null,
@@ -871,6 +897,38 @@ export function ReceivingForm({
   return (
     <div className="space-y-6">
       <AiProcessingOverlay open={extracting} message="Reading the delivery receipt" />
+
+      {draftPendingRestore && !heldReceipt ? (
+        <Card className="flex flex-col gap-3 border-primary/30 bg-primary/5 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div className="flex items-start gap-2.5">
+            <Save size={18} strokeWidth={2} className="mt-0.5 shrink-0 text-primary" />
+            <div>
+              <p className="text-body font-medium text-ink">
+                Unsaved draft from{" "}
+                {new Date(draftPendingRestore.savedAt).toLocaleString("en-PH", {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                })}
+              </p>
+              <p className="mt-0.5 text-caption text-ink-muted">
+                {draftPendingRestore.rows.length} item
+                {draftPendingRestore.rows.length === 1 ? "" : "s"}
+                {draftPendingRestore.hadUnkeptPhoto && !draftPendingRestore.galleryPhotoId
+                  ? " — photo wasn't kept"
+                  : ""}
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button type="button" variant="secondary" size="sm" onClick={discardSavedDraft}>
+              Discard
+            </Button>
+            <Button type="button" size="sm" icon={PlayCircle} onClick={restoreSavedDraft}>
+              Restore draft
+            </Button>
+          </div>
+        </Card>
+      ) : null}
 
       {heldReceipt ? (
         <Card className="flex flex-col gap-3 border-primary/30 bg-primary/5 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
@@ -1405,7 +1463,7 @@ export function ReceivingForm({
             variant="secondary"
             className="w-full sm:w-auto"
             onClick={() =>
-              router.push((linkedOrder ? `/purchase-orders/${linkedOrder.id}` : "/purchase-orders") as Route)
+              router.push((linkedOrder ? `/purchase-orders/${linkedOrder.id}` : "/receiving") as Route)
             }
           >
             Cancel

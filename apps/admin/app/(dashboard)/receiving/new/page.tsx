@@ -2,17 +2,17 @@
 
 import { PackageCheck } from "lucide-react";
 import { AdminGate } from "@/components/admin-gate";
-import { ReceivingPageClient } from "./receiving-page-client";
+import { NewReceivingPageClient } from "./new-receiving-page-client";
 
-export default function ReceivingPage() {
+export default function NewReceivingPage() {
   return (
     <AdminGate
       icon={PackageCheck}
-      title="Receive orders"
+      title="New receive order"
       forbiddenTitle="Receiving is for the owner's account"
       instruction="Only an admin can log a delivery."
     >
-      <ReceivingPageClient />
+      <NewReceivingPageClient />
     </AdminGate>
   );
 }

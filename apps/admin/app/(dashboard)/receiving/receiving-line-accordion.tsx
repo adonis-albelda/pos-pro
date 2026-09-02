@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   ChevronDown,
   CircleAlert,
+  Pencil,
   RotateCcw,
   Trash2,
   WandSparkles,
@@ -25,8 +26,9 @@ import {
   headerDisplayName,
   headerSkuSnippet,
   internalSkuDisplay,
-  supplierSkuDisplay,
   supplierSkuHint,
+  supplierSkuInputValue,
+  supplierSkuUsesAiExtraction,
   lineIsFlagged,
   lineIsResolved,
   stockAfterReceive,
@@ -34,15 +36,18 @@ import {
   type LineRow,
 } from "./receiving-line-utils";
 
-const FIELD_GRID = "grid grid-cols-1 gap-4 sm:grid-cols-3";
+const HALF_ROW = "grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-4 max-sm:grid-cols-1";
+const HALF_CELL = "min-w-0 w-full";
 
 function ReadOnlyMoneyField({ label, value }: { label: string; value: number }) {
   return (
-    <Field label={label}>
-      <div className="flex min-h-11 w-full items-center rounded-sm border border-border bg-canvas px-3">
-        <Money value={value} className="text-ink-muted" />
-      </div>
-    </Field>
+    <div className={HALF_CELL}>
+      <Field label={label}>
+        <div className="flex min-h-11 w-full items-center rounded-sm border border-border bg-canvas px-3">
+          <Money value={value} className="text-ink-muted" />
+        </div>
+      </Field>
+    </div>
   );
 }
 
@@ -149,7 +154,8 @@ export function ReceivingLineAccordion({
   const resolved = lineIsResolved(row);
   const displayName = headerDisplayName(row);
   const skuSnippet = headerSkuSnippet(row, matchedProduct);
-  const supplierSku = supplierSkuDisplay(row, matchedProduct);
+  const supplierSkuValue = supplierSkuInputValue(row, matchedProduct);
+  const usesAiSupplierSku = supplierSkuUsesAiExtraction(row, matchedProduct);
   const internalSku = internalSkuDisplay(row, matchedProduct);
   const qty = Number(row.quantityReceived) || 0;
   const newCost = row.unitCost.trim() !== "" ? Number(row.unitCost) : null;
@@ -169,46 +175,57 @@ export function ReceivingLineAccordion({
               : "border-warning/40 bg-warning/5"
       }`}
     >
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left"
-        aria-expanded={expanded}
-      >
-        <span className="shrink-0 text-caption font-semibold text-ink-muted">#{index + 1}</span>
-        {row.excluded ? null : resolved ? (
-          <CheckCircle2 size={16} className="shrink-0 text-success" strokeWidth={2} />
-        ) : (
-          <CircleAlert size={16} className="shrink-0 text-warning-ink" strokeWidth={2} />
-        )}
-        <div className="min-w-0 flex-1">
-          {row.excluded ? (
-            <>
-              <p className="truncate text-body font-medium text-danger">This item will not be included</p>
-              <p className="truncate text-caption text-ink-muted">{displayName}</p>
-            </>
+      <div className="flex items-center gap-1 px-2 py-2 sm:px-3">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex min-w-0 flex-1 items-center gap-3 rounded-sm px-2 py-1 text-left"
+          aria-expanded={expanded}
+        >
+          <span className="shrink-0 text-caption font-semibold text-ink-muted">#{index + 1}</span>
+          {row.excluded ? null : resolved ? (
+            <CheckCircle2 size={16} className="shrink-0 text-success" strokeWidth={2} />
           ) : (
-            <>
-              <p className="truncate text-body font-medium text-ink">{displayName}</p>
-              <p className="truncate text-caption text-ink-muted">{skuSnippet}</p>
-            </>
+            <CircleAlert size={16} className="shrink-0 text-warning-ink" strokeWidth={2} />
           )}
-        </div>
-        {row.excluded ? (
-          <Badge tone="neutral">Removed</Badge>
-        ) : !row.productId ? (
-          <Badge tone="neutral">New product</Badge>
-        ) : flagged ? (
-          <Badge tone="warning">Review</Badge>
-        ) : (
-          <Badge tone="success">Existing product</Badge>
-        )}
-        <ChevronDown
-          size={16}
-          className={`shrink-0 text-ink-muted transition-transform ${expanded ? "rotate-180" : ""}`}
-          strokeWidth={2}
+          <div className="min-w-0 flex-1">
+            {row.excluded ? (
+              <>
+                <p className="truncate text-body font-medium text-danger">This item will not be included</p>
+                <p className="truncate text-caption text-ink-muted">{displayName}</p>
+              </>
+            ) : (
+              <>
+                <p className="truncate text-body font-medium text-ink">{displayName}</p>
+                <p className="truncate text-caption text-ink-muted">{skuSnippet}</p>
+              </>
+            )}
+          </div>
+          {row.excluded ? (
+            <Badge tone="neutral">Removed</Badge>
+          ) : !row.productId ? (
+            <Badge tone="neutral">New product</Badge>
+          ) : flagged ? (
+            <Badge tone="warning">Review</Badge>
+          ) : (
+            <Badge tone="success">Existing product</Badge>
+          )}
+          <ChevronDown
+            size={16}
+            className={`shrink-0 text-ink-muted transition-transform ${expanded ? "rotate-180" : ""}`}
+            strokeWidth={2}
+          />
+        </button>
+        <IconButton
+          icon={row.excluded ? RotateCcw : Trash2}
+          label={row.excluded ? "Restore line" : "Remove line"}
+          tone={row.excluded ? "neutral" : "danger"}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleExcluded();
+          }}
         />
-      </button>
+      </div>
 
       {expanded ? (
         <div className="space-y-4 border-t border-border px-4 py-4">
@@ -216,29 +233,118 @@ export function ReceivingLineAccordion({
             className={`space-y-4 ${inputsDisabled ? "pointer-events-none opacity-50" : ""}`}
             aria-disabled={inputsDisabled}
           >
-            <Field label="Item name" required>
-              <Input
-                value={row.name}
-                onChange={(event) => onUpdate({ name: event.target.value })}
-                placeholder="As written on the receipt"
-                disabled={inputsDisabled}
-              />
-            </Field>
+            <div
+              className={
+                showInternalSku || (row.productId && internalSku) ? HALF_ROW : "w-full"
+              }
+            >
+              <div className={showInternalSku || (row.productId && internalSku) ? HALF_CELL : "w-full"}>
+              <Field label="Item name" required>
+                <Input
+                  value={row.name}
+                  onChange={(event) => onUpdate({ name: event.target.value })}
+                  placeholder="As written on the receipt"
+                  disabled={inputsDisabled}
+                />
+              </Field>
+              </div>
 
-            {supplierSku ? (
-              <Field label="Supplier SKU" hint={supplierSkuHint(row, matchedProduct)}>
-                <div className="flex min-h-11 w-full items-center rounded-sm border border-border bg-canvas px-3 text-body text-ink">
-                  {supplierSku}
+              {showInternalSku ? (
+                <div className={HALF_CELL}>
+                <Field label="Internal SKU" hint="Optional. Your store's product code.">
+                  <Input
+                    value={row.sku}
+                    onChange={(event) => onUpdate({ sku: event.target.value })}
+                    placeholder="e.g. PIPE-001"
+                    disabled={inputsDisabled}
+                  />
+                </Field>
+                </div>
+              ) : row.productId && internalSku ? (
+                <div className={HALF_CELL}>
+                <Field label="Internal SKU">
+                  <div className="flex min-h-11 w-full items-center rounded-sm border border-border bg-canvas px-3 text-body text-ink-muted">
+                    {internalSku}
+                  </div>
+                </Field>
+                </div>
+              ) : null}
+            </div>
+
+            <div className={HALF_ROW}>
+              <div className={HALF_CELL}>
+              <Field
+                label="Supplier SKU"
+                hint={
+                  usesAiSupplierSku
+                    ? "Exact code from AI extraction."
+                    : supplierSkuHint(row, matchedProduct)
+                }
+              >
+                <div className="flex w-full items-center gap-1">
+                  <Input
+                    value={supplierSkuValue}
+                    onChange={(event) => onUpdate({ receiptSupplierSku: event.target.value })}
+                    placeholder="Code from the receipt"
+                    disabled={inputsDisabled}
+                    className="min-w-0 flex-1"
+                  />
+                  {row.originalReceiptSupplierSku.trim() ? (
+                    <IconButton
+                      icon={Pencil}
+                      label="Supplier SKU — exact one from AI extraction"
+                      tone={usesAiSupplierSku ? "primary" : "neutral"}
+                      disabled={inputsDisabled || usesAiSupplierSku}
+                      onClick={() =>
+                        onUpdate({ receiptSupplierSku: row.originalReceiptSupplierSku })
+                      }
+                    />
+                  ) : null}
                 </div>
               </Field>
-            ) : null}
+              </div>
+
+              <div className={HALF_CELL}>
+              <Field label="Quantity" required>
+                <div className="flex w-full items-center gap-1">
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.001"
+                    className="num w-full min-w-0 text-right"
+                    value={row.quantityReceived}
+                    onChange={(event) => onUpdate({ quantityReceived: event.target.value })}
+                    disabled={inputsDisabled}
+                  />
+                  {row.quantityReceived !== row.originalQuantityReceived ? (
+                    <IconButton
+                      icon={RotateCcw}
+                      label="Reset to original quantity"
+                      onClick={() => onUpdate({ quantityReceived: row.originalQuantityReceived })}
+                    />
+                  ) : null}
+                </div>
+                {row.quantityOrdered !== null ? (
+                  <p className="mt-1 text-caption text-ink-muted">
+                    Ordered {formatQuantity(row.quantityOrdered)}
+                  </p>
+                ) : null}
+              </Field>
+              </div>
+            </div>
 
             {showMatchPicker ? (
-              <Field label="Match product" hint="Link to an existing product in your catalogue.">
-                <div className="flex items-center gap-2">
+              <div className="rounded-md border border-dashed border-primary/50 bg-primary/5 px-3 py-3 sm:px-4">
+                <p className="text-caption font-medium text-ink">Match product</p>
+                <p className="mt-1 text-caption leading-relaxed text-ink-muted">
+                  Link this line to a product you already sell. Stock and prices apply to that
+                  item — use this when the receipt item is not new. Leave empty only if you are
+                  adding a brand-new product.
+                </p>
+                <div className="relative mt-3 w-full">
                   <Combobox
-                    className="min-w-0 flex-1"
-                    menuMinWidth={360}
+                    className={row.productId ? "w-full pr-10" : "w-full"}
+                    menuMinWidth={560}
                     value={row.productId ?? ""}
                     onChange={onPickProduct}
                     options={matchProducts.map((p) => ({
@@ -246,14 +352,19 @@ export function ReceivingLineAccordion({
                       label: p.name,
                       sublabel: p.sku ?? undefined,
                     }))}
-                    placeholder="Match an existing product…"
+                    placeholder="Search your catalogue…"
                     disabled={inputsDisabled}
                   />
                   {row.productId ? (
-                    <IconButton icon={X} label="Remove product match" onClick={onClearProduct} />
+                    <IconButton
+                      icon={X}
+                      label="Remove product match"
+                      className="absolute top-1/2 right-1 -translate-y-1/2"
+                      onClick={onClearProduct}
+                    />
                   ) : null}
                 </div>
-              </Field>
+              </div>
             ) : null}
 
             <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2.5">
@@ -292,45 +403,20 @@ export function ReceivingLineAccordion({
               </div>
             </div>
 
-            <div className={FIELD_GRID}>
-              <Field label="Quantity" required>
-                <div className="flex w-full items-center gap-1">
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.001"
-                    className="num w-full min-w-0 text-right"
-                    value={row.quantityReceived}
-                    onChange={(event) => onUpdate({ quantityReceived: event.target.value })}
-                    disabled={inputsDisabled}
-                  />
-                  {row.quantityReceived !== row.originalQuantityReceived ? (
-                    <IconButton
-                      icon={RotateCcw}
-                      label="Reset to original quantity"
-                      onClick={() => onUpdate({ quantityReceived: row.originalQuantityReceived })}
-                    />
-                  ) : null}
-                </div>
-                {row.quantityOrdered !== null ? (
-                  <p className="mt-1 text-caption text-ink-muted">
-                    Ordered {formatQuantity(row.quantityOrdered)}
-                  </p>
-                ) : null}
-              </Field>
-
+            <div className={HALF_ROW}>
               <ReadOnlyMoneyField
-                label="Current cost"
+                label="Cost price"
                 value={row.existingCostPrice ?? (Number(row.unitCost) || 0)}
               />
 
+              <div className={HALF_CELL}>
               <Field label="New cost price" required>
-                <div className="flex w-full items-center gap-1">
+                <div className="relative w-full">
                   <MoneyInput
                     type="number"
                     min="0"
                     step="0.01"
-                    className="w-full min-w-0 text-right"
+                    className="w-full min-w-0 pr-10 text-right"
                     value={row.unitCost}
                     disabled={inputsDisabled}
                     onChange={(event) => {
@@ -346,6 +432,7 @@ export function ReceivingLineAccordion({
                     <IconButton
                       icon={RotateCcw}
                       label="Reset to original cost"
+                      className="absolute top-1/2 right-0 -translate-y-1/2"
                       onClick={() => {
                         const unitCost = Number(row.originalUnitCost) || 0;
                         const nextAppliedPrice =
@@ -374,21 +461,23 @@ export function ReceivingLineAccordion({
                   <p className="mt-1 text-caption text-ink-muted">New product</p>
                 )}
               </Field>
+              </div>
             </div>
 
-            <div className={FIELD_GRID}>
+            <div className={HALF_ROW}>
               <ReadOnlyMoneyField
-                label="Current shelf price"
+                label="Shelf price"
                 value={row.existingPrice ?? (Number(row.appliedPrice) || 0)}
               />
 
+              <div className={HALF_CELL}>
               <Field label="New shelf price" required>
-                <div className="flex w-full items-center gap-1">
+                <div className="relative w-full">
                   <MoneyInput
                     type="number"
                     min="0"
                     step="0.01"
-                    className={`w-full min-w-0 text-right ${
+                    className={`w-full min-w-0 pr-10 text-right ${
                       !row.productId && !(Number(row.appliedPrice) > 0)
                         ? "border-danger focus:ring-danger/30"
                         : ""
@@ -401,6 +490,7 @@ export function ReceivingLineAccordion({
                     <IconButton
                       icon={RotateCcw}
                       label="Reset to original selling price"
+                      className="absolute top-1/2 right-0 -translate-y-1/2"
                       onClick={() => onUpdate({ appliedPrice: row.originalAppliedPrice })}
                     />
                   ) : null}
@@ -422,25 +512,7 @@ export function ReceivingLineAccordion({
                   })()
                 ) : null}
               </Field>
-
-              {showInternalSku ? (
-                <Field label="Internal SKU" hint="Optional. Your store's product code.">
-                  <Input
-                    value={row.sku}
-                    onChange={(event) => onUpdate({ sku: event.target.value })}
-                    placeholder="e.g. PIPE-001"
-                    disabled={inputsDisabled}
-                  />
-                </Field>
-              ) : row.productId && internalSku ? (
-                <Field label="Internal SKU">
-                  <div className="flex min-h-11 w-full items-center rounded-sm border border-border bg-canvas px-3 text-body text-ink-muted">
-                    {internalSku}
-                  </div>
-                </Field>
-              ) : (
-                <div className="hidden sm:block" aria-hidden />
-              )}
+              </div>
             </div>
 
             {showInternalSku ? (
