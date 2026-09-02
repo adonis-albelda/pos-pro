@@ -3,7 +3,6 @@
 import type { Route } from "next";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Boxes, ListOrdered, PackageCheck, Wallet } from "lucide-react";
 import {
   formatMoney,
@@ -12,10 +11,8 @@ import {
   poItemReceiveState,
   purchaseOrderBalance,
 } from "@double-a/shared-types";
-import { getSupplier } from "@double-a/api-client/queries";
-import { getBrowserApiClient } from "@/lib/api/browser-client";
-import { queryKeys } from "@/lib/query/keys";
 import { usePurchaseOrder, usePurchaseOrderMovements } from "@/lib/query/purchase-orders";
+import { useSupplier } from "@/lib/query/suppliers";
 import { PO_STATUS_TONE } from "@/lib/purchase-order-status";
 import {
   Badge,
@@ -41,25 +38,15 @@ const RECEIVE_STATE_BADGE = {
 export default function PurchaseOrderDetailPage() {
   const { id } = useParams<{ id: string }>();
 
+  // One primary request — page unlocks when the order lands. Supplier name
+  // and stock-effect movements fill in after; they must not gate the shell.
   const orderQuery = usePurchaseOrder(id);
   const order = orderQuery.data;
 
-  // GAP: PurchaseOrderResource carries no supplier name (see
-  // queries/purchase-orders.ts). No lib/query/suppliers.ts hook exists yet
-  // (being built in parallel) — inline against getSupplier directly rather
-  // than block on it. Only runs once the order (and its supplierId) is loaded.
-  const supplierQuery = useQuery({
-    queryKey: queryKeys.suppliers.detail(order?.supplierId ?? ""),
-    queryFn: () => getSupplier(getBrowserApiClient(), order!.supplierId),
-    enabled: Boolean(order?.supplierId),
-  });
-
-  // GAP: IndexInventoryMovementsController has no `reference_id` filter (see
-  // queries/inventory.ts) — usePurchaseOrderMovements walks recent shop-wide
-  // movements looking for this order's, capped rather than a full unbounded scan.
+  const supplierQuery = useSupplier(order?.supplierId ?? "");
   const movementsQuery = usePurchaseOrderMovements(id);
 
-  if (orderQuery.isPending || movementsQuery.isPending || (order && supplierQuery.isPending)) {
+  if (orderQuery.isPending) {
     return <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>;
   }
 
@@ -289,7 +276,9 @@ export default function PurchaseOrderDetailPage() {
           title="Stock effect"
           description="What receiving this order did to inventory."
         />
-        {movements.length === 0 ? (
+        {movementsQuery.isPending ? (
+          <p className="px-4 py-6 text-center text-body text-ink-muted sm:px-6">Loading movements…</p>
+        ) : movements.length === 0 ? (
           <EmptyState
             icon={Boxes}
             title="Nothing received yet"

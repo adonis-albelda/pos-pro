@@ -74,15 +74,18 @@ export interface StockTransferInput {
 export async function listStockTransfers(
   client: ApiClient,
   options: { status?: StockTransferStatus; page?: number; pageSize?: number } = {},
-): Promise<{ transfers: StockTransfer[]; total: number }> {
+): Promise<{ transfers: StockTransfer[]; total: number; lastPage: number }> {
+  const pageSize = options.pageSize ?? 50;
   const page = await client.get<JsonApiPage<StockTransferAttrs>>("/stock-transfers", {
     status: options.status,
     page: options.page ?? 1,
-    per_page: options.pageSize ?? 50,
+    per_page: pageSize,
   });
+  const total = page.meta?.total ?? page.data.length;
   return {
     transfers: page.data.map(toStockTransfer),
-    total: page.meta?.total ?? page.data.length,
+    total,
+    lastPage: page.meta?.last_page ?? Math.max(1, Math.ceil(total / pageSize)),
   };
 }
 

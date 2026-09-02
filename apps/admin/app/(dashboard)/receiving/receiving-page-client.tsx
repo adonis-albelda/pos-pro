@@ -20,6 +20,7 @@ import { useSuppliers } from "@/lib/query/suppliers";
 import { ReceivingFollowUpBanner } from "./receiving-follow-up-banner";
 import { consumeReceivingFollowUp, type ReceivingFollowUp } from "./receiving-follow-up";
 import { ReceiptPhotoDialog } from "./receipt-photo-dialog";
+import { receiptHasCountDiscrepancy } from "./receiving-discrepancy";
 
 function formatReceiptCreated(instant: string): { date: string; time: string } {
   return {
@@ -257,7 +258,7 @@ function ReceivingListBody({
                   ) : null}
                   <Td numeric>{receipt.items.length}</Td>
                   <Td>
-                    {receipt.hasDiscrepancy ? (
+                    {receiptHasCountDiscrepancy(receipt) ? (
                       <Badge tone="warning">Discrepancy</Badge>
                     ) : (
                       <Badge tone="success">Received</Badge>

@@ -244,17 +244,31 @@ export interface GoodsReceiptsFilter {
   pageSize?: number;
 }
 
-export async function listGoodsReceipts(
+export async function listGoodsReceiptsPage(
   client: ApiClient,
   filter: GoodsReceiptsFilter = {},
-): Promise<GoodsReceipt[]> {
+): Promise<{ receipts: GoodsReceipt[]; total: number; lastPage: number }> {
   const page = await client.get<JsonApiPage<GoodsReceiptAttrs>>("/goods-receipts", {
     purchase_order_id: filter.purchaseOrderId,
     supplier_id: filter.supplierId,
     page: filter.page ?? 1,
     per_page: filter.pageSize ?? 50,
   });
-  return page.data.map(toGoodsReceipt);
+
+  return {
+    receipts: page.data.map(toGoodsReceipt),
+    total: page.meta?.total ?? page.data.length,
+    lastPage: page.meta?.last_page ?? 1,
+  };
+}
+
+/** Single-page fetch — prefer walk via listGoodsReceiptsPage for a full dump. */
+export async function listGoodsReceipts(
+  client: ApiClient,
+  filter: GoodsReceiptsFilter = {},
+): Promise<GoodsReceipt[]> {
+  const page = await listGoodsReceiptsPage(client, filter);
+  return page.receipts;
 }
 
 export async function getGoodsReceipt(client: ApiClient, id: string): Promise<GoodsReceipt | null> {

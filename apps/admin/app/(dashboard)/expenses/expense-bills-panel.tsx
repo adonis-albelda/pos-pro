@@ -165,6 +165,7 @@ export function ExpenseBillsPanel({
         onClose={() => setCreating(false)}
         title="Add a bill"
         description="Reminders at 8am Asia/Manila. Mark paid to hit Net."
+        className="max-w-3xl"
       >
         <ExpenseBillForm
           defaultDueDate={defaultDueDate}

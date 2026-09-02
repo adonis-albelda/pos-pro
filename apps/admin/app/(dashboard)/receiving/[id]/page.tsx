@@ -6,13 +6,14 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, ExternalLink, PackageCheck } from "lucide-react";
 import type { GoodsReceiptItem } from "@double-a/api-client/queries";
-import { formatQuantity } from "@double-a/shared-types";
+import { formatQuantity, roundMoney } from "@double-a/shared-types";
 import { formatStoreDay, storeDayOf } from "@/lib/date-range";
 import { Badge, Card, CardHeader, EmptyState, Money, Table, Td, Th } from "@/components/ui";
 import { useGoodsReceipt } from "@/lib/query/goods-receipts";
 import { useLocations } from "@/lib/query/locations";
 import { useSuppliers } from "@/lib/query/suppliers";
 import { ReceiptPhotoDialog } from "../receipt-photo-dialog";
+import { receiptHasCountDiscrepancy } from "../receiving-discrepancy";
 
 function ItemStatusBadge({ item }: { item: GoodsReceiptItem }) {
   if (!item.productId) {
@@ -65,6 +66,9 @@ export default function GoodsReceiptDetailPage() {
     dateStyle: "medium",
     timeStyle: "short",
   });
+  const totalAmount = roundMoney(
+    receipt.items.reduce((sum, item) => sum + item.quantityReceived * item.unitCost, 0),
+  );
 
   return (
     <div className="space-y-6">
@@ -84,7 +88,7 @@ export default function GoodsReceiptDetailPage() {
             .filter(Boolean)
             .join(" · ")}
           action={
-            receipt.hasDiscrepancy ? (
+            receiptHasCountDiscrepancy(receipt) ? (
               <Badge tone="warning">Discrepancy</Badge>
             ) : (
               <Badge tone="success">Received</Badge>
@@ -119,6 +123,12 @@ export default function GoodsReceiptDetailPage() {
               ) : (
                 "—"
               )}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-caption font-medium text-ink-muted">Total amount</dt>
+            <dd className="mt-0.5 text-body font-semibold text-ink">
+              <Money value={totalAmount} />
             </dd>
           </div>
           <div className="sm:col-span-2">

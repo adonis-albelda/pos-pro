@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Route } from "next";
 import { Plus, Save, Trash2 } from "lucide-react";
@@ -18,6 +18,7 @@ import {
   Td,
   Th,
 } from "@/components/ui";
+import { MatchProductCombobox } from "@/app/(dashboard)/receiving/match-product-combobox";
 import { createPurchaseOrderAction } from "./actions";
 import { useInvalidatePurchaseOrders } from "@/lib/query/purchase-orders";
 
@@ -40,14 +41,10 @@ function newKey(): string {
 
 export function CreatePurchaseOrderForm({
   suppliers,
-  products,
-  supplierProductIds,
   defaultSupplierId,
   defaultOrderDate,
 }: {
   suppliers: Supplier[];
-  products: Product[];
-  supplierProductIds: Record<string, string[]>;
   defaultSupplierId?: string;
   defaultOrderDate: string;
 }) {
@@ -67,20 +64,7 @@ export function CreatePurchaseOrderForm({
     { key: newKey(), productId: "", quantityOrdered: "1", unitCost: "" },
   ]);
   const [terms, setTerms] = useState<TermRow[]>([]);
-
-  const productsById = useMemo(
-    () => new Map(products.map((product) => [product.id, product])),
-    [products],
-  );
-
-  const availableProducts = useMemo(() => {
-    if (!onlySupplierProducts) return products;
-    const linked = new Set(supplierProductIds[supplierId] ?? []);
-    // No links recorded yet — fall back to the full catalog rather than an
-    // empty picker that looks broken.
-    if (linked.size === 0) return products;
-    return products.filter((product) => linked.has(product.id));
-  }, [products, supplierProductIds, supplierId, onlySupplierProducts]);
+  const [pickedProducts, setPickedProducts] = useState<Map<string, Product>>(() => new Map());
 
   const total = roundMoney(
     items.reduce((sum, item) => {
@@ -100,12 +84,22 @@ export function CreatePurchaseOrderForm({
     );
   }
 
-  function pickProduct(key: string, productId: string) {
-    const product = productsById.get(productId);
+  function pickProduct(key: string, product: Product) {
+    setPickedProducts((previous) => new Map(previous).set(product.id, product));
     updateItem(key, {
-      productId,
-      unitCost: product ? String(product.costPrice) : "",
+      productId: product.id,
+      unitCost: String(product.costPrice),
     });
+  }
+
+  function clearProduct(key: string) {
+    updateItem(key, { productId: "", unitCost: "" });
+  }
+
+  function excludeProductIds(currentKey: string): string[] {
+    return items
+      .filter((item) => item.key !== currentKey && item.productId)
+      .map((item) => item.productId);
   }
 
   function addItem() {
@@ -160,7 +154,7 @@ export function CreatePurchaseOrderForm({
     const cleanItems = items
       .filter((item) => item.productId && Number(item.quantityOrdered) > 0)
       .map((item) => {
-        const product = productsById.get(item.productId);
+        const product = pickedProducts.get(item.productId);
         const raw = Number(item.quantityOrdered) || 0;
         const quantityOrdered = product?.allowDecimal
           ? Math.max(0.001, Number(raw.toFixed(3)))
@@ -280,20 +274,19 @@ export function CreatePurchaseOrderForm({
             {items.map((item) => {
               const qty = Number(item.quantityOrdered) || 0;
               const cost = Number(item.unitCost) || 0;
-              const rowAllowsDecimal =
-                productsById.get(item.productId)?.allowDecimal ?? false;
+              const picked = item.productId ? pickedProducts.get(item.productId) : undefined;
+              const rowAllowsDecimal = picked?.allowDecimal ?? false;
               return (
                 <tr key={item.key}>
                   <Td>
-                    <Combobox
+                    <MatchProductCombobox
+                      supplierId={onlySupplierProducts ? supplierId || undefined : undefined}
+                      excludeProductIds={excludeProductIds(item.key)}
                       value={item.productId}
-                      onChange={(productId) => pickProduct(item.key, productId)}
-                      options={availableProducts.map((product) => ({
-                        value: product.id,
-                        label: product.name,
-                        sublabel: product.sku ?? undefined,
-                      }))}
-                      placeholder="Choose a product…"
+                      selectedLabel={picked?.name}
+                      onPick={(product) => pickProduct(item.key, product)}
+                      onClear={() => clearProduct(item.key)}
+                      placeholder="Search products…"
                     />
                   </Td>
                   <Td numeric>

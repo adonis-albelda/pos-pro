@@ -4,7 +4,6 @@ import { useState } from "react";
 import type { Route } from "next";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
 import { ChevronRight, ClipboardList, Plus, SlidersHorizontal } from "lucide-react";
 import type { PurchaseOrderStatus, Supplier } from "@double-a/shared-types";
 import {
@@ -12,8 +11,7 @@ import {
   poItemReceiveState,
   purchaseOrderBalance,
 } from "@double-a/shared-types";
-import { listSuppliers, type PurchaseOrderWithLines } from "@double-a/api-client/queries";
-import { getBrowserApiClient } from "@/lib/api/browser-client";
+import type { PurchaseOrderWithLines } from "@double-a/api-client/queries";
 import { isInitialQueryLoad, matchesQuery, paginateItems, parseListQuery } from "@/lib/list-query";
 import { PO_STATUS_TONE } from "@/lib/purchase-order-status";
 import { Badge, Button, ButtonLink, Card, CardHeader, EmptyState, Money, Table, Td, Th } from "@/components/ui";
@@ -22,7 +20,7 @@ import { Pagination, SearchField } from "@/components/record-list";
 import { useLocationMutationsLocked } from "@/components/location-mutations-banner";
 import { PurchaseOrdersFilters } from "./purchase-orders-filters";
 import { usePurchaseOrders } from "@/lib/query/purchase-orders";
-import { queryKeys } from "@/lib/query/keys";
+import { useSuppliers } from "@/lib/query/suppliers";
 
 function FiltersButton({ suppliers, active }: { suppliers: Supplier[]; active: boolean }) {
   const [open, setOpen] = useState(false);
@@ -49,13 +47,9 @@ export function PurchaseOrdersPageClient() {
   const supplierId = searchParams.get("supplierId") || undefined;
   const status = (searchParams.get("status") as PurchaseOrderStatus) || undefined;
 
+  // One PO list request (+ suppliers for name join / filters). No catalogue walk.
   const ordersQuery = usePurchaseOrders({ supplierId, status });
-  // GAP: lib/query/suppliers.ts (being built in parallel) doesn't exist yet —
-  // inline against listSuppliers directly rather than block on it.
-  const suppliersQuery = useQuery({
-    queryKey: queryKeys.suppliers.list({ includeInactive: true }),
-    queryFn: () => listSuppliers(getBrowserApiClient(), { includeInactive: true }),
-  });
+  const suppliersQuery = useSuppliers({ includeInactive: true });
 
   return (
     <div className="space-y-6">

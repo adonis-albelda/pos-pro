@@ -7,11 +7,15 @@ import {
   getStoreSettings,
   listCategories,
   listCustomers,
+  listExpenseBills,
   listExpenses,
+  listGoodsReceiptsPage,
+  listLocations,
   listMovementsPage,
   listProducts,
   listPurchaseOrdersPage,
   listSalesPage,
+  listStockTransfers,
   listSuppliers,
   listUsers,
 } from "@double-a/api-client/queries";
@@ -34,8 +38,12 @@ export const BACKUP_DATASETS = [
   "sales",
   "inventory_movements",
   "expenses",
+  "expense_bills",
   "suppliers",
   "purchase_orders",
+  "goods_receipts",
+  "locations",
+  "stock_transfers",
   "users",
   "store_settings",
 ] as const;
@@ -74,6 +82,10 @@ export const BACKUP_DATASET_META: Record<
     label: "Expenses",
     blurb: "Rent, wages, utilities.",
   },
+  expense_bills: {
+    label: "Expense bills",
+    blurb: "Recurring and one-shot bill reminders.",
+  },
   suppliers: {
     label: "Suppliers",
     blurb: "Who you buy from.",
@@ -81,6 +93,18 @@ export const BACKUP_DATASET_META: Record<
   purchase_orders: {
     label: "Purchase orders",
     blurb: "Orders, lines and installment terms.",
+  },
+  goods_receipts: {
+    label: "Goods receipts",
+    blurb: "Receive orders with line items (recent cap).",
+  },
+  locations: {
+    label: "Locations",
+    blurb: "Branches and warehouses.",
+  },
+  stock_transfers: {
+    label: "Stock transfers",
+    blurb: "Moves between locations (recent cap).",
   },
   users: {
     label: "Users",
@@ -96,6 +120,8 @@ export const BACKUP_DATASET_META: Record<
 const MAX_SALES = 8_000;
 const MAX_MOVEMENTS = 20_000;
 const MAX_PURCHASE_ORDERS = 2_000;
+const MAX_GOODS_RECEIPTS = 2_000;
+const MAX_STOCK_TRANSFERS = 2_000;
 
 /** PDF is for reading, not for a full dump — Excel/CSV carry every row. */
 export const PDF_ROW_CAP = 60;
@@ -379,6 +405,48 @@ async function buildSheet(
       };
     }
 
+    case "expense_bills": {
+      const bills = await listExpenseBills(client);
+      return {
+        id,
+        label,
+        filename: "expense_bills",
+        truncated: false,
+        headers: [
+          "id",
+          "description",
+          "amount",
+          "category",
+          "note",
+          "frequency",
+          "next_due_date",
+          "remind_days_before",
+          "reminders_enabled",
+          "last_reminded_on",
+          "active",
+          "created_by",
+          "created_at",
+          "updated_at",
+        ],
+        rows: bills.map((bill) => [
+          bill.id,
+          bill.description,
+          bill.amount,
+          bill.category,
+          bill.note,
+          bill.frequency,
+          bill.nextDueDate,
+          bill.remindDaysBefore,
+          bill.remindersEnabled,
+          bill.lastRemindedOn,
+          bill.active,
+          bill.createdBy,
+          bill.createdAt,
+          bill.updatedAt,
+        ]),
+      };
+    }
+
     case "suppliers": {
       const suppliers = await listSuppliers(client, { includeInactive: true });
       return {
@@ -490,6 +558,191 @@ async function buildSheet(
           "unit_cost",
           "line_total",
           "line_note",
+        ],
+        rows,
+      };
+    }
+
+    case "goods_receipts": {
+      const { items: receipts, truncated: receiptsTruncated } = await walkPages(
+        async (page) => {
+          const result = await listGoodsReceiptsPage(client, { page, pageSize: 100 });
+          return { items: result.receipts, lastPage: result.lastPage };
+        },
+        MAX_GOODS_RECEIPTS,
+      );
+      const rows: CsvValue[][] = [];
+      for (const receipt of receipts) {
+        const header = [
+          receipt.id,
+          receipt.locationId,
+          receipt.supplierId,
+          receipt.supplierName,
+          receipt.purchaseOrderId,
+          receipt.referenceNo,
+          receipt.photoUrl,
+          receipt.notes,
+          receipt.hasDiscrepancy,
+          receipt.receivedBy,
+          receipt.receivedAt,
+          receipt.createdAt,
+        ] as CsvValue[];
+
+        if (receipt.items.length === 0) {
+          rows.push([
+            ...header,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+          ]);
+          continue;
+        }
+        for (const item of receipt.items) {
+          rows.push([
+            ...header,
+            item.id,
+            item.productId,
+            item.purchaseOrderItemId,
+            item.matchedBy,
+            item.name,
+            item.sku,
+            item.quantityOrdered,
+            item.quantityReceived,
+            item.unitCost,
+            item.appliedPrice,
+            item.isFlagged,
+            item.note,
+          ]);
+        }
+      }
+      return {
+        id,
+        label,
+        filename: "goods_receipts",
+        truncated: receiptsTruncated,
+        headers: [
+          "goods_receipt_id",
+          "location_id",
+          "supplier_id",
+          "supplier_name",
+          "purchase_order_id",
+          "reference_no",
+          "photo_url",
+          "notes",
+          "has_discrepancy",
+          "received_by",
+          "received_at",
+          "created_at",
+          "line_id",
+          "product_id",
+          "purchase_order_item_id",
+          "matched_by",
+          "item_name",
+          "sku",
+          "quantity_ordered",
+          "quantity_received",
+          "unit_cost",
+          "applied_price",
+          "is_flagged",
+          "line_note",
+        ],
+        rows,
+      };
+    }
+
+    case "locations": {
+      const locations = await listLocations(client, { includeInactive: true });
+      return {
+        id,
+        label,
+        filename: "locations",
+        truncated: false,
+        headers: [
+          "id",
+          "name",
+          "type",
+          "address",
+          "is_active",
+          "created_at",
+          "updated_at",
+        ],
+        rows: locations.map((location) => [
+          location.id,
+          location.name,
+          location.type,
+          location.address,
+          location.isActive,
+          location.createdAt,
+          location.updatedAt,
+        ]),
+      };
+    }
+
+    case "stock_transfers": {
+      const { items: transfers, truncated: transfersTruncated } = await walkPages(
+        async (page) => {
+          const result = await listStockTransfers(client, { page, pageSize: 100 });
+          return { items: result.transfers, lastPage: result.lastPage };
+        },
+        MAX_STOCK_TRANSFERS,
+      );
+      const rows: CsvValue[][] = [];
+      for (const transfer of transfers) {
+        const header = [
+          transfer.id,
+          transfer.fromLocationId,
+          transfer.fromLocationName,
+          transfer.toLocationId,
+          transfer.toLocationName,
+          transfer.status,
+          transfer.createdBy,
+          transfer.receivedAt,
+          transfer.createdAt,
+          transfer.updatedAt,
+        ] as CsvValue[];
+
+        if (transfer.items.length === 0) {
+          rows.push([...header, null, null, null, null]);
+          continue;
+        }
+        for (const item of transfer.items) {
+          rows.push([
+            ...header,
+            item.id,
+            item.productId,
+            item.productName,
+            item.quantity,
+          ]);
+        }
+      }
+      return {
+        id,
+        label,
+        filename: "stock_transfers",
+        truncated: transfersTruncated,
+        headers: [
+          "stock_transfer_id",
+          "from_location_id",
+          "from_location_name",
+          "to_location_id",
+          "to_location_name",
+          "status",
+          "created_by",
+          "received_at",
+          "created_at",
+          "updated_at",
+          "line_id",
+          "product_id",
+          "product_name",
+          "quantity",
         ],
         rows,
       };

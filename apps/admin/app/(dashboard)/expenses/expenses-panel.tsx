@@ -122,6 +122,7 @@ export function ExpensesPanel({
         onClose={() => setCreating(false)}
         title="Add an expense"
         description="Counts against revenue on the date you pick."
+        className="max-w-3xl"
       >
         <ExpenseForm
           locations={locations}
