@@ -232,7 +232,7 @@ export function ReceivingLineAccordion({
 
   return (
     <div
-      className={`mt-3 rounded-md border ${
+      className={`group mt-3 origin-center rounded-md border transition-[transform,box-shadow,border-color,background-color] duration-200 ease-out motion-reduce:transition-none ${
         row.excluded
           ? "border-border bg-canvas opacity-60"
           : !hasSupplier
@@ -240,13 +240,19 @@ export function ReceivingLineAccordion({
             : resolved
               ? "border-border bg-surface"
               : "border-warning/40 bg-warning/5"
+      } ${
+        !expanded && !row.excluded
+          ? "hover:z-10 hover:scale-[1.015] hover:border-primary/45 hover:shadow-md"
+          : !row.excluded
+            ? "hover:border-primary/30 hover:shadow-sm"
+            : ""
       }`}
     >
-      <div className="flex items-center gap-1 px-2 py-2 sm:px-3">
+      <div className="flex items-center gap-1 px-2 py-2 transition-[padding] duration-200 ease-out group-hover:py-2.5 sm:px-3 motion-reduce:transition-none">
         <button
           type="button"
           onClick={onToggle}
-          className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-sm px-2 py-1 text-left transition-colors hover:bg-paper"
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-sm px-2 py-1 text-left transition-colors hover:bg-paper/80"
           aria-expanded={expanded}
         >
           <span className="shrink-0 text-caption font-semibold text-ink-muted">#{index + 1}</span>
@@ -279,7 +285,11 @@ export function ReceivingLineAccordion({
           )}
           <ChevronDown
             size={16}
-            className={`shrink-0 text-ink-muted transition-transform ${expanded ? "rotate-180" : ""}`}
+            className={`shrink-0 text-ink-muted transition-transform duration-200 ease-out motion-reduce:transition-none ${
+              expanded
+                ? "rotate-180"
+                : "group-hover:translate-y-0.5 group-hover:scale-110 group-hover:text-primary"
+            }`}
             strokeWidth={2}
           />
         </button>
