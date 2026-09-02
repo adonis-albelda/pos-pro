@@ -15,13 +15,13 @@ import type { Product } from "@double-a/shared-types";
 import {
   Badge,
   Button,
-  Combobox,
   Field,
   IconButton,
   Input,
   Money,
   MoneyInput,
 } from "@/components/ui";
+import { MatchProductCombobox } from "./match-product-combobox";
 import {
   headerDisplayName,
   headerSkuSnippet,
@@ -124,7 +124,9 @@ export function ReceivingLineAccordion({
   showInternalSku,
   matchedProduct,
   currentStock,
-  matchProducts,
+  matchSupplierId,
+  matchLocationId,
+  excludeMatchProductIds,
   onUpdate,
   onPickProduct,
   onClearProduct,
@@ -143,9 +145,11 @@ export function ReceivingLineAccordion({
   matchedProduct?: Product;
   /** Branch stock for a matched catalogue product. */
   currentStock: number | null;
-  matchProducts: Product[];
+  matchSupplierId?: string;
+  matchLocationId?: string;
+  excludeMatchProductIds: string[];
   onUpdate: (patch: Partial<LineRow>) => void;
-  onPickProduct: (productId: string) => void;
+  onPickProduct: (product: Product) => void;
   onClearProduct: () => void;
   onResolve: () => void;
   onToggleExcluded: () => void;
@@ -341,28 +345,18 @@ export function ReceivingLineAccordion({
                   item — use this when the receipt item is not new. Leave empty only if you are
                   adding a brand-new product.
                 </p>
-                <div className="relative mt-3 w-full">
-                  <Combobox
-                    className={row.productId ? "w-full pr-10" : "w-full"}
-                    menuMinWidth={560}
+                <div className="mt-3 w-full">
+                  <MatchProductCombobox
+                    supplierId={matchSupplierId}
+                    locationId={matchLocationId}
+                    excludeProductIds={excludeMatchProductIds}
                     value={row.productId ?? ""}
-                    onChange={onPickProduct}
-                    options={matchProducts.map((p) => ({
-                      value: p.id,
-                      label: p.name,
-                      sublabel: p.sku ?? undefined,
-                    }))}
+                    selectedLabel={matchedProduct?.name}
+                    onPick={onPickProduct}
+                    onClear={onClearProduct}
                     placeholder="Search your catalogue…"
                     disabled={inputsDisabled}
                   />
-                  {row.productId ? (
-                    <IconButton
-                      icon={X}
-                      label="Remove product match"
-                      className="absolute top-1/2 right-1 -translate-y-1/2"
-                      onClick={onClearProduct}
-                    />
-                  ) : null}
                 </div>
               </div>
             ) : null}

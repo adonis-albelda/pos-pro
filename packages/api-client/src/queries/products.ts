@@ -58,6 +58,8 @@ export interface ListProductsPageOptions {
   pageSize?: number;
   includeInactive?: boolean;
   categoryId?: string;
+  /** Only products linked to this supplier (supplier_products pivot). */
+  supplierId?: string;
   /** Scope stock_quantity to one location; omit for company-wide total. */
   locationId?: string;
   /** Server-computed from stock_quantity/reorder_point/is_active — ignores `includeInactive` when given (see IndexProductsController). */
@@ -74,6 +76,7 @@ export async function listProductsPage(
   const page = await client.get<JsonApiPage<ProductAttrs>>("/products", {
     search: options.q,
     category_id: options.categoryId,
+    supplier_id: options.supplierId,
     location_id: options.locationId,
     is_active: options.state || options.includeInactive ? undefined : true,
     state: options.state,

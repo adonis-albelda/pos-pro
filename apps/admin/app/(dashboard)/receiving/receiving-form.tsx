@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import type { Product } from "@double-a/shared-types";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Route } from "next";
@@ -45,7 +47,8 @@ import { AiProcessingOverlay, ConfirmDialog, Dialog, Sheet } from "@/components/
 import { isImageFile, NOT_AN_IMAGE_MESSAGE } from "@/lib/is-image-file";
 import { useGalleryPhotos } from "@/lib/query/gallery-photos";
 import { useCreateGoodsReceipt, useExtractGoodsReceiptPhoto } from "@/lib/query/goods-receipts";
-import { useInventoryProducts } from "@/lib/query/inventory";
+import { listProductsByIds, listProductsPage } from "@double-a/api-client/queries";
+import { getBrowserApiClient } from "@/lib/api/browser-client";
 import { CropPhoto } from "../products/from-photo/crop-photo";
 import {
   ReceivingPreviewDialog,
@@ -72,7 +75,6 @@ import {
   lineIsResolved,
   lineRowFromExtraction,
   normalizeHeldRow,
-  productsForSelectedSupplier,
   receiptSupplierSkuAfterMatch,
   resolveRowPatch,
   showInternalSkuField,
@@ -433,30 +435,42 @@ export function ReceivingForm({
     toast.success("Draft discarded.");
   }
 
-  // Full-catalogue walk (listProducts pages through everything) — only worth
-  // paying for once there is something to match against: a photo on the way,
-  // a supplier/PO picked, or a manual line already added.
-  const productsQuery = useInventoryProducts({
-    enabled: Boolean(photo) || Boolean(supplierId) || Boolean(linkedOrder) || rows.length > 0,
-    locationId: locationId || undefined,
-  });
-  const products = useMemo(() => productsQuery.data ?? [], [productsQuery.data]);
+  // Match picker loads pages on demand (supplier_id filter + scroll). Keep
+  // matched/picked rows in a local map for stock, price, and preview lookups.
+  const [pickedProducts, setPickedProducts] = useState<Map<string, Product>>(() => new Map());
 
-  const productsById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
+  const matchSupplierId = linkedOrder?.supplierId ?? (supplierId || undefined);
 
-  const hasLinkedOrder = Boolean(linkedOrder);
-  const supplierScopedProducts = useMemo(
-    () =>
-      productsForSelectedSupplier(
-        products,
-        suppliers,
-        linkedOrder?.supplierId ?? supplierId,
-        supplierName,
-        hasLinkedOrder,
-      ),
-    [products, suppliers, linkedOrder?.supplierId, supplierId, supplierName, hasLinkedOrder],
+  const matchedProductIds = useMemo(
+    () => [...new Set(rows.map((row) => row.productId).filter((id): id is string => Boolean(id)))],
+    [rows],
   );
 
+  const missingMatchedIds = useMemo(
+    () => matchedProductIds.filter((id) => !pickedProducts.has(id)),
+    [matchedProductIds, pickedProducts],
+  );
+
+  const matchedProductsQuery = useQuery({
+    queryKey: ["products", "receiving", "matched", missingMatchedIds, locationId] as const,
+    queryFn: () => listProductsByIds(getBrowserApiClient(), missingMatchedIds),
+    enabled: missingMatchedIds.length > 0,
+  });
+
+  useEffect(() => {
+    if (!matchedProductsQuery.data?.length) return;
+    setPickedProducts((previous) => {
+      const next = new Map(previous);
+      for (const product of matchedProductsQuery.data) {
+        next.set(product.id, product);
+      }
+      return next;
+    });
+  }, [matchedProductsQuery.data]);
+
+  const productsById = pickedProducts;
+
+  const hasLinkedOrder = Boolean(linkedOrder);
   const showMatchPicker = showProductMatchPicker(supplierId, supplierName, hasLinkedOrder);
   const hasSupplier = hasSupplierSelected(supplierId, supplierName, hasLinkedOrder);
   const pendingCount = unresolvedCount(rows);
@@ -522,9 +536,8 @@ export function ReceivingForm({
    * actually said, editable independently of the match). Only fills it in
    * when a manually-added line hasn't been typed into yet.
    */
-  function pickProductForRow(key: string, productId: string) {
-    const product = productsById.get(productId);
-    if (!product) return;
+  function pickProductForRow(key: string, product: Product) {
+    setPickedProducts((previous) => new Map(previous).set(product.id, product));
     const row = rows.find((r) => r.key === key);
     const unitCost = Number(row?.unitCost) || 0;
     const priorReceipt =
@@ -553,50 +566,83 @@ export function ReceivingForm({
     });
   }
 
-  function matchProductsForRow(currentRow: LineRow) {
-    return availableProductsFor(currentRow, rows, supplierScopedProducts);
+  function excludeMatchProductIds(currentKey: string): string[] {
+    return rows
+      .filter((row) => row.key !== currentKey && row.productId)
+      .map((row) => row.productId as string);
+  }
+
+  async function fetchMatchProductPool(): Promise<Product[]> {
+    const client = getBrowserApiClient();
+    const products: Product[] = [];
+    let page = 1;
+    for (;;) {
+      const result = await listProductsPage(client, {
+        page,
+        pageSize: 200,
+        includeInactive: true,
+        locationId: locationId || undefined,
+        supplierId: matchSupplierId,
+      });
+      products.push(...result.products);
+      if (page >= result.lastPage) return products;
+      page += 1;
+    }
   }
 
   function resolveOneRow(key: string) {
-    setRows((previous) => {
-      const row = previous.find((r) => r.key === key);
-      if (!row) return previous;
-      const pool = availableProductsFor(row, previous, supplierScopedProducts);
-      const patch = resolveRowPatch(row, pool);
-      if (!patch) return previous;
-      return previous.map((r) => (r.key === key ? { ...r, ...patch } : r));
-    });
+    void (async () => {
+      const pool = await fetchMatchProductPool();
+      setRows((previous) => {
+        const row = previous.find((r) => r.key === key);
+        if (!row) return previous;
+        const available = availableProductsFor(row, previous, pool);
+        const patch = resolveRowPatch(row, available);
+        if (!patch) return previous;
+        const productId = patch.productId;
+        if (productId) {
+          const product = pool.find((candidate) => candidate.id === productId);
+          if (product) {
+            setPickedProducts((prev) => new Map(prev).set(product.id, product));
+          }
+        }
+        return previous.map((r) => (r.key === key ? { ...r, ...patch } : r));
+      });
+    })();
   }
 
   function resolveAllRows() {
-    setRows((previous) => {
-      const supplierProducts = productsForSelectedSupplier(
-        products,
-        suppliers,
-        linkedOrder?.supplierId ?? supplierId,
-        supplierName,
-        hasLinkedOrder,
-      );
-      let resolvedNow = 0;
-      const next = previous.map((row) => {
-        const pool = availableProductsFor(row, previous, supplierProducts);
-        const patch = resolveRowPatch(row, pool);
-        if (patch) {
-          resolvedNow++;
-          return { ...row, ...patch };
-        }
-        return row;
+    void (async () => {
+      const pool = await fetchMatchProductPool();
+      setRows((previous) => {
+        let resolvedNow = 0;
+        const next = previous.map((row) => {
+          const available = availableProductsFor(row, previous, pool);
+          const patch = resolveRowPatch(row, available);
+          if (patch) {
+            resolvedNow++;
+            const productId = patch.productId;
+            if (productId) {
+              const product = pool.find((candidate) => candidate.id === productId);
+              if (product) {
+                setPickedProducts((prev) => new Map(prev).set(product.id, product));
+              }
+            }
+            return { ...row, ...patch };
+          }
+          return row;
+        });
+        const still = unresolvedCount(next);
+        toast.success(
+          resolvedNow > 0
+            ? `Resolved ${resolvedNow} item${resolvedNow === 1 ? "" : "s"}${still > 0 ? ` — ${still} still need details` : ""}.`
+            : still > 0
+              ? `${still} item${still === 1 ? "" : "s"} still need details.`
+              : "All items are ready.",
+        );
+        return next;
       });
-      const still = unresolvedCount(next);
-      toast.success(
-        resolvedNow > 0
-          ? `Resolved ${resolvedNow} item${resolvedNow === 1 ? "" : "s"}${still > 0 ? ` — ${still} still need details` : ""}.`
-          : still > 0
-            ? `${still} item${still === 1 ? "" : "s"} still need details.`
-            : "All items are ready.",
-      );
-      return next;
-    });
+    })();
   }
 
   /** Only stages the file for preview — AI extraction is a separate, explicit step below. */
@@ -1426,9 +1472,11 @@ export function ReceivingForm({
                     showInternalSku={showInternalSkuField(row)}
                     matchedProduct={product}
                     currentStock={product?.stockQuantity ?? null}
-                    matchProducts={matchProductsForRow(row)}
+                    matchSupplierId={matchSupplierId}
+                    matchLocationId={locationId || undefined}
+                    excludeMatchProductIds={excludeMatchProductIds(row.key)}
                     onUpdate={(patch) => updateRow(row.key, patch)}
-                    onPickProduct={(productId) => pickProductForRow(row.key, productId)}
+                    onPickProduct={(picked) => pickProductForRow(row.key, picked)}
                     onClearProduct={() => clearProductForRow(row.key)}
                     onResolve={() => resolveOneRow(row.key)}
                     onToggleExcluded={() => toggleRowExcluded(row.key)}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { ArrowLeft, Camera, Loader2, Package, Search, Tag, Truck, Warehouse } from "lucide-react";
 import { formatMoney } from "@double-a/shared-types";
@@ -13,6 +13,48 @@ import { getBrowserApiClient } from "@/lib/api/browser-client";
 const PAGE_SIZE = 25;
 /** Fetch the next page once the scrolled-past distance from the bottom is under this. */
 const LOAD_MORE_THRESHOLD_PX = 80;
+const FAB_SIZE_PX = 56;
+const FAB_MARGIN_PX = 24;
+const DRAG_THRESHOLD_PX = 5;
+const POSITION_STORAGE_KEY = "price-inquiry-fab-position";
+
+type FabPosition = { x: number; y: number };
+
+function defaultFabPosition(): FabPosition {
+  return {
+    x: window.innerWidth - FAB_SIZE_PX - FAB_MARGIN_PX,
+    y: window.innerHeight - FAB_SIZE_PX - FAB_MARGIN_PX,
+  };
+}
+
+function clampFabPosition(position: FabPosition): FabPosition {
+  const maxX = Math.max(0, window.innerWidth - FAB_SIZE_PX);
+  const maxY = Math.max(0, window.innerHeight - FAB_SIZE_PX);
+  return {
+    x: Math.min(Math.max(position.x, 0), maxX),
+    y: Math.min(Math.max(position.y, 0), maxY),
+  };
+}
+
+function readStoredFabPosition(): FabPosition | null {
+  try {
+    const raw = localStorage.getItem(POSITION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<FabPosition>;
+    if (typeof parsed.x !== "number" || typeof parsed.y !== "number") return null;
+    return clampFabPosition({ x: parsed.x, y: parsed.y });
+  } catch {
+    return null;
+  }
+}
+
+function storeFabPosition(position: FabPosition): void {
+  try {
+    localStorage.setItem(POSITION_STORAGE_KEY, JSON.stringify(position));
+  } catch {
+    // Ignore quota / private-mode failures — position just won't persist.
+  }
+}
 
 /**
  * A quick lookup any staffer can reach from anywhere in the admin — no
@@ -25,6 +67,26 @@ export function PriceInquiryFab() {
   const [inputValue, setInputValue] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [selected, setSelected] = useState<Product | null>(null);
+  const [position, setPosition] = useState<FabPosition | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const dragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+    moved: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    setPosition(readStoredFabPosition() ?? clampFabPosition(defaultFabPosition()));
+
+    function onResize() {
+      setPosition((previous) => (previous ? clampFabPosition(previous) : previous));
+    }
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   // One request per page — the server does the name/SKU/barcode match (see
   // IndexProductsController's `search` param), not a client-side walk of the
@@ -75,14 +137,74 @@ export function PriceInquiryFab() {
     setSearchTerm(trimmed);
   }
 
+  function onFabPointerDown(event: React.PointerEvent<HTMLButtonElement>) {
+    if (position === null) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: position.x,
+      originY: position.y,
+      moved: false,
+    };
+  }
+
+  function onFabPointerMove(event: React.PointerEvent<HTMLButtonElement>) {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+    if (!drag.moved && (Math.abs(dx) > DRAG_THRESHOLD_PX || Math.abs(dy) > DRAG_THRESHOLD_PX)) {
+      drag.moved = true;
+      setDragging(true);
+    }
+    if (!drag.moved) return;
+
+    setPosition(clampFabPosition({ x: drag.originX + dx, y: drag.originY + dy }));
+  }
+
+  function finishFabPointer(event: React.PointerEvent<HTMLButtonElement>) {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    const wasDrag = drag.moved;
+    let finalPosition = position;
+    if (wasDrag) {
+      const dx = event.clientX - drag.startX;
+      const dy = event.clientY - drag.startY;
+      finalPosition = clampFabPosition({ x: drag.originX + dx, y: drag.originY + dy });
+      setPosition(finalPosition);
+    }
+
+    dragRef.current = null;
+    setDragging(false);
+
+    if (finalPosition) storeFabPosition(finalPosition);
+    if (!wasDrag) setOpen(true);
+  }
+
+  if (position === null) return null;
+
   return (
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
         aria-label="Price inquiry"
-        title="Price inquiry"
-        className="fixed right-6 bottom-6 z-40 flex size-14 cursor-pointer items-center justify-center rounded-full bg-primary text-white shadow-lg transition-transform hover:scale-105 active:scale-95"
+        title="Price inquiry — drag to move"
+        style={{ left: position.x, top: position.y }}
+        onPointerDown={onFabPointerDown}
+        onPointerMove={onFabPointerMove}
+        onPointerUp={finishFabPointer}
+        onPointerCancel={finishFabPointer}
+        className={`fixed z-40 flex size-14 touch-none items-center justify-center rounded-full bg-primary text-white shadow-lg select-none ${
+          dragging ? "cursor-grabbing scale-105" : "cursor-grab hover:scale-105 active:scale-95"
+        }`}
       >
         <Tag size={22} strokeWidth={2} />
       </button>
