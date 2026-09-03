@@ -27,8 +27,19 @@ interface ProductRow {
   is_active: number;
   photo_url: string | null;
   is_bundle: number;
+  addon_group_ids: string | null;
   updated_at: string | null;
   pending_quantity: number;
+}
+
+function parseAddonGroupIds(json: string | null): string[] {
+  if (!json) return [];
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return Array.isArray(parsed) ? (parsed as string[]) : [];
+  } catch {
+    return [];
+  }
 }
 
 /** A device a version behind the office can hold a unit this build does not know. */
@@ -64,6 +75,7 @@ function toProductWithEstimate(row: ProductRow): ProductWithEstimatedStock {
     // sells like any other product here (rule 2/8: components decrement only
     // when assembled, which is an admin action, not a POS one).
     bundleItems: [],
+    addonGroupIds: parseAddonGroupIds(row.addon_group_ids),
     updatedAt: row.updated_at ?? "",
     // Deleted products never sync to a device — deletion is admin-only.
     deletedAt: null,
@@ -101,6 +113,7 @@ SELECT p.id,
        p.is_active,
        p.photo_url,
        p.is_bundle,
+       p.addon_group_ids,
        p.updated_at,
        COALESCE((
          SELECT SUM(si.quantity)
@@ -246,8 +259,8 @@ async function insertOrReplaceProduct(
     `INSERT INTO products
        (id, name, sku, supplier_names, price, cost_price, stock_quantity, category, category_id,
         unit, allow_decimal, barcode, reorder_point, replenish_quantity, description,
-        bulk_price, bulk_min_quantity, is_active, photo_url, is_bundle, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        bulk_price, bulk_min_quantity, is_active, photo_url, is_bundle, addon_group_ids, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (id) DO UPDATE SET
        name = excluded.name,
        sku = excluded.sku,
@@ -268,6 +281,7 @@ async function insertOrReplaceProduct(
        is_active = excluded.is_active,
        photo_url = excluded.photo_url,
        is_bundle = excluded.is_bundle,
+       addon_group_ids = excluded.addon_group_ids,
        updated_at = excluded.updated_at`,
     product.id,
     product.name,
@@ -291,6 +305,7 @@ async function insertOrReplaceProduct(
     // Uint8Array are valid) — guard here too, not just at the API mapper.
     product.photoUrl ?? null,
     product.isBundle ? 1 : 0,
+    JSON.stringify(product.addonGroupIds),
     product.updatedAt,
   );
 }
@@ -360,7 +375,7 @@ export async function updateProductCatalogFields(product: Product): Promise<void
        name = ?, sku = ?, supplier_names = ?, price = ?, cost_price = ?, category = ?, category_id = ?,
        unit = ?, allow_decimal = ?, barcode = ?, reorder_point = ?, replenish_quantity = ?,
        description = ?, bulk_price = ?, bulk_min_quantity = ?, is_active = ?, photo_url = ?,
-       is_bundle = ?, updated_at = ?
+       is_bundle = ?, addon_group_ids = ?, updated_at = ?
      WHERE id = ?`,
     product.name,
     product.sku,
@@ -380,6 +395,7 @@ export async function updateProductCatalogFields(product: Product): Promise<void
     product.isActive ? 1 : 0,
     product.photoUrl ?? null,
     product.isBundle ? 1 : 0,
+    JSON.stringify(product.addonGroupIds),
     product.updatedAt,
     product.id,
   );

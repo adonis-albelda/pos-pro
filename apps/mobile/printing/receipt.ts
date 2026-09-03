@@ -112,6 +112,10 @@ export function buildReceipt(
 
     builder.line(item.productName);
 
+    for (const addon of item.addons) {
+      builder.line(`  + ${addon.nameSnapshot}`);
+    }
+
     if (was && sold.length + was.length + total.length + 1 > columns) {
       builder.columns(sold, total);
       builder.line(`   was ${money(item.listPrice)}`);

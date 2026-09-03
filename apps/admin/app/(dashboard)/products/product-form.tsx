@@ -56,6 +56,8 @@ import {
   useUploadProductPhoto,
 } from "@/lib/query/products";
 import { saveProduct } from "./actions";
+import { ProductAddonGroupsSection } from "./product-addon-groups-section";
+import { ProductAttributesAndVariantsSection } from "./product-attributes-variants-section";
 
 interface BundleRow {
   key: string;
@@ -522,7 +524,7 @@ export function ProductForm({
 
   return (
     <div className="space-y-6">
-      <form action={action} className="space-y-6">
+      <form id="product-form" action={action} className="space-y-6">
         {product ? <input type="hidden" name="id" value={product.id} /> : null}
 
         {!product ? (
@@ -918,26 +920,35 @@ export function ProductForm({
             {saveRedirectHref ? " Returning to products…" : null}
           </SuccessNote>
         ) : null}
-
-        <div className="sticky bottom-0 z-10 flex flex-col-reverse gap-2 rounded-md border border-border bg-surface px-4 pt-6 pb-4 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] sm:flex-row sm:px-6">
-          <ButtonLink
-            href={cancelHref}
-            variant="secondary"
-            className="w-full sm:flex-1"
-          >
-            Cancel
-          </ButtonLink>
-          <Button
-            type="submit"
-            loading={pending}
-            icon={Check}
-            className="w-full sm:flex-1"
-          >
-            {pending ? "Saving..." : product ? "Save changes" : "Add product"}
-          </Button>
-        </div>
       </form>
+      {product ? <ProductAttributesAndVariantsSection product={product} /> : null}
+      {product ? <ProductAddonGroupsSection product={product} /> : null}
       {product?.isBundle ? <AssembleBundleSection product={product} /> : null}
+
+      {/* Outside the form, after every card — a submit button placed
+          mid-page as `sticky bottom-0` stays pinned only for the height of
+          its own parent, which used to be the form itself: scrolling past
+          the form's fields but still inside the Variants/Add-ons cards left
+          the bar floating (z-10) on top of them. `form="product-form"`
+          keeps it wired to the actual <form> despite living outside it. */}
+      <div className="sticky bottom-0 z-10 flex flex-col-reverse gap-2 rounded-md border border-border bg-surface px-4 pt-6 pb-4 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] sm:flex-row sm:px-6">
+        <ButtonLink
+          href={cancelHref}
+          variant="secondary"
+          className="w-full sm:flex-1"
+        >
+          Cancel
+        </ButtonLink>
+        <Button
+          type="submit"
+          form="product-form"
+          loading={pending}
+          icon={Check}
+          className="w-full sm:flex-1"
+        >
+          {pending ? "Saving..." : product ? "Save changes" : "Add product"}
+        </Button>
+      </div>
     </div>
   );
 }

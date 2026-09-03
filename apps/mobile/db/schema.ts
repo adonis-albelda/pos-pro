@@ -339,6 +339,52 @@ const V18_PRODUCT_IS_BUNDLE = `
 ALTER TABLE products ADD COLUMN is_bundle INTEGER NOT NULL DEFAULT 0;
 `;
 
+/**
+ * v19: product → variant → attribute + add-on groups (Phase 3).
+ *
+ * product_variants and addon_groups are real tables, replaced whole on every
+ * pull (same reasoning as categories — an incremental `updated_at >` filter
+ * can't surface a deletion, and both are small). Their nested arrays
+ * (attribute_values, an addon group's items) are stored as JSON text: they
+ * are only ever displayed, never filtered/joined on in SQL, unlike
+ * product_id below which needs a real indexed column for the variant picker
+ * to look up "this product's variants."
+ *
+ * sale_items.variant_id and .addons follow a pending sale from creation
+ * through push — addons as JSON text for the same reason (a handful of
+ * picks per line, read back only to build the push payload and the
+ * receipt), not a second relational table.
+ */
+const V19_VARIANTS_AND_ADDONS = `
+CREATE TABLE IF NOT EXISTS product_variants (
+  id TEXT PRIMARY KEY,
+  product_id TEXT NOT NULL,
+  sku TEXT,
+  price REAL NOT NULL,
+  cost_price REAL NOT NULL DEFAULT 0,
+  stock_quantity REAL NOT NULL DEFAULT 0,
+  is_default INTEGER NOT NULL DEFAULT 0,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  attribute_values TEXT NOT NULL DEFAULT '[]',
+  updated_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS product_variants_product_id_idx ON product_variants (product_id);
+
+CREATE TABLE IF NOT EXISTS addon_groups (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  selection_type TEXT NOT NULL DEFAULT 'multiple',
+  is_required INTEGER NOT NULL DEFAULT 0,
+  items TEXT NOT NULL DEFAULT '[]'
+);
+
+ALTER TABLE products ADD COLUMN addon_group_ids TEXT NOT NULL DEFAULT '[]';
+
+ALTER TABLE sale_items ADD COLUMN variant_id TEXT;
+ALTER TABLE sale_items ADD COLUMN addons TEXT NOT NULL DEFAULT '[]';
+`;
+
 /** Ordered, append-only. Never edit a step that has shipped. */
 export const MIGRATIONS: Migration[] = [
   { version: 1, sql: V1_INITIAL },
@@ -359,6 +405,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 16, sql: V16_PRODUCT_PHOTO },
   { version: 17, sql: V17_PRODUCT_SUPPLIER_NAMES },
   { version: 18, sql: V18_PRODUCT_IS_BUNDLE },
+  { version: 19, sql: V19_VARIANTS_AND_ADDONS },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.reduce(

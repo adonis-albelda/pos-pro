@@ -63,12 +63,15 @@ import {
   requiresCustomerForPayment,
   roundMoney,
   timeAgo,
+  type AddonGroup,
   type CartLine,
   type CustomerDetails,
   type Fulfillment,
   type PaymentMethod,
+  type ProductVariant,
   type ProductWithEstimatedStock,
 } from "@double-a/shared-types";
+import { listLocalAddonGroups } from "@/db/addon-groups";
 import { listLocalCategories, type LocalCategory } from "@/db/categories";
 import { searchLocalCustomers, upsertLocalCustomer } from "@/db/customers";
 import {
@@ -79,6 +82,11 @@ import {
   listLocalProductsPage,
   PRODUCT_PAGE_SIZE,
 } from "@/db/products";
+import {
+  getVariantPendingQuantity,
+  listLocalVariantsForProduct,
+  variantAttributeLabel,
+} from "@/db/product-variants";
 import { completeSale } from "@/db/sales";
 import {
   addCartDraft,
@@ -100,6 +108,10 @@ import { CategoryDialog, type CategoryFilter } from "@/components/category-tabs"
 import { LoadingState } from "@/components/loading-state";
 import { ProductDetailSheet, ProductTile } from "@/components/product-tile";
 import { SelectField } from "@/components/select-field";
+import {
+  VariantAddonPicker,
+  type VariantAddonSelection,
+} from "@/components/variant-addon-picker";
 import { VoiceSearchModal } from "@/components/voice-search-modal";
 import {
   Badge,
@@ -151,6 +163,11 @@ function stockCapFor(estimatedStock: number, allowDecimal: boolean): number {
   if (estimatedStock <= 0) return BACKORDER_CAP;
   if (allowDecimal) return Number(estimatedStock.toFixed(QUANTITY_DECIMALS));
   return Math.floor(estimatedStock);
+}
+
+/** What the picker resolves before a line is actually added — see onPickerConfirm. */
+interface ResolvedSelection extends VariantAddonSelection {
+  estimatedStock: number;
 }
 
 export default function SellScreen() {
@@ -224,6 +241,13 @@ export default function SellScreen() {
   const [barcodeScanOpen, setBarcodeScanOpen] = useState(false);
   const [aiSearchOpen, setAiSearchOpen] = useState(false);
   const [viewingProduct, setViewingProduct] = useState<ProductWithEstimatedStock | null>(null);
+  // Set only for a product with >1 variant and/or attached add-on groups —
+  // addToCart decides whether this ever opens; a plain product never does.
+  const [pickerState, setPickerState] = useState<{
+    product: ProductWithEstimatedStock;
+    variants: ProductVariant[];
+    addonGroups: AddonGroup[];
+  } | null>(null);
   // Ranked product ids from the last smart search — while set, the grid shows
   // exactly these (in this order) instead of the normal query/category list.
   const [aiResultIds, setAiResultIds] = useState<string[] | null>(null);
@@ -413,21 +437,35 @@ export default function SellScreen() {
   const shelfTotal = roundMoney(
     lines.reduce((sum, line) => sum + line.listPrice * line.quantity, 0),
   );
-  const inCart = useMemo(
-    () => new Map(lines.map((line) => [line.productId, line.quantity])),
-    [lines],
-  );
+  // A product can only ever have one cart line (variant/add-ons picked once
+  // per product — see addToCart), so this is a 1:1 map today, but summing
+  // rather than overwriting keeps the tile badge correct if that changes.
+  const inCart = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const line of lines) {
+      map.set(line.productId, (map.get(line.productId) ?? 0) + line.quantity);
+    }
+    return map;
+  }, [lines]);
 
   /**
    * The price a line should carry at a given quantity. Bulk pricing applies
    * itself as the quantity crosses the contractor threshold — unless the
-   * attendant has typed a price, which nothing here may overwrite.
+   * attendant has typed a price, which nothing here may overwrite. A line
+   * with a `naturalPrice` (a picked variant, with or without add-ons) keeps
+   * that price instead: bulk pricing is product-level shelf pricing and has
+   * no defined meaning against a specific variant/add-on combination yet.
    */
   function repricedFor(line: CartLine, quantity: number): CartLine {
-    const product = byId.get(line.productId);
-    if (!product || overridden.includes(line.productId)) {
+    if (overridden.includes(line.productId)) {
       return { ...line, quantity };
     }
+    if (line.naturalPrice !== undefined) {
+      return { ...line, quantity, unitPrice: line.naturalPrice };
+    }
+
+    const product = byId.get(line.productId);
+    if (!product) return { ...line, quantity };
 
     return { ...line, quantity, unitPrice: priceForQuantity(product, quantity) };
   }
@@ -436,12 +474,32 @@ export default function SellScreen() {
    * No confirmation once a line exists — adding to a cart is speed critical.
    * The one exception is the first tap on a product sitting at zero: that's a
    * backorder decision, not a speed-critical tap, so it gets asked once.
+   *
+   * A product with more than one variant, and/or one or more attached
+   * add-on groups, opens the picker instead of adding directly — but only
+   * on the FIRST tap. Once a line exists, its variant/add-ons are already
+   * resolved, so a repeat tap just bumps quantity, same speed-critical path
+   * as a plain product always had.
    */
-  function addToCart(product: ProductWithEstimatedStock) {
+  async function addToCart(product: ProductWithEstimatedStock) {
     rememberProducts([product]);
-    const alreadyInCart = lines.some((line) => line.productId === product.id);
 
-    if (product.estimatedStock <= 0 && !alreadyInCart) {
+    if (lines.some((line) => line.productId === product.id)) {
+      commitAddToCart(product);
+      return;
+    }
+
+    const [variants, addonGroups] = await Promise.all([
+      listLocalVariantsForProduct(product.id),
+      listLocalAddonGroups(product.addonGroupIds),
+    ]);
+
+    if (variants.length > 1 || addonGroups.length > 0) {
+      setPickerState({ product, variants, addonGroups });
+      return;
+    }
+
+    if (product.estimatedStock <= 0) {
       Alert.alert(
         "Out of stock",
         `${product.name} shows none on hand. Sell it anyway? New stock added later settles this automatically.`,
@@ -456,12 +514,15 @@ export default function SellScreen() {
     commitAddToCart(product);
   }
 
-  function commitAddToCart(product: ProductWithEstimatedStock) {
-    const stockCap = stockCapFor(product.estimatedStock, product.allowDecimal);
-
+  function commitAddToCart(product: ProductWithEstimatedStock, selection?: ResolvedSelection) {
     setLines((current) => {
       const existing = current.find((line) => line.productId === product.id);
       if (existing) {
+        // A variant/add-on line's cap was fixed at add time rather than
+        // re-derived from live stock on every tap — see ResolvedSelection.
+        const stockCap = existing.variantId
+          ? stockCapFor(existing.availableStock, existing.allowDecimal)
+          : stockCapFor(product.estimatedStock, product.allowDecimal);
         if (existing.quantity >= stockCap) return current;
         return current.map((line) =>
           line.productId === product.id
@@ -470,6 +531,39 @@ export default function SellScreen() {
         );
       }
 
+      if (selection) {
+        const addonsTotal = roundMoney(
+          selection.addons.reduce((sum, addon) => sum + addon.price, 0),
+        );
+        const naturalPrice = roundMoney(selection.variant.price + addonsTotal);
+        const stockCap = stockCapFor(selection.estimatedStock, product.allowDecimal);
+
+        return [
+          ...current,
+          {
+            productId: product.id,
+            variantId: selection.variant.id,
+            variantLabel: variantAttributeLabel(selection.variant) || null,
+            productName: product.name,
+            unitPrice: naturalPrice,
+            listPrice: naturalPrice,
+            naturalPrice,
+            unitCost: selection.variant.costPrice,
+            unit: product.unit,
+            allowDecimal: product.allowDecimal,
+            quantity: 1,
+            availableStock: stockCap,
+            addons: selection.addons.map((addon) => ({
+              addonGroupItemId: addon.addonGroupItemId,
+              name: addon.name,
+              price: addon.price,
+              quantity: 1,
+            })),
+          },
+        ];
+      }
+
+      const stockCap = stockCapFor(product.estimatedStock, product.allowDecimal);
       return [
         ...current,
         {
@@ -487,6 +581,37 @@ export default function SellScreen() {
         },
       ];
     });
+  }
+
+  /**
+   * Live variant stock, not the product-level estimate — the picker just
+   * resolved which exact variant is being sold, so its own last-synced
+   * quantity minus its own pending local sales is the number that matters
+   * (CLAUDE.md §2, scoped to the variant).
+   */
+  async function onPickerConfirm(selection: VariantAddonSelection) {
+    if (!pickerState) return;
+    const { product } = pickerState;
+    setPickerState(null);
+
+    const pending = await getVariantPendingQuantity(selection.variant.id);
+    const estimatedStock = selection.variant.stockQuantity - pending;
+    const resolved: ResolvedSelection = { ...selection, estimatedStock };
+
+    if (estimatedStock <= 0) {
+      const label = variantAttributeLabel(selection.variant) || selection.variant.sku || "this option";
+      Alert.alert(
+        "Out of stock",
+        `${product.name} (${label}) shows none on hand. Sell it anyway? New stock added later settles this automatically.`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Sell anyway", onPress: () => commitAddToCart(product, resolved) },
+        ],
+      );
+      return;
+    }
+
+    commitAddToCart(product, resolved);
   }
 
   function changeQuantity(productId: string, delta: number) {
@@ -576,9 +701,10 @@ export default function SellScreen() {
     setPreDiscountPrices(({ [productId]: _drop, ...rest }) => rest);
     setLines((current) =>
       current.map((line) => {
+        if (line.productId !== productId) return line;
+        if (line.naturalPrice !== undefined) return { ...line, unitPrice: line.naturalPrice };
         const product = byId.get(line.productId);
-        if (line.productId !== productId || !product) return line;
-        return { ...line, unitPrice: priceForQuantity(product, line.quantity) };
+        return product ? { ...line, unitPrice: priceForQuantity(product, line.quantity) } : line;
       }),
     );
     setEditingId(null);
@@ -627,6 +753,7 @@ export default function SellScreen() {
   function clearAllDiscounts() {
     setLines((current) =>
       current.map((line) => {
+        if (line.naturalPrice !== undefined) return { ...line, unitPrice: line.naturalPrice };
         const product = byId.get(line.productId);
         return product ? { ...line, unitPrice: priceForQuantity(product, line.quantity) } : line;
       }),
@@ -649,7 +776,7 @@ export default function SellScreen() {
     const scanned = await findLocalProductByBarcode(code);
     if (!scanned) return;
 
-    addToCart(scanned);
+    await addToCart(scanned);
     setSearch("");
   }
 
@@ -1019,7 +1146,7 @@ export default function SellScreen() {
                     compact={compact}
                     minHeight={layout.tileMinHeight}
                     padding={space.md}
-                    onPress={() => addToCart(item)}
+                    onPress={() => void addToCart(item)}
                     onRemove={() => changeQuantity(item.id, -1)}
                     onHoldRemove={() => confirmRemoveLine(item.id, item.name)}
                     onHoldView={() => setViewingProduct(item)}
@@ -1472,6 +1599,15 @@ export default function SellScreen() {
       />
 
       <ProductDetailSheet product={viewingProduct} onClose={() => setViewingProduct(null)} />
+
+      <VariantAddonPicker
+        open={pickerState !== null}
+        productName={pickerState?.product.name ?? ""}
+        variants={pickerState?.variants ?? []}
+        addonGroups={pickerState?.addonGroups ?? []}
+        onCancel={() => setPickerState(null)}
+        onConfirm={(selection) => void onPickerConfirm(selection)}
+      />
     </View>
   );
 }
@@ -1580,6 +1716,19 @@ function CartRow({
         >
           {line.productName}
         </Text>
+        {line.variantLabel ? (
+          <Text style={{ fontSize: fontSize.caption, fontWeight: "600", color: color.primary }}>
+            {line.variantLabel}
+          </Text>
+        ) : null}
+        {(line.addons ?? []).map((addon, index) => (
+          <Text
+            key={`${addon.addonGroupItemId}-${index}`}
+            style={{ fontSize: fontSize.caption, color: color.inkMuted }}
+          >
+            + {addon.name}
+          </Text>
+        ))}
         <Text
           style={{
             alignSelf: "flex-start",

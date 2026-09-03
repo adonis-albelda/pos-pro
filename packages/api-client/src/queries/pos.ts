@@ -1,7 +1,9 @@
 import type {
+  AddonGroup,
   Category,
   Customer,
   Product,
+  ProductVariant,
   ReceiptLayout,
   SaleWithItems,
   StoreSettings,
@@ -9,15 +11,19 @@ import type {
 } from "@double-a/shared-types";
 import type { ApiClient, DataEnvelope, JsonApiOne } from "../http";
 import {
+  type AddonGroupAttrs,
   type CategoryAttrs,
   type CustomerAttrs,
   type ProductAttrs,
+  type ProductVariantAttrs,
   type ReceiptLayoutAttrs,
   type StoreSettingAttrs,
   type UserAttrs,
+  toAddonGroup,
   toCategory,
   toCustomer,
   toProduct,
+  toProductVariant,
   toReceiptLayout,
   toStoreSettings,
   toUser,
@@ -204,12 +210,21 @@ function toPushSalePayload(sale: SaleWithItems): Record<string, unknown> {
     items: sale.items.map((item) => ({
       id: item.id,
       product_id: item.productId,
+      variant_id: item.variantId ?? undefined,
       product_name: item.productName,
       quantity: item.quantity,
       unit_price: item.unitPrice,
       subtotal: item.subtotal,
       list_price: item.listPrice,
       unit_cost: item.unitCost,
+      addons: item.addons.length
+        ? item.addons.map((addon) => ({
+            addon_group_item_id: addon.addonGroupItemId,
+            quantity: addon.quantity,
+            price_at_purchase: addon.priceAtPurchase,
+            name_snapshot: addon.nameSnapshot,
+          }))
+        : undefined,
     })),
   };
 }
@@ -244,6 +259,10 @@ export interface PullSyncResult {
   /** Branch/warehouse the stock_quantity figures belong to. */
   locationId: string | null;
   products: Product[];
+  /** One row per sellable unit — a single-variant product still has exactly one (its default). */
+  variants: ProductVariant[];
+  /** Whole-replace every pull, same as categories/customers (CLAUDE.md §1) — a handful of rows. */
+  addonGroups: AddonGroup[];
   users: User[];
   categories: Category[];
   customers: Customer[];
@@ -257,6 +276,8 @@ interface PullSyncResponse {
   server_time: string;
   location_id?: string | null;
   products: { type: string; id: string; attributes: ProductAttrs }[];
+  variants?: { type: string; id: string; attributes: ProductVariantAttrs }[];
+  addon_groups?: { type: string; id: string; attributes: AddonGroupAttrs }[];
   users: { type: string; id: string; attributes: UserAttrs }[];
   categories: { type: string; id: string; attributes: CategoryAttrs }[];
   customers: { type: string; id: string; attributes: CustomerAttrs }[];
@@ -338,6 +359,8 @@ export async function pullSync(
     serverTime: data.server_time,
     locationId: data.location_id ?? null,
     products: mapResourceList(data.products, "products", toProduct),
+    variants: mapResourceList(data.variants, "variants", toProductVariant),
+    addonGroups: mapResourceList(data.addon_groups, "addon_groups", toAddonGroup),
     users: mapResourceList(data.users, "users", toUser),
     categories: mapResourceList(data.categories, "categories", toCategory),
     customers: mapResourceList(data.customers, "customers", toCustomer),

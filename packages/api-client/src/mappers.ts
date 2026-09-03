@@ -1,4 +1,6 @@
 import type {
+  AddonGroup,
+  AddonGroupItemChoice,
   BundleItem,
   Category,
   Company,
@@ -16,6 +18,7 @@ import type {
   PaymentMethod,
   Product,
   ProductUnit,
+  ProductVariant,
   PurchaseOrder,
   PurchaseOrderItem,
   PurchaseOrderPayment,
@@ -23,6 +26,7 @@ import type {
   ReceiptLayout,
   Sale,
   SaleItem,
+  SaleItemAddon,
   SaleStatus,
   StockTransfer,
   StockTransferStatus,
@@ -30,6 +34,7 @@ import type {
   Supplier,
   User,
   UserRole,
+  VariantAttributeValue,
   AiPlanId,
 } from "@double-a/shared-types";
 import type { JsonApiResource } from "./http";
@@ -69,6 +74,7 @@ export interface ProductAttrs {
     quantity: number;
     cost_price: number;
   }[];
+  addon_group_ids?: string[];
   created_at: string | null;
   updated_at: string | null;
   deleted_at?: string | null;
@@ -111,8 +117,86 @@ export function toProduct(resource: JsonApiResource<ProductAttrs>): Product {
         costPrice: Number(item.cost_price),
       }),
     ),
+    addonGroupIds: a.addon_group_ids ?? [],
     updatedAt: a.updated_at ?? "",
     deletedAt: a.deleted_at ?? null,
+  };
+}
+
+export interface ProductVariantAttrs {
+  product_id: string;
+  sku: string | null;
+  supplier_sku: string | null;
+  barcode: string | null;
+  price: number;
+  cost_price: number;
+  is_default: boolean;
+  is_active: boolean;
+  stock_quantity: number | null;
+  attribute_values?: {
+    company_attribute_id: string | null;
+    company_attribute_value_id: string;
+    value: string | null;
+  }[];
+  updated_at: string | null;
+}
+
+export function toProductVariant(resource: JsonApiResource<ProductVariantAttrs>): ProductVariant {
+  const a = resource.attributes;
+  return {
+    id: resource.id,
+    productId: a.product_id,
+    sku: a.sku,
+    supplierSku: a.supplier_sku,
+    barcode: a.barcode,
+    price: Number(a.price),
+    costPrice: Number(a.cost_price),
+    stockQuantity: Number(a.stock_quantity ?? 0),
+    isDefault: a.is_default,
+    isActive: a.is_active,
+    attributeValues: (a.attribute_values ?? []).map(
+      (value): VariantAttributeValue => ({
+        companyAttributeId: value.company_attribute_id,
+        companyAttributeValueId: value.company_attribute_value_id,
+        value: value.value,
+      }),
+    ),
+    updatedAt: a.updated_at ?? "",
+  };
+}
+
+export interface AddonGroupAttrs {
+  name: string;
+  selection_type: string;
+  is_required: boolean;
+  items: {
+    id: string;
+    variant_id: string;
+    product_name: string | null;
+    variant_label: string | null;
+    extra_price: number | null;
+    effective_price: number;
+    photo_url: string | null;
+  }[];
+}
+
+export function toAddonGroup(resource: JsonApiResource<AddonGroupAttrs>): AddonGroup {
+  const a = resource.attributes;
+  return {
+    id: resource.id,
+    name: a.name,
+    selectionType: a.selection_type === "single" ? "single" : "multiple",
+    isRequired: a.is_required,
+    items: (a.items ?? []).map(
+      (item): AddonGroupItemChoice => ({
+        id: item.id,
+        variantId: item.variant_id,
+        name: [item.product_name, item.variant_label].filter(Boolean).join(" — ") || (item.product_name ?? ""),
+        price: Number(item.effective_price),
+        extraPrice: item.extra_price === null ? null : Number(item.extra_price),
+        photoUrl: item.photo_url,
+      }),
+    ),
   };
 }
 
@@ -371,6 +455,7 @@ export function toReceiptLayout(resource: JsonApiResource<ReceiptLayoutAttrs>): 
 export interface SaleItemJson {
   id: string;
   product_id: string | null;
+  variant_id?: string | null;
   product_name: string;
   quantity: number;
   unit_price: number;
@@ -379,6 +464,13 @@ export interface SaleItemJson {
   unit_cost: number;
   replaced_by_product_id?: string | null;
   replaced_by_product_name?: string | null;
+  addons?: {
+    id: string;
+    addon_group_item_id: string | null;
+    quantity: number;
+    price_at_purchase: number;
+    name_snapshot: string;
+  }[];
 }
 
 export function toSaleItem(json: SaleItemJson, saleId: string): SaleItem {
@@ -386,6 +478,7 @@ export function toSaleItem(json: SaleItemJson, saleId: string): SaleItem {
     id: json.id,
     saleId,
     productId: json.product_id,
+    variantId: json.variant_id ?? null,
     productName: json.product_name,
     quantity: Number(json.quantity),
     unitPrice: Number(json.unit_price),
@@ -394,6 +487,15 @@ export function toSaleItem(json: SaleItemJson, saleId: string): SaleItem {
     subtotal: Number(json.subtotal),
     replacedByProductId: json.replaced_by_product_id ?? null,
     replacedByProductName: json.replaced_by_product_name ?? null,
+    addons: (json.addons ?? []).map(
+      (addon): SaleItemAddon => ({
+        id: addon.id,
+        addonGroupItemId: addon.addon_group_item_id,
+        quantity: Number(addon.quantity),
+        priceAtPurchase: Number(addon.price_at_purchase),
+        nameSnapshot: addon.name_snapshot,
+      }),
+    ),
   };
 }
 

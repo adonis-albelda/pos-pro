@@ -20,6 +20,7 @@ export interface PushResult {
 
 export interface PullResult {
   products: number;
+  variants: number;
   users: number;
   /** Server-side high water mark, used instead of device time. */
   serverTimestamp: string;

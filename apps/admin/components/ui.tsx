@@ -19,6 +19,7 @@ import {
   CircleAlert,
   Dot,
   Loader2,
+  Plus,
   Search,
   X,
   type LucideIcon,
@@ -859,27 +860,39 @@ export function Combobox({
             {filtered.length === 0 ? (
               <p className="px-3 py-2 text-caption text-ink-muted">{emptyLabel}</p>
             ) : (
-              filtered.map((option, index) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onMouseEnter={() => setHighlighted(index)}
-                  onClick={() => commit(option.value)}
-                  className={cx(
-                    "flex w-full rounded-sm px-3 py-2 text-left text-body",
-                    option.sublabel
-                      ? "flex-col items-start gap-0.5"
-                      : "items-center justify-between gap-2",
-                    index === highlighted ? "bg-primary-tint text-ink" : "text-ink hover:bg-paper",
-                    option.value === selected && "font-medium",
-                  )}
-                >
-                  <span className="min-w-0 break-words">{option.label}</span>
-                  {option.sublabel ? (
-                    <span className="text-caption text-ink-muted">{option.sublabel}</span>
-                  ) : null}
-                </button>
-              ))
+              filtered.map((option, index) => {
+                const isCreate = option.value === CREATE_VALUE;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onMouseEnter={() => setHighlighted(index)}
+                    onClick={() => commit(option.value)}
+                    className={cx(
+                      "flex w-full rounded-sm px-3 py-2 text-left text-body",
+                      option.sublabel
+                        ? "flex-col items-start gap-0.5"
+                        : "items-center justify-between gap-2",
+                      isCreate
+                        ? index === highlighted
+                          ? "bg-danger/12 text-danger"
+                          : "text-danger hover:bg-danger/8"
+                        : index === highlighted
+                          ? "bg-primary-tint text-ink"
+                          : "text-ink hover:bg-paper",
+                      option.value === selected && "font-medium",
+                    )}
+                  >
+                    <span className="flex min-w-0 items-center gap-1.5 break-words">
+                      {isCreate ? <Plus size={14} strokeWidth={2.5} /> : null}
+                      {option.label}
+                    </span>
+                    {option.sublabel ? (
+                      <span className="text-caption text-ink-muted">{option.sublabel}</span>
+                    ) : null}
+                  </button>
+                );
+              })
             )}
           </div>
         </ComboboxPortal>

@@ -1,5 +1,7 @@
 export * from "./app-version";
 export * from "./products";
+export * from "./attributes";
+export * from "./addon-groups";
 export * from "./categories";
 export * from "./customers";
 export * from "./expenses";

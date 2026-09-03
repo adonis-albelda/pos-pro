@@ -475,6 +475,8 @@ export interface Product {
   isBundle: boolean;
   /** This bundle's recipe. Empty for a non-bundle, or when not eager-loaded. */
   bundleItems: BundleItem[];
+  /** Ids into the pull's whole-replace AddonGroup list — empty if none attached. */
+  addonGroupIds: string[];
   updatedAt: string;
   /** Soft delete marker — null unless fetched with trashed=only. */
   deletedAt: string | null;
@@ -487,6 +489,55 @@ export interface BundleItem {
   unit: string | null;
   quantity: number;
   costPrice: number;
+}
+
+/** One value assigned to a variant — "this variant is Size=M". */
+export interface VariantAttributeValue {
+  companyAttributeId: string | null;
+  companyAttributeValueId: string;
+  value: string | null;
+}
+
+/**
+ * The sellable/stockable unit a product resolves to. Every product has at
+ * least one, exactly one of which is `isDefault` — a "simple" product with
+ * no attributes has exactly this one variant, and the POS never shows a
+ * picker for it. `stockQuantity` here is the same last-synced-minus-pending
+ * estimate as `Product.stockQuantity` (CLAUDE.md §2), just scoped to this
+ * variant instead of summed across every variant of the product.
+ */
+export interface ProductVariant {
+  id: string;
+  productId: string;
+  sku: string | null;
+  supplierSku: string | null;
+  barcode: string | null;
+  price: number;
+  costPrice: number;
+  stockQuantity: number;
+  isDefault: boolean;
+  isActive: boolean;
+  attributeValues: VariantAttributeValue[];
+  updatedAt: string;
+}
+
+/** A cashier's pick from an attached add-on group, before it becomes a cart line's SaleItemAddon. */
+export interface AddonGroupItemChoice {
+  id: string;
+  variantId: string;
+  name: string;
+  price: number;
+  extraPrice: number | null;
+  /** This add-on's own photo, or its linked variant's product photo — null only when neither has one. */
+  photoUrl: string | null;
+}
+
+export interface AddonGroup {
+  id: string;
+  name: string;
+  selectionType: "single" | "multiple";
+  isRequired: boolean;
+  items: AddonGroupItemChoice[];
 }
 
 /**
@@ -695,10 +746,26 @@ export function saleCustomer(sale: Sale): CustomerDetails {
   };
 }
 
+/** What was actually picked off an add-on group on one sale line, frozen at sale time. */
+export interface SaleItemAddon {
+  id: string;
+  addonGroupItemId: string | null;
+  quantity: number;
+  priceAtPurchase: number;
+  nameSnapshot: string;
+}
+
 export interface SaleItem {
   id: string;
   saleId: string;
   productId: string | null;
+  /**
+   * The actual variant sold — null on a sale that predates variants, or one
+   * rung up before the device had synced them. Falls back to the product's
+   * default variant server-side (AutoResolvesDefaultVariant, Laravel); never
+   * assume this is set.
+   */
+  variantId: string | null;
   /** Snapshotted so renaming a product later cannot rewrite history. */
   productName: string;
   quantity: number;
@@ -720,6 +787,8 @@ export interface SaleItem {
    */
   replacedByProductId: string | null;
   replacedByProductName: string | null;
+  /** Empty for a line with no add-ons, or when not eager-loaded. */
+  addons: SaleItemAddon[];
 }
 
 export interface LocalSale extends Sale {
@@ -897,9 +966,37 @@ export function purchaseOrderPaidTotal(payments: { amount: number; isPaid: boole
 }
 
 /** An in-progress cart, held in memory on a device only. */
+/** One add-on already picked onto a cart line, before it becomes a SaleItemAddon at push time. */
+export interface CartLineAddon {
+  addonGroupItemId: string;
+  name: string;
+  price: number;
+  quantity: number;
+}
+
 export interface CartLine {
   productId: string;
   productName: string;
+  /**
+   * The variant actually selected. Optional so every existing call site
+   * (admin's own "New sale," which stays product-level for now) keeps
+   * compiling unmodified — the mobile POS is the one that populates it.
+   * Null/undefined means "use the product's default variant," same as the
+   * server falls back to when a sale-item payload omits variant_id.
+   */
+  variantId?: string | null;
+  /** Attribute summary for display — "L / Red" — null for a single-variant product. */
+  variantLabel?: string | null;
+  /** Picked from this product's attached add-on groups. Empty if none. */
+  addons?: CartLineAddon[];
+  /**
+   * The un-overridden price for this exact configuration — the variant's
+   * price plus its add-ons, before any cashier discount. Absent means "use
+   * the product's own bulk-pricing math" (repricedFor/resetPrice fall back
+   * to that when this is unset), which is every line before variants/addons
+   * existed and every line the picker never touched.
+   */
+  naturalPrice?: number;
   /** What this line is selling at. Editable at the counter. */
   unitPrice: number;
   /** The shelf price, so the cart can show what was given away. */

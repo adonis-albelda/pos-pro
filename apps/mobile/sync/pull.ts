@@ -1,11 +1,13 @@
 import type { PullResult } from "@double-a/shared-types";
 import { countProducts, getCompanyAiSettings, pullSync } from "@double-a/api-client/queries";
+import { replaceAddonGroups } from "@/db/addon-groups";
 import { saveLocalAiSettings } from "@/db/ai-settings";
 import { replaceCategories } from "@/db/categories";
 import { replaceSyncedCustomers } from "@/db/customers";
 import { replaceFeatureFlags } from "@/db/feature-flags";
 import { getSyncMeta, recordSyncSuccess } from "@/db/meta";
 import { countLocalProducts, replaceProducts, upsertProducts } from "@/db/products";
+import { replaceVariants, upsertVariants } from "@/db/product-variants";
 import { saveLocalReceiptLayout } from "@/db/receipt-layout";
 import { saveLocalStoreSettings } from "@/db/store";
 import { replaceUsers, upsertUsers } from "@/db/users";
@@ -72,11 +74,13 @@ export async function pull(
 
   const writeProducts = options.replace ? replaceProducts : upsertProducts;
   const writeUsers = options.replace ? replaceUsers : upsertUsers;
+  const writeVariants = options.replace ? replaceVariants : upsertVariants;
 
   await writeProducts(result.products, (done, total) => {
     const span = 100 - FETCH_WEIGHT - 5;
     options.onProgress?.(FETCH_WEIGHT + Math.round((done / total) * span));
   });
+  await writeVariants(result.variants);
 
   // PIN hashes stay on the server — unlock calls verify-pin live. Local
   // users rows are for sale attribution after the shift starts, not
@@ -85,6 +89,7 @@ export async function pull(
   await replaceCategories(result.categories);
   await replaceSyncedCustomers(result.customers);
   await replaceFeatureFlags(result.featureFlags);
+  await replaceAddonGroups(result.addonGroups);
 
   try {
     const aiSettings = await getCompanyAiSettings(client);
@@ -104,6 +109,7 @@ export async function pull(
 
   return {
     products: result.products.length,
+    variants: result.variants.length,
     users: result.users.length,
     serverTimestamp: result.serverTime,
   };

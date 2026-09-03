@@ -13,6 +13,7 @@ import {
   type LocalSaleWithItems,
   type PaymentMethod,
   type SaleItem,
+  type SaleItemAddon,
 } from "@double-a/shared-types";
 import { getDb } from "./index";
 import { getEnrolledCompanyId, getActiveLocationId } from "@/lib/device";
@@ -45,12 +46,24 @@ interface SaleItemRow {
   id: string;
   sale_id: string;
   product_id: string;
+  variant_id: string | null;
   product_name: string;
   quantity: number;
   unit_price: number;
   list_price: number | null;
   unit_cost: number | null;
   subtotal: number;
+  addons: string | null;
+}
+
+function parseLocalAddons(json: string | null): SaleItemAddon[] {
+  if (!json) return [];
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return Array.isArray(parsed) ? (parsed as SaleItemAddon[]) : [];
+  } catch {
+    return [];
+  }
 }
 
 function toLocalSale(row: SaleRow): LocalSale {
@@ -83,6 +96,7 @@ function toLocalSaleItem(row: SaleItemRow): SaleItem {
     id: row.id,
     saleId: row.sale_id,
     productId: row.product_id,
+    variantId: row.variant_id,
     productName: row.product_name,
     quantity: row.quantity,
     unitPrice: row.unit_price,
@@ -93,6 +107,7 @@ function toLocalSaleItem(row: SaleItemRow): SaleItem {
     // POS terminal's own local copy of a sale.
     replacedByProductId: null,
     replacedByProductName: null,
+    addons: parseLocalAddons(row.addons),
   };
 }
 
@@ -123,6 +138,7 @@ export async function completeSale(
     id: Crypto.randomUUID(),
     saleId,
     productId: line.productId,
+    variantId: line.variantId ?? null,
     productName: line.productName,
     quantity: line.quantity,
     unitPrice: roundMoney(line.unitPrice),
@@ -131,6 +147,13 @@ export async function completeSale(
     subtotal: lineSubtotal(line.unitPrice, line.quantity),
     replacedByProductId: null,
     replacedByProductName: null,
+    addons: (line.addons ?? []).map((addon) => ({
+      id: Crypto.randomUUID(),
+      addonGroupItemId: addon.addonGroupItemId,
+      quantity: addon.quantity,
+      priceAtPurchase: roundMoney(addon.price),
+      nameSnapshot: addon.name,
+    })),
   }));
 
   const companyId = await getEnrolledCompanyId();
@@ -164,17 +187,19 @@ export async function completeSale(
     for (const item of items) {
       await db.runAsync(
         `INSERT INTO sale_items
-           (id, sale_id, product_id, product_name, quantity, unit_price, list_price, unit_cost, subtotal)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, sale_id, product_id, variant_id, product_name, quantity, unit_price, list_price, unit_cost, subtotal, addons)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         item.id,
         item.saleId,
         item.productId,
+        item.variantId,
         item.productName,
         item.quantity,
         item.unitPrice,
         item.listPrice,
         item.unitCost,
         item.subtotal,
+        JSON.stringify(item.addons),
       );
     }
   });
