@@ -89,6 +89,19 @@ export function ClassicShell({
             <span className="hidden sm:inline">{storeName} — Back Office</span>
           </span>
 
+          <Link
+            href="/menu"
+            className={[
+              "inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-sm border px-2 text-caption font-medium transition-colors md:hidden",
+              pathname === "/menu"
+                ? "border-white/40 bg-white/15"
+                : "border-white/25 hover:bg-white/10",
+            ].join(" ")}
+          >
+            <LayoutGrid size={14} strokeWidth={2} />
+            <span className="hidden sm:inline">Main menu</span>
+          </Link>
+
           <LocationSwitcher tone="onPrimary" className="shrink-0 md:hidden" />
 
           <form action={signOut}>
@@ -170,21 +183,6 @@ export function ClassicShell({
         </div>
       </div>
 
-      {/* Menu bar — phone: one shortcut row, full list behind the drawer */}
-      <div className="flex items-center gap-2 border-b border-border bg-surface px-2 py-1.5 md:hidden">
-        <Link
-          href="/menu"
-          className={[
-            "inline-flex min-h-9 items-center gap-1.5 rounded-sm px-2.5 text-caption font-medium transition-colors",
-            pathname === "/menu"
-              ? "bg-primary text-white"
-              : "text-ink hover:bg-border/60",
-          ].join(" ")}
-        >
-          <LayoutGrid size={14} strokeWidth={2} />
-          Main menu
-        </Link>
-      </div>
       </header>
 
       {drawerOpen ? (
