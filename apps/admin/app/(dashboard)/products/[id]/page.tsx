@@ -18,15 +18,18 @@ import {
   stockLevel,
 } from "@double-a/shared-types";
 import { Badge, Card, CardBody, CardHeader, Money, StatCard } from "@/components/ui";
+import { ActivityFeed } from "@/components/activity-feed";
 import { toCategoryOptions } from "@/lib/category-options";
 import { useCategories } from "@/lib/query/categories";
 import { useProduct } from "@/lib/query/products";
+import { useProductActivity } from "@/lib/query/activity";
 import { ProductForm } from "../product-form";
 
 export default function EditProductPage() {
   const { id } = useParams<{ id: string }>();
   const productQuery = useProduct(id);
   const categoriesQuery = useCategories({ includeInactive: true });
+  const activityQuery = useProductActivity(id);
 
   const pending = productQuery.isPending || categoriesQuery.isPending;
   if (pending) {
@@ -174,6 +177,8 @@ export default function EditProductPage() {
               </Link>
             </CardBody>
           </Card>
+
+          <ActivityFeed activities={activityQuery.data} isPending={activityQuery.isPending} />
         </div>
       </div>
     </div>

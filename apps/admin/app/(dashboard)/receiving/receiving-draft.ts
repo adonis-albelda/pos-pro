@@ -10,6 +10,9 @@ export interface ReceivingDraft {
   purchaseOrderId: string;
   referenceNo: string;
   notes: string;
+  deliveryDate: string;
+  salesmanName: string;
+  paymentTerms: "cod" | "installment";
   rows: LineRow[];
   galleryPhotoId: string | null;
   hadUnkeptPhoto: boolean;

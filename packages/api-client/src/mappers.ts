@@ -561,6 +561,7 @@ export interface SupplierAttrs {
   email: string | null;
   secondary_email: string | null;
   address: string | null;
+  tin: string | null;
   notes: string | null;
   is_active: boolean;
   products_count: number | null;
@@ -579,6 +580,7 @@ export function toSupplier(resource: JsonApiResource<SupplierAttrs>): Supplier {
     email: a.email,
     secondaryEmail: a.secondary_email,
     address: a.address,
+    tin: a.tin ?? null,
     notes: a.notes,
     isActive: a.is_active,
     productsCount: a.products_count ?? null,

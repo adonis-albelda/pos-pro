@@ -10,6 +10,7 @@ export interface SupplierInput {
   email?: string | null;
   secondaryEmail?: string | null;
   address?: string | null;
+  tin?: string | null;
   notes?: string | null;
   isActive?: boolean;
 }
@@ -23,6 +24,7 @@ function toPayload(input: Partial<SupplierInput>): Record<string, unknown> {
   if (input.email !== undefined) payload.email = input.email;
   if (input.secondaryEmail !== undefined) payload.secondary_email = input.secondaryEmail;
   if (input.address !== undefined) payload.address = input.address;
+  if (input.tin !== undefined) payload.tin = input.tin;
   if (input.notes !== undefined) payload.notes = input.notes;
   if (input.isActive !== undefined) payload.is_active = input.isActive;
   return payload;

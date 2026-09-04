@@ -5,6 +5,7 @@ import {
   Ban,
   CircleCheck,
   HandHelping,
+  History,
   KeyRound,
   Lock,
   Mail,
@@ -32,8 +33,10 @@ import {
 } from "@/components/ui";
 import { PasswordInput } from "@/components/password-input";
 import { ConfirmDialog, Dialog, Sheet } from "@/components/overlay";
+import { ActivityFeed } from "@/components/activity-feed";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
 import { useResendUserEmailVerification, useToggleUserCanSell } from "@/lib/query/users";
+import { useUserActivity } from "@/lib/query/activity";
 import { useLocations } from "@/lib/query/locations";
 import { resetUserPassword } from "./actions";
 import { UserForm } from "./user-form";
@@ -135,6 +138,8 @@ export function UsersTable({
   const [editing, setEditing] = useState<User | null>(null);
   const [resetting, setResetting] = useState<User | null>(null);
   const [toggling, setToggling] = useState<User | null>(null);
+  const [viewingActivity, setViewingActivity] = useState<User | null>(null);
+  const activityQuery = useUserActivity(viewingActivity?.id ?? "", viewingActivity !== null);
   const toggleCanSell = useToggleUserCanSell();
   const resendVerification = useResendUserEmailVerification();
   const [resendingId, setResendingId] = useState<string | null>(null);
@@ -284,6 +289,11 @@ export function UsersTable({
                       onClick={() => setEditing(user)}
                       disabled={mutationsLocked}
                     />
+                    <IconButton
+                      icon={History}
+                      label="View activity"
+                      onClick={() => setViewingActivity(user)}
+                    />
                     {canResetPassword ? (
                       <IconButton
                         icon={KeyRound}
@@ -353,6 +363,15 @@ export function UsersTable({
         }
         confirmLabel={toggling?.canSell ? "Disable sales" : "Enable sales"}
       />
+
+      <Dialog
+        open={viewingActivity !== null}
+        onClose={() => setViewingActivity(null)}
+        title={viewingActivity ? `${viewingActivity.name}'s activity` : "Activity"}
+        description="Everything this person has created or changed, across products, categories, suppliers, and receive orders."
+      >
+        <ActivityFeed activities={activityQuery.data} isPending={activityQuery.isPending} bare />
+      </Dialog>
     </>
   );
 }

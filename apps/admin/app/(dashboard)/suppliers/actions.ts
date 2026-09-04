@@ -8,6 +8,7 @@ import {
   SUPPLIER_NAME_MAX,
   SUPPLIER_NOTES_MAX,
   SUPPLIER_PHONE_MAX,
+  SUPPLIER_TIN_MAX,
 } from "@double-a/shared-types";
 import { ApiError } from "@double-a/api-client";
 import {
@@ -68,6 +69,7 @@ export async function saveSupplier(
     email: optional(formData, "email", SUPPLIER_EMAIL_MAX),
     secondaryEmail: optional(formData, "secondary_email", SUPPLIER_EMAIL_MAX),
     address: optional(formData, "address", SUPPLIER_ADDRESS_MAX),
+    tin: optional(formData, "tin", SUPPLIER_TIN_MAX),
     notes: optional(formData, "notes", SUPPLIER_NOTES_MAX),
     isActive,
   };
@@ -119,6 +121,7 @@ export async function saveSupplierInfo(
     email: optional(formData, "email", SUPPLIER_EMAIL_MAX),
     secondaryEmail: optional(formData, "secondary_email", SUPPLIER_EMAIL_MAX),
     address: optional(formData, "address", SUPPLIER_ADDRESS_MAX),
+    tin: optional(formData, "tin", SUPPLIER_TIN_MAX),
     notes: optional(formData, "notes", SUPPLIER_NOTES_MAX),
     isActive: formData.get("is_active") === "true",
   };

@@ -4,16 +4,24 @@ import { useState } from "react";
 import type { Route } from "next";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, ExternalLink, PackageCheck } from "lucide-react";
+import { ArrowLeft, ExternalLink, PackageCheck, Truck } from "lucide-react";
 import type { GoodsReceiptItem } from "@double-a/api-client/queries";
 import { formatQuantity, roundMoney } from "@double-a/shared-types";
 import { formatStoreDay, storeDayOf } from "@/lib/date-range";
 import { Badge, Card, CardHeader, EmptyState, Money, Table, Td, Th } from "@/components/ui";
+import { ActivityFeed } from "@/components/activity-feed";
 import { useGoodsReceipt } from "@/lib/query/goods-receipts";
+import { useGoodsReceiptActivity } from "@/lib/query/activity";
 import { useLocations } from "@/lib/query/locations";
 import { useSuppliers } from "@/lib/query/suppliers";
 import { ReceiptPhotoDialog } from "../receipt-photo-dialog";
 import { receiptHasCountDiscrepancy } from "../receiving-discrepancy";
+import { ReceivingPaymentTermsPanel } from "./receiving-payment-terms-panel";
+
+const PAYMENT_TERMS_LABEL: Record<"cod" | "installment", string> = {
+  cod: "Cash on Delivery",
+  installment: "Installment",
+};
 
 function ItemStatusBadge({ item }: { item: GoodsReceiptItem }) {
   if (!item.productId) {
@@ -28,6 +36,7 @@ export default function GoodsReceiptDetailPage() {
   const receiptQuery = useGoodsReceipt(id);
   const locationsQuery = useLocations({ type: "branch" });
   const suppliersQuery = useSuppliers();
+  const activityQuery = useGoodsReceiptActivity(id);
 
   const loading = receiptQuery.isPending || locationsQuery.isPending || suppliersQuery.isPending;
   const receipt = receiptQuery.data;
@@ -55,12 +64,11 @@ export default function GoodsReceiptDetailPage() {
   const locationName =
     (locationsQuery.data ?? []).find((location) => location.id === receipt.locationId)?.name ??
     "—";
-  const supplierLabel =
-    receipt.supplierName?.trim() ||
-    (receipt.supplierId
-      ? ((suppliersQuery.data ?? []).find((supplier) => supplier.id === receipt.supplierId)?.name ??
-        "—")
-      : "Received delivery");
+  const linkedSupplier = receipt.supplierId
+    ? (suppliersQuery.data ?? []).find((supplier) => supplier.id === receipt.supplierId)
+    : undefined;
+  const supplierLabel = receipt.supplierName?.trim() || linkedSupplier?.name || "Received delivery";
+  const supplierPhones = [linkedSupplier?.phone, linkedSupplier?.secondaryPhone].filter(Boolean);
   const receivedDay = formatStoreDay(storeDayOf(receipt.receivedAt));
   const receivedTime = new Date(receipt.receivedAt).toLocaleString("en-PH", {
     dateStyle: "medium",
@@ -106,8 +114,24 @@ export default function GoodsReceiptDetailPage() {
             <dd className="mt-0.5 text-body text-ink">{locationName}</dd>
           </div>
           <div>
-            <dt className="text-caption font-medium text-ink-muted">Reference</dt>
+            <dt className="text-caption font-medium text-ink-muted">Invoice No.</dt>
             <dd className="mt-0.5 text-body text-ink">{receipt.referenceNo ?? "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-caption font-medium text-ink-muted">Delivery date</dt>
+            <dd className="mt-0.5 text-body text-ink">{receipt.deliveryDate ?? "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-caption font-medium text-ink-muted">Salesman</dt>
+            <dd className="mt-0.5 text-body text-ink">{receipt.salesmanName ?? "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-caption font-medium text-ink-muted">Terms</dt>
+            <dd className="mt-0.5 text-body text-ink">{PAYMENT_TERMS_LABEL[receipt.paymentTerms]}</dd>
+          </div>
+          <div>
+            <dt className="text-caption font-medium text-ink-muted">Received by</dt>
+            <dd className="mt-0.5 text-body text-ink">{receipt.receivedByName ?? "—"}</dd>
           </div>
           <div>
             <dt className="text-caption font-medium text-ink-muted">Purchase order</dt>
@@ -156,6 +180,40 @@ export default function GoodsReceiptDetailPage() {
         ) : null}
       </Card>
 
+      {linkedSupplier ? (
+        <Card>
+          <CardHeader
+            icon={Truck}
+            title="Supplier"
+            action={
+              <Link
+                href={`/suppliers/${linkedSupplier.id}` as Route}
+                className="inline-flex items-center gap-1 text-caption text-primary hover:underline"
+              >
+                View supplier
+                <ExternalLink size={12} className="shrink-0" />
+              </Link>
+            }
+          />
+          <dl className="grid gap-4 border-t border-border px-4 py-4 sm:grid-cols-2 sm:px-6">
+            <div>
+              <dt className="text-caption font-medium text-ink-muted">Address</dt>
+              <dd className="mt-0.5 text-body text-ink">{linkedSupplier.address ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-caption font-medium text-ink-muted">Phone</dt>
+              <dd className="mt-0.5 text-body text-ink">
+                {supplierPhones.length > 0 ? supplierPhones.join(", ") : "—"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-caption font-medium text-ink-muted">TIN</dt>
+              <dd className="mt-0.5 text-body text-ink">{linkedSupplier.tin ?? "—"}</dd>
+            </div>
+          </dl>
+        </Card>
+      ) : null}
+
       <ReceiptPhotoDialog
         open={photoPreviewOpen}
         onClose={() => setPhotoPreviewOpen(false)}
@@ -183,8 +241,10 @@ export default function GoodsReceiptDetailPage() {
                 <Th>Status</Th>
                 <Th numeric>Qty received</Th>
                 <Th numeric>Ordered</Th>
-                <Th numeric>Cost</Th>
-                <Th numeric>Shelf price</Th>
+                <Th numeric>Discount</Th>
+                <Th numeric>Stock effect</Th>
+                <Th numeric>Cost effect</Th>
+                <Th numeric>Price effect</Th>
               </tr>
             </thead>
             <tbody>
@@ -219,10 +279,48 @@ export default function GoodsReceiptDetailPage() {
                     {item.quantityOrdered !== null ? formatQuantity(item.quantityOrdered) : "—"}
                   </Td>
                   <Td numeric>
-                    <Money value={item.unitCost} />
+                    {item.discountPercent !== null ? `${item.discountPercent}%` : "—"}
                   </Td>
                   <Td numeric>
-                    {item.appliedPrice !== null ? <Money value={item.appliedPrice} /> : "—"}
+                    {item.stockBefore !== null ? (
+                      <span className="whitespace-nowrap text-caption">
+                        {formatQuantity(item.stockBefore)}
+                        {" → "}
+                        <span className="font-medium text-ink">
+                          {formatQuantity(item.stockBefore + item.quantityReceived)}
+                        </span>
+                      </span>
+                    ) : (
+                      "—"
+                    )}
+                  </Td>
+                  <Td numeric>
+                    {item.costBefore !== null ? (
+                      <span className="whitespace-nowrap text-caption">
+                        <Money value={item.costBefore} />
+                        {" → "}
+                        <span className="font-medium text-ink">
+                          <Money value={item.unitCost} />
+                        </span>
+                      </span>
+                    ) : (
+                      <Money value={item.unitCost} />
+                    )}
+                  </Td>
+                  <Td numeric>
+                    {item.appliedPrice === null ? (
+                      "—"
+                    ) : item.priceBefore !== null ? (
+                      <span className="whitespace-nowrap text-caption">
+                        <Money value={item.priceBefore} />
+                        {" → "}
+                        <span className="font-medium text-ink">
+                          <Money value={item.appliedPrice} />
+                        </span>
+                      </span>
+                    ) : (
+                      <Money value={item.appliedPrice} />
+                    )}
                   </Td>
                 </tr>
               ))}
@@ -230,6 +328,10 @@ export default function GoodsReceiptDetailPage() {
           </Table>
         )}
       </Card>
+
+      <ReceivingPaymentTermsPanel receipt={receipt} />
+
+      <ActivityFeed activities={activityQuery.data} isPending={activityQuery.isPending} />
     </div>
   );
 }

@@ -2,12 +2,16 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  addGoodsReceiptPayment,
   createGoodsReceipt,
   extractGoodsReceiptPhoto,
   getGoodsReceipt,
   listGoodsReceipts,
+  updateGoodsReceipt,
+  updateGoodsReceiptPayment,
   type CreateGoodsReceiptInput,
   type GoodsReceiptsFilter,
+  type UpdateGoodsReceiptInput,
 } from "@double-a/api-client/queries";
 import type { MultipartFile } from "@double-a/api-client";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
@@ -62,5 +66,37 @@ export function useCreateGoodsReceipt() {
   return useMutation({
     mutationFn: (input: CreateGoodsReceiptInput) => createGoodsReceipt(getBrowserApiClient(), input),
     onSuccess: () => invalidate(),
+  });
+}
+
+export function useUpdateGoodsReceipt(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: UpdateGoodsReceiptInput) => updateGoodsReceipt(getBrowserApiClient(), id, input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.goodsReceipts.detail(id) });
+    },
+  });
+}
+
+export function useAddGoodsReceiptPayment(goodsReceiptId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Parameters<typeof addGoodsReceiptPayment>[2]) =>
+      addGoodsReceiptPayment(getBrowserApiClient(), goodsReceiptId, input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.goodsReceipts.detail(goodsReceiptId) });
+    },
+  });
+}
+
+export function useUpdateGoodsReceiptPayment(goodsReceiptId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ paymentId, ...input }: { paymentId: string } & Parameters<typeof updateGoodsReceiptPayment>[2]) =>
+      updateGoodsReceiptPayment(getBrowserApiClient(), paymentId, input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.goodsReceipts.detail(goodsReceiptId) });
+    },
   });
 }

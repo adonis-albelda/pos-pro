@@ -152,6 +152,14 @@ export const queryKeys = {
     detail: () => ["product-embedding-coverage", "detail"] as const,
     batch: (batchId: string | null) => ["product-embedding-coverage", "batch", batchId] as const,
   },
+  activity: {
+    all: ["activity"] as const,
+    product: (id: string) => ["activity", "product", id] as const,
+    category: (id: string) => ["activity", "category", id] as const,
+    supplier: (id: string) => ["activity", "supplier", id] as const,
+    goodsReceipt: (id: string) => ["activity", "goods-receipt", id] as const,
+    user: (id: string) => ["activity", "user", id] as const,
+  },
   backups: {
     all: ["platform-backups"] as const,
     list: () => ["platform-backups", "list"] as const,

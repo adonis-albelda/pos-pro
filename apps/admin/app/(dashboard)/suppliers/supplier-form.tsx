@@ -9,6 +9,7 @@ import {
   SUPPLIER_NAME_MAX,
   SUPPLIER_NOTES_MAX,
   SUPPLIER_PHONE_MAX,
+  SUPPLIER_TIN_MAX,
 } from "@double-a/shared-types";
 import type { Product, Supplier } from "@double-a/shared-types";
 import { Button, ErrorNote, Field, Input, SuccessNote, Textarea } from "@/components/ui";
@@ -130,6 +131,14 @@ export function SupplierForm({
           name="address"
           defaultValue={supplier?.address ?? ""}
           maxLength={SUPPLIER_ADDRESS_MAX}
+        />
+      </Field>
+
+      <Field label="TIN" hint="Doubles as the VAT registration number when the supplier is VAT-registered." required={false}>
+        <Input
+          name="tin"
+          defaultValue={supplier?.tin ?? ""}
+          maxLength={SUPPLIER_TIN_MAX}
         />
       </Field>
 

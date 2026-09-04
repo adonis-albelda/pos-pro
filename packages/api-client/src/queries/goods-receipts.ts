@@ -61,6 +61,18 @@ function fromLineAttrs(line: ExtractedReceiptLineAttrs): ExtractedReceiptLine {
 export interface ExtractedReceiptPhotoResult {
   lines: ExtractedReceiptLine[];
   supplierName: string | null;
+  invoiceNumber: string | null;
+  supplierAddress: string | null;
+  /** Raw as printed — may hold more than one number (e.g. "(053) 832-1292, (053) 888-2189"). */
+  supplierPhone: string | null;
+  supplierTin: string | null;
+  /** Raw string as printed — not yet parsed into a date. */
+  deliveryDate: string | null;
+  salesmanName: string | null;
+  /** Server-normalized — 'cod' | 'installment' | null. */
+  paymentTerms: "cod" | "installment" | null;
+  /** As printed, before normalization — show this so a merchant can catch a misread. */
+  paymentTermsRaw: string | null;
 }
 
 /** Vision extraction runs server-side (DeliveryReceiptExtractor via Laravel AI / OpenAI). */
@@ -77,12 +89,30 @@ export async function extractGoodsReceiptPhoto(
 
   const result = await client.postMultipart<{
     data: ExtractedReceiptLineAttrs[];
-    meta?: { supplier_name?: string | null };
+    meta?: {
+      supplier_name?: string | null;
+      invoice_number?: string | null;
+      supplier_address?: string | null;
+      supplier_phone?: string | null;
+      supplier_tin?: string | null;
+      delivery_date?: string | null;
+      salesman_name?: string | null;
+      payment_terms?: "cod" | "installment" | null;
+      payment_terms_raw?: string | null;
+    };
   }>("/goods-receipts/extract-photo", formData);
 
   return {
     lines: result.data.map(fromLineAttrs),
     supplierName: result.meta?.supplier_name ?? null,
+    invoiceNumber: result.meta?.invoice_number ?? null,
+    supplierAddress: result.meta?.supplier_address ?? null,
+    supplierPhone: result.meta?.supplier_phone ?? null,
+    supplierTin: result.meta?.supplier_tin ?? null,
+    deliveryDate: result.meta?.delivery_date ?? null,
+    salesmanName: result.meta?.salesman_name ?? null,
+    paymentTerms: result.meta?.payment_terms ?? null,
+    paymentTermsRaw: result.meta?.payment_terms_raw ?? null,
   };
 }
 
@@ -99,6 +129,21 @@ export interface GoodsReceiptItem {
   appliedPrice: number | null;
   isFlagged: boolean;
   note: string | null;
+  discountPercent: number | null;
+  /** Snapshotted at receive time — the location's stock for this line right before it applied. Null for an unmatched line. */
+  stockBefore: number | null;
+  costBefore: number | null;
+  priceBefore: number | null;
+}
+
+export interface GoodsReceiptPayment {
+  id: string;
+  termNumber: number;
+  dueDate: string | null;
+  amount: number;
+  isPaid: boolean;
+  paidDate: string | null;
+  note: string | null;
 }
 
 export interface GoodsReceipt {
@@ -112,9 +157,14 @@ export interface GoodsReceipt {
   notes: string | null;
   hasDiscrepancy: boolean;
   receivedBy: string | null;
+  receivedByName: string | null;
   receivedAt: string;
+  deliveryDate: string | null;
+  salesmanName: string | null;
+  paymentTerms: "cod" | "installment";
   createdAt: string | null;
   items: GoodsReceiptItem[];
+  payments: GoodsReceiptPayment[];
 }
 
 interface GoodsReceiptItemAttrs {
@@ -130,6 +180,20 @@ interface GoodsReceiptItemAttrs {
   applied_price: number | null;
   is_flagged: boolean;
   note: string | null;
+  discount_percent: number | null;
+  stock_before: number | null;
+  cost_before: number | null;
+  price_before: number | null;
+}
+
+interface GoodsReceiptPaymentAttrs {
+  id: string;
+  term_number: number;
+  due_date: string | null;
+  amount: number;
+  is_paid: boolean;
+  paid_date: string | null;
+  note: string | null;
 }
 
 interface GoodsReceiptAttrs {
@@ -142,9 +206,26 @@ interface GoodsReceiptAttrs {
   notes: string | null;
   has_discrepancy: boolean;
   received_by: string | null;
+  received_by_name?: string | null;
   received_at: string;
+  delivery_date?: string | null;
+  salesman_name?: string | null;
+  payment_terms?: "cod" | "installment";
   created_at?: string | null;
   items: GoodsReceiptItemAttrs[];
+  payments?: GoodsReceiptPaymentAttrs[];
+}
+
+function toGoodsReceiptPayment(payment: GoodsReceiptPaymentAttrs): GoodsReceiptPayment {
+  return {
+    id: payment.id,
+    termNumber: payment.term_number,
+    dueDate: payment.due_date,
+    amount: payment.amount,
+    isPaid: payment.is_paid,
+    paidDate: payment.paid_date,
+    note: payment.note,
+  };
 }
 
 function toGoodsReceipt(resource: JsonApiResource<GoodsReceiptAttrs>): GoodsReceipt {
@@ -160,7 +241,11 @@ function toGoodsReceipt(resource: JsonApiResource<GoodsReceiptAttrs>): GoodsRece
     notes: attrs.notes,
     hasDiscrepancy: attrs.has_discrepancy,
     receivedBy: attrs.received_by,
+    receivedByName: attrs.received_by_name ?? null,
     receivedAt: attrs.received_at,
+    deliveryDate: attrs.delivery_date ?? null,
+    salesmanName: attrs.salesman_name ?? null,
+    paymentTerms: attrs.payment_terms ?? "cod",
     createdAt: attrs.created_at ?? attrs.received_at,
     items: attrs.items.map((item) => ({
       id: item.id,
@@ -175,7 +260,12 @@ function toGoodsReceipt(resource: JsonApiResource<GoodsReceiptAttrs>): GoodsRece
       appliedPrice: item.applied_price,
       isFlagged: item.is_flagged,
       note: item.note,
+      discountPercent: item.discount_percent,
+      stockBefore: item.stock_before,
+      costBefore: item.cost_before,
+      priceBefore: item.price_before,
     })),
+    payments: (attrs.payments ?? []).map(toGoodsReceiptPayment),
   };
 }
 
@@ -195,6 +285,7 @@ export interface GoodsReceiptItemInput {
   createHidden?: boolean;
   /** New products only — assigned on catalogue create. */
   categoryId?: string | null;
+  discountPercent?: number | null;
 }
 
 export interface CreateGoodsReceiptInput {
@@ -207,6 +298,13 @@ export interface CreateGoodsReceiptInput {
   photo?: MultipartFile | null;
   /** Picked from the "process later" gallery instead of a fresh upload — the receipt reuses that photo's own URL. */
   galleryPhotoId?: string | null;
+  deliveryDate?: string | null;
+  salesmanName?: string | null;
+  paymentTerms?: "cod" | "installment" | null;
+  /** Filled onto the supplier record only where it's currently blank — never overwrites a curated value. */
+  supplierAddress?: string | null;
+  supplierPhone?: string | null;
+  supplierTin?: string | null;
   items: GoodsReceiptItemInput[];
 }
 
@@ -227,6 +325,7 @@ function toItemsJson(items: GoodsReceiptItemInput[]): string {
       note: item.note,
       create_hidden: item.createHidden ?? true,
       category_id: item.categoryId ?? null,
+      discount_percent: item.discountPercent ?? null,
     })),
   );
 }
@@ -244,6 +343,12 @@ export async function createGoodsReceipt(
   if (input.notes) appendMultipartField(formData, "notes", input.notes);
   if (input.photo) await appendMultipartFile(formData, "photo", input.photo);
   if (input.galleryPhotoId) appendMultipartField(formData, "gallery_photo_id", input.galleryPhotoId);
+  if (input.deliveryDate) appendMultipartField(formData, "delivery_date", input.deliveryDate);
+  if (input.salesmanName) appendMultipartField(formData, "salesman_name", input.salesmanName);
+  if (input.paymentTerms) appendMultipartField(formData, "payment_terms", input.paymentTerms);
+  if (input.supplierAddress) appendMultipartField(formData, "supplier_address", input.supplierAddress);
+  if (input.supplierPhone) appendMultipartField(formData, "supplier_phone", input.supplierPhone);
+  if (input.supplierTin) appendMultipartField(formData, "supplier_tin", input.supplierTin);
   appendMultipartField(formData, "items_json", toItemsJson(input.items));
 
   const { data } = await client.postMultipart<{ data: JsonApiResource<GoodsReceiptAttrs> }>(
@@ -251,6 +356,64 @@ export async function createGoodsReceipt(
     formData,
   );
   return toGoodsReceipt(data);
+}
+
+export interface UpdateGoodsReceiptInput {
+  deliveryDate?: string | null;
+  salesmanName?: string | null;
+  paymentTerms?: "cod" | "installment";
+  referenceNo?: string | null;
+}
+
+export async function updateGoodsReceipt(
+  client: ApiClient,
+  id: string,
+  input: UpdateGoodsReceiptInput,
+): Promise<GoodsReceipt> {
+  const payload: Record<string, unknown> = {};
+  if (input.deliveryDate !== undefined) payload.delivery_date = input.deliveryDate;
+  if (input.salesmanName !== undefined) payload.salesman_name = input.salesmanName;
+  if (input.paymentTerms !== undefined) payload.payment_terms = input.paymentTerms;
+  if (input.referenceNo !== undefined) payload.reference_no = input.referenceNo;
+
+  const { data } = await client.patch<{ data: JsonApiResource<GoodsReceiptAttrs> }>(
+    `/goods-receipts/${id}`,
+    payload,
+  );
+  return toGoodsReceipt(data);
+}
+
+export async function addGoodsReceiptPayment(
+  client: ApiClient,
+  goodsReceiptId: string,
+  input: { termNumber: number; dueDate?: string | null; amount: number; note?: string | null },
+): Promise<GoodsReceiptPayment> {
+  const { data } = await client.post<{ data: GoodsReceiptPaymentAttrs }>(
+    `/goods-receipts/${goodsReceiptId}/payments`,
+    {
+      term_number: input.termNumber,
+      due_date: input.dueDate ?? undefined,
+      amount: input.amount,
+      note: input.note ?? undefined,
+    },
+  );
+  return toGoodsReceiptPayment(data);
+}
+
+export async function updateGoodsReceiptPayment(
+  client: ApiClient,
+  paymentId: string,
+  input: { isPaid: boolean; paidDate?: string | null; note?: string | null },
+): Promise<GoodsReceiptPayment> {
+  const { data } = await client.patch<{ data: GoodsReceiptPaymentAttrs }>(
+    `/goods-receipts/payments/${paymentId}`,
+    {
+      is_paid: input.isPaid,
+      paid_date: input.paidDate ?? undefined,
+      note: input.note,
+    },
+  );
+  return toGoodsReceiptPayment(data);
 }
 
 export interface GoodsReceiptsFilter {

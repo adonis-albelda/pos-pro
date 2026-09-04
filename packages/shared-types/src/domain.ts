@@ -848,6 +848,8 @@ export interface Supplier {
   email: string | null;
   secondaryEmail: string | null;
   address: string | null;
+  /** BIR TIN — doubles as the VAT registration number when the supplier is VAT-registered (same number, printed either label). */
+  tin: string | null;
   /** Free-form — payment terms, delivery quirks, anything else that doesn't fit a dedicated field. */
   notes: string | null;
   isActive: boolean;
@@ -871,6 +873,7 @@ export const SUPPLIER_CONTACT_PERSON_MAX = 120;
 export const SUPPLIER_PHONE_MAX = 40;
 export const SUPPLIER_EMAIL_MAX = 200;
 export const SUPPLIER_ADDRESS_MAX = 300;
+export const SUPPLIER_TIN_MAX = 40;
 export const SUPPLIER_NOTES_MAX = 2000;
 
 /**

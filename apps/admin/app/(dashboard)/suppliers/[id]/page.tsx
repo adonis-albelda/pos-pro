@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { Route } from "next";
 import Link from "next/link";
 import { notFound, useParams } from "next/navigation";
-import { ArrowLeft, ClipboardList, Package, Truck, Wallet } from "lucide-react";
+import { ArrowLeft, ClipboardList, History, Package, Truck, Wallet } from "lucide-react";
 import {
   formatMoney,
   PURCHASE_ORDER_STATUS_LABELS,
@@ -22,7 +22,9 @@ import {
   Td,
   Th,
 } from "@/components/ui";
+import { ActivityFeed } from "@/components/activity-feed";
 import { usePurchaseOrders } from "@/lib/query/purchase-orders";
+import { useSupplierActivity } from "@/lib/query/activity";
 import { DeleteSupplierButton } from "./delete-supplier-button";
 import { SupplierInfoForm } from "./supplier-info-form";
 import { SupplierProductsPanel } from "./supplier-products-panel";
@@ -32,6 +34,7 @@ const TABS = [
   { id: "info", label: "Supplier's info", icon: Truck },
   { id: "products", label: "Products", icon: Package },
   { id: "orders", label: "Purchase orders", icon: ClipboardList },
+  { id: "activity", label: "Activity", icon: History },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -43,6 +46,7 @@ export default function SupplierDetailPage() {
   const supplierQuery = useSupplier(id);
   const ordersQuery = usePurchaseOrders({ supplierId: id });
   const balanceQuery = useSupplierBalance(id);
+  const activityQuery = useSupplierActivity(id);
 
   const isPending = supplierQuery.isPending || ordersQuery.isPending || balanceQuery.isPending;
 
@@ -196,6 +200,10 @@ export default function SupplierDetailPage() {
             </Table>
           )}
         </Card>
+      ) : null}
+
+      {tab === "activity" ? (
+        <ActivityFeed activities={activityQuery.data} isPending={activityQuery.isPending} />
       ) : null}
     </div>
   );

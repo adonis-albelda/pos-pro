@@ -38,6 +38,7 @@ import {
   Field,
   IconButton,
   Input,
+  Select,
   Table,
   Td,
   Textarea,
@@ -165,6 +166,9 @@ interface HeldReceipt {
   purchaseOrderId: string;
   referenceNo: string;
   notes: string;
+  deliveryDate: string;
+  salesmanName: string;
+  paymentTerms: "cod" | "installment";
   rows: LineRow[];
   galleryPhotoId: string | null;
   hadUnkeptPhoto: boolean;
@@ -285,6 +289,17 @@ export function ReceivingForm({
   const [locationId, setLocationId] = useState(defaultLocationId ?? locations[0]?.id ?? "");
   const [referenceNo, setReferenceNo] = useState(linkedOrder?.referenceNo ?? "");
   const [notes, setNotes] = useState("");
+  const [deliveryDate, setDeliveryDate] = useState("");
+  const [salesmanName, setSalesmanName] = useState("");
+  const [paymentTerms, setPaymentTerms] = useState<"cod" | "installment">("cod");
+  // Extraction-only — never a form field of their own. Carried through to
+  // submit so ReceiveGoodsAction can fill them onto the supplier record,
+  // and only where that record is currently blank (never overwrites a
+  // curated value) — correcting a wrong auto-fill happens on the
+  // supplier's own detail page, same as any other supplier field.
+  const [supplierAddress, setSupplierAddress] = useState<string | null>(null);
+  const [supplierPhone, setSupplierPhone] = useState<string | null>(null);
+  const [supplierTin, setSupplierTin] = useState<string | null>(null);
   const [rows, setRows] = useState<LineRow[]>([]);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [heldReceipt, setHeldReceipt] = useState<HeldReceipt | null>(null);
@@ -328,6 +343,12 @@ export function ReceivingForm({
     setSupplierName("");
     setReferenceNo("");
     setNotes("");
+    setDeliveryDate("");
+    setSalesmanName("");
+    setPaymentTerms("cod");
+    setSupplierAddress(null);
+    setSupplierPhone(null);
+    setSupplierTin(null);
     setRows([]);
     setExpandedKey(null);
     setError(null);
@@ -353,6 +374,8 @@ export function ReceivingForm({
     Boolean(supplierName.trim()) ||
     Boolean(referenceNo.trim()) ||
     Boolean(notes.trim()) ||
+    Boolean(deliveryDate) ||
+    Boolean(salesmanName.trim()) ||
     Boolean(photo) ||
     Boolean(galleryPhotoId);
 
@@ -365,6 +388,9 @@ export function ReceivingForm({
       purchaseOrderId,
       referenceNo,
       notes,
+      deliveryDate,
+      salesmanName,
+      paymentTerms,
       rows,
       galleryPhotoId,
       hadUnkeptPhoto: Boolean(photo) && !galleryPhotoId,
@@ -388,6 +414,9 @@ export function ReceivingForm({
     setLocationId(heldReceipt.locationId);
     setReferenceNo(heldReceipt.referenceNo);
     setNotes(heldReceipt.notes);
+    setDeliveryDate(heldReceipt.deliveryDate ?? "");
+    setSalesmanName(heldReceipt.salesmanName ?? "");
+    setPaymentTerms(heldReceipt.paymentTerms ?? "cod");
     const normalizedRows = heldReceipt.rows.map(normalizeHeldRow);
     setRows(normalizedRows);
     const firstUnresolved = normalizedRows.find((row) => !row.excluded && !lineIsResolved(row));
@@ -425,6 +454,9 @@ export function ReceivingForm({
     setSupplierName(draft.supplierName);
     setReferenceNo(draft.referenceNo);
     setNotes(draft.notes);
+    setDeliveryDate(draft.deliveryDate ?? "");
+    setSalesmanName(draft.salesmanName ?? "");
+    setPaymentTerms(draft.paymentTerms ?? "cod");
     setRows(draft.rows);
     setExpandedKey(draft.expandedKey);
     setPhotoRead(draft.photoRead);
@@ -770,6 +802,9 @@ export function ReceivingForm({
       purchaseOrderId,
       referenceNo,
       notes,
+      deliveryDate,
+      salesmanName,
+      paymentTerms,
       rows,
       galleryPhotoId,
       hadUnkeptPhoto: Boolean(photo) && !galleryPhotoId,
@@ -792,6 +827,9 @@ export function ReceivingForm({
     purchaseOrderId,
     referenceNo,
     notes,
+    deliveryDate,
+    salesmanName,
+    paymentTerms,
     rows,
     galleryPhotoId,
     photo,
@@ -838,6 +876,27 @@ export function ReceivingForm({
         setSupplierId(supplierPatch.supplierId);
         setSupplierName(supplierPatch.supplierName);
       }
+
+      // Never overwrites something already typed — same "don't clobber a
+      // deliberate entry" rule as the supplier name above.
+      if (!referenceNo.trim() && extractResult.invoiceNumber) {
+        setReferenceNo(extractResult.invoiceNumber);
+      }
+      if (!deliveryDate && extractResult.deliveryDate) {
+        const parsed = new Date(extractResult.deliveryDate);
+        if (!Number.isNaN(parsed.getTime())) {
+          setDeliveryDate(parsed.toISOString().slice(0, 10));
+        }
+      }
+      if (!salesmanName.trim() && extractResult.salesmanName) {
+        setSalesmanName(extractResult.salesmanName);
+      }
+      if (extractResult.paymentTerms) {
+        setPaymentTerms(extractResult.paymentTerms);
+      }
+      if (extractResult.supplierAddress) setSupplierAddress(extractResult.supplierAddress);
+      if (extractResult.supplierPhone) setSupplierPhone(extractResult.supplierPhone);
+      if (extractResult.supplierTin) setSupplierTin(extractResult.supplierTin);
 
       const extractedRows: LineRow[] = extractResult.lines.map((line) => {
         const base = lineRowFromExtraction(line);
@@ -962,6 +1021,7 @@ export function ReceivingForm({
       note: row.note.trim() || null,
       createHidden: !row.productId ? row.createHidden : undefined,
       categoryId: row.categoryId,
+      discountPercent: row.discountPercent,
     };
     });
 
@@ -1025,6 +1085,12 @@ export function ReceivingForm({
           // processed) instead of re-uploading the bytes this form just fetched.
           galleryPhotoId: galleryPhotoId || null,
           photo: galleryPhotoId ? null : photo,
+          deliveryDate: deliveryDate || null,
+          salesmanName: salesmanName.trim() || null,
+          paymentTerms,
+          supplierAddress,
+          supplierPhone,
+          supplierTin,
           items,
         });
       } catch (error) {
@@ -1269,6 +1335,29 @@ export function ReceivingForm({
                 required={false}
               >
                 <Input value={referenceNo} onChange={(event) => setReferenceNo(event.target.value)} />
+              </Field>
+              <Field label="Delivery date" required={false} hint="As printed on the receipt.">
+                <Input
+                  type="date"
+                  value={deliveryDate}
+                  onChange={(event) => setDeliveryDate(event.target.value)}
+                />
+              </Field>
+              <Field label="Salesman" required={false}>
+                <Input
+                  value={salesmanName}
+                  onChange={(event) => setSalesmanName(event.target.value)}
+                  placeholder="Optional"
+                />
+              </Field>
+              <Field label="Terms" required={false}>
+                <Select
+                  value={paymentTerms}
+                  onChange={(event) => setPaymentTerms(event.target.value as "cod" | "installment")}
+                >
+                  <option value="cod">Cash on Delivery</option>
+                  <option value="installment">Installment</option>
+                </Select>
               </Field>
             </div>
             <Field label="Notes" hint="Discrepancies, damage, anything worth flagging." required={false}>
