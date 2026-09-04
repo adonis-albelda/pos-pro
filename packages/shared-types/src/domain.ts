@@ -73,10 +73,27 @@ export const PRODUCT_UNITS = [
   "sheet",
   "m",
   "ft",
+  "in",
+  "cm",
+  "yd",
   "kg",
   "l",
   "gal",
   "bag",
+  "sqm",
+  "sqft",
+  "cum",
+  "cuft",
+  "ton",
+  "doz",
+  "pr",
+  "gross",
+  "ream",
+  "bundle",
+  "coil",
+  "drum",
+  "can",
+  "tube",
 ] as const;
 
 export type ProductUnit = (typeof PRODUCT_UNITS)[number];
@@ -98,10 +115,27 @@ export const UNIT_LABELS: Record<ProductUnit, string> = {
   sheet: "Sheet",
   m: "Metre",
   ft: "Foot",
+  in: "Inch",
+  cm: "Centimetre",
+  yd: "Yard",
   kg: "Kilogram",
   l: "Litre",
   gal: "Gallon",
   bag: "Bag",
+  sqm: "Square Metre",
+  sqft: "Square Foot",
+  cum: "Cubic Metre",
+  cuft: "Cubic Foot",
+  ton: "Ton",
+  doz: "Dozen",
+  pr: "Pair",
+  gross: "Gross",
+  ream: "Ream",
+  bundle: "Bundle",
+  coil: "Coil",
+  drum: "Drum",
+  can: "Can",
+  tube: "Tube",
 };
 
 /**
@@ -110,7 +144,22 @@ export const UNIT_LABELS: Record<ProductUnit, string> = {
  * default; every other unit defaults to whole numbers but the owner can still
  * turn decimals on per product (see `Product.allowDecimal`).
  */
-export const FRACTIONAL_UNITS = ["m", "ft", "kg", "l", "gal", "roll"] as const;
+export const FRACTIONAL_UNITS = [
+  "m",
+  "ft",
+  "in",
+  "cm",
+  "yd",
+  "kg",
+  "l",
+  "gal",
+  "roll",
+  "sqm",
+  "sqft",
+  "cum",
+  "cuft",
+  "ton",
+] as const;
 
 export function isFractionalUnit(unit: ProductUnit): boolean {
   return (FRACTIONAL_UNITS as readonly string[]).includes(unit);

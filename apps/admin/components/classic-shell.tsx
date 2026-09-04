@@ -22,7 +22,6 @@ import type { UiMode } from "@/lib/ui-mode";
 export function ClassicShell({
   storeName,
   storeLogoUrl,
-  userName,
   userEmail,
   mode,
   embedded = false,
@@ -30,7 +29,6 @@ export function ClassicShell({
 }: {
   storeName: string;
   storeLogoUrl: string | null;
-  userName: string | null;
   userEmail: string | null;
   mode: UiMode;
   embedded?: boolean;
@@ -91,12 +89,7 @@ export function ClassicShell({
             <span className="hidden sm:inline">{storeName} — Back Office</span>
           </span>
 
-          <LocationSwitcher tone="onPrimary" className="shrink-0" />
-
-          <span className="hidden truncate text-caption text-white/75 lg:block">
-            {userName ?? "Signed in"}
-            {userEmail ? ` · ${userEmail}` : ""}
-          </span>
+          <LocationSwitcher tone="onPrimary" className="shrink-0 md:hidden" />
 
           <form action={signOut}>
             <button
@@ -112,64 +105,69 @@ export function ClassicShell({
 
       {/* Menu bar — desktop */}
       <div
-        className="hidden flex-wrap items-center gap-0.5 border-b border-border bg-surface px-2 py-1 md:flex"
+        className="hidden items-center justify-between gap-2 border-b border-border bg-surface px-2 py-1 md:flex"
         onMouseLeave={() => setOpenGroup(null)}
       >
-        <Link
-          href="/menu"
-          className={[
-            "inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1.5 text-caption font-medium transition-colors",
-            pathname === "/menu"
-              ? "bg-primary text-white"
-              : "text-ink hover:bg-border/60",
-          ].join(" ")}
-        >
-          <LayoutGrid size={14} strokeWidth={2} />
-          Main menu
-        </Link>
+        <div className="flex flex-wrap items-center gap-0.5">
+          <Link
+            href="/menu"
+            className={[
+              "inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1.5 text-caption font-medium transition-colors",
+              pathname === "/menu"
+                ? "bg-primary text-white"
+                : "text-ink hover:bg-border/60",
+            ].join(" ")}
+          >
+            <LayoutGrid size={14} strokeWidth={2} />
+            Main menu
+          </Link>
 
-        {navGroups.filter((group) => group.label).map((group) => {
-          const label = group.label as string;
-          const open = openGroup === label;
-          const active = group.items.some((item) => isActive(item.href));
+          {navGroups.filter((group) => group.label).map((group) => {
+            const label = group.label as string;
+            const open = openGroup === label;
+            const active = group.items.some((item) => isActive(item.href));
 
-          return (
-            <div key={label} className="relative">
-              <button
-                type="button"
-                onClick={() => setOpenGroup(open ? null : label)}
-                onMouseEnter={() => setOpenGroup(label)}
-                className={[
-                  "inline-flex items-center gap-1 rounded-sm px-2.5 py-1.5 text-caption transition-colors",
-                  active || open
-                    ? "bg-border/70 font-medium text-ink"
-                    : "text-ink hover:bg-border/60",
-                ].join(" ")}
-              >
-                {label}
-                <ChevronDown size={13} strokeWidth={2} className="text-ink-muted" />
-              </button>
+            return (
+              <div key={label} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setOpenGroup(open ? null : label)}
+                  onMouseEnter={() => setOpenGroup(label)}
+                  className={[
+                    "inline-flex items-center gap-1 rounded-sm px-2.5 py-1.5 text-caption transition-colors",
+                    active || open
+                      ? "bg-border/70 font-medium text-ink"
+                      : "text-ink hover:bg-border/60",
+                  ].join(" ")}
+                >
+                  {label}
+                  <ChevronDown size={13} strokeWidth={2} className="text-ink-muted" />
+                </button>
 
-              {open ? (
-                <div className="absolute top-full left-0 z-30 mt-0.5 min-w-52 rounded-sm border border-border bg-surface py-1 shadow-md">
-                  {group.items.map(({ href, label: itemLabel, icon: Icon }) => (
-                    <Link
-                      key={href}
-                      href={href}
-                      onClick={() => setOpenGroup(null)}
-                      className="flex items-center gap-2.5 px-3 py-2 text-caption text-ink transition-colors hover:bg-primary-tint"
-                    >
-                      <Icon size={15} strokeWidth={2} className="text-ink-muted" />
-                      {itemLabel}
-                    </Link>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          );
-        })}
+                {open ? (
+                  <div className="absolute top-full left-0 z-30 mt-0.5 min-w-52 rounded-sm border border-border bg-surface py-1 shadow-md">
+                    {group.items.map(({ href, label: itemLabel, icon: Icon }) => (
+                      <Link
+                        key={href}
+                        href={href}
+                        onClick={() => setOpenGroup(null)}
+                        className="flex items-center gap-2.5 px-3 py-2 text-caption text-ink transition-colors hover:bg-primary-tint"
+                      >
+                        <Icon size={15} strokeWidth={2} className="text-ink-muted" />
+                        {itemLabel}
+                      </Link>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
 
-        <UiModeToggle mode={mode} className="ml-auto w-auto [&_button]:w-auto" />
+        <div className="flex shrink-0 items-center gap-2">
+          <UiModeToggle mode={mode} className="w-auto [&_button]:w-auto" />
+          <LocationSwitcher />
+        </div>
       </div>
 
       {/* Menu bar — phone: one shortcut row, full list behind the drawer */}
@@ -186,9 +184,6 @@ export function ClassicShell({
           <LayoutGrid size={14} strokeWidth={2} />
           Main menu
         </Link>
-        <span className="truncate text-caption text-ink-muted">
-          {userName ?? "Signed in"}
-        </span>
       </div>
       </header>
 
