@@ -68,7 +68,7 @@ export function ClassicShell({
           shows its own back button + brand above this; a bare border
           separates the two instead. */}
       {embedded ? (
-        <div className="flex items-center justify-between gap-2 border-t border-border bg-surface px-2 py-1.5">
+        <div className="flex items-center justify-between gap-2 border-t border-border bg-surface px-2 py-1.5 md:hidden">
           <Link
             href="/menu"
             className={[
@@ -128,78 +128,78 @@ export function ClassicShell({
         </div>
       )}
 
-      {/* Menu bar — desktop. Never shown embedded: the mobile app's WebView
-          gets only the minimal bar above (its own chrome supplies the rest),
-          and this used to render unconditionally — at tablet+ width inside
-          the WebView, its own LocationSwitcher stacked on top of the
-          minimal bar's, showing the picker twice. */}
-      {!embedded ? (
-        <div
-          className="hidden items-center justify-between gap-2 border-b border-border bg-surface px-2 py-1 md:flex"
-          onMouseLeave={() => setOpenGroup(null)}
-        >
-          <div className="flex flex-wrap items-center gap-0.5">
-            <Link
-              href="/menu"
-              className={[
-                "inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1.5 text-caption font-medium transition-colors",
-                pathname === "/menu"
-                  ? "bg-primary text-white"
-                  : "text-ink hover:bg-border/60",
-              ].join(" ")}
-            >
-              <LayoutGrid size={14} strokeWidth={2} />
-              Main menu
-            </Link>
+      {/* Menu bar — tablet/desktop, both embedded and not (hidden below md,
+          the embedded minimal bar above covers phone width instead — the
+          two are mutually exclusive by breakpoint so the LocationSwitcher
+          in each never shows twice at once). Nav-group dropdowns work the
+          same inside the WebView; the toggle stays hidden there via
+          UiModeToggle's own embedded check below since there's no "modern"
+          shell to switch to from inside the app. */}
+      <div
+        className="hidden items-center justify-between gap-2 border-b border-border bg-surface px-2 py-1 md:flex"
+        onMouseLeave={() => setOpenGroup(null)}
+      >
+        <div className="flex flex-wrap items-center gap-0.5">
+          <Link
+            href="/menu"
+            className={[
+              "inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1.5 text-caption font-medium transition-colors",
+              pathname === "/menu"
+                ? "bg-primary text-white"
+                : "text-ink hover:bg-border/60",
+            ].join(" ")}
+          >
+            <LayoutGrid size={14} strokeWidth={2} />
+            Main menu
+          </Link>
 
-            {navGroups.filter((group) => group.label).map((group) => {
-              const label = group.label as string;
-              const open = openGroup === label;
-              const active = group.items.some((item) => isActive(item.href));
+          {navGroups.filter((group) => group.label).map((group) => {
+            const label = group.label as string;
+            const open = openGroup === label;
+            const active = group.items.some((item) => isActive(item.href));
 
-              return (
-                <div key={label} className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setOpenGroup(open ? null : label)}
-                    onMouseEnter={() => setOpenGroup(label)}
-                    className={[
-                      "inline-flex items-center gap-1 rounded-sm px-2.5 py-1.5 text-caption transition-colors",
-                      active || open
-                        ? "bg-border/70 font-medium text-ink"
-                        : "text-ink hover:bg-border/60",
-                    ].join(" ")}
-                  >
-                    {label}
-                    <ChevronDown size={13} strokeWidth={2} className="text-ink-muted" />
-                  </button>
+            return (
+              <div key={label} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setOpenGroup(open ? null : label)}
+                  onMouseEnter={() => setOpenGroup(label)}
+                  className={[
+                    "inline-flex items-center gap-1 rounded-sm px-2.5 py-1.5 text-caption transition-colors",
+                    active || open
+                      ? "bg-border/70 font-medium text-ink"
+                      : "text-ink hover:bg-border/60",
+                  ].join(" ")}
+                >
+                  {label}
+                  <ChevronDown size={13} strokeWidth={2} className="text-ink-muted" />
+                </button>
 
-                  {open ? (
-                    <div className="absolute top-full left-0 z-30 mt-0.5 min-w-52 rounded-sm border border-border bg-surface py-1 shadow-md">
-                      {group.items.map(({ href, label: itemLabel, icon: Icon }) => (
-                        <Link
-                          key={href}
-                          href={href}
-                          onClick={() => setOpenGroup(null)}
-                          className="flex items-center gap-2.5 px-3 py-2 text-caption text-ink transition-colors hover:bg-primary-tint"
-                        >
-                          <Icon size={15} strokeWidth={2} className="text-ink-muted" />
-                          {itemLabel}
-                        </Link>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="flex shrink-0 items-center gap-2">
-            <UiModeToggle mode={mode} className="w-auto [&_button]:w-auto" />
-            <LocationSwitcher />
-          </div>
+                {open ? (
+                  <div className="absolute top-full left-0 z-30 mt-0.5 min-w-52 rounded-sm border border-border bg-surface py-1 shadow-md">
+                    {group.items.map(({ href, label: itemLabel, icon: Icon }) => (
+                      <Link
+                        key={href}
+                        href={href}
+                        onClick={() => setOpenGroup(null)}
+                        className="flex items-center gap-2.5 px-3 py-2 text-caption text-ink transition-colors hover:bg-primary-tint"
+                      >
+                        <Icon size={15} strokeWidth={2} className="text-ink-muted" />
+                        {itemLabel}
+                      </Link>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
-      ) : null}
+
+        <div className="flex shrink-0 items-center gap-2">
+          {!embedded ? <UiModeToggle mode={mode} className="w-auto [&_button]:w-auto" /> : null}
+          <LocationSwitcher />
+        </div>
+      </div>
 
       </header>
 
