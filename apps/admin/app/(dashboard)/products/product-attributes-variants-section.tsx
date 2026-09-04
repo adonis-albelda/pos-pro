@@ -45,7 +45,7 @@ function AttributeValueBadge({
   onRemove: () => void;
 }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-sm border border-border bg-canvas px-2 py-1 text-caption">
+    <span className="inline-flex h-7 items-center gap-1 rounded-sm border border-border bg-canvas px-2 text-caption">
       {value.value}
       <button type="button" onClick={onRemove} aria-label={`Remove ${value.value}`} className="text-ink-muted hover:text-danger">
         <X size={12} strokeWidth={2} />
@@ -97,19 +97,21 @@ function AttachedAttributeCard({ productId, attribute }: { productId: string; at
             }
           />
         ))}
-        <Input
-          value={newValue}
-          onChange={(event) => setNewValue(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              addValue();
-            }
-          }}
-          placeholder="Add value…"
-          className="h-7 w-28 text-caption"
-        />
-        <IconButton icon={Plus} label="Add value" onClick={addValue} disabled={!newValue.trim()} />
+        <span className="inline-flex shrink-0 items-center gap-1.5">
+          <Input
+            value={newValue}
+            onChange={(event) => setNewValue(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                addValue();
+              }
+            }}
+            placeholder="Add value…"
+            className="h-7 w-28 text-caption"
+          />
+          <IconButton icon={Plus} label="Add value" onClick={addValue} disabled={!newValue.trim()} />
+        </span>
       </div>
     </div>
   );
@@ -320,13 +322,7 @@ export function ProductAttributesAndVariantsSection({ product }: { product: Prod
           </div>
         ) : null}
 
-        <div
-          className={
-            attached.length > 0
-              ? "w-64 border-t border-border pt-4"
-              : "mx-auto w-full max-w-sm py-2"
-          }
-        >
+        <div className="mx-auto w-full max-w-sm rounded-md border border-dashed border-success/50 bg-success/5 px-4 py-4">
           <Field label="Add a choice" hint="Pick an existing one, or type a new name to create it.">
             <Combobox
               value={pickerValue}

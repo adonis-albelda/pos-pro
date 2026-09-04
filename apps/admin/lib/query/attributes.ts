@@ -36,12 +36,25 @@ export function useCreateCompanyAttribute() {
   });
 }
 
+/**
+ * A product's attached-attributes query (`["products", "attributes",
+ * productId]`) embeds each attribute's own values inline — it's a separate
+ * cache entry from the company-wide list (`queryKeys.attributes`), so a
+ * write that only touches an attribute's name/values still has to
+ * invalidate this prefix too, or an already-open product page won't see it
+ * without a full reload. productId isn't known inside these
+ * not-product-scoped hooks, so this invalidates every product's attached
+ * list rather than one.
+ */
+const PRODUCT_ATTRIBUTES_PREFIX = ["products", "attributes"] as const;
+
 export function useDeleteCompanyAttribute() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => deleteCompanyAttribute(getBrowserApiClient(), id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.attributes.all });
+      void queryClient.invalidateQueries({ queryKey: PRODUCT_ATTRIBUTES_PREFIX });
     },
   });
 }
@@ -56,6 +69,7 @@ export function useCreateCompanyAttributeValue() {
       createCompanyAttributeValue(getBrowserApiClient(), attributeId, input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.attributes.all });
+      void queryClient.invalidateQueries({ queryKey: PRODUCT_ATTRIBUTES_PREFIX });
     },
   });
 }
@@ -66,6 +80,7 @@ export function useDeleteCompanyAttributeValue() {
     mutationFn: (valueId: string) => deleteCompanyAttributeValue(getBrowserApiClient(), valueId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.attributes.all });
+      void queryClient.invalidateQueries({ queryKey: PRODUCT_ATTRIBUTES_PREFIX });
     },
   });
 }

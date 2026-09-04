@@ -64,7 +64,7 @@ function AttributeCard({ attribute }: { attribute: { id: string; name: string; v
           {attribute.values.map((value) => (
             <span
               key={value.id}
-              className="inline-flex items-center gap-1.5 rounded-sm border border-border bg-canvas px-2 py-1 text-caption"
+              className="inline-flex h-7 items-center gap-1.5 rounded-sm border border-border bg-canvas px-2 text-caption"
             >
               {value.hexCode ? (
                 <span
