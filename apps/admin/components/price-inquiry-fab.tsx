@@ -6,7 +6,7 @@ import { ArrowLeft, Camera, Loader2, Package, Search, Tag, Truck, Warehouse } fr
 import { formatMoney } from "@double-a/shared-types";
 import type { Product } from "@double-a/shared-types";
 import { listProductsPage } from "@double-a/api-client/queries";
-import { IconButton, Input, Money } from "@/components/ui";
+import { Button, Input, Money } from "@/components/ui";
 import { Dialog } from "@/components/overlay";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 
@@ -294,7 +294,9 @@ export function PriceInquiryFab() {
                 placeholder="Search name, SKU or barcode…"
                 className="flex-1"
               />
-              <IconButton type="submit" icon={Search} label="Search" />
+              <Button type="submit" icon={Search} className="shrink-0">
+                Search
+              </Button>
             </form>
 
             {searchTerm && query.isPending ? (
