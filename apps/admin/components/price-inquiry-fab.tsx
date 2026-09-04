@@ -214,7 +214,7 @@ export function PriceInquiryFab() {
         onClose={close}
         title="Price inquiry"
         description="Look up a product's cost, stock, supplier and shelf price."
-        className="sm:min-w-4xl"
+        className="lg:min-w-4xl"
       >
         {selected ? (
           <div className="space-y-4">

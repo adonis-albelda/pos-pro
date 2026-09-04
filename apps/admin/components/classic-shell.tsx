@@ -68,7 +68,19 @@ export function ClassicShell({
           shows its own back button + brand above this; a bare border
           separates the two instead. */}
       {embedded ? (
-        <div className="flex items-center justify-end border-t border-border bg-surface px-2 py-1.5">
+        <div className="flex items-center justify-between gap-2 border-t border-border bg-surface px-2 py-1.5 md:hidden">
+          <Link
+            href="/menu"
+            className={[
+              "inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-sm border px-2 text-caption font-medium transition-colors",
+              pathname === "/menu"
+                ? "border-primary/40 bg-primary/10 text-primary"
+                : "border-border text-ink hover:bg-border/60",
+            ].join(" ")}
+          >
+            <LayoutGrid size={14} strokeWidth={2} />
+            Main menu
+          </Link>
           <LocationSwitcher />
         </div>
       ) : (
@@ -116,7 +128,13 @@ export function ClassicShell({
         </div>
       )}
 
-      {/* Menu bar — desktop */}
+      {/* Menu bar — tablet/desktop, both embedded and not (hidden below md,
+          the embedded minimal bar above covers phone width instead — the
+          two are mutually exclusive by breakpoint so the LocationSwitcher
+          in each never shows twice at once). Nav-group dropdowns work the
+          same inside the WebView; the toggle stays hidden there via
+          UiModeToggle's own embedded check below since there's no "modern"
+          shell to switch to from inside the app. */}
       <div
         className="hidden items-center justify-between gap-2 border-b border-border bg-surface px-2 py-1 md:flex"
         onMouseLeave={() => setOpenGroup(null)}
@@ -178,7 +196,7 @@ export function ClassicShell({
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          <UiModeToggle mode={mode} className="w-auto [&_button]:w-auto" />
+          {!embedded ? <UiModeToggle mode={mode} className="w-auto [&_button]:w-auto" /> : null}
           <LocationSwitcher />
         </div>
       </div>

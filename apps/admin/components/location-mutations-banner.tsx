@@ -38,9 +38,8 @@ export function LocationMutationsBanner() {
     >
       <MapPin size={16} className="mt-0.5 shrink-0 text-amber-700" strokeWidth={2} />
       <p className="text-caption leading-relaxed text-ink">
-        Some actions are restricted because you&apos;re viewing All locations. Switch to a
-        specific branch or warehouse to create, update, or delete records here — products,
-        categories, and suppliers stay editable everywhere since they&apos;re company-wide.
+        Viewing All locations — some actions are restricted. Pick a branch or warehouse to
+        create, update, or delete here.
       </p>
     </div>
   );
