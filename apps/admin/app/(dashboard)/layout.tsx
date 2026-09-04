@@ -56,7 +56,6 @@ export default async function DashboardLayout({
         <ClassicShell
           storeName={store.name}
           storeLogoUrl={store.logoUrl}
-          userName={user?.name ?? null}
           userEmail={user?.email ?? null}
           mode={mode}
           embedded={embedded}
