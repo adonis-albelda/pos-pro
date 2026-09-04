@@ -99,7 +99,7 @@ export function ClassicShell({
             ].join(" ")}
           >
             <LayoutGrid size={14} strokeWidth={2} />
-            <span className="hidden sm:inline">Main menu</span>
+            Main menu
           </Link>
 
           <LocationSwitcher tone="onPrimary" className="shrink-0 md:hidden" />
