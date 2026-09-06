@@ -559,7 +559,6 @@ function VariantStockButton({
 
       {expanded ? (
         <div className="space-y-4 border-t border-border px-3 py-3">
-          <p className="text-body font-medium text-ink">Stock per branch</p>
           <Field label="Action" required>
             <Select
               value={mode}
@@ -1146,9 +1145,16 @@ function VariantDetailPanel({
             </Button>
           </div>
 
-          <div className="border-t border-border pt-4">
-            <VariantSupplierLinksEditor productId={productId} variant={variant} />
-            <div className="mt-3">
+          <div className="space-y-6">
+            <div className="border-t border-border pt-4">
+              <VariantSupplierLinksEditor productId={productId} variant={variant} />
+            </div>
+
+            <div className="border-t border-border pt-4">
+              <span className="mb-2 flex shrink-0 items-center gap-1.5 text-body font-medium text-ink">
+                <Boxes size={16} strokeWidth={2} />
+                Stock per branch
+              </span>
               <VariantStockButton
                 productId={productId}
                 variantId={variant.id}
@@ -1317,6 +1323,7 @@ function AddUnitDialog({ open, onClose }: { open: boolean; onClose: () => void }
 function GenerateVariantsForm({ productId, attributes }: { productId: string; attributes: CompanyAttribute[] }) {
   const generate = useGenerateProductVariants(productId);
   const [selected, setSelected] = useState<Record<string, string[]>>({});
+  const [expanded, setExpanded] = useState(false);
 
   function toggleValue(attributeId: string, valueId: string) {
     setSelected((prev) => {
@@ -1352,46 +1359,64 @@ function GenerateVariantsForm({ productId, attributes }: { productId: string; at
 
   return (
     <div className="w-full rounded-md border border-border bg-surface">
-      <div className="border-b border-border px-4 py-3">
-        <p className="text-body font-medium text-ink">Generate combinations</p>
-        <p className="mt-0.5 text-caption text-ink-muted">
-          Pick at least one value per choice, then generate every combination as its own variant.
-        </p>
-      </div>
-      <div className="space-y-4 px-4 py-4">
-        {attributes.map((attribute) => (
-          <div key={attribute.id}>
-            <p className="mb-1.5 text-caption font-medium text-ink-muted">{attribute.name}</p>
-            <div className="flex flex-wrap gap-2">
-              {attribute.values.map((value) => {
-                const active = (selected[attribute.id] ?? []).includes(value.id);
-                return (
-                  <button
-                    key={value.id}
-                    type="button"
-                    onClick={() => toggleValue(attribute.id, value.id)}
-                    className={`rounded-sm border px-3 py-1.5 text-body font-medium transition-colors ${
-                      active
-                        ? "border-primary bg-primary text-white"
-                        : "border-border bg-surface text-ink hover:bg-canvas"
-                    }`}
-                  >
-                    {value.value}
-                  </button>
-                );
-              })}
-              {attribute.values.length === 0 ? (
-                <span className="text-caption text-ink-muted">No values yet — add some above first.</span>
-              ) : null}
-            </div>
-          </div>
-        ))}
-        <div className="flex justify-end">
-          <Button type="button" icon={Sparkles} loading={generate.isPending} onClick={onGenerate}>
-            Generate variants
-          </Button>
+      <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
+        <div>
+          <p className="text-body font-medium text-ink">Generate combinations</p>
+          <p className="mt-0.5 text-caption text-ink-muted">
+            Pick at least one value per choice, then generate every combination as its own variant.
+          </p>
         </div>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          icon={ChevronDown}
+          onClick={() => setExpanded((current) => !current)}
+          className={expanded ? "[&_svg]:rotate-180" : undefined}
+        >
+          {expanded ? "Hide combinations" : "Show combinations"}
+        </Button>
       </div>
+      {expanded ? (
+        <div className="space-y-4 px-4 py-4">
+          {attributes.map((attribute) => (
+            <div key={attribute.id}>
+              <p className="mb-1.5 text-caption font-medium text-ink-muted">{attribute.name}</p>
+              <div className="flex flex-wrap gap-2">
+                {attribute.values.map((value) => {
+                  const active = (selected[attribute.id] ?? []).includes(value.id);
+                  return (
+                    <label
+                      key={value.id}
+                      className={`flex cursor-pointer items-center gap-2 rounded-sm border px-3 py-1.5 text-body font-medium transition-colors ${
+                        active
+                          ? "border-primary bg-primary/5 text-ink"
+                          : "border-border bg-surface text-ink hover:bg-canvas"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={active}
+                        onChange={() => toggleValue(attribute.id, value.id)}
+                        className="size-4 accent-primary"
+                      />
+                      {value.value}
+                    </label>
+                  );
+                })}
+                {attribute.values.length === 0 ? (
+                  <span className="text-caption text-ink-muted">No values yet — add some above first.</span>
+                ) : null}
+              </div>
+            </div>
+          ))}
+          <div className="flex justify-end">
+            <Button type="button" icon={Sparkles} loading={generate.isPending} onClick={onGenerate}>
+              Generate variants
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1491,39 +1516,45 @@ export function ProductAttributesAndVariantsSection({ product }: { product: Prod
         action={<SaveStatusBadge />}
       />
       <CardBody className="space-y-4">
-        <div className="w-full max-w-md">
-          <Field
-            label="Add a choice"
-            hint={
-              allAttributesQuery.isError
-                ? errorMessage(allAttributesQuery.error, "Could not load existing choices.")
-                : "Pick an existing one, or type a new name to create it."
-            }
-          >
-            <Combobox
-              value={pickerValue}
-              onChange={(value) => {
-                setPickerValue(value);
-                onAttachExisting(value);
-              }}
-              placeholder={allAttributesQuery.isPending ? "Loading…" : "Choose or type to create"}
-              emptyLabel={
+        <div className="space-y-2">
+          <span className="flex items-center gap-1.5 text-body font-medium text-ink">
+            <Tag size={16} strokeWidth={2} />
+            Attributes
+          </span>
+          <div className="w-full max-w-md rounded-md border border-border p-4">
+            <Field
+              label="Add a choice"
+              hint={
                 allAttributesQuery.isError
-                  ? "Could not load existing choices — see above."
-                  : allAttributesQuery.isPending
-                    ? "Loading…"
-                    : undefined
+                  ? errorMessage(allAttributesQuery.error, "Could not load existing choices.")
+                  : "Pick an existing one, or type a new name to create it."
               }
-              options={(allAttributesQuery.data ?? []).map((a) => ({
-                value: a.id,
-                label: attachedIds.has(a.id) ? `${a.name} (already added)` : a.name,
-                disabled: attachedIds.has(a.id),
-              }))}
-              creatable
-              createOptionLabel={(typed) => `“${typed}” doesn't exist — create it`}
-              onCreate={onCreateAndAttach}
-            />
-          </Field>
+            >
+              <Combobox
+                value={pickerValue}
+                onChange={(value) => {
+                  setPickerValue(value);
+                  onAttachExisting(value);
+                }}
+                placeholder={allAttributesQuery.isPending ? "Loading…" : "Choose or type to create"}
+                emptyLabel={
+                  allAttributesQuery.isError
+                    ? "Could not load existing choices — see above."
+                    : allAttributesQuery.isPending
+                      ? "Loading…"
+                      : undefined
+                }
+                options={(allAttributesQuery.data ?? []).map((a) => ({
+                  value: a.id,
+                  label: attachedIds.has(a.id) ? `${a.name} (already added)` : a.name,
+                  disabled: attachedIds.has(a.id),
+                }))}
+                creatable
+                createOptionLabel={(typed) => `“${typed}” doesn't exist — create it`}
+                onCreate={onCreateAndAttach}
+              />
+            </Field>
+          </div>
         </div>
 
         {attached.length > 0 ? (
