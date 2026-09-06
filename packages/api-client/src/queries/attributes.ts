@@ -1,4 +1,5 @@
 import { ApiError, type ApiClient, type JsonApiResource } from "../http";
+import { appendMultipartFile, type MultipartFile } from "../multipart";
 
 export interface CompanyAttributeValue {
   id: string;
@@ -29,18 +30,36 @@ export interface VariantSupplierLink {
   lastOrderedAt: string | null;
 }
 
+export type PricingStrategy = "highest" | "lowest" | "weighted_average";
+export type MarginType = "percent" | "fixed";
+
 export interface ProductVariant {
   id: string;
   productId: string;
   sku: string | null;
   barcode: string | null;
+  /** Falls back to the parent product's own photo when this variant has none of its own. */
+  photoUrl: string | null;
+  /** Whether photoUrl is this variant's own photo (true) vs inherited from the product (false) — a Remove action only makes sense when true. */
+  hasOwnPhoto: boolean;
   price: number;
+  /** Resolved from `suppliers[].supplierPrice` per `pricingStrategy` — margin reporting only, not merchant-editable. */
   costPrice: number;
+  pricingStrategy: PricingStrategy;
+  unitId: string | null;
+  unit: { id: string; name: string; abbreviation: string | null } | null;
+  reorderPoint: number;
+  replenishQuantity: number;
+  /** Merchant-set suggestion input only — "percent" is cost * (1 + marginValue/100) (see `shelfPriceFromMarkup`), "fixed" is cost + marginValue (a flat peso amount). Never auto-applied to price. */
+  marginType: MarginType;
+  marginValue: number | null;
   isDefault: boolean;
   isActive: boolean;
   attributeValues: { companyAttributeId: string | null; companyAttributeValueId: string; value: string | null }[];
   /** Every supplier this variant is sourced from — a t-shirt's Red/L might come from a different supplier (and code/price) than its Blue/S. */
   suppliers: VariantSupplierLink[];
+  /** Company-wide total across every location. Null only when the query this came from never selected it. */
+  stockQuantity: number | null;
 }
 
 interface CompanyAttributeValueAttrs {
@@ -98,12 +117,22 @@ interface ProductVariantAttrs {
   product_id: string;
   sku: string | null;
   barcode: string | null;
+  photo_url: string | null;
+  has_own_photo: boolean;
   price: number;
   cost_price: number;
+  pricing_strategy: PricingStrategy;
+  unit_id: string | null;
+  unit: { id: string; name: string; abbreviation: string | null } | null;
+  reorder_point: number;
+  replenish_quantity: number;
+  margin_type: MarginType;
+  margin_value: number | null;
   is_default: boolean;
   is_active: boolean;
   attribute_values: { company_attribute_id: string | null; company_attribute_value_id: string; value: string | null }[];
   suppliers: VariantSupplierLinkAttrs[];
+  stock_quantity: number | null;
 }
 
 function toVariantSupplierLink(a: VariantSupplierLinkAttrs): VariantSupplierLink {
@@ -153,8 +182,17 @@ function toProductVariant(resource: JsonApiResource<ProductVariantAttrs>): Produ
     productId: a.product_id,
     sku: a.sku,
     barcode: a.barcode,
+    photoUrl: a.photo_url,
+    hasOwnPhoto: a.has_own_photo,
     price: Number(a.price),
     costPrice: Number(a.cost_price),
+    pricingStrategy: a.pricing_strategy,
+    unitId: a.unit_id,
+    unit: a.unit,
+    reorderPoint: a.reorder_point,
+    replenishQuantity: a.replenish_quantity,
+    marginType: a.margin_type,
+    marginValue: a.margin_value !== null ? Number(a.margin_value) : null,
     isDefault: a.is_default,
     isActive: a.is_active,
     attributeValues: (a.attribute_values ?? []).map((value) => ({
@@ -163,6 +201,7 @@ function toProductVariant(resource: JsonApiResource<ProductVariantAttrs>): Produ
       value: value.value,
     })),
     suppliers: (a.suppliers ?? []).map(toVariantSupplierLink),
+    stockQuantity: a.stock_quantity !== null ? Number(a.stock_quantity) : null,
   };
 }
 
@@ -254,7 +293,12 @@ export async function updateProductVariant(
     sku: string | null;
     barcode: string | null;
     price: number;
-    costPrice: number;
+    pricingStrategy: PricingStrategy;
+    unitId: string | null;
+    reorderPoint: number;
+    replenishQuantity: number;
+    marginType: MarginType;
+    marginValue: number | null;
     isActive: boolean;
   }>,
 ): Promise<ProductVariant> {
@@ -262,7 +306,12 @@ export async function updateProductVariant(
   if (patch.sku !== undefined) payload.sku = patch.sku;
   if (patch.barcode !== undefined) payload.barcode = patch.barcode;
   if (patch.price !== undefined) payload.price = patch.price;
-  if (patch.costPrice !== undefined) payload.cost_price = patch.costPrice;
+  if (patch.pricingStrategy !== undefined) payload.pricing_strategy = patch.pricingStrategy;
+  if (patch.unitId !== undefined) payload.unit_id = patch.unitId;
+  if (patch.reorderPoint !== undefined) payload.reorder_point = patch.reorderPoint;
+  if (patch.replenishQuantity !== undefined) payload.replenish_quantity = patch.replenishQuantity;
+  if (patch.marginType !== undefined) payload.margin_type = patch.marginType;
+  if (patch.marginValue !== undefined) payload.margin_value = patch.marginValue;
   if (patch.isActive !== undefined) payload.is_active = patch.isActive;
 
   const { data } = await client.patch<{ data: JsonApiResource<ProductVariantAttrs> }>(
@@ -320,4 +369,26 @@ export async function deleteProductVariant(client: ApiClient, variantId: string)
     }
     throw error;
   }
+}
+
+/** Server resizes to a mobile-friendly size and re-encodes as WebP — send the original file as-is. */
+export async function uploadProductVariantPhoto(
+  client: ApiClient,
+  variantId: string,
+  photo: MultipartFile,
+): Promise<ProductVariant> {
+  const formData = new FormData();
+  await appendMultipartFile(formData, "photo", photo);
+  const { data } = await client.postMultipart<{ data: JsonApiResource<ProductVariantAttrs> }>(
+    `/product-variants/${variantId}/photo`,
+    formData,
+  );
+  return toProductVariant(data);
+}
+
+export async function deleteProductVariantPhoto(client: ApiClient, variantId: string): Promise<ProductVariant> {
+  const { data } = await client.delete<{ data: JsonApiResource<ProductVariantAttrs> }>(
+    `/product-variants/${variantId}/photo`,
+  );
+  return toProductVariant(data);
 }

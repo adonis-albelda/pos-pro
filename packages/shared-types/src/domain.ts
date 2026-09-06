@@ -878,6 +878,10 @@ export interface InventoryMovement {
   productName: string | null;
   /** Location whose balance this movement changed. */
   locationId?: string | null;
+  /** Which supplier this stock came from — mainly meaningful for a restock. */
+  supplierId: string | null;
+  /** Embedded by the API — that supplier's name at read time, null if it's since been deleted. */
+  supplierName: string | null;
   /** Negative for sales, positive for restocks. */
   changeQuantity: number;
   reason: InventoryReason;

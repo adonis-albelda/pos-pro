@@ -9,6 +9,7 @@ import {
   deleteCompanyAttribute,
   deleteCompanyAttributeValue,
   deleteProductVariant,
+  deleteProductVariantPhoto,
   detachProductAttribute,
   generateProductVariants,
   listCompanyAttributes,
@@ -17,6 +18,7 @@ import {
   removeProductVariantSupplier,
   updateProductVariant,
   updateProductVariantSupplier,
+  uploadProductVariantPhoto,
 } from "@double-a/api-client/queries";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 import { queryKeys } from "./keys";
@@ -190,6 +192,27 @@ export function useDeleteProductVariant(productId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (variantId: string) => deleteProductVariant(getBrowserApiClient(), variantId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["products", "variants", productId] });
+    },
+  });
+}
+
+export function useUploadProductVariantPhoto(productId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ variantId, photo }: { variantId: string; photo: File }) =>
+      uploadProductVariantPhoto(getBrowserApiClient(), variantId, photo),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["products", "variants", productId] });
+    },
+  });
+}
+
+export function useDeleteProductVariantPhoto(productId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (variantId: string) => deleteProductVariantPhoto(getBrowserApiClient(), variantId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["products", "variants", productId] });
     },

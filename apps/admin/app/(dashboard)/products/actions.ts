@@ -33,8 +33,12 @@ function readProductForm(formData: FormData) {
     allowDecimal: formData.get("allow_decimal") !== null,
     barcode: text(formData, "barcode") || null,
     description: text(formData, "description") || null,
-    reorderPoint: Number(formData.get("reorder_point") ?? 0),
-    replenishQuantity: Number(formData.get("replenish_quantity") ?? 0),
+    // Only present in the form when creating — reorder point/replenish
+    // quantity live on the Variants tab once a product (and its default
+    // variant) exists. `undefined` here, not 0, so an edit save never sends
+    // these and zeroes them out via UpdateProductController's redirect.
+    reorderPoint: formData.has("reorder_point") ? Number(formData.get("reorder_point")) : undefined,
+    replenishQuantity: formData.has("replenish_quantity") ? Number(formData.get("replenish_quantity")) : undefined,
     // The two bulk fields live or die together, so an empty pair is two nulls
     // rather than a price with no minimum that would never apply.
     bulkPrice: optionalNumber(formData, "bulk_price"),

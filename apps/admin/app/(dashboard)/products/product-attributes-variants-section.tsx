@@ -1,12 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import { useIsMutating } from "@tanstack/react-query";
 import {
   Boxes,
+  Camera,
+  Check,
   ChevronDown,
   ExternalLink,
+  ImageOff,
   Layers,
+  Loader2,
   Plus,
+  ScanBarcode,
   Sparkles,
   Tag,
   Trash2,
@@ -14,8 +20,9 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { shelfPriceFromMarkup } from "@double-a/shared-types";
 import type { Product } from "@double-a/shared-types";
-import type { CompanyAttribute, ProductVariant, VariantSupplierLink } from "@double-a/api-client/queries";
+import type { CompanyAttribute, MarginType, ProductVariant, VariantSupplierLink } from "@double-a/api-client/queries";
 import {
   Badge,
   Button,
@@ -24,13 +31,15 @@ import {
   CardHeader,
   Combobox,
   Field,
+  FileInput,
   IconButton,
   Input,
   MoneyInput,
   Money,
   Select,
 } from "@/components/ui";
-import { Dialog } from "@/components/overlay";
+import { ConfirmDialog, Dialog } from "@/components/overlay";
+import { BarcodeScanCamera, canUseBarcodeScanner } from "@/components/barcode-scan-camera";
 import {
   useAddProductVariantSupplier,
   useAttachProductAttribute,
@@ -39,6 +48,7 @@ import {
   useCreateCompanyAttributeValue,
   useDeleteCompanyAttributeValue,
   useDeleteProductVariant,
+  useDeleteProductVariantPhoto,
   useDetachProductAttribute,
   useGenerateProductVariants,
   useProductAttributes,
@@ -46,11 +56,14 @@ import {
   useRemoveProductVariantSupplier,
   useUpdateProductVariant,
   useUpdateProductVariantSupplier,
+  useUploadProductVariantPhoto,
 } from "@/lib/query/attributes";
 import { useAdjustProductStock } from "@/lib/query/products";
 import { useLocations } from "@/lib/query/locations";
 import { useSuppliers } from "@/lib/query/suppliers";
+import { useCreateUnit, useUnits } from "@/lib/query/units";
 import { useSkuAvailability } from "@/lib/use-sku-check";
+import { isImageFile, NOT_AN_IMAGE_MESSAGE } from "@/lib/is-image-file";
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
@@ -75,6 +88,8 @@ function AttributeValueBadge({
 
 function AttachedAttributeCard({ productId, attribute }: { productId: string; attribute: CompanyAttribute }) {
   const [newValue, setNewValue] = useState("");
+  const [confirmDetach, setConfirmDetach] = useState(false);
+  const [confirmRemoveValue, setConfirmRemoveValue] = useState<{ id: string; value: string } | null>(null);
   const createValue = useCreateCompanyAttributeValue();
   const deleteValue = useDeleteCompanyAttributeValue();
   const detach = useDetachProductAttribute(productId);
@@ -85,7 +100,10 @@ function AttachedAttributeCard({ productId, attribute }: { productId: string; at
     createValue.mutate(
       { attributeId: attribute.id, value },
       {
-        onSuccess: () => setNewValue(""),
+        onSuccess: () => {
+          setNewValue("");
+          toast.success(`"${value}" added.`);
+        },
         onError: (error) => toast.error(errorMessage(error, "Could not add that value.")),
       },
     );
@@ -94,14 +112,12 @@ function AttachedAttributeCard({ productId, attribute }: { productId: string; at
   return (
     <div className="space-y-2 rounded-md border border-border p-3">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-body font-medium text-ink">{attribute.name}</p>
+        <p className="text-body-lg font-bold text-ink capitalize">{attribute.name}</p>
         <IconButton
           icon={Trash2}
           label={`Remove ${attribute.name} from this product`}
           tone="danger"
-          onClick={() => detach.mutate(attribute.id, {
-            onError: (error) => toast.error(errorMessage(error, "Could not remove this choice.")),
-          })}
+          onClick={() => setConfirmDetach(true)}
         />
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
@@ -109,11 +125,7 @@ function AttachedAttributeCard({ productId, attribute }: { productId: string; at
           <AttributeValueBadge
             key={value.id}
             value={value}
-            onRemove={() =>
-              deleteValue.mutate(value.id, {
-                onError: (error) => toast.error(errorMessage(error, "Could not remove this value.")),
-              })
-            }
+            onRemove={() => setConfirmRemoveValue(value)}
           />
         ))}
         <span className="inline-flex shrink-0 items-center gap-1.5">
@@ -127,11 +139,47 @@ function AttachedAttributeCard({ productId, attribute }: { productId: string; at
               }
             }}
             placeholder="Add value…"
-            className="h-7 w-28 text-caption"
+            className="h-7 w-28 text-caption sm:h-7"
           />
-          <IconButton icon={Plus} label="Add value" onClick={addValue} disabled={!newValue.trim()} />
+          <IconButton
+            icon={Plus}
+            label="Add value"
+            onClick={addValue}
+            disabled={!newValue.trim()}
+            className="size-7 sm:size-7"
+          />
         </span>
       </div>
+
+      <ConfirmDialog
+        open={confirmDetach}
+        onClose={() => setConfirmDetach(false)}
+        onConfirm={() => {
+          detach.mutate(attribute.id, {
+            onSuccess: () => setConfirmDetach(false),
+            onError: (error) => toast.error(errorMessage(error, "Could not remove this choice.")),
+          });
+        }}
+        pending={detach.isPending}
+        title={`Remove "${attribute.name}" from this product?`}
+        description="Variants built from its values are not deleted, just this choice's link to the product."
+        confirmLabel="Remove"
+      />
+      <ConfirmDialog
+        open={confirmRemoveValue !== null}
+        onClose={() => setConfirmRemoveValue(null)}
+        onConfirm={() => {
+          if (!confirmRemoveValue) return;
+          deleteValue.mutate(confirmRemoveValue.id, {
+            onSuccess: () => setConfirmRemoveValue(null),
+            onError: (error) => toast.error(errorMessage(error, "Could not remove this value.")),
+          });
+        }}
+        pending={deleteValue.isPending}
+        title={`Remove "${confirmRemoveValue?.value ?? ""}"?`}
+        description="Any variant using this value keeps it as-is; this only stops it from being offered again."
+        confirmLabel="Remove"
+      />
     </div>
   );
 }
@@ -148,6 +196,8 @@ function VariantSupplierLinkRow({ productId, link }: { productId: string; link: 
   const remove = useRemoveProductVariantSupplier(productId);
   const [sku, setSku] = useState(link.supplierSku ?? "");
   const [price, setPrice] = useState(link.supplierPrice !== null ? String(link.supplierPrice) : "");
+  const [confirmDefault, setConfirmDefault] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
 
   const skuCheck = useSkuAvailability({
     kind: "supplier_sku",
@@ -176,7 +226,13 @@ function VariantSupplierLinkRow({ productId, link }: { productId: string; link: 
   function makeDefault() {
     update.mutate(
       { linkId: link.id, isDefault: true },
-      { onError: (error) => toast.error(errorMessage(error, "Could not set this as the default supplier.")) },
+      {
+        onSuccess: () => {
+          setConfirmDefault(false);
+          toast.success(`${link.supplierName ?? "This supplier"} is now the default.`);
+        },
+        onError: (error) => toast.error(errorMessage(error, "Could not set this as the default supplier.")),
+      },
     );
   }
 
@@ -198,21 +254,22 @@ function VariantSupplierLinkRow({ productId, link }: { productId: string; link: 
         ) : (
           <button
             type="button"
-            onClick={makeDefault}
+            onClick={() => setConfirmDefault(true)}
             disabled={update.isPending}
-            className="text-caption text-ink-muted underline-offset-2 hover:text-primary hover:underline disabled:opacity-50"
+            className="inline-flex items-center gap-1 text-caption text-ink-muted underline-offset-2 hover:text-primary hover:underline disabled:opacity-50"
           >
+            <Check size={12} strokeWidth={2} />
             Make default
           </button>
         )}
       </div>
-      <div className="w-36 shrink-0">
+      <div className="min-w-[9rem] flex-1">
         <Input
           value={sku}
           onChange={(event) => setSku(event.target.value)}
           onBlur={saveSku}
           placeholder="Supplier SKU"
-          className="h-9"
+          className="h-9 w-full"
         />
         {skuCheck.conflict ? (
           <p className="mt-1 text-[11px] text-danger">Already used by {skuCheck.conflict.name}.</p>
@@ -220,7 +277,7 @@ function VariantSupplierLinkRow({ productId, link }: { productId: string; link: 
           <p className="mt-1 text-[11px] text-ink-muted">Checking…</p>
         ) : null}
       </div>
-      <div className="w-28 shrink-0">
+      <div className="min-w-[7rem] flex-1">
         <MoneyInput
           type="number"
           step="0.01"
@@ -228,7 +285,7 @@ function VariantSupplierLinkRow({ productId, link }: { productId: string; link: 
           value={price}
           onChange={(event) => setPrice(event.target.value)}
           onBlur={savePrice}
-          className="h-9"
+          className="h-9 w-full"
         />
       </div>
       <IconButton
@@ -236,11 +293,35 @@ function VariantSupplierLinkRow({ productId, link }: { productId: string; link: 
         label={`Remove ${link.supplierName ?? "supplier"}`}
         tone="danger"
         disabled={remove.isPending}
-        onClick={() =>
+        onClick={() => setConfirmRemove(true)}
+      />
+
+      <ConfirmDialog
+        open={confirmDefault}
+        onClose={() => setConfirmDefault(false)}
+        onConfirm={makeDefault}
+        pending={update.isPending}
+        title="Make this the default supplier?"
+        description={`${link.supplierName ?? "This supplier"} becomes the preselected supplier for this variant.`}
+        confirmLabel="Make default"
+        confirmIcon={Check}
+      />
+      <ConfirmDialog
+        open={confirmRemove}
+        onClose={() => setConfirmRemove(false)}
+        onConfirm={() => {
           remove.mutate(link.id, {
+            onSuccess: () => {
+              setConfirmRemove(false);
+              toast.success(`${link.supplierName ?? "Supplier"} removed from this variant.`);
+            },
             onError: (error) => toast.error(errorMessage(error, "Could not remove this supplier.")),
-          })
-        }
+          });
+        }}
+        pending={remove.isPending}
+        title={`Remove ${link.supplierName ?? "this supplier"}?`}
+        description="This variant will no longer be sourced from this supplier."
+        confirmLabel="Remove"
       />
     </div>
   );
@@ -262,17 +343,34 @@ function VariantSupplierLinksEditor({
   const suppliersQuery = useSuppliers();
   const add = useAddProductVariantSupplier(productId);
   const [picking, setPicking] = useState("");
+  const [pendingSku, setPendingSku] = useState("");
+  const [pendingPrice, setPendingPrice] = useState("");
 
   const linkedSupplierIds = new Set(variant.suppliers.map((link) => link.supplierId));
   const available = (suppliersQuery.data ?? []).filter((supplier) => !linkedSupplierIds.has(supplier.id));
 
-  function addSupplier(supplierId: string) {
-    if (!supplierId) return;
+  function addSupplier() {
+    if (!picking) return;
+    const supplierName = available.find((supplier) => supplier.id === picking)?.name ?? "Supplier";
+    const trimmedPrice = pendingPrice.trim();
     add.mutate(
-      { variantId: variant.id, supplierId },
-      { onError: (error) => toast.error(errorMessage(error, "Could not add this supplier.")) },
+      {
+        variantId: variant.id,
+        supplierId: picking,
+        supplierSku: pendingSku.trim() || null,
+        supplierPrice: trimmedPrice === "" ? null : Number(trimmedPrice),
+      },
+      {
+        // Fields stay populated on failure — nothing to retype, just retry.
+        onSuccess: () => {
+          setPicking("");
+          setPendingSku("");
+          setPendingPrice("");
+          toast.success(`${supplierName} added.`);
+        },
+        onError: (error) => toast.error(errorMessage(error, "Could not add this supplier.")),
+      },
     );
-    setPicking("");
   }
 
   return (
@@ -282,27 +380,67 @@ function VariantSupplierLinksEditor({
           <Truck size={16} strokeWidth={2} />
           Suppliers
         </span>
-        <Combobox
-          value={picking}
-          onChange={addSupplier}
-          placeholder={add.isPending ? "Adding…" : "Add a supplier…"}
-          disabled={add.isPending}
-          emptyLabel={
-            suppliersQuery.data?.length === 0
-              ? "No suppliers on file yet."
-              : available.length === 0
-                ? "Every supplier is already linked."
-                : "No matches."
-          }
-          options={available.map((supplier) => ({
-            value: supplier.id,
-            label: supplier.name,
-            sublabel: supplier.contactPerson ?? supplier.phone ?? undefined,
-          }))}
-          className="w-64"
-        />
+      </div>
+      <div className="flex flex-wrap items-end gap-2 rounded-md border border-dashed border-border p-3">
+        <div className="min-w-[14rem] flex-[3]">
+          <Field label="Add a supplier">
+            <Combobox
+              value={picking}
+              onChange={setPicking}
+              placeholder="Choose supplier…"
+              disabled={add.isPending}
+              emptyLabel={
+                suppliersQuery.data?.length === 0
+                  ? "No suppliers on file yet."
+                  : available.length === 0
+                    ? "Every supplier is already linked."
+                    : "No matches."
+              }
+              options={available.map((supplier) => ({
+                value: supplier.id,
+                label: supplier.name,
+                sublabel: supplier.contactPerson ?? supplier.phone ?? undefined,
+              }))}
+            />
+          </Field>
+        </div>
+        <div className="min-w-[9rem] flex-1">
+          <Field label="Supplier SKU" required={false}>
+            <Input
+              value={pendingSku}
+              onChange={(event) => setPendingSku(event.target.value)}
+              placeholder="Optional"
+              disabled={add.isPending}
+              className="w-full"
+            />
+          </Field>
+        </div>
+        <div className="min-w-[7rem] flex-1">
+          <Field label="Price" required={false}>
+            <MoneyInput
+              type="number"
+              step="0.01"
+              min="0"
+              value={pendingPrice}
+              onChange={(event) => setPendingPrice(event.target.value)}
+              disabled={add.isPending}
+              className="w-full"
+            />
+          </Field>
+        </div>
+        <Button
+          type="button"
+          icon={Plus}
+          loading={add.isPending}
+          disabled={!picking}
+          onClick={addSupplier}
+          className="shrink-0"
+        >
+          Add
+        </Button>
       </div>
       <div className="space-y-2">
+        <p className="text-body font-medium text-ink">Current suppliers</p>
         {variant.suppliers.map((link) => (
           <VariantSupplierLinkRow key={link.id} productId={productId} link={link} />
         ))}
@@ -327,42 +465,57 @@ const STOCK_ADJUST_MODES = [
  * flow already has this location's current quantity loaded to compute the
  * delta from, which this compact widget doesn't fetch.
  */
+/**
+ * Inline expand, no dialog/portal — the fields drop open right below the
+ * trigger.
+ */
 function VariantStockButton({
   productId,
   variantId,
   variantLabel,
+  suppliers,
 }: {
   productId: string;
   variantId: string;
   variantLabel: string;
+  suppliers: VariantSupplierLink[];
 }) {
   const locationsQuery = useLocations({ type: "branch" });
   const adjustStock = useAdjustProductStock(productId);
-  const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [mode, setMode] = useState<(typeof STOCK_ADJUST_MODES)[number]["key"]>("in");
   const [locationId, setLocationId] = useState("");
+  const [supplierId, setSupplierId] = useState("");
   const [quantity, setQuantity] = useState("");
   const [note, setNote] = useState("");
+  const [branchError, setBranchError] = useState<string | null>(null);
+  const [quantityError, setQuantityError] = useState<string | null>(null);
+  const [confirmSubmit, setConfirmSubmit] = useState(false);
 
-  function openDialog() {
-    setMode("in");
-    setLocationId(locationsQuery.data?.[0]?.id ?? "");
-    setQuantity("");
-    setNote("");
-    setOpen(true);
+  function toggle() {
+    if (!expanded) {
+      setMode("in");
+      setLocationId(locationsQuery.data?.[0]?.id ?? "");
+      setSupplierId("");
+      setQuantity("");
+      setNote("");
+      setBranchError(null);
+      setQuantityError(null);
+    }
+    setExpanded((current) => !current);
+  }
+
+  function reviewSubmit() {
+    const magnitude = Number(quantity);
+    const invalidQuantity = quantity.trim() === "" || !Number.isFinite(magnitude) || magnitude <= 0;
+    setQuantityError(invalidQuantity ? "Enter a quantity greater than zero." : null);
+    setBranchError(locationId ? null : "Choose a branch.");
+    if (invalidQuantity || !locationId) return;
+    setConfirmSubmit(true);
   }
 
   function submit() {
     const magnitude = Number(quantity);
-    if (!Number.isFinite(magnitude) || magnitude <= 0) {
-      toast.error("Enter a quantity greater than zero.");
-      return;
-    }
-    if (!locationId) {
-      toast.error("Choose a branch.");
-      return;
-    }
-
     const preset = STOCK_ADJUST_MODES.find((option) => option.key === mode);
     adjustStock.mutate(
       {
@@ -370,71 +523,103 @@ function VariantStockButton({
         reason: preset?.reason ?? "adjustment",
         locationId,
         variantId,
+        supplierId: "in" === mode ? supplierId || null : null,
         note: note.trim() || null,
       },
       {
         onSuccess: () => {
           toast.success("Stock updated.");
-          setOpen(false);
+          setConfirmSubmit(false);
+          setExpanded(false);
         },
         onError: (error) => toast.error(errorMessage(error, "Could not adjust stock.")),
       },
     );
   }
 
+  const activeModeLabel = STOCK_ADJUST_MODES.find((option) => option.key === mode)?.label ?? "Adjust";
+  const branchName = (locationsQuery.data ?? []).find((branch) => branch.id === locationId)?.name ?? "—";
+
   return (
-    <>
+    <div className="w-full rounded-md border border-border">
       <button
         type="button"
-        onClick={openDialog}
-        className="inline-flex items-center gap-1.5 text-caption text-primary hover:underline"
+        onClick={toggle}
+        aria-expanded={expanded}
+        className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-caption font-medium text-ink transition-colors hover:bg-paper/80"
       >
-        <Boxes size={13} strokeWidth={2} className="shrink-0" />
-        Adjust stock
+        <Boxes size={13} strokeWidth={2} className="shrink-0 text-primary" />
+        Adjust stock — {variantLabel}
+        <ChevronDown
+          size={14}
+          strokeWidth={2}
+          className={`ml-auto shrink-0 text-ink-muted transition-transform ${expanded ? "rotate-180" : ""}`}
+        />
       </button>
 
-      <Dialog
-        open={open}
-        onClose={() => setOpen(false)}
-        title="Adjust stock"
-        description={`${variantLabel} — records a movement, same as Inventory.`}
-      >
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-2">
-            {STOCK_ADJUST_MODES.map((option) => (
-              <button
-                key={option.key}
-                type="button"
-                onClick={() => setMode(option.key)}
-                className={`rounded-sm border px-3 py-2 text-body font-medium transition-colors ${
-                  mode === option.key
-                    ? "border-primary bg-primary text-white"
-                    : "border-border bg-surface text-ink hover:bg-canvas"
-                }`}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-          <Field label="Branch" required>
-            <Select value={locationId} onChange={(event) => setLocationId(event.target.value)}>
-              <option value="">Choose branch</option>
-              {(locationsQuery.data ?? []).map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {branch.name}
+      {expanded ? (
+        <div className="space-y-4 border-t border-border px-3 py-3">
+          <p className="text-body font-medium text-ink">Stock per branch</p>
+          <Field label="Action" required>
+            <Select
+              value={mode}
+              onChange={(event) => setMode(event.target.value as (typeof STOCK_ADJUST_MODES)[number]["key"])}
+            >
+              {STOCK_ADJUST_MODES.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
                 </option>
               ))}
             </Select>
           </Field>
-          <Field label="Quantity" required>
-            <Input
-              type="number"
-              min="0.001"
-              step="any"
-              value={quantity}
-              onChange={(event) => setQuantity(event.target.value)}
-            />
-          </Field>
+          <div className={HALF_ROW}>
+            <div className={HALF_CELL}>
+              <Field label="Branch" required>
+                <Select
+                  value={locationId}
+                  onChange={(event) => {
+                    setLocationId(event.target.value);
+                    setBranchError(null);
+                  }}
+                >
+                  <option value="">Choose branch</option>
+                  {(locationsQuery.data ?? []).map((branch) => (
+                    <option key={branch.id} value={branch.id}>
+                      {branch.name}
+                    </option>
+                  ))}
+                </Select>
+                {branchError ? <p className="mt-1 text-caption text-danger">{branchError}</p> : null}
+              </Field>
+            </div>
+            <div className={HALF_CELL}>
+              <Field label="Quantity" required>
+                <Input
+                  type="number"
+                  min="0.001"
+                  step="any"
+                  value={quantity}
+                  onChange={(event) => {
+                    setQuantity(event.target.value);
+                    setQuantityError(null);
+                  }}
+                />
+                {quantityError ? <p className="mt-1 text-caption text-danger">{quantityError}</p> : null}
+              </Field>
+            </div>
+          </div>
+          {"in" === mode ? (
+            <Field label="Supplier" required={false} hint="Which supplier this delivery came from.">
+              <Select value={supplierId} onChange={(event) => setSupplierId(event.target.value)}>
+                <option value="">No supplier</option>
+                {suppliers.map((link) => (
+                  <option key={link.supplierId} value={link.supplierId}>
+                    {link.supplierName ?? "Unknown supplier"}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          ) : null}
           <Field label="Note" required={false}>
             <Input
               value={note}
@@ -443,16 +628,27 @@ function VariantStockButton({
             />
           </Field>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
+            <Button type="button" variant="secondary" icon={X} onClick={() => setExpanded(false)}>
               Cancel
             </Button>
-            <Button type="button" loading={adjustStock.isPending} onClick={submit}>
+            <Button type="button" icon={Check} onClick={reviewSubmit}>
               Save
             </Button>
           </div>
         </div>
-      </Dialog>
-    </>
+      ) : null}
+
+      <ConfirmDialog
+        open={confirmSubmit}
+        onClose={() => setConfirmSubmit(false)}
+        onConfirm={submit}
+        pending={adjustStock.isPending}
+        title={`${activeModeLabel}?`}
+        description={`${quantity || "0"} unit(s) at ${branchName} for ${variantLabel} — records a movement, same as Inventory.`}
+        confirmLabel={activeModeLabel}
+        confirmIcon={Check}
+      />
+    </div>
   );
 }
 
@@ -481,91 +677,374 @@ const HALF_ROW = "grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-4 max-sm:grid
 const HALF_CELL = "min-w-0 w-full";
 
 /**
- * One collapsible card per variant — same interaction pattern as receiving's
- * ReceivingLineAccordion (collapsed summary row, click to expand into a
- * roomy two-column field grid), swapped in for a cramped table row so each
- * variant's SKU/price/supplier fields have real space.
+ * A variant is always already persisted by the time this renders (unlike
+ * product-form.tsx's ProductPhotoSection, which also handles a
+ * not-yet-created product) — no pending-file branch needed, every pick
+ * uploads immediately. `variant.photoUrl` already carries the
+ * parent-product fallback from the backend when the variant has none of
+ * its own (see ProductVariantResource).
  */
-function VariantAccordionRow({
-  productId,
-  variant,
-  expanded,
-  onToggle,
-}: {
-  productId: string;
-  variant: ProductVariant;
-  expanded: boolean;
-  onToggle: () => void;
-}) {
-  const update = useUpdateProductVariant(productId);
-  const remove = useDeleteProductVariant(productId);
-  const [sku, setSku] = useState(variant.sku ?? "");
-  const [barcode, setBarcode] = useState(variant.barcode ?? "");
-  const [price, setPrice] = useState(String(variant.price));
-  const [costPrice, setCostPrice] = useState(String(variant.costPrice));
+function VariantPhotoField({ productId, variant }: { productId: string; variant: ProductVariant }) {
+  const uploadPhoto = useUploadProductVariantPhoto(productId);
+  const deletePhoto = useDeleteProductVariantPhoto(productId);
+  const [preview, setPreview] = useState<string | null>(null);
+  const busy = uploadPhoto.isPending || deletePhoto.isPending;
+  const shown = preview ?? variant.photoUrl;
 
-  function saveField(patch: Omit<Parameters<typeof update.mutate>[0], "variantId">) {
-    update.mutate(
-      { variantId: variant.id, ...patch },
-      { onError: (error) => toast.error(errorMessage(error, "Could not save this variant.")) },
+  function onPick(file: File | undefined) {
+    if (!file) return;
+    if (!isImageFile(file)) {
+      toast.error(NOT_AN_IMAGE_MESSAGE);
+      return;
+    }
+
+    setPreview(URL.createObjectURL(file));
+    uploadPhoto.mutate(
+      { variantId: variant.id, photo: file },
+      {
+        onSuccess: () => toast.success("Photo updated."),
+        onError: (error) => toast.error(errorMessage(error, "Could not upload this photo.")),
+        onSettled: () => setPreview(null),
+      },
     );
   }
 
-  const skuCheck = useSkuAvailability({ kind: "sku", value: sku, excludeVariantId: variant.id });
-
-  const label = variant.attributeValues.map((v) => v.value).filter(Boolean).join(" / ") || "—";
+  function onRemove() {
+    deletePhoto.mutate(variant.id, {
+      onSuccess: () => toast.success("Photo removed."),
+      onError: (error) => toast.error(errorMessage(error, "Could not remove this photo.")),
+    });
+  }
 
   return (
-    <div
-      className={`origin-center rounded-md border transition-[transform,box-shadow,border-color] duration-200 ease-out motion-reduce:transition-none ${
-        variant.isActive ? "border-border bg-surface" : "border-border bg-canvas opacity-70"
-      } ${
-        !expanded
-          ? "hover:border-primary/40 hover:shadow-sm"
-          : "border-primary/30"
-      }`}
-    >
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={expanded}
-        className="flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-md px-3 py-3 text-left transition-colors hover:bg-paper/80"
-      >
+    <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+      <span className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-paper">
+        {shown ? (
+          // Plain img: the URL is an arbitrary MinIO/S3 host, same reasoning as the product photo.
+          <img src={shown} alt="" className="size-full object-cover" />
+        ) : (
+          <Camera size={22} strokeWidth={2} className="text-ink-muted" />
+        )}
+      </span>
+
+      <div className="min-w-0 flex-1 space-y-2">
+        <Field label="Variant photo" hint="JPEG, PNG or WebP, under 8 MB." required={false}>
+          <FileInput
+            accept="image/jpeg,image/png,image/webp"
+            disabled={busy}
+            onChange={(event) => onPick(event.currentTarget.files?.[0])}
+          />
+        </Field>
+        {variant.hasOwnPhoto && !preview ? (
+          <button
+            type="button"
+            onClick={onRemove}
+            disabled={busy}
+            className="flex items-center gap-2 text-caption text-ink-muted hover:text-danger disabled:opacity-50"
+          >
+            <ImageOff size={14} strokeWidth={2} />
+            Remove photo
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+const MARGIN_TYPES = [
+  { key: "percent" as const, label: "Percent" },
+  { key: "fixed" as const, label: "Fixed amount" },
+];
+
+/** cost + a fixed peso amount on top — the "fixed" counterpart to shelfPriceFromMarkup's percentage formula. */
+function shelfPriceFromFixedMargin(costPrice: number, amount: number): number {
+  return Math.round((costPrice + amount) * 100) / 100;
+}
+
+/**
+ * Reorder point / replenish quantity (per-variant restocking thresholds,
+ * moved here from the product form) plus a margin-based selling-price
+ * suggestion: pick percent (cost price × (1 + margin/100), same formula as
+ * category markup) or fixed (cost price + a flat peso amount), then apply
+ * the result to the shelf price with one click. Always a suggestion the
+ * merchant can still override, never an auto-fill.
+ */
+/**
+ * Controlled/presentational — the caller owns the draft state and the
+ * update mutation (batch-Update pattern: nothing here saves on its own).
+ * "Use this price" fills the caller's price draft via onUsePrice, same as
+ * any other edit — submitted only when the caller's own Update is clicked.
+ */
+function VariantStockPlanningFields({
+  costPrice,
+  reorderPoint,
+  onReorderPointChange,
+  replenishQuantity,
+  onReplenishQuantityChange,
+  marginType,
+  onMarginTypeChange,
+  marginValue,
+  onMarginValueChange,
+  onUsePrice,
+}: {
+  costPrice: number;
+  reorderPoint: string;
+  onReorderPointChange: (value: string) => void;
+  replenishQuantity: string;
+  onReplenishQuantityChange: (value: string) => void;
+  marginType: MarginType;
+  onMarginTypeChange: (value: MarginType) => void;
+  marginValue: string;
+  onMarginValueChange: (value: string) => void;
+  onUsePrice: (price: number) => void;
+}) {
+  const parsedMargin = marginValue.trim() === "" ? null : Number(marginValue);
+  const hasValidMargin = null !== parsedMargin && Number.isFinite(parsedMargin) && parsedMargin >= 0;
+  const suggestedPrice = !hasValidMargin
+    ? null
+    : "percent" === marginType
+      ? shelfPriceFromMarkup(costPrice, parsedMargin)
+      : shelfPriceFromFixedMargin(costPrice, parsedMargin);
+
+  return (
+    <div className="space-y-4">
+      <div className={HALF_ROW}>
+        <div className={HALF_CELL}>
+          <Field label="Reorder point" hint="Flag for restocking at or below this count.">
+            <Input
+              type="number"
+              step="1"
+              min="0"
+              value={reorderPoint}
+              onChange={(event) => onReorderPointChange(event.target.value)}
+            />
+          </Field>
+        </div>
+        <div className={HALF_CELL}>
+          <Field label="Replenish quantity" hint="Suggested qty to order when restocking.">
+            <Input
+              type="number"
+              step="1"
+              min="0"
+              value={replenishQuantity}
+              onChange={(event) => onReplenishQuantityChange(event.target.value)}
+            />
+          </Field>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-body font-medium text-ink">Margin</p>
+        <div className="grid grid-cols-2 gap-2">
+          {MARGIN_TYPES.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              onClick={() => onMarginTypeChange(option.key)}
+              className={`rounded-sm border px-3 py-2 text-body font-medium transition-colors ${
+                marginType === option.key
+                  ? "border-primary bg-primary text-white"
+                  : "border-border bg-surface text-ink hover:bg-canvas"
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <div className={HALF_ROW}>
+          <div className={HALF_CELL}>
+            <Field
+              label={"percent" === marginType ? "Margin %" : "Margin amount"}
+              hint="Suggests a selling price from this variant's cost."
+              required={false}
+            >
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                value={marginValue}
+                onChange={(event) => onMarginValueChange(event.target.value)}
+                placeholder={"percent" === marginType ? "e.g. 10" : "e.g. 25"}
+              />
+            </Field>
+          </div>
+          <div className={HALF_CELL}>
+            <Field label="Suggested selling price" required={false}>
+              <div className="flex min-h-11 w-full items-center justify-between gap-2 rounded-sm border border-border bg-canvas px-3">
+                {null !== suggestedPrice ? (
+                  <Money value={suggestedPrice} className="text-ink" />
+                ) : (
+                  <span className="text-caption text-ink-muted">Enter a margin</span>
+                )}
+                <button
+                  type="button"
+                  disabled={null === suggestedPrice}
+                  onClick={() => null !== suggestedPrice && onUsePrice(suggestedPrice)}
+                  className="shrink-0 text-caption font-medium text-primary underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:text-ink-muted disabled:no-underline"
+                >
+                  Use this price
+                </button>
+              </div>
+            </Field>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Full field panel for one variant — shown below its tab in the Combinations
+ * tab strip (see ProductAttributesAndVariantsSection). Always fully
+ * rendered while its tab is active, no collapse/expand of its own.
+ */
+function VariantDetailPanel({
+  productId,
+  productName,
+  variant,
+  onDeleted,
+}: {
+  productId: string;
+  productName: string;
+  variant: ProductVariant;
+  onDeleted?: () => void;
+}) {
+  const update = useUpdateProductVariant(productId);
+  const remove = useDeleteProductVariant(productId);
+  const unitsQuery = useUnits();
+  const [addingUnit, setAddingUnit] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [scanning, setScanning] = useState(false);
+
+  const [sku, setSku] = useState(variant.sku ?? "");
+  const [barcode, setBarcode] = useState(variant.barcode ?? "");
+  const [price, setPrice] = useState(String(variant.price));
+  const [pricingStrategy, setPricingStrategy] = useState(variant.pricingStrategy);
+  const [unitId, setUnitId] = useState(variant.unitId ?? "");
+  const [reorderPoint, setReorderPoint] = useState(String(variant.reorderPoint));
+  const [replenishQuantity, setReplenishQuantity] = useState(String(variant.replenishQuantity));
+  const [marginType, setMarginType] = useState<MarginType>(variant.marginType);
+  const [marginValue, setMarginValue] = useState(
+    variant.marginValue !== null ? String(variant.marginValue) : "",
+  );
+
+  const parsedPrice = Number(price);
+  const parsedReorderPoint = Number(reorderPoint);
+  const parsedReplenishQuantity = Number(replenishQuantity);
+  const parsedMarginValue = marginValue.trim() === "" ? null : Number(marginValue);
+
+  const isDirty =
+    sku.trim() !== (variant.sku ?? "") ||
+    barcode.trim() !== (variant.barcode ?? "") ||
+    parsedPrice !== variant.price ||
+    pricingStrategy !== variant.pricingStrategy ||
+    (unitId || null) !== variant.unitId ||
+    parsedReorderPoint !== variant.reorderPoint ||
+    parsedReplenishQuantity !== variant.replenishQuantity ||
+    marginType !== variant.marginType ||
+    parsedMarginValue !== variant.marginValue;
+
+  function onUpdate() {
+    if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+      toast.error("Shelf price must be zero or more.");
+      return;
+    }
+    if (!Number.isInteger(parsedReorderPoint) || parsedReorderPoint < 0) {
+      toast.error("Reorder point must be a whole number, zero or more.");
+      return;
+    }
+    if (!Number.isInteger(parsedReplenishQuantity) || parsedReplenishQuantity < 0) {
+      toast.error("Replenish quantity must be a whole number, zero or more.");
+      return;
+    }
+    if (null !== parsedMarginValue && (!Number.isFinite(parsedMarginValue) || parsedMarginValue < 0)) {
+      toast.error("Margin must be zero or more.");
+      return;
+    }
+
+    update.mutate(
+      {
+        variantId: variant.id,
+        sku: sku.trim() || null,
+        barcode: barcode.trim() || null,
+        price: parsedPrice,
+        pricingStrategy,
+        unitId: unitId || null,
+        reorderPoint: parsedReorderPoint,
+        replenishQuantity: parsedReplenishQuantity,
+        marginType,
+        marginValue: parsedMarginValue,
+      },
+      {
+        onSuccess: () => toast.success("Variant updated."),
+        onError: (error) => toast.error(errorMessage(error, "Could not save this variant.")),
+      },
+    );
+  }
+
+  function onBarcodeDetected(value: string) {
+    setScanning(false);
+    setBarcode(value);
+    toast.success("Barcode scanned — click Update to save.");
+  }
+
+  const skuCheck = useSkuAvailability({
+    kind: "sku",
+    value: sku,
+    excludeVariantId: variant.id,
+    // The default variant's sku mirrors onto its own product row
+    // (ProductObserver) — without excluding the product too, checking a
+    // default variant's own unchanged sku would find that mirrored row and
+    // falsely report a conflict with itself.
+    excludeProductId: productId,
+  });
+
+  const combo = variant.attributeValues.map((v) => v.value).filter(Boolean).join(" / ") || "—";
+  const label = variant.isDefault ? productName : `${productName} — ${combo}`;
+
+  return (
+    <div className={variant.isActive ? "bg-surface" : "bg-canvas opacity-70"}>
+      <div className="flex w-full min-w-0 items-center gap-3 px-4 py-3">
         <div className="min-w-0 flex-1">
           <p className="truncate text-body font-medium text-ink">{label}</p>
           <p className="mt-0.5 truncate text-caption text-ink-muted">
-            {[sku || "No SKU", `Cost ${costPrice}`].filter(Boolean).join(" · ")}
+            {[sku || "No SKU", `Cost ${variant.costPrice}`].filter(Boolean).join(" · ")}
           </p>
         </div>
         <Money value={variant.price} className="shrink-0 text-body font-semibold" />
+        {variant.isDefault ? <Badge tone="success">Default</Badge> : null}
         {!variant.isActive ? <Badge tone="neutral">Inactive</Badge> : null}
-        <ChevronDown
-          size={16}
-          strokeWidth={2}
-          className={`shrink-0 text-ink-muted transition-transform ${expanded ? "rotate-180" : ""}`}
-        />
-      </button>
+      </div>
 
-      {expanded ? (
-        <div className="space-y-4 border-t border-border px-4 py-4">
+      <div className="space-y-4 border-t border-border px-4 py-4">
+        <VariantPhotoField productId={productId} variant={variant} />
+
           <div className={HALF_ROW}>
             <div className={HALF_CELL}>
               <Field label="SKU">
                 <Input
                   value={sku}
                   onChange={(event) => setSku(event.target.value)}
-                  onBlur={() => saveField({ sku: sku.trim() || null })}
                 />
               </Field>
               <RowSkuFeedback checking={skuCheck.checking} conflict={skuCheck.conflict} />
             </div>
             <div className={HALF_CELL}>
               <Field label="Barcode">
-                <Input
-                  value={barcode}
-                  onChange={(event) => setBarcode(event.target.value)}
-                  onBlur={() => saveField({ barcode: barcode.trim() || null })}
-                />
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    value={barcode}
+                    onChange={(event) => setBarcode(event.target.value)}
+                    className="min-w-0 flex-1"
+                  />
+                  {canUseBarcodeScanner() ? (
+                    <IconButton
+                      icon={ScanBarcode}
+                      label="Scan barcode with camera"
+                      onClick={() => setScanning(true)}
+                    />
+                  ) : null}
+                </div>
               </Field>
             </div>
           </div>
@@ -579,52 +1058,259 @@ function VariantAccordionRow({
                   min="0"
                   value={price}
                   onChange={(event) => setPrice(event.target.value)}
-                  onBlur={() => {
-                    const parsed = Number(price);
-                    if (Number.isFinite(parsed)) saveField({ price: parsed });
-                  }}
                 />
               </Field>
             </div>
             <div className={HALF_CELL}>
-              <Field label="Supplier price">
-                <MoneyInput
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={costPrice}
-                  onChange={(event) => setCostPrice(event.target.value)}
-                  onBlur={() => {
-                    const parsed = Number(costPrice);
-                    if (Number.isFinite(parsed)) saveField({ costPrice: parsed });
-                  }}
-                />
+              <Field label="Cost price (calculated)" hint="Resolved from linked suppliers below.">
+                <div className="flex min-h-11 w-full items-center rounded-sm border border-border bg-canvas px-3">
+                  <Money value={variant.costPrice} className="text-ink-muted" />
+                </div>
               </Field>
             </div>
           </div>
 
+          <div className={HALF_ROW}>
+            <div className={HALF_CELL}>
+              <Field
+                label="Pricing strategy"
+                hint="Which linked supplier's price counts as this variant's cost."
+              >
+                <Select
+                  value={pricingStrategy}
+                  onChange={(event) =>
+                    setPricingStrategy(event.target.value as ProductVariant["pricingStrategy"])
+                  }
+                >
+                  <option value="highest">Highest</option>
+                  <option value="lowest">Lowest</option>
+                  <option value="weighted_average">Weighted average</option>
+                </Select>
+              </Field>
+            </div>
+            <div className={HALF_CELL}>
+              <Field label="Unit">
+                <div className="flex w-full items-center gap-1">
+                  <Select
+                    value={unitId}
+                    onChange={(event) => setUnitId(event.target.value)}
+                    className="min-w-0 flex-1"
+                  >
+                    {!variant.unitId ? <option value="">No unit</option> : null}
+                    {(unitsQuery.data ?? []).map((unit) => (
+                      <option key={unit.id} value={unit.id}>
+                        {unit.name}
+                        {unit.abbreviation ? ` (${unit.abbreviation})` : ""}
+                      </option>
+                    ))}
+                  </Select>
+                  <IconButton icon={Plus} label="Add unit" onClick={() => setAddingUnit(true)} />
+                </div>
+              </Field>
+            </div>
+          </div>
+          <AddUnitDialog open={addingUnit} onClose={() => setAddingUnit(false)} />
+
           <div className="border-t border-border pt-4">
-            <VariantSupplierLinksEditor productId={productId} variant={variant} />
+            <VariantStockPlanningFields
+              costPrice={variant.costPrice}
+              reorderPoint={reorderPoint}
+              onReorderPointChange={setReorderPoint}
+              replenishQuantity={replenishQuantity}
+              onReplenishQuantityChange={setReplenishQuantity}
+              marginType={marginType}
+              onMarginTypeChange={setMarginType}
+              marginValue={marginValue}
+              onMarginValueChange={setMarginValue}
+              onUsePrice={(suggested) => setPrice(String(suggested))}
+            />
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <VariantStockButton productId={productId} variantId={variant.id} variantLabel={label} />
+          <div className="flex justify-end gap-2">
             <Button
               type="button"
               variant="danger"
               icon={Trash2}
-              onClick={() =>
-                remove.mutate(variant.id, {
-                  onError: (error) => toast.error(errorMessage(error, "Could not delete this variant.")),
-                })
-              }
+              onClick={() => setConfirmDelete(true)}
             >
               Delete variant
             </Button>
+            <Button
+              type="button"
+              icon={Check}
+              loading={update.isPending}
+              disabled={!isDirty}
+              onClick={onUpdate}
+            >
+              Update
+            </Button>
           </div>
-        </div>
-      ) : null}
+
+          <div className="border-t border-border pt-4">
+            <VariantSupplierLinksEditor productId={productId} variant={variant} />
+            <div className="mt-3">
+              <VariantStockButton
+                productId={productId}
+                variantId={variant.id}
+                variantLabel={label}
+                suppliers={variant.suppliers}
+              />
+            </div>
+          </div>
+      </div>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={() => {
+          remove.mutate(variant.id, {
+            onSuccess: () => {
+              setConfirmDelete(false);
+              toast.success(`${label} deleted.`);
+              onDeleted?.();
+            },
+            onError: (error) => toast.error(errorMessage(error, "Could not delete this variant.")),
+          });
+        }}
+        pending={remove.isPending}
+        title={`Delete "${label}"?`}
+        description="Its stock, SKU, and supplier links are removed. This cannot be undone."
+        confirmLabel="Delete variant"
+      />
+
+      <BarcodeScanCamera
+        open={scanning}
+        onDetected={onBarcodeDetected}
+        onCancel={() => setScanning(false)}
+      />
     </div>
+  );
+}
+
+/**
+ * Same batch-Update pattern as VariantDetailPanel, scoped to just stock
+ * planning — used for a simple product's implicit default variant, which
+ * has no accordion/delete around it. Owns its own draft state and mutation
+ * since VariantStockPlanningFields is purely presentational now.
+ */
+function DefaultVariantStockPlanning({ productId, variant }: { productId: string; variant: ProductVariant }) {
+  const update = useUpdateProductVariant(productId);
+  const [reorderPoint, setReorderPoint] = useState(String(variant.reorderPoint));
+  const [replenishQuantity, setReplenishQuantity] = useState(String(variant.replenishQuantity));
+  const [marginType, setMarginType] = useState<MarginType>(variant.marginType);
+  const [marginValue, setMarginValue] = useState(
+    variant.marginValue !== null ? String(variant.marginValue) : "",
+  );
+  const [price, setPrice] = useState(String(variant.price));
+
+  const parsedPrice = Number(price);
+  const parsedReorderPoint = Number(reorderPoint);
+  const parsedReplenishQuantity = Number(replenishQuantity);
+  const parsedMarginValue = marginValue.trim() === "" ? null : Number(marginValue);
+
+  const isDirty =
+    parsedPrice !== variant.price ||
+    parsedReorderPoint !== variant.reorderPoint ||
+    parsedReplenishQuantity !== variant.replenishQuantity ||
+    marginType !== variant.marginType ||
+    parsedMarginValue !== variant.marginValue;
+
+  function onUpdate() {
+    if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+      toast.error("Shelf price must be zero or more.");
+      return;
+    }
+    if (!Number.isInteger(parsedReorderPoint) || parsedReorderPoint < 0) {
+      toast.error("Reorder point must be a whole number, zero or more.");
+      return;
+    }
+    if (!Number.isInteger(parsedReplenishQuantity) || parsedReplenishQuantity < 0) {
+      toast.error("Replenish quantity must be a whole number, zero or more.");
+      return;
+    }
+    if (null !== parsedMarginValue && (!Number.isFinite(parsedMarginValue) || parsedMarginValue < 0)) {
+      toast.error("Margin must be zero or more.");
+      return;
+    }
+
+    update.mutate(
+      {
+        variantId: variant.id,
+        price: parsedPrice,
+        reorderPoint: parsedReorderPoint,
+        replenishQuantity: parsedReplenishQuantity,
+        marginType,
+        marginValue: parsedMarginValue,
+      },
+      {
+        onSuccess: () => toast.success("Variant updated."),
+        onError: (error) => toast.error(errorMessage(error, "Could not save this variant.")),
+      },
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <VariantStockPlanningFields
+        costPrice={variant.costPrice}
+        reorderPoint={reorderPoint}
+        onReorderPointChange={setReorderPoint}
+        replenishQuantity={replenishQuantity}
+        onReplenishQuantityChange={setReplenishQuantity}
+        marginType={marginType}
+        onMarginTypeChange={setMarginType}
+        marginValue={marginValue}
+        onMarginValueChange={setMarginValue}
+        onUsePrice={(suggested) => setPrice(String(suggested))}
+      />
+      <div className="flex justify-end">
+        <Button type="button" icon={Check} loading={update.isPending} disabled={!isDirty} onClick={onUpdate}>
+          Update
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function AddUnitDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const create = useCreateUnit();
+  const [name, setName] = useState("");
+  const [abbreviation, setAbbreviation] = useState("");
+
+  function submit() {
+    if (!name.trim()) return;
+    create.mutate(
+      { name: name.trim(), abbreviation: abbreviation.trim() || null },
+      {
+        onSuccess: (created) => {
+          setName("");
+          setAbbreviation("");
+          onClose();
+          toast.success(`Unit "${created.name}" added.`);
+        },
+        onError: (error) => toast.error(errorMessage(error, "Could not add this unit.")),
+      },
+    );
+  }
+
+  return (
+    <Dialog open={open} onClose={onClose} title="Add a unit">
+      <div className="space-y-4">
+        <Field label="Name" required>
+          <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Sack" />
+        </Field>
+        <Field label="Abbreviation" hint="Optional." required={false}>
+          <Input
+            value={abbreviation}
+            onChange={(event) => setAbbreviation(event.target.value)}
+            placeholder="sk"
+          />
+        </Field>
+        <Button type="button" loading={create.isPending} onClick={submit} className="w-full">
+          Add unit
+        </Button>
+      </div>
+    </Dialog>
   );
 }
 
@@ -665,38 +1351,68 @@ function GenerateVariantsForm({ productId, attributes }: { productId: string; at
   }
 
   return (
-    <div className="space-y-3 rounded-md border border-dashed border-border p-3">
-      {attributes.map((attribute) => (
-        <div key={attribute.id}>
-          <p className="mb-1 text-caption font-medium text-ink-muted">{attribute.name}</p>
-          <div className="flex flex-wrap gap-1.5">
-            {attribute.values.map((value) => {
-              const active = (selected[attribute.id] ?? []).includes(value.id);
-              return (
-                <button
-                  key={value.id}
-                  type="button"
-                  onClick={() => toggleValue(attribute.id, value.id)}
-                  className={`rounded-sm border px-2 py-1 text-caption transition-colors ${
-                    active
-                      ? "border-primary bg-primary text-white"
-                      : "border-border bg-surface text-ink hover:bg-canvas"
-                  }`}
-                >
-                  {value.value}
-                </button>
-              );
-            })}
-            {attribute.values.length === 0 ? (
-              <span className="text-caption text-ink-muted">No values yet — add some above first.</span>
-            ) : null}
+    <div className="w-full rounded-md border border-border bg-surface">
+      <div className="border-b border-border px-4 py-3">
+        <p className="text-body font-medium text-ink">Generate combinations</p>
+        <p className="mt-0.5 text-caption text-ink-muted">
+          Pick at least one value per choice, then generate every combination as its own variant.
+        </p>
+      </div>
+      <div className="space-y-4 px-4 py-4">
+        {attributes.map((attribute) => (
+          <div key={attribute.id}>
+            <p className="mb-1.5 text-caption font-medium text-ink-muted">{attribute.name}</p>
+            <div className="flex flex-wrap gap-2">
+              {attribute.values.map((value) => {
+                const active = (selected[attribute.id] ?? []).includes(value.id);
+                return (
+                  <button
+                    key={value.id}
+                    type="button"
+                    onClick={() => toggleValue(attribute.id, value.id)}
+                    className={`rounded-sm border px-3 py-1.5 text-body font-medium transition-colors ${
+                      active
+                        ? "border-primary bg-primary text-white"
+                        : "border-border bg-surface text-ink hover:bg-canvas"
+                    }`}
+                  >
+                    {value.value}
+                  </button>
+                );
+              })}
+              {attribute.values.length === 0 ? (
+                <span className="text-caption text-ink-muted">No values yet — add some above first.</span>
+              ) : null}
+            </div>
           </div>
+        ))}
+        <div className="flex justify-end">
+          <Button type="button" icon={Sparkles} loading={generate.isPending} onClick={onGenerate}>
+            Generate variants
+          </Button>
         </div>
-      ))}
-      <Button type="button" icon={Sparkles} loading={generate.isPending} onClick={onGenerate}>
-        Generate variants
-      </Button>
+      </div>
     </div>
+  );
+}
+
+/** Everything here autosaves per field/action — this just confirms it, no click handler. */
+function SaveStatusBadge() {
+  const isMutating = useIsMutating() > 0;
+
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-caption font-medium ${
+        isMutating ? "bg-warning/12 text-warning" : "bg-success/12 text-success"
+      }`}
+    >
+      {isMutating ? (
+        <Loader2 size={13} strokeWidth={2} className="animate-spin" />
+      ) : (
+        <Check size={13} strokeWidth={2} />
+      )}
+      {isMutating ? "Saving…" : "All changes saved"}
+    </span>
   );
 }
 
@@ -707,18 +1423,26 @@ export function ProductAttributesAndVariantsSection({ product }: { product: Prod
   const attach = useAttachProductAttribute(product.id);
   const createAttribute = useCreateCompanyAttribute();
   const [pickerValue, setPickerValue] = useState("");
-  const [expandedVariantKey, setExpandedVariantKey] = useState<string | null>(null);
+  const [activeVariantId, setActiveVariantId] = useState<string | null>(null);
 
   const attached = attachedQuery.data ?? [];
   const attachedIds = new Set(attached.map((a) => a.id));
-  const availableToAttach = (allAttributesQuery.data ?? []).filter((a) => !attachedIds.has(a.id));
-  const nonDefaultVariants = (variantsQuery.data ?? []).filter((v) => !v.isDefault);
-  const defaultVariant = (variantsQuery.data ?? []).find((v) => v.isDefault);
+  // Every variant gets its own tab with stock planning/photo/barcode/supplier
+  // fields — including the default one. Once attributes are attached it has
+  // no other UI surface, so leaving it out here would make it permanently
+  // unreachable.
+  const allVariants = variantsQuery.data ?? [];
+  const defaultVariant = allVariants.find((v) => v.isDefault);
+  const activeVariant = allVariants.find((v) => v.id === activeVariantId) ?? allVariants[0];
 
   function onAttachExisting(id: string) {
     if (!id) return;
+    const name = (allAttributesQuery.data ?? []).find((a) => a.id === id)?.name ?? "Choice";
     attach.mutate(id, {
-      onSuccess: () => setPickerValue(""),
+      onSuccess: () => {
+        setPickerValue("");
+        toast.success(`${name} added.`);
+      },
       onError: (error) => toast.error(errorMessage(error, "Could not attach this choice.")),
     });
   }
@@ -726,11 +1450,30 @@ export function ProductAttributesAndVariantsSection({ product }: { product: Prod
   function onCreateAndAttach(name: string) {
     const trimmed = name.trim();
     if (!trimmed) return;
+
+    // The picker's own options list only shows choices not yet attached to
+    // THIS product, so its exact-match check can't see one that already
+    // exists company-wide but happens to already be attached here — typing
+    // its name then wrongly looks like it "doesn't exist yet". Check the
+    // full company list before ever creating a duplicate.
+    const existing = (allAttributesQuery.data ?? []).find(
+      (a) => a.name.trim().toLowerCase() === trimmed.toLowerCase(),
+    );
+    if (existing) {
+      if (attachedIds.has(existing.id)) {
+        toast.error(`"${existing.name}" is already added to this product.`);
+      } else {
+        onAttachExisting(existing.id);
+      }
+      return;
+    }
+
     createAttribute.mutate(
       { name: trimmed },
       {
         onSuccess: (created) => {
           attach.mutate(created.id, {
+            onSuccess: () => toast.success(`"${created.name}" created and added.`),
             onError: (error) => toast.error(errorMessage(error, "Could not attach this choice.")),
           });
         },
@@ -745,26 +1488,37 @@ export function ProductAttributesAndVariantsSection({ product }: { product: Prod
         icon={Tag}
         title="Variants"
         description="Size, color, or anything else this product varies by. Leave empty for a simple product — price and cost above still apply directly."
+        action={<SaveStatusBadge />}
       />
       <CardBody className="space-y-4">
-        {attached.length > 0 ? (
-          <div className="space-y-3">
-            {attached.map((attribute) => (
-              <AttachedAttributeCard key={attribute.id} productId={product.id} attribute={attribute} />
-            ))}
-          </div>
-        ) : null}
-
-        <div className="mx-auto w-full max-w-sm rounded-md border border-dashed border-success/50 bg-success/5 px-4 py-4">
-          <Field label="Add a choice" hint="Pick an existing one, or type a new name to create it.">
+        <div className="w-full max-w-md">
+          <Field
+            label="Add a choice"
+            hint={
+              allAttributesQuery.isError
+                ? errorMessage(allAttributesQuery.error, "Could not load existing choices.")
+                : "Pick an existing one, or type a new name to create it."
+            }
+          >
             <Combobox
               value={pickerValue}
               onChange={(value) => {
                 setPickerValue(value);
                 onAttachExisting(value);
               }}
-              placeholder="Choose or type to create"
-              options={availableToAttach.map((a) => ({ value: a.id, label: a.name }))}
+              placeholder={allAttributesQuery.isPending ? "Loading…" : "Choose or type to create"}
+              emptyLabel={
+                allAttributesQuery.isError
+                  ? "Could not load existing choices — see above."
+                  : allAttributesQuery.isPending
+                    ? "Loading…"
+                    : undefined
+              }
+              options={(allAttributesQuery.data ?? []).map((a) => ({
+                value: a.id,
+                label: attachedIds.has(a.id) ? `${a.name} (already added)` : a.name,
+                disabled: attachedIds.has(a.id),
+              }))}
               creatable
               createOptionLabel={(typed) => `“${typed}” doesn't exist — create it`}
               onCreate={onCreateAndAttach}
@@ -772,18 +1526,17 @@ export function ProductAttributesAndVariantsSection({ product }: { product: Prod
           </Field>
         </div>
 
-        {attached.length === 0 && defaultVariant ? (
+        {attached.length > 0 ? (
+          <div className="space-y-3">
+            {attached.map((attribute) => (
+              <AttachedAttributeCard key={attribute.id} productId={product.id} attribute={attribute} />
+            ))}
+          </div>
+        ) : defaultVariant ? (
           <div className="space-y-3 border-t border-border pt-4">
-            <div className="mx-auto max-w-sm">
-              <VariantSupplierLinksEditor productId={product.id} variant={defaultVariant} />
-            </div>
-            <div className="flex justify-center">
-              <VariantStockButton
-                productId={product.id}
-                variantId={defaultVariant.id}
-                variantLabel={product.name}
-              />
-            </div>
+            <VariantPhotoField productId={product.id} variant={defaultVariant} />
+            <p className="text-body font-medium text-ink">Stock planning</p>
+            <DefaultVariantStockPlanning productId={product.id} variant={defaultVariant} />
           </div>
         ) : null}
 
@@ -794,26 +1547,52 @@ export function ProductAttributesAndVariantsSection({ product }: { product: Prod
               <p className="text-body font-medium text-ink">Combinations</p>
             </div>
 
-            {nonDefaultVariants.length > 0 ? (
-              <div className="space-y-2">
-                {nonDefaultVariants.map((variant) => (
-                  <VariantAccordionRow
-                    key={variant.id}
+            <GenerateVariantsForm productId={product.id} attributes={attached} />
+
+            {allVariants.length > 0 ? (
+              <div className="overflow-hidden rounded-md border border-border">
+                <div role="tablist" className="flex divide-x divide-border overflow-x-auto">
+                  {allVariants.map((variant) => {
+                    const isActive = variant.id === activeVariant?.id;
+                    const combo =
+                      variant.attributeValues.map((v) => v.value).filter(Boolean).join(" / ") || "—";
+                    const tabLabel = variant.isDefault ? product.name : combo;
+                    return (
+                      <button
+                        key={variant.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={isActive}
+                        onClick={() => setActiveVariantId(variant.id)}
+                        className={`flex h-12 min-w-0 flex-1 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap border-b px-4 text-body transition-colors ${
+                          isActive
+                            ? "border-b-transparent bg-surface font-semibold text-ink"
+                            : "border-b-border bg-canvas font-medium text-ink-muted hover:bg-paper"
+                        }`}
+                      >
+                        <span className="truncate">{tabLabel}</span>
+                        {variant.isDefault ? <Badge tone="success">Default</Badge> : null}
+                        {!variant.isActive ? <Badge tone="neutral">Inactive</Badge> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {activeVariant ? (
+                  <VariantDetailPanel
+                    key={activeVariant.id}
                     productId={product.id}
-                    variant={variant}
-                    expanded={expandedVariantKey === variant.id}
-                    onToggle={() =>
-                      setExpandedVariantKey((current) => (current === variant.id ? null : variant.id))
-                    }
+                    productName={product.name}
+                    variant={activeVariant}
+                    onDeleted={() => setActiveVariantId(null)}
                   />
-                ))}
+                ) : null}
               </div>
             ) : null}
-
-            <GenerateVariantsForm productId={product.id} attributes={attached} />
           </div>
         ) : null}
       </CardBody>
     </Card>
   );
 }
+

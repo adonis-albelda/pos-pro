@@ -28,6 +28,10 @@ export const queryKeys = {
     all: ["attributes"] as const,
     list: () => ["attributes", "list"] as const,
   },
+  units: {
+    all: ["units"] as const,
+    list: () => ["units", "list"] as const,
+  },
   addonGroups: {
     all: ["addon-groups"] as const,
     list: () => ["addon-groups", "list"] as const,

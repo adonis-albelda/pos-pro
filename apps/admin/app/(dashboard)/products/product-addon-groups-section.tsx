@@ -4,7 +4,8 @@ import { useState } from "react";
 import { Layers, X } from "lucide-react";
 import { toast } from "sonner";
 import type { Product } from "@double-a/shared-types";
-import { Card, CardBody, CardHeader, Combobox, Field } from "@/components/ui";
+import type { AddonGroup } from "@double-a/api-client/queries";
+import { Badge, Card, CardBody, CardHeader, Combobox, Field } from "@/components/ui";
 import {
   useAddonGroups,
   useCreateAddonGroup,
@@ -12,11 +13,19 @@ import {
   useProductAddonGroups,
   useUnlinkProductAddonGroup,
 } from "@/lib/query/addon-groups";
+import { AddItemForm, AddonGroupItemsList } from "../addon-groups/addon-group-items";
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+/**
+ * A product carries at most one add-on group (enforced server-side too —
+ * LinkProductAddonGroupRequest). Once one is attached, items go straight in
+ * from here — no need to leave the product page for the standalone
+ * /addon-groups screen, which stays for cross-product group management
+ * (renaming, single/multiple, required) and browsing every group at once.
+ */
 export function ProductAddonGroupsSection({ product }: { product: Product }) {
   const allGroupsQuery = useAddonGroups();
   const linkedQuery = useProductAddonGroups(product.id);
@@ -25,9 +34,7 @@ export function ProductAddonGroupsSection({ product }: { product: Product }) {
   const createGroup = useCreateAddonGroup();
   const [pickerValue, setPickerValue] = useState("");
 
-  const linked = linkedQuery.data ?? [];
-  const linkedIds = new Set(linked.map((g) => g.id));
-  const available = (allGroupsQuery.data ?? []).filter((g) => !linkedIds.has(g.id));
+  const group = (linkedQuery.data ?? [])[0] ?? null;
 
   function onCreateAndAttach(name: string) {
     const trimmed = name.trim();
@@ -50,53 +57,55 @@ export function ProductAddonGroupsSection({ product }: { product: Product }) {
       <CardHeader
         icon={Layers}
         title="Add-ons"
-        description="Toppings, accessories — extras a cashier offers alongside this product. Manage the groups themselves under Add-on groups."
+        description="Extras a cashier can add to this sale alongside this product — priced items from your own catalogue."
       />
-      <CardBody className="space-y-3">
-        {linked.length > 0 ? (
-          <div className="flex flex-wrap gap-1.5">
-            {linked.map((group) => (
-              <span
-                key={group.id}
-                className="inline-flex items-center gap-1.5 rounded-sm border border-border bg-canvas px-2 py-1 text-caption"
+      <CardBody className="space-y-4">
+        {group ? (
+          <>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <p className="text-body font-medium text-ink">{group.name}</p>
+                <Badge tone="neutral">{group.selectionType === "single" ? "Pick one" : "Pick any"}</Badge>
+                {group.isRequired ? <Badge tone="warning">Required</Badge> : null}
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  unlink.mutate(group.id, {
+                    onError: (error) => toast.error(errorMessage(error, "Could not remove this add-on group.")),
+                  })
+                }
+                className="flex items-center gap-1 text-caption text-ink-muted hover:text-danger"
               >
-                {group.name}
-                <button
-                  type="button"
-                  onClick={() =>
-                    unlink.mutate(group.id, {
-                      onError: (error) => toast.error(errorMessage(error, "Could not remove this add-on group.")),
-                    })
-                  }
-                  aria-label={`Remove ${group.name}`}
-                  className="text-ink-muted hover:text-danger"
-                >
-                  <X size={12} strokeWidth={2} />
-                </button>
-              </span>
-            ))}
-          </div>
-        ) : null}
+                <X size={12} strokeWidth={2} />
+                Remove group
+              </button>
+            </div>
 
-        <div className={linked.length > 0 ? "w-64" : "mx-auto w-full max-w-sm py-2"}>
-          <Field label="Attach an add-on group" hint="Pick an existing one, or type a new name to create it.">
-            <Combobox
-              value={pickerValue}
-              onChange={(value) => {
-                if (!value) return;
-                setPickerValue("");
-                link.mutate(value, {
-                  onError: (error) => toast.error(errorMessage(error, "Could not attach this add-on group.")),
-                });
-              }}
-              placeholder="Choose or type to create"
-              options={available.map((g) => ({ value: g.id, label: g.name }))}
-              creatable
-              createOptionLabel={(typed) => `“${typed}” doesn't exist — create it`}
-              onCreate={onCreateAndAttach}
-            />
-          </Field>
-        </div>
+            <AddonGroupItemsList items={group.items} />
+            <AddItemForm groupId={group.id} />
+          </>
+        ) : (
+          <div className="w-full">
+            <Field label="Attach an add-on group" hint="Pick an existing one, or type a new name to create it.">
+              <Combobox
+                value={pickerValue}
+                onChange={(value) => {
+                  if (!value) return;
+                  setPickerValue("");
+                  link.mutate(value, {
+                    onError: (error) => toast.error(errorMessage(error, "Could not attach this add-on group.")),
+                  });
+                }}
+                placeholder="Choose or type to create"
+                options={(allGroupsQuery.data ?? []).map((g: AddonGroup) => ({ value: g.id, label: g.name }))}
+                creatable
+                createOptionLabel={(typed) => `“${typed}” doesn't exist — create it`}
+                onCreate={onCreateAndAttach}
+              />
+            </Field>
+          </div>
+        )}
       </CardBody>
     </Card>
   );

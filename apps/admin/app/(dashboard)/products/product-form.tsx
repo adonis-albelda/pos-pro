@@ -1,16 +1,20 @@
 "use client";
 
 import type { Route } from "next";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useRef, useState } from "react";
 import {
   Camera,
   Check,
+  Clock,
+  FileText,
+  History,
   ImageOff,
   Info,
+  Layers,
   Package,
   Plus,
+  Tag,
   Trash2,
   TriangleAlert,
 } from "lucide-react";
@@ -38,6 +42,7 @@ import {
   FileInput,
   IconButton,
   Input,
+  Money,
   MoneyInput,
   Select,
   SuccessNote,
@@ -59,8 +64,20 @@ import {
 } from "@/lib/query/products";
 import { useSkuAvailability } from "@/lib/use-sku-check";
 import { saveProduct } from "./actions";
+import { ProductActivitySection } from "./product-activity-section";
 import { ProductAddonGroupsSection } from "./product-addon-groups-section";
 import { ProductAttributesAndVariantsSection } from "./product-attributes-variants-section";
+import { ProductInventorySection } from "./product-inventory-section";
+
+const PRODUCT_FORM_TABS = [
+  { id: "details", label: "Details", icon: FileText },
+  { id: "variants", label: "Variants", icon: Layers },
+  { id: "addons", label: "Add-ons", icon: Tag },
+  { id: "inventory", label: "Inventory", icon: History },
+  { id: "activity", label: "Activity", icon: Clock },
+] as const;
+
+type ProductFormTab = (typeof PRODUCT_FORM_TABS)[number]["id"];
 
 interface BundleRow {
   key: string;
@@ -496,6 +513,7 @@ export function ProductForm({
       : [emptyBundleRow()],
   );
   const finishedSaveIdRef = useRef<string | null>(null);
+  const [tab, setTab] = useState<ProductFormTab>("details");
 
   function onUnitChange(next: string) {
     if (!isProductUnit(next)) return;
@@ -575,7 +593,35 @@ export function ProductForm({
 
   return (
     <div className="space-y-6">
-      <form id="product-form" action={action} className="space-y-6">
+      {product ? (
+        <div className="flex flex-wrap gap-1 border-b border-border">
+          {PRODUCT_FORM_TABS.map((entry) => {
+            const Icon = entry.icon;
+            const active = tab === entry.id;
+            return (
+              <button
+                key={entry.id}
+                type="button"
+                onClick={() => setTab(entry.id)}
+                className={`flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-body font-medium transition-colors ${
+                  active
+                    ? "border-primary text-ink"
+                    : "border-transparent text-ink-muted hover:text-ink"
+                }`}
+              >
+                <Icon size={16} strokeWidth={2} />
+                {entry.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
+      <form
+        id="product-form"
+        action={action}
+        className={`space-y-6 ${product && tab !== "details" ? "hidden" : ""}`}
+      >
         {product ? <input type="hidden" name="id" value={product.id} /> : null}
 
         {!product ? (
@@ -644,21 +690,32 @@ export function ProductForm({
           title="Pricing"
           description="Supplier cost drives margin reports. Shelf price is what customers pay."
         >
-          <Field label="Supplier price" required>
-            <MoneyInput
-              name="cost_price"
-              type="number"
-              step="0.01"
-              min="0"
-              value={costPrice}
-              onChange={(event) => {
-                const next = event.target.value;
-                setCostPrice(next);
-                applyCategoryMarkup(categoryId, next);
-              }}
-              required
-            />
-          </Field>
+          {!product ? (
+            <Field label="Supplier price" required>
+              <MoneyInput
+                name="cost_price"
+                type="number"
+                step="0.01"
+                min="0"
+                value={costPrice}
+                onChange={(event) => {
+                  const next = event.target.value;
+                  setCostPrice(next);
+                  applyCategoryMarkup(categoryId, next);
+                }}
+                required
+              />
+            </Field>
+          ) : (
+            <Field
+              label="Cost price (calculated)"
+              hint="Resolved from linked suppliers — edit in the Variants section below."
+            >
+              <div className="flex min-h-11 w-full items-center rounded-sm border border-border bg-canvas px-3">
+                <Money value={product.costPrice} className="text-ink-muted" />
+              </div>
+            </Field>
+          )}
           <Field label="Shelf price" required>
             <MoneyInput
               name="price"
@@ -833,58 +890,49 @@ export function ProductForm({
           )}
         </FormSection>
 
-        <FormSection
-          title="Stock planning"
-          description="These numbers flag restocking — they do not change stock on their own."
-        >
-          <Field
-            label="Reorder point"
-            hint="Flag for restocking at or below this count."
-            required
+        {!product ? (
+          <FormSection
+            title="Stock planning"
+            description="These numbers flag restocking — they do not change stock on their own."
           >
-            <Input
-              name="reorder_point"
-              type="number"
-              step="1"
-              min="0"
-              defaultValue={product?.reorderPoint ?? 5}
+            <Field
+              label="Reorder point"
+              hint="Flag for restocking at or below this count."
               required
-            />
-          </Field>
-          <Field
-            label="Replenish quantity"
-            hint="Suggested qty to order when restocking."
-            required
-          >
-            <Input
-              name="replenish_quantity"
-              type="number"
-              step="1"
-              min="0"
-              defaultValue={product?.replenishQuantity ?? 0}
+            >
+              <Input
+                name="reorder_point"
+                type="number"
+                step="1"
+                min="0"
+                defaultValue={5}
+                required
+              />
+            </Field>
+            <Field
+              label="Replenish quantity"
+              hint="Suggested qty to order when restocking."
               required
-            />
-          </Field>
-          <p className="flex items-start gap-2 text-caption text-ink-muted sm:col-span-2">
-            <Info size={14} className="mt-0.5 shrink-0" />
-            <span>
-              {product ? (
-                <>
-                  Stock balances are adjusted in{" "}
-                  <Link
-                    href="/inventory"
-                    className="font-medium text-primary hover:underline"
-                  >
-                    Inventory
-                  </Link>{" "}
-                  so every change is recorded as a movement.
-                </>
-              ) : (
-                "Reorder and replenish numbers flag restocking — they do not change stock on their own."
-              )}
-            </span>
-          </p>
-        </FormSection>
+            >
+              <Input
+                name="replenish_quantity"
+                type="number"
+                step="1"
+                min="0"
+                defaultValue={0}
+                required
+              />
+            </Field>
+            <p className="flex items-start gap-2 text-caption text-ink-muted sm:col-span-2">
+              <Info size={14} className="mt-0.5 shrink-0" />
+              <span>
+                Reorder and replenish numbers flag restocking — they do not
+                change stock on their own. Editable per variant afterward,
+                from the Variants tab.
+              </span>
+            </p>
+          </FormSection>
+        ) : null}
 
         {!product ? (
           <FormSection
@@ -968,18 +1016,32 @@ export function ProductForm({
             {saveRedirectHref ? " Returning to products…" : null}
           </SuccessNote>
         ) : null}
+        {product?.isBundle && tab === "details" ? (
+          <AssembleBundleSection product={product} />
+        ) : null}
       </form>
-      {product ? <ProductAttributesAndVariantsSection product={product} /> : null}
-      {product ? <ProductAddonGroupsSection product={product} /> : null}
-      {product?.isBundle ? <AssembleBundleSection product={product} /> : null}
+      {product && tab === "variants" ? (
+        <ProductAttributesAndVariantsSection product={product} />
+      ) : null}
+      {product && tab === "addons" ? (
+        <ProductAddonGroupsSection product={product} />
+      ) : null}
+      {product && tab === "inventory" ? <ProductInventorySection product={product} /> : null}
+      {product && tab === "activity" ? <ProductActivitySection productId={product.id} /> : null}
 
       {/* Outside the form, after every card — a submit button placed
           mid-page as `sticky bottom-0` stays pinned only for the height of
           its own parent, which used to be the form itself: scrolling past
           the form's fields but still inside the Variants/Add-ons cards left
           the bar floating (z-10) on top of them. `form="product-form"`
-          keeps it wired to the actual <form> despite living outside it. */}
-      <div className="sticky bottom-0 z-10 flex flex-col-reverse gap-2 rounded-md border border-border bg-surface px-4 pt-6 pb-4 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] sm:flex-row sm:px-6">
+          keeps it wired to the actual <form> despite living outside it.
+          Only meaningful for the Details tab's fields — Variants/Add-ons
+          already save inline per action — so it hides on the other tabs. */}
+      <div
+        className={`sticky bottom-0 z-10 flex flex-col-reverse gap-2 rounded-md border border-border bg-surface px-4 pt-6 pb-4 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] sm:flex-row sm:px-6 ${
+          product && tab !== "details" ? "hidden" : ""
+        }`}
+      >
         <ButtonLink
           href={cancelHref}
           variant="secondary"

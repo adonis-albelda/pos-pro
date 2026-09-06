@@ -31,6 +31,7 @@ import {
   EmptyState,
   Money,
   PageHeader,
+  Skeleton,
   StatCard,
   Table,
   Td,
@@ -79,9 +80,6 @@ export function DashboardPageClient() {
   const supplierBalanceQuery = useSupplierBalanceTotal();
   const upcomingPaymentsQuery = useUpcomingSupplierPayments(7);
   const upcomingBillsQuery = useUpcomingExpenseBills(30);
-
-  const isPending = salesQuery.isPending || lowStockQuery.isPending || oversoldQuery.isPending;
-  const isError = salesQuery.isError || lowStockQuery.isError || oversoldQuery.isError;
 
   const derived = useMemo(() => {
     const recentSales = salesQuery.data ?? [];
@@ -201,31 +199,6 @@ export function DashboardPageClient() {
     upcomingBillsQuery.isError,
   ]);
 
-  if (isPending || isError) {
-    return (
-      <div className="space-y-6">
-        <PageHeader
-          icon={Sun}
-          title="Dashboard"
-          description="Today's pulse — revenue, stock health, and what needs attention."
-        />
-        <Card
-          className={`px-4 py-8 text-center text-body ${isError ? "text-danger" : "text-ink-muted"}`}
-        >
-          {isPending
-            ? "Loading…"
-            : salesQuery.error instanceof Error
-              ? salesQuery.error.message
-              : lowStockQuery.error instanceof Error
-                ? lowStockQuery.error.message
-                : oversoldQuery.error instanceof Error
-                  ? oversoldQuery.error.message
-                  : "Could not load the dashboard."}
-        </Card>
-      </div>
-    );
-  }
-
   const {
     todaysSales,
     lowStockRows,
@@ -260,7 +233,9 @@ export function DashboardPageClient() {
             title="Sales by hour"
             description="Completed sales synced today, bucketed by time."
           />
-          {salesByHour.length === 0 ? (
+          {salesQuery.isPending ? (
+            <Skeleton className="h-40 w-full" />
+          ) : salesByHour.length === 0 ? (
             <p className="text-body text-ink-muted">No completed sales yet today.</p>
           ) : (
             <DashboardColumnChart items={salesByHour} />
@@ -273,7 +248,11 @@ export function DashboardPageClient() {
             title="Money today"
             description="Revenue against costs and what is left."
           />
-          <DashboardBarChart items={moneyBars} />
+          {salesQuery.isPending ? (
+            <Skeleton className="h-40 w-full" />
+          ) : (
+            <DashboardBarChart items={moneyBars} />
+          )}
         </Card>
       </div>
 
@@ -283,7 +262,8 @@ export function DashboardPageClient() {
           label="Revenue"
           value={formatMoney(revenue)}
           tone="primary"
-          onClick={() => setPanel("sales")}
+          loading={salesQuery.isPending}
+          onClick={salesQuery.isPending ? undefined : () => setPanel("sales")}
         />
         <StatCard
           icon={Wallet}
@@ -297,6 +277,7 @@ export function DashboardPageClient() {
                 : "Nothing logged today"
           }
           tone={expensesTotal && expensesTotal > 0 ? "warning" : "neutral"}
+          loading={expensesQuery.isPending}
         />
         <StatCard
           icon={TrendingDown}
@@ -304,6 +285,7 @@ export function DashboardPageClient() {
           value={net === null ? "—" : formatMoney(net)}
           hint={net === null ? "Revenue minus expenses" : "Revenue minus today's expenses"}
           tone={net !== null && net < 0 ? "danger" : "success"}
+          loading={salesQuery.isPending || expensesQuery.isPending}
         />
         <StatCard
           icon={Coins}
@@ -315,26 +297,30 @@ export function DashboardPageClient() {
               : "Sign in as the owner to see profit"
           }
           tone={profit && profit.grossProfit < 0 ? "danger" : "success"}
+          loading={profitQuery.isPending}
         />
         <StatCard
           icon={Percent}
           label="Margin"
           value={profit ? formatPercent(profit.marginPercent) : "—"}
           hint={profit ? "Share of today's revenue kept" : undefined}
+          loading={profitQuery.isPending}
         />
         <StatCard
           icon={Receipt}
           label="Sales"
           value={String(completed.length)}
           hint="Tap to view today's sales"
-          onClick={() => setPanel("sales")}
+          loading={salesQuery.isPending}
+          onClick={salesQuery.isPending ? undefined : () => setPanel("sales")}
         />
         <StatCard
           icon={ShoppingBag}
           label="Items sold"
           value={String(itemsSold)}
           hint="Tap to view today's sales"
-          onClick={() => setPanel("sales")}
+          loading={salesQuery.isPending}
+          onClick={salesQuery.isPending ? undefined : () => setPanel("sales")}
         />
         <StatCard
           icon={TriangleAlert}
@@ -342,7 +328,8 @@ export function DashboardPageClient() {
           value={String(oversold.length)}
           hint={oversold.length > 0 ? "Tap to review and correct" : "Nothing to correct"}
           tone={oversold.length > 0 ? "danger" : "neutral"}
-          onClick={() => setPanel("oversold")}
+          loading={oversoldQuery.isPending}
+          onClick={oversoldQuery.isPending ? undefined : () => setPanel("oversold")}
         />
         <StatCard
           icon={PackageSearch}
@@ -350,7 +337,8 @@ export function DashboardPageClient() {
           value={String(lowStockRows.length)}
           hint={lowStockRows.length > 0 ? "At or below reorder point" : "Stock looks healthy"}
           tone={lowStockRows.length > 0 ? "warning" : "success"}
-          onClick={() => setPanel("low-stock")}
+          loading={lowStockQuery.isPending}
+          onClick={lowStockQuery.isPending ? undefined : () => setPanel("low-stock")}
         />
         <StatCard
           icon={ClipboardList}
@@ -362,6 +350,7 @@ export function DashboardPageClient() {
               : "Ordered or partially received"
           }
           tone={openPurchaseOrders && openPurchaseOrders > 0 ? "warning" : "neutral"}
+          loading={openPurchaseOrdersQuery.isPending}
         />
         <StatCard
           icon={Wallet}
@@ -373,6 +362,7 @@ export function DashboardPageClient() {
               : "Unpaid across open purchase orders"
           }
           tone={supplierBalanceTotal && supplierBalanceTotal > 0 ? "warning" : "neutral"}
+          loading={supplierBalanceQuery.isPending}
         />
         <StatCard
           icon={CalendarClock}
@@ -384,10 +374,11 @@ export function DashboardPageClient() {
               : "Unpaid terms due within 7 days"
           }
           tone={upcomingPayments && upcomingPayments.length > 0 ? "warning" : "neutral"}
+          loading={upcomingPaymentsQuery.isPending}
           onClick={
-            upcomingPayments && upcomingPayments.length > 0
-              ? () => setPanel("supplier-payments")
-              : undefined
+            upcomingPaymentsQuery.isPending || !upcomingPayments || upcomingPayments.length === 0
+              ? undefined
+              : () => setPanel("supplier-payments")
           }
         />
         <StatCard
@@ -398,8 +389,11 @@ export function DashboardPageClient() {
             upcomingBills === null ? "Sign in as the owner" : "Active bills due within 30 days"
           }
           tone={upcomingBills && upcomingBills.length > 0 ? "warning" : "neutral"}
+          loading={upcomingBillsQuery.isPending}
           onClick={
-            upcomingBills && upcomingBills.length > 0 ? () => setPanel("bills") : undefined
+            upcomingBillsQuery.isPending || !upcomingBills || upcomingBills.length === 0
+              ? undefined
+              : () => setPanel("bills")
           }
         />
       </div>

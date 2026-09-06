@@ -3,6 +3,7 @@ export * from "./app-version";
 export * from "./products";
 export * from "./product-variant-list";
 export * from "./attributes";
+export * from "./units";
 export * from "./addon-groups";
 export * from "./categories";
 export * from "./customers";

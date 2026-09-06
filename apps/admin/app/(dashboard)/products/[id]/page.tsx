@@ -8,28 +8,23 @@ import {
   Boxes,
   Eye,
   EyeOff,
-  Package,
+  Layers,
   TriangleAlert,
+  Truck,
 } from "lucide-react";
-import {
-  formatMoney,
-  formatPercent,
-  marginPercent,
-  stockLevel,
-} from "@double-a/shared-types";
-import { Badge, Card, CardBody, CardHeader, Money, StatCard } from "@/components/ui";
-import { ActivityFeed } from "@/components/activity-feed";
+import { stockLevel } from "@double-a/shared-types";
+import { Badge, Card, StatCard } from "@/components/ui";
 import { toCategoryOptions } from "@/lib/category-options";
 import { useCategories } from "@/lib/query/categories";
 import { useProduct } from "@/lib/query/products";
-import { useProductActivity } from "@/lib/query/activity";
+import { useProductVariants } from "@/lib/query/attributes";
 import { ProductForm } from "../product-form";
 
 export default function EditProductPage() {
   const { id } = useParams<{ id: string }>();
   const productQuery = useProduct(id);
   const categoriesQuery = useCategories({ includeInactive: true });
-  const activityQuery = useProductActivity(id);
+  const variantsQuery = useProductVariants(id);
 
   const pending = productQuery.isPending || categoriesQuery.isPending;
   if (pending) {
@@ -49,7 +44,18 @@ export default function EditProductPage() {
   if (!product) notFound();
 
   const level = stockLevel(product.stockQuantity, product.reorderPoint);
-  const margin = marginPercent(product.price, product.costPrice);
+
+  // Once a product has combinations, its own mirrored stock/price only ever
+  // reflect the default variant — these read across every variant instead,
+  // so the stats stay true for a multi-variant product, not just its base row.
+  const variants = variantsQuery.data ?? [];
+  const totalStock = variants.reduce((sum, variant) => sum + (variant.stockQuantity ?? 0), 0);
+  const lowStockVariants = variants.filter(
+    (variant) => "healthy" !== stockLevel(variant.stockQuantity ?? 0, variant.reorderPoint),
+  ).length;
+  const supplierCount = new Set(
+    variants.flatMap((variant) => variant.suppliers.map((link) => link.supplierId)),
+  ).size;
 
   return (
     <div className="space-y-6">
@@ -91,96 +97,41 @@ export default function EditProductPage() {
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           icon={Boxes}
-          label="Stock on hand"
-          value={String(product.stockQuantity)}
-          hint={`Reorder at ${product.reorderPoint}`}
-          tone={level === "out" ? "danger" : level === "low" ? "warning" : "neutral"}
+          label="Total stock"
+          value={String(totalStock)}
+          hint="Across every variant and branch"
+          loading={variantsQuery.isPending}
+          tone={lowStockVariants > 0 ? "warning" : "neutral"}
         />
         <StatCard
-          icon={Package}
-          label="Shelf price"
-          value={formatMoney(product.price)}
-          hint={product.bulkPrice !== null ? `Bulk from ${product.bulkMinQuantity}` : undefined}
+          icon={TriangleAlert}
+          label="Low stock variants"
+          value={String(lowStockVariants)}
+          hint={`of ${variants.length} total`}
+          loading={variantsQuery.isPending}
+          tone={lowStockVariants > 0 ? "warning" : "neutral"}
         />
         <StatCard
-          icon={Package}
-          label="Supplier cost"
-          value={formatMoney(product.costPrice)}
+          icon={Layers}
+          label="Variants"
+          value={String(variants.length)}
+          loading={variantsQuery.isPending}
         />
         <StatCard
-          icon={Package}
-          label="Margin"
-          value={formatPercent(margin)}
-          hint={`${formatMoney(product.price - product.costPrice)} per unit`}
-          tone={margin < 0 ? "danger" : "primary"}
+          icon={Truck}
+          label="Suppliers"
+          value={String(supplierCount)}
+          hint="Linked across all variants"
+          loading={variantsQuery.isPending}
         />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_18rem]">
-        <ProductForm
-          key={product.id}
-          product={product}
-          categories={toCategoryOptions(categoriesQuery.data ?? [])}
-          saveRedirectHref="/products"
-        />
-
-        <div className="space-y-4">
-          <Card>
-            <CardHeader title="At a glance" />
-            <CardBody className="space-y-3 text-body text-ink-muted">
-              {product.description ? (
-                <p>
-                  <span className="font-medium text-ink">Description</span>
-                  <br />
-                  {product.description}
-                </p>
-              ) : null}
-              <p>
-                <span className="font-medium text-ink">Replenish qty</span>
-                <br />
-                {product.replenishQuantity} when restocking
-              </p>
-              <p>
-                <span className="font-medium text-ink">Sold by</span>
-                <br />
-                {product.unit}
-                {product.allowDecimal ? " (decimals allowed)" : " (whole numbers)"}
-              </p>
-              {product.barcode ? (
-                <p>
-                  <span className="font-medium text-ink">Barcode</span>
-                  <br />
-                  <span className="num">{product.barcode}</span>
-                </p>
-              ) : null}
-              {product.bulkPrice !== null && product.bulkMinQuantity !== null ? (
-                <p>
-                  <span className="font-medium text-ink">Bulk price</span>
-                  <br />
-                  <Money value={product.bulkPrice} /> from {product.bulkMinQuantity} units
-                </p>
-              ) : null}
-            </CardBody>
-          </Card>
-
-          <Card>
-            <CardHeader
-              title="Stock"
-              description="Balances change only through Inventory movements."
-            />
-            <CardBody>
-              <Link
-                href="/inventory"
-                className="text-body font-medium text-primary hover:underline"
-              >
-                Open Inventory
-              </Link>
-            </CardBody>
-          </Card>
-
-          <ActivityFeed activities={activityQuery.data} isPending={activityQuery.isPending} />
-        </div>
-      </div>
+      <ProductForm
+        key={product.id}
+        product={product}
+        categories={toCategoryOptions(categoriesQuery.data ?? [])}
+        saveRedirectHref="/products"
+      />
     </div>
   );
 }

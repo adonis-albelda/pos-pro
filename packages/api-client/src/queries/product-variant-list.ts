@@ -1,4 +1,5 @@
 import type { ApiClient, JsonApiPage, JsonApiResource } from "../http";
+import type { PricingStrategy } from "./attributes";
 import type { ProductSort, ProductStockState } from "./products";
 
 /**
@@ -24,6 +25,9 @@ export interface ProductVariantListRow {
   barcode: string | null;
   price: number;
   costPrice: number;
+  pricingStrategy: PricingStrategy;
+  unitId: string | null;
+  unit: { id: string; name: string; abbreviation: string | null } | null;
   stockQuantity: number;
   isDefault: boolean;
   isActive: boolean;
@@ -56,6 +60,9 @@ interface ProductVariantListAttrs {
   barcode: string | null;
   price: number;
   cost_price: number;
+  pricing_strategy: PricingStrategy;
+  unit_id: string | null;
+  unit: { id: string; name: string; abbreviation: string | null } | null;
   stock_quantity: number;
   is_default: boolean;
   is_active: boolean;
@@ -89,6 +96,9 @@ function toProductVariantListRow(resource: JsonApiResource<ProductVariantListAtt
     barcode: a.barcode,
     price: Number(a.price),
     costPrice: Number(a.cost_price),
+    pricingStrategy: a.pricing_strategy,
+    unitId: a.unit_id,
+    unit: a.unit,
     stockQuantity: Number(a.stock_quantity),
     isDefault: a.is_default,
     isActive: a.is_active,

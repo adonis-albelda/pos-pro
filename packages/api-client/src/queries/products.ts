@@ -550,6 +550,8 @@ export async function adjustStock(
     locationId?: string | null;
     /** Defaults server-side to the product's default variant when omitted. */
     variantId?: string | null;
+    /** Which supplier this stock came from — mainly meaningful for a restock. */
+    supplierId?: string | null;
   },
 ): Promise<Product> {
   const { data } = await client.post<{ data: JsonApiResource<ProductAttrs> }>(
@@ -560,6 +562,7 @@ export async function adjustStock(
       note: input.note ?? null,
       location_id: input.locationId ?? undefined,
       variant_id: input.variantId ?? undefined,
+      supplier_id: input.supplierId ?? undefined,
     },
     { idempotent: true },
   );

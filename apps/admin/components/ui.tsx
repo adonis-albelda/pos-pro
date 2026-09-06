@@ -337,6 +337,7 @@ export function StatCard({
   hint,
   tone = "neutral",
   onClick,
+  loading = false,
 }: {
   icon: LucideIcon;
   label: string;
@@ -344,6 +345,7 @@ export function StatCard({
   hint?: string;
   tone?: StatTone;
   onClick?: () => void;
+  loading?: boolean;
 }) {
   const interactive = Boolean(onClick);
 
@@ -380,15 +382,21 @@ export function StatCard({
         <p className="text-caption font-medium tracking-wide text-ink-muted uppercase">
           {label}
         </p>
-        <p
-          className={cx(
-            "num mt-1 text-heading-md font-semibold",
-            tone === "danger" && "text-danger",
-          )}
-        >
-          {value}
-        </p>
-        {hint ? <p className="mt-0.5 text-caption text-ink-muted">{hint}</p> : null}
+        {loading ? (
+          <Skeleton className="mt-1.5 h-6 w-20" />
+        ) : (
+          <>
+            <p
+              className={cx(
+                "num mt-1 text-heading-md font-semibold",
+                tone === "danger" && "text-danger",
+              )}
+            >
+              {value}
+            </p>
+            {hint ? <p className="mt-0.5 text-caption text-ink-muted">{hint}</p> : null}
+          </>
+        )}
       </div>
     </Card>
   );
@@ -620,6 +628,8 @@ export interface ComboboxOption {
   label: string;
   /** Shown muted, right-aligned next to the label — e.g. a SKU or category path. */
   sublabel?: string;
+  /** Shown in the list, greyed out, not selectable — e.g. already attached elsewhere. */
+  disabled?: boolean;
 }
 
 /**
@@ -791,7 +801,7 @@ export function Combobox({
     } else if (event.key === "Enter") {
       event.preventDefault();
       const option = filtered[highlighted];
-      if (option) commit(option.value);
+      if (option && !option.disabled) commit(option.value);
     } else if (event.key === "Escape") {
       setOpen(false);
       setQuery("");
@@ -866,20 +876,25 @@ export function Combobox({
                   <button
                     key={option.value}
                     type="button"
+                    disabled={option.disabled}
                     onMouseEnter={() => setHighlighted(index)}
-                    onClick={() => commit(option.value)}
+                    onClick={() => {
+                      if (!option.disabled) commit(option.value);
+                    }}
                     className={cx(
                       "flex w-full rounded-sm px-3 py-2 text-left text-body",
                       option.sublabel
                         ? "flex-col items-start gap-0.5"
                         : "items-center justify-between gap-2",
-                      isCreate
-                        ? index === highlighted
-                          ? "bg-danger/12 text-danger"
-                          : "text-danger hover:bg-danger/8"
-                        : index === highlighted
-                          ? "bg-primary-tint text-ink"
-                          : "text-ink hover:bg-paper",
+                      option.disabled
+                        ? "cursor-not-allowed text-ink-muted opacity-60"
+                        : isCreate
+                          ? index === highlighted
+                            ? "bg-danger/12 text-danger"
+                            : "text-danger hover:bg-danger/8"
+                          : index === highlighted
+                            ? "bg-primary-tint text-ink"
+                            : "text-ink hover:bg-paper",
                       option.value === selected && "font-medium",
                     )}
                   >

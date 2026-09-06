@@ -698,6 +698,8 @@ export interface InventoryMovementAttrs {
   product_id: string;
   product_name?: string | null;
   location_id?: string | null;
+  supplier_id?: string | null;
+  supplier_name?: string | null;
   change_quantity: number;
   reason: string;
   reference_id: string | null;
@@ -714,6 +716,8 @@ export function toInventoryMovement(resource: JsonApiResource<InventoryMovementA
     productId: a.product_id,
     productName: a.product_name ?? null,
     locationId: a.location_id ?? null,
+    supplierId: a.supplier_id ?? null,
+    supplierName: a.supplier_name ?? null,
     changeQuantity: Number(a.change_quantity),
     reason: a.reason as InventoryReason,
     referenceId: a.reference_id,

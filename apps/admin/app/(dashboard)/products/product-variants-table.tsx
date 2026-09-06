@@ -117,7 +117,7 @@ export function ProductVariantsTable({
             <Th>Category</Th>
             <Th>Supplier</Th>
             <Th>Sold by</Th>
-            <Th numeric>Supplier price</Th>
+            <Th numeric>Cost price</Th>
             <Th numeric>Shelf price</Th>
             <Th numeric>Margin</Th>
             <Th numeric>Stock</Th>
