@@ -26,7 +26,6 @@ function readProductForm(formData: FormData) {
   return {
     name: text(formData, "name"),
     sku: text(formData, "sku") || null,
-    supplierSku: text(formData, "supplier_sku") || null,
     price: Number(formData.get("price") ?? 0),
     costPrice: Number(formData.get("cost_price") ?? 0),
     categoryId: text(formData, "category_id") || null,
@@ -50,8 +49,9 @@ function readProductForm(formData: FormData) {
 // substring matches.
 function describeSaveError(error: unknown): string {
   if (error instanceof ApiError && error.isValidation) {
-    if (error.errors?.sku) return "That SKU is already used by another product.";
-    if (error.errors?.supplier_sku) return "That supplier SKU is already used by another product.";
+    // Sku conflicts carry a specific "already used by X" message from the
+    // backend (SkuConflict) — prefer it over a generic line.
+    if (error.errors?.sku?.[0]) return error.errors.sku[0];
     if (error.errors?.barcode) return "That barcode is already on another product.";
     if (error.errors?.bulk_price || error.errors?.bulk_min_quantity) {
       return "Bulk pricing needs both a bulk price and a minimum quantity.";
@@ -84,7 +84,6 @@ export async function saveProduct(
   const row = {
     name: input.name,
     sku: input.sku,
-    supplierSku: input.supplierSku,
     price: input.price,
     costPrice: input.costPrice,
     categoryId: input.categoryId,

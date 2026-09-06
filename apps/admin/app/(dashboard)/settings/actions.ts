@@ -54,6 +54,11 @@ export async function saveStoreSettings(
     return { error: "Next invoice number must be a whole number of at least 1.", ok: false };
   }
 
+  const idleTimeoutMinutes = Number(formData.get("idle_timeout_minutes") ?? 5);
+  if (!Number.isInteger(idleTimeoutMinutes) || idleTimeoutMinutes < 0 || idleTimeoutMinutes > 120) {
+    return { error: "Idle lock must be a whole number of minutes between 0 and 120.", ok: false };
+  }
+
   const client = getAuthedClient();
 
   try {
@@ -71,6 +76,7 @@ export async function saveStoreSettings(
       invoicePrefix: optional(formData, "invoice_prefix"),
       invoiceDigits,
       invoiceNextNumber,
+      idleTimeoutMinutes,
     });
   } catch (error) {
     if (error instanceof ApiError && error.isForbidden) {

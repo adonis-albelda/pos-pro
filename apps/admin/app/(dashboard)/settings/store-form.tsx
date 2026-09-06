@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { Check, Hash, ImageOff, MapPin, Phone, Store } from "lucide-react";
+import { Check, Clock, Hash, ImageOff, MapPin, Phone, Store } from "lucide-react";
 import { toast } from "sonner";
 import { storeInitial, type StoreSettings } from "@double-a/shared-types";
 import {
@@ -155,6 +155,26 @@ export function StoreForm({ settings }: { settings: StoreSettings }) {
               name="invoice_next_number"
               min={1}
               defaultValue={settings.invoiceNextNumber}
+            />
+          </Field>
+        </div>
+      </div>
+
+      <div className="space-y-2 rounded-md border border-border p-4">
+        <p className="text-body-sm font-medium text-ink">Cashier idle lock</p>
+        <p className="text-caption text-ink-muted">
+          A terminal forces the cashier back to the PIN screen after this many minutes of no
+          activity. Set to 0 to turn off auto-lock.
+        </p>
+        <div className="sm:w-40">
+          <Field label="Minutes" required>
+            <Input
+              icon={Clock}
+              type="number"
+              name="idle_timeout_minutes"
+              min={0}
+              max={120}
+              defaultValue={settings.idleTimeoutMinutes}
             />
           </Field>
         </div>

@@ -252,7 +252,12 @@ export function planProductImportFromTable(
   const byCode = new Map<string, Product>();
   for (const product of context.products) {
     if (product.sku) byCode.set(product.sku.toLowerCase(), product);
-    if (product.supplierSku) byCode.set(product.supplierSku.toLowerCase(), product);
+    // Any linked supplier's own code — supplier_sku now lives on
+    // product_variant_suppliers, one row per (variant, supplier), matching
+    // ImportProductsChunkAction/ProductSkuLookup's own unscoped lookup.
+    for (const link of product.supplierLinks) {
+      byCode.set(link.supplierSku.toLowerCase(), product);
+    }
   }
 
   const categoryIdByPath = new Map<string, string>();
@@ -373,6 +378,13 @@ export function planProductImportFromTable(
 
     const categoryPath = given("category") ? normalisePath(cell("category")) : null;
     const supplierName = given("supplier") ? cell("supplier").trim() : null;
+    // supplier_sku now lives on product_variant_suppliers, one row per
+    // (variant, supplier) — "the" existing code to preserve on a blank cell
+    // only makes sense once resolved to this row's own typed supplier.
+    const rowSupplierId = supplierName ? (supplierIdByName.get(supplierName.toLowerCase()) ?? null) : null;
+    const existingSupplierSku = rowSupplierId
+      ? (existing?.supplierLinks.find((link) => link.supplierId === rowSupplierId)?.supplierSku ?? null)
+      : null;
 
     let stockQuantity: number | null = null;
     if (has("stock_quantity") && given("stock_quantity")) {
@@ -418,7 +430,7 @@ export function planProductImportFromTable(
       if (!newSupplierNames.includes(supplierName)) newSupplierNames.push(supplierName);
     }
 
-    const supplierSku = given("supplier_sku") ? cell("supplier_sku") : (existing?.supplierSku ?? null);
+    const supplierSku = given("supplier_sku") ? cell("supplier_sku") : existingSupplierSku;
 
     const values: ProductImportRow = {
       name,
@@ -439,14 +451,13 @@ export function planProductImportFromTable(
       stock_quantity: stockQuantity,
     };
 
+    const matchedOnSupplierSku =
+      existing?.sku?.toLowerCase() !== sku.toLowerCase() &&
+      existing?.supplierLinks.some((link) => link.supplierSku.toLowerCase() === sku.toLowerCase());
     const notes = existing
       ? [
           ...describeChanges(existing, values, categoryPath),
-          ...(existing.supplierSku &&
-          sku.toLowerCase() === existing.supplierSku.toLowerCase() &&
-          existing.sku?.toLowerCase() !== sku.toLowerCase()
-            ? ["Matched on supplier SKU."]
-            : []),
+          ...(matchedOnSupplierSku ? ["Matched on supplier SKU."] : []),
         ]
       : stockMode !== "skip" && stockQuantity !== null
         ? ["New product."]

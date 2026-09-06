@@ -47,6 +47,7 @@ import { useFeatureFlags } from "@/lib/query/features";
 import { compressImage } from "@/lib/compress-image";
 import type { ProductStockMode } from "@/lib/product-import";
 import { IMPORT_FIELD_META, type ColumnMapping } from "@/lib/product-import-mapping";
+import { useSkuAvailability } from "@/lib/use-sku-check";
 import { mappedCellsFromSource, sourceCellsForLine } from "@/lib/product-import-fix";
 import {
   downloadImportIssuesCsv,
@@ -166,6 +167,13 @@ function EditRowDialog({
   onClose: () => void;
 }) {
   const prefill = line !== null ? mappedCellsFromSource(sourceCellsForLine(csv, line), mapping) : {};
+  const [sku, setSku] = useState(prefill.sku ?? "");
+  const skuCheck = useSkuAvailability({ kind: "sku", value: sku });
+
+  useEffect(() => {
+    setSku(prefill.sku ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset only when a different row opens, not on every prefill object identity change.
+  }, [line]);
 
   return (
     <Dialog
@@ -183,11 +191,39 @@ function EditRowDialog({
         <input type="hidden" name="edit_line" value={line ?? ""} />
 
         <div className="grid max-h-[60vh] gap-3 overflow-y-auto sm:grid-cols-2">
-          {IMPORT_FIELD_META.map((field) => (
-            <Field key={field.key} label={field.label}>
-              <Input name={`edit_${field.key}`} defaultValue={prefill[field.key] ?? ""} />
-            </Field>
-          ))}
+          {IMPORT_FIELD_META.map((field) =>
+            field.key === "sku" ? (
+              <div key={field.key}>
+                <Field key={field.key} label={field.label}>
+                  <Input
+                    name={`edit_${field.key}`}
+                    value={sku}
+                    onChange={(event) => setSku(event.target.value)}
+                  />
+                </Field>
+                {skuCheck.conflict ? (
+                  <p className="mt-1 text-caption text-danger">
+                    This SKU is already used by {skuCheck.conflict.name}.
+                  </p>
+                ) : skuCheck.checking ? (
+                  <p className="mt-1 text-caption text-ink-muted">Checking…</p>
+                ) : null}
+              </div>
+            ) : field.key === "supplier_sku" ? (
+              // No "SUP-{name}-" preview here: the row's supplier may just be
+              // a typed name with no company record yet (ensureSupplier
+              // creates it at commit) — nothing to join against until then.
+              // The real prefix is still applied server-side once the
+              // supplier is resolved, in ImportProductsChunkAction.
+              <Field key={field.key} label={field.label}>
+                <Input name={`edit_${field.key}`} defaultValue={prefill[field.key] ?? ""} />
+              </Field>
+            ) : (
+              <Field key={field.key} label={field.label}>
+                <Input name={`edit_${field.key}`} defaultValue={prefill[field.key] ?? ""} />
+              </Field>
+            ),
+          )}
         </div>
 
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">

@@ -1,14 +1,57 @@
 "use client";
 
+import type { Route } from "next";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Package, Trash2 } from "lucide-react";
 import type { Product } from "@double-a/shared-types";
+import type { ProductVariantListRow } from "@double-a/api-client/queries";
 import { Card, EmptyState } from "@/components/ui";
 import { Pagination, RecordToolbar, SearchField } from "@/components/record-list";
 import { ProductsFiltersPopover } from "./products-filters";
 import { ProductsTable } from "./products-table";
+import { ProductVariantsTable } from "./product-variants-table";
+
+function cx(...parts: (string | false | null | undefined)[]): string {
+  return parts.filter(Boolean).join(" ");
+}
+
+/** "Variants" / "Products" segmented toggle — writes the `view` URL param, same pattern the filters popover already uses for its own writes. */
+function ViewToggle({ view }: { view: "variants" | "products" }) {
+  const router = useRouter();
+  const params = useSearchParams();
+
+  function setView(next: "variants" | "products") {
+    const nextParams = new URLSearchParams(params.toString());
+    if ("variants" === next) nextParams.delete("view");
+    else nextParams.set("view", next);
+    nextParams.delete("page");
+    const qs = nextParams.toString();
+    router.push((qs ? `/products?${qs}` : "/products") as Route);
+  }
+
+  return (
+    <div className="inline-flex h-11 shrink-0 items-center rounded-sm border border-border bg-paper p-0.5 sm:h-10">
+      {(["variants", "products"] as const).map((option) => (
+        <button
+          key={option}
+          type="button"
+          onClick={() => setView(option)}
+          className={cx(
+            "h-full rounded-sm px-3 text-body capitalize transition-colors",
+            view === option ? "bg-surface font-medium text-ink shadow-sm" : "text-ink-muted hover:text-ink",
+          )}
+        >
+          {option}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export function ProductsPanel({
+  view,
   products,
+  variants,
   query,
   page,
   pageCount,
@@ -17,7 +60,9 @@ export function ProductsPanel({
   fetching = false,
   trashed = false,
 }: {
+  view: "variants" | "products";
   products: Product[];
+  variants: ProductVariantListRow[];
   query: string;
   page: number;
   pageCount: number;
@@ -41,6 +86,7 @@ export function ProductsPanel({
           </div>
 
           <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+            <ViewToggle view={view} />
             <ProductsFiltersPopover className="sm:max-w-xs" />
             {trashed ? null : (
               <RecordToolbar
@@ -78,7 +124,13 @@ export function ProductsPanel({
           }
         />
       ) : (
-        <ProductsTable products={products} fetching={fetching} trashed={trashed} />
+        <>
+          {"products" === view ? (
+            <ProductsTable products={products} fetching={fetching} trashed={trashed} />
+          ) : (
+            <ProductVariantsTable variants={variants} fetching={fetching} trashed={trashed} />
+          )}
+        </>
       )}
 
       <Pagination
@@ -87,7 +139,11 @@ export function ProductsPanel({
         total={total}
         pageSize={pageSize}
         basePath="/products"
-        query={{ q: query || undefined, trashed: trashed ? "only" : undefined }}
+        query={{
+          q: query || undefined,
+          trashed: trashed ? "only" : undefined,
+          view: "variants" === view ? undefined : view,
+        }}
       />
     </Card>
   );

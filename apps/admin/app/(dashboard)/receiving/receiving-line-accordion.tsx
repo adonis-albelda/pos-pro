@@ -25,6 +25,7 @@ import {
 import { MatchProductCombobox } from "./match-product-combobox";
 import type { CategoryOption } from "@/lib/category-options";
 import { indentLabel } from "@/lib/category-options";
+import { useSkuAvailability } from "@/lib/use-sku-check";
 import {
   categoryComboboxValue,
   categoryHintFromPendingValue,
@@ -56,6 +57,29 @@ function ReadOnlyMoneyField({ label, value }: { label: string; value: number }) 
       </Field>
     </div>
   );
+}
+
+/** Below the Internal SKU / Supplier SKU field — the 3s-debounced realtime duplicate check's result. */
+function SkuFeedback({
+  label,
+  checking,
+  conflict,
+}: {
+  label: "SKU" | "Supplier SKU";
+  checking: boolean;
+  conflict: { name: string } | null;
+}) {
+  if (conflict) {
+    return (
+      <p className="mt-1 text-caption text-danger">
+        This {label} is already used by {conflict.name}.
+      </p>
+    );
+  }
+  if (checking) {
+    return <p className="mt-1 text-caption text-ink-muted">Checking…</p>;
+  }
+  return null;
 }
 
 function ChangeLine({
@@ -129,6 +153,8 @@ export function ReceivingLineAccordion({
   hasSupplier,
   showMatchPicker,
   showInternalSku,
+  supplierId,
+  supplierName,
   matchedProduct,
   currentStock,
   matchLocationId,
@@ -150,6 +176,10 @@ export function ReceivingLineAccordion({
   showMatchPicker: boolean;
   /** When true, show the editable internal SKU field (new products). */
   showInternalSku: boolean;
+  /** Real id of the receipt's supplier, or null while it's only a typed name not yet created. */
+  supplierId: string | null;
+  /** Display name of the receipt's supplier — used for the "SUP-{name}-" prefix, known and singular for the whole receipt. */
+  supplierName: string;
   /** Matched catalogue product — used for supplier SKU fallback. */
   matchedProduct?: Product;
   /** Branch stock for a matched catalogue product. */
@@ -168,10 +198,18 @@ export function ReceivingLineAccordion({
   const flagged = lineIsFlagged(row);
   const resolved = lineIsResolved(row);
   const displayName = headerDisplayName(row);
-  const skuSnippet = headerSkuSnippet(row, matchedProduct);
-  const supplierSkuValue = supplierSkuInputValue(row, matchedProduct);
-  const usesAiSupplierSku = supplierSkuUsesAiExtraction(row, matchedProduct);
+  const skuSnippet = headerSkuSnippet(row, matchedProduct, supplierId);
+  const supplierSkuValue = supplierSkuInputValue(row, matchedProduct, supplierId);
+  const usesAiSupplierSku = supplierSkuUsesAiExtraction(row, matchedProduct, supplierId);
   const internalSku = internalSkuDisplay(row, matchedProduct);
+  const supplierPrefix = supplierName.trim() ? `SUP-${supplierName.trim()}-` : null;
+  const internalSkuCheck = useSkuAvailability({ kind: "sku", value: row.sku });
+  const supplierSkuCheck = useSkuAvailability({
+    kind: "supplier_sku",
+    value: supplierSkuValue,
+    supplierId,
+    excludeProductId: row.productId,
+  });
   const qty = Number(row.quantityReceived) || 0;
   const newCost = row.unitCost.trim() !== "" ? Number(row.unitCost) : null;
   const newShelf = row.appliedPrice.trim() !== "" ? Number(row.appliedPrice) : null;
@@ -336,6 +374,11 @@ export function ReceivingLineAccordion({
                     disabled={inputsDisabled}
                   />
                 </Field>
+                <SkuFeedback
+                  label="SKU"
+                  checking={internalSkuCheck.checking}
+                  conflict={internalSkuCheck.conflict}
+                />
                 </div>
               ) : row.productId && internalSku ? (
                 <div className={HALF_CELL}>
@@ -355,17 +398,32 @@ export function ReceivingLineAccordion({
                 hint={
                   usesAiSupplierSku
                     ? "Exact code from AI extraction."
-                    : supplierSkuHint(row, matchedProduct)
+                    : supplierSkuHint(row, matchedProduct, supplierId)
                 }
               >
                 <div className="flex w-full items-center gap-1">
-                  <Input
-                    value={supplierSkuValue}
-                    onChange={(event) => onUpdate({ receiptSupplierSku: event.target.value })}
-                    placeholder="Code from the receipt"
-                    disabled={inputsDisabled}
-                    className="min-w-0 flex-1"
-                  />
+                  <span className="relative min-w-0 flex-1">
+                    {supplierPrefix ? (
+                      <span
+                        className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 truncate text-body text-ink-muted"
+                        style={{ maxWidth: "60%" }}
+                      >
+                        {supplierPrefix}
+                      </span>
+                    ) : null}
+                    <Input
+                      value={supplierSkuValue}
+                      onChange={(event) => onUpdate({ receiptSupplierSku: event.target.value })}
+                      placeholder="Code from the receipt"
+                      disabled={inputsDisabled}
+                      className="w-full"
+                      style={
+                        supplierPrefix
+                          ? { paddingLeft: `${supplierPrefix.length * 0.5 + 1}rem` }
+                          : undefined
+                      }
+                    />
+                  </span>
                   {row.originalReceiptSupplierSku.trim() ? (
                     <IconButton
                       icon={Pencil}
@@ -379,6 +437,11 @@ export function ReceivingLineAccordion({
                   ) : null}
                 </div>
               </Field>
+              <SkuFeedback
+                label="Supplier SKU"
+                checking={supplierSkuCheck.checking}
+                conflict={supplierSkuCheck.conflict}
+              />
               </div>
 
               <div className={HALF_CELL}>

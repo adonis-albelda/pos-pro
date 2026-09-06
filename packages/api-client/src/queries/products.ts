@@ -7,7 +7,6 @@ export interface ProductInput {
   name: string;
   description?: string | null;
   sku?: string | null;
-  supplierSku?: string | null;
   price: number;
   costPrice: number;
   categoryId?: string | null;
@@ -27,7 +26,6 @@ function toPayload(input: Partial<ProductInput>): Record<string, unknown> {
   if (input.name !== undefined) payload.name = input.name;
   if (input.description !== undefined) payload.description = input.description;
   if (input.sku !== undefined) payload.sku = input.sku;
-  if (input.supplierSku !== undefined) payload.supplier_sku = input.supplierSku;
   if (input.price !== undefined) payload.price = input.price;
   if (input.costPrice !== undefined) payload.cost_price = input.costPrice;
   if (input.categoryId !== undefined) payload.category_id = input.categoryId;
@@ -426,11 +424,62 @@ export async function updateProduct(
   return toProduct(data);
 }
 
+/** Claims and returns the next sequential SKU (SKU-000000001, ...) — for real, not a preview. See NextSkuController. */
+export async function getNextSku(client: ApiClient): Promise<string> {
+  const { data } = await client.get<{ data: { sku: string } }>("/products/next-sku");
+  return data.sku;
+}
+
+export interface SkuConflict {
+  type: "product" | "variant";
+  id: string;
+  name: string;
+}
+
+/** Read-only, no side effects — the realtime duplicate check while typing. */
+export async function checkSku(
+  client: ApiClient,
+  value: string,
+  options: { excludeProductId?: string; excludeVariantId?: string } = {},
+): Promise<{ available: boolean; conflict: SkuConflict | null }> {
+  const { data } = await client.get<{ data: { available: boolean; conflict: SkuConflict | null } }>(
+    "/skus/check-sku",
+    {
+      value,
+      exclude_product_id: options.excludeProductId,
+      exclude_variant_id: options.excludeVariantId,
+    },
+  );
+  return data;
+}
+
+/**
+ * Scoped to one supplier — two different suppliers can share a code without
+ * conflicting. `excludePivotId` is the product_variant_suppliers row being
+ * edited, if any (a link's own id, not a product/variant id).
+ */
+export async function checkSupplierSku(
+  client: ApiClient,
+  supplierId: string,
+  value: string,
+  options: { excludePivotId?: string } = {},
+): Promise<{ available: boolean; conflict: SkuConflict | null }> {
+  const { data } = await client.get<{ data: { available: boolean; conflict: SkuConflict | null } }>(
+    "/skus/check-supplier-sku",
+    {
+      supplier_id: supplierId,
+      value,
+      exclude_pivot_id: options.excludePivotId,
+    },
+  );
+  return data;
+}
+
 export async function setProductActive(client: ApiClient, id: string, isActive: boolean): Promise<void> {
   await updateProduct(client, id, { isActive });
 }
 
-/** Copies every field except sku/supplier_sku/barcode (must stay unique) and suffixes the name " Clone". */
+/** Copies every field except sku/barcode (must stay unique) and suffixes the name " Clone". Supplier links are never copied either — give the clone its own. */
 export async function cloneProduct(client: ApiClient, id: string): Promise<Product> {
   const { data } = await client.post<{ data: JsonApiResource<ProductAttrs> }>(`/products/${id}/clone`);
   return toProduct(data);
@@ -499,6 +548,8 @@ export async function adjustStock(
     reason: AdjustStockReason;
     note?: string | null;
     locationId?: string | null;
+    /** Defaults server-side to the product's default variant when omitted. */
+    variantId?: string | null;
   },
 ): Promise<Product> {
   const { data } = await client.post<{ data: JsonApiResource<ProductAttrs> }>(
@@ -508,6 +559,7 @@ export async function adjustStock(
       reason: input.reason,
       note: input.note ?? null,
       location_id: input.locationId ?? undefined,
+      variant_id: input.variantId ?? undefined,
     },
     { idempotent: true },
   );

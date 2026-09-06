@@ -47,14 +47,17 @@ import { indentLabel, type CategoryOption } from "@/lib/category-options";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
 import { isImageFile, NOT_AN_IMAGE_MESSAGE } from "@/lib/is-image-file";
 import { useLocations } from "@/lib/query/locations";
+import { useProductVariants } from "@/lib/query/attributes";
 import {
   useAssembleBundle,
+  useClaimNextSku,
   useDeleteProductPhoto,
   useInvalidateProducts,
   useProducts,
   useSetBundleItems,
   useUploadProductPhoto,
 } from "@/lib/query/products";
+import { useSkuAvailability } from "@/lib/use-sku-check";
 import { saveProduct } from "./actions";
 import { ProductAddonGroupsSection } from "./product-addon-groups-section";
 import { ProductAttributesAndVariantsSection } from "./product-attributes-variants-section";
@@ -257,6 +260,27 @@ function AssembleBundleSection({ product }: { product: Product }) {
   );
 }
 
+/** Below the SKU field — the 3s-debounced realtime duplicate check's result. */
+function SkuFeedback({
+  checking,
+  conflict,
+}: {
+  checking: boolean;
+  conflict: { name: string } | null;
+}) {
+  if (conflict) {
+    return (
+      <p className="mt-1 text-caption text-danger">
+        This SKU is already used by {conflict.name}.
+      </p>
+    );
+  }
+  if (checking) {
+    return <p className="mt-1 text-caption text-ink-muted">Checking…</p>;
+  }
+  return null;
+}
+
 function FormSection({
   title,
   description,
@@ -435,6 +459,33 @@ export function ProductForm({
   );
   const [decimalTouched, setDecimalTouched] = useState(false);
   const [isBundle, setIsBundle] = useState(product?.isBundle ?? false);
+
+  const [sku, setSku] = useState(product?.sku ?? "");
+  const claimNextSku = useClaimNextSku();
+  const claimedSkuRef = useRef(false);
+
+  useEffect(() => {
+    if (product || claimedSkuRef.current) return;
+    claimedSkuRef.current = true;
+    claimNextSku.mutate(undefined, {
+      onSuccess: (claimed) => setSku((current) => (current === "" ? claimed : current)),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- claim exactly once, on mount, for a brand-new product.
+  }, []);
+
+  // The product's own sku is mirrored onto its default variant's sku column
+  // (ProductObserver), so the conflict check must also exclude that variant
+  // id — otherwise editing a product re-finds its own mirrored row via the
+  // product_variants table and reports it as a conflict with itself.
+  const variantsQuery = useProductVariants(product?.id ?? null);
+  const defaultVariant =
+    variantsQuery.data?.find((variant) => variant.isDefault) ?? variantsQuery.data?.[0] ?? null;
+  const skuCheck = useSkuAvailability({
+    kind: "sku",
+    value: sku,
+    excludeProductId: product?.id ?? null,
+    excludeVariantId: defaultVariant?.id ?? null,
+  });
   const [bundleRows, setBundleRows] = useState<BundleRow[]>(() =>
     product?.bundleItems.length
       ? product.bundleItems.map((item) => ({
@@ -546,23 +597,20 @@ export function ProductForm({
               <Input name="name" defaultValue={product?.name} required />
             </Field>
           </div>
-          <Field
-            label="SKU"
-            hint="Your shop code. CSV import and photo extract match on this."
-            required={false}
-          >
-            <Input name="sku" defaultValue={product?.sku ?? ""} />
-          </Field>
-          <Field
-            label="Supplier SKU"
-            hint="Supplier item code on price lists — also used for matching."
-            required={false}
-          >
-            <Input
-              name="supplier_sku"
-              defaultValue={product?.supplierSku ?? ""}
-            />
-          </Field>
+          <div>
+            <Field
+              label="SKU"
+              hint="Your shop code. CSV import and photo extract match on this."
+              required={false}
+            >
+              <Input
+                name="sku"
+                value={sku}
+                onChange={(event) => setSku(event.target.value)}
+              />
+            </Field>
+            <SkuFeedback checking={skuCheck.checking} conflict={skuCheck.conflict} />
+          </div>
           <Field
             label="Barcode"
             hint="Optional. Scanned at the counter."

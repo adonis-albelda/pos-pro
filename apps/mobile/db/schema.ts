@@ -385,6 +385,15 @@ ALTER TABLE sale_items ADD COLUMN variant_id TEXT;
 ALTER TABLE sale_items ADD COLUMN addons TEXT NOT NULL DEFAULT '[]';
 `;
 
+/**
+ * v20: minutes of no touch activity before the POS forces a cashier back to
+ * PIN-unlock. 0 disables auto-lock. Replaced whole on every pull, like the
+ * rest of this row.
+ */
+const V20_IDLE_TIMEOUT = `
+ALTER TABLE store_settings ADD COLUMN idle_timeout_minutes INTEGER NOT NULL DEFAULT 5;
+`;
+
 /** Ordered, append-only. Never edit a step that has shipped. */
 export const MIGRATIONS: Migration[] = [
   { version: 1, sql: V1_INITIAL },
@@ -406,6 +415,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 17, sql: V17_PRODUCT_SUPPLIER_NAMES },
   { version: 18, sql: V18_PRODUCT_IS_BUNDLE },
   { version: 19, sql: V19_VARIANTS_AND_ADDONS },
+  { version: 20, sql: V20_IDLE_TIMEOUT },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.reduce(

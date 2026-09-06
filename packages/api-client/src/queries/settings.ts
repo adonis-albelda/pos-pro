@@ -17,6 +17,7 @@ export interface StoreSettingsInput {
   invoicePrefix?: string | null;
   invoiceDigits?: number;
   invoiceNextNumber?: number;
+  idleTimeoutMinutes?: number;
 }
 
 function toStoreSettingsPayload(input: StoreSettingsInput): Record<string, unknown> {
@@ -29,6 +30,7 @@ function toStoreSettingsPayload(input: StoreSettingsInput): Record<string, unkno
   if (input.invoicePrefix !== undefined) payload.invoice_prefix = input.invoicePrefix;
   if (input.invoiceDigits !== undefined) payload.invoice_digits = input.invoiceDigits;
   if (input.invoiceNextNumber !== undefined) payload.invoice_next_number = input.invoiceNextNumber;
+  if (input.idleTimeoutMinutes !== undefined) payload.idle_timeout_minutes = input.idleTimeoutMinutes;
   return payload;
 }
 

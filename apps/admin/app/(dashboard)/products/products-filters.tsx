@@ -46,11 +46,13 @@ function ProductsFiltersForm({ onApplied }: { onApplied: () => void }) {
   const params = useSearchParams();
 
   function apply(formData: FormData) {
-    // q lives outside this form — preserve it rather than rebuilding the
-    // querystring from just this form's fields.
+    // q and view live outside this form — preserve them rather than
+    // rebuilding the querystring from just this form's fields.
     const next = new URLSearchParams();
     const q = params.get("q");
+    const view = params.get("view");
     if (q) next.set("q", q);
+    if (view) next.set("view", view);
     for (const [key, value] of formData.entries()) {
       if (typeof value === "string" && value) next.set(key, value);
     }
@@ -61,7 +63,9 @@ function ProductsFiltersForm({ onApplied }: { onApplied: () => void }) {
   function clear() {
     const next = new URLSearchParams();
     const q = params.get("q");
+    const view = params.get("view");
     if (q) next.set("q", q);
+    if (view) next.set("view", view);
     const qs = next.toString();
     router.push((qs ? `/products?${qs}` : "/products") as Route);
     onApplied();

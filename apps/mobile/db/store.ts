@@ -15,10 +15,11 @@ export async function getLocalStoreSettings(): Promise<StoreSettings> {
     invoice_prefix: string | null;
     invoice_digits: number | null;
     invoice_next_number: number | null;
+    idle_timeout_minutes: number | null;
     updated_at: string | null;
   }>(
     `SELECT name, logo_url, address, phone, receipt_footer,
-            invoice_prefix, invoice_digits, invoice_next_number, updated_at
+            invoice_prefix, invoice_digits, invoice_next_number, idle_timeout_minutes, updated_at
        FROM store_settings
       WHERE id = 1`,
   );
@@ -34,6 +35,7 @@ export async function getLocalStoreSettings(): Promise<StoreSettings> {
     invoicePrefix: row.invoice_prefix,
     invoiceDigits: row.invoice_digits ?? 6,
     invoiceNextNumber: row.invoice_next_number ?? 1,
+    idleTimeoutMinutes: row.idle_timeout_minutes ?? 5,
     updatedAt: row.updated_at ?? "",
   };
 }
@@ -49,6 +51,7 @@ export async function saveLocalStoreSettings(settings: StoreSettings): Promise<v
             invoice_prefix = ?,
             invoice_digits = ?,
             invoice_next_number = ?,
+            idle_timeout_minutes = ?,
             updated_at = ?
       WHERE id = 1`,
     settings.name,
@@ -59,6 +62,7 @@ export async function saveLocalStoreSettings(settings: StoreSettings): Promise<v
     settings.invoicePrefix,
     settings.invoiceDigits,
     settings.invoiceNextNumber,
+    settings.idleTimeoutMinutes,
     settings.updatedAt,
   );
 }

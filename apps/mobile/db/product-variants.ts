@@ -28,9 +28,6 @@ function toProductVariant(row: ProductVariantRow): ProductVariant {
     id: row.id,
     productId: row.product_id,
     sku: row.sku,
-    // Not stored locally — same carve-out as Product.supplierSku (mobile
-    // POS never displays or matches on it).
-    supplierSku: null,
     barcode: null,
     price: row.price,
     costPrice: row.cost_price,

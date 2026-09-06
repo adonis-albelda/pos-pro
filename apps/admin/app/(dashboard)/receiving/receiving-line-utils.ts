@@ -96,11 +96,23 @@ function skusAreSame(a: string, b: string): boolean {
   return Boolean(a.trim() && b.trim() && normalizeSku(a) === normalizeSku(b));
 }
 
-/** Keep receipt code only when distinct from internal sku; matched rows use supplier_sku column. */
+/**
+ * A product's own supplier code for one specific supplier — supplier_sku
+ * now lives on product_variant_suppliers, one row per (variant, supplier),
+ * so "the" code only makes sense once scoped to the receipt's chosen
+ * supplier. Flattened onto `Product.supplierLinks` for exactly this lookup.
+ */
+function productSupplierSku(product: Product | null | undefined, supplierId: string | null): string | null {
+  if (!product || !supplierId) return null;
+  return product.supplierLinks.find((link) => link.supplierId === supplierId)?.supplierSku ?? null;
+}
+
+/** Keep receipt code only when distinct from internal sku; matched rows fall back to the catalogue's code for this supplier. */
 export function receiptSupplierSkuAfterMatch(
   existingReceiptSku: string,
   product: Product,
   matchedBy: "internal" | "supplier",
+  supplierId: string | null,
   matchedCode?: string,
 ): string {
   if (matchedBy === "supplier" && matchedCode?.trim()) {
@@ -111,26 +123,26 @@ export function receiptSupplierSkuAfterMatch(
   if (receipt && !skusAreSame(receipt, internal)) {
     return receipt;
   }
-  return product.supplierSku?.trim() ?? "";
+  return productSupplierSku(product, supplierId)?.trim() ?? "";
 }
 
 /** Supplier SKU column — never mirror internal sku. */
-export function supplierSkuDisplay(row: LineRow, product?: Product | null): string {
+export function supplierSkuDisplay(row: LineRow, product: Product | null | undefined, supplierId: string | null): string {
   const receipt = row.receiptSupplierSku.trim();
   const internal = internalSkuDisplay(row, product);
   if (receipt && !skusAreSame(receipt, internal)) {
     return receipt;
   }
   if (row.productId) {
-    return product?.supplierSku?.trim() ?? "";
+    return productSupplierSku(product, supplierId)?.trim() ?? "";
   }
   return "";
 }
 
 /** Editable supplier SKU input — receipt value wins; matched rows fall back to catalogue. */
-export function supplierSkuInputValue(row: LineRow, product?: Product | null): string {
+export function supplierSkuInputValue(row: LineRow, product: Product | null | undefined, supplierId: string | null): string {
   if (row.receiptSupplierSku.trim()) return row.receiptSupplierSku;
-  if (row.productId) return product?.supplierSku?.trim() ?? "";
+  if (row.productId) return productSupplierSku(product, supplierId)?.trim() ?? "";
   return row.receiptSupplierSku;
 }
 
@@ -144,23 +156,27 @@ export function supplierSkuForSubmit(row: LineRow, product?: Product | null): st
   return null;
 }
 
-export function supplierSkuHint(row: LineRow, product?: Product | null): string {
+export function supplierSkuHint(row: LineRow, product: Product | null | undefined, supplierId: string | null): string {
   if (row.productId) {
-    return product?.supplierSku?.trim()
+    return productSupplierSku(product, supplierId)?.trim()
       ? "From your product catalogue."
       : "No supplier code saved on this product yet.";
   }
   return "Code from the receipt.";
 }
 
-export function supplierSkuUsesAiExtraction(row: LineRow, product?: Product | null): boolean {
+export function supplierSkuUsesAiExtraction(
+  row: LineRow,
+  product: Product | null | undefined,
+  supplierId: string | null,
+): boolean {
   const original = row.originalReceiptSupplierSku.trim();
   if (!original) return false;
-  return normalizeSku(supplierSkuInputValue(row, product)) === normalizeSku(original);
+  return normalizeSku(supplierSkuInputValue(row, product, supplierId)) === normalizeSku(original);
 }
 
-export function headerSkuSnippet(row: LineRow, product?: Product | null): string {
-  const supplier = supplierSkuDisplay(row, product);
+export function headerSkuSnippet(row: LineRow, product: Product | null | undefined, supplierId: string | null): string {
+  const supplier = supplierSkuDisplay(row, product, supplierId);
   const internal = internalSkuDisplay(row, product);
   const parts: string[] = [];
   if (supplier) parts.push(`Supplier SKU: ${supplier}`);
@@ -255,6 +271,7 @@ export function availableProductsFor(
 export function findProductBySku(
   products: Product[],
   code: string,
+  supplierId: string | null,
 ): { product: Product; matchedBy: "internal" | "supplier" } | null {
   const normalized = normalizeSku(code);
   if (!normalized) return null;
@@ -264,9 +281,12 @@ export function findProductBySku(
       return { product, matchedBy: "internal" };
     }
   }
-  for (const product of products) {
-    if (product.supplierSku && normalizeSku(product.supplierSku) === normalized) {
-      return { product, matchedBy: "supplier" };
+  if (supplierId) {
+    for (const product of products) {
+      const supplierSku = productSupplierSku(product, supplierId);
+      if (supplierSku && normalizeSku(supplierSku) === normalized) {
+        return { product, matchedBy: "supplier" };
+      }
     }
   }
   return null;
@@ -276,15 +296,17 @@ function receiptSkuAfterMatch(
   row: LineRow,
   product: Product,
   matchedBy: "internal" | "supplier",
+  supplierId: string | null,
   matchedCode?: string,
 ): string {
-  return receiptSupplierSkuAfterMatch(row.receiptSupplierSku, product, matchedBy, matchedCode);
+  return receiptSupplierSkuAfterMatch(row.receiptSupplierSku, product, matchedBy, supplierId, matchedCode);
 }
 
 export function buildProductMatchPatch(
   row: LineRow,
   product: Product,
   matchedBy: "internal" | "supplier",
+  supplierId: string | null,
   matchedCode?: string,
 ): Partial<LineRow> {
   const unitCost = Number(row.unitCost) || 0;
@@ -297,7 +319,7 @@ export function buildProductMatchPatch(
     productId: product.id,
     name: row.name.trim() ? row.name : product.name,
     sku: product.sku ?? "",
-    receiptSupplierSku: receiptSkuAfterMatch(row, product, matchedBy, matchedCode),
+    receiptSupplierSku: receiptSkuAfterMatch(row, product, matchedBy, supplierId, matchedCode),
     matchedBy,
     existingPrice: product.price,
     existingCostPrice: product.costPrice,
@@ -308,14 +330,14 @@ export function buildProductMatchPatch(
 }
 
 /** Client-side resolve attempt for one row — returns a patch or null if nothing changed. */
-export function resolveRowPatch(row: LineRow, products: Product[]): Partial<LineRow> | null {
+export function resolveRowPatch(row: LineRow, products: Product[], supplierId: string | null): Partial<LineRow> | null {
   if (row.excluded || lineIsResolved(row)) return null;
 
   const codes = [row.receiptSupplierSku, row.sku].filter(Boolean);
   for (const code of codes) {
-    const match = findProductBySku(products, code);
+    const match = findProductBySku(products, code, supplierId);
     if (match) {
-      return buildProductMatchPatch(row, match.product, match.matchedBy, code);
+      return buildProductMatchPatch(row, match.product, match.matchedBy, supplierId, code);
     }
   }
 

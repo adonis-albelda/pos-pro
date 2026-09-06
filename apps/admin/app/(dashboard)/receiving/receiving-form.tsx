@@ -546,6 +546,11 @@ export function ReceivingForm({
     return supplierName.trim() || "—";
   }, [linkedOrder, supplierId, supplierName, suppliers]);
 
+  // Real supplier id, when one exists — null while the receipt only has a
+  // typed name for a supplier that hasn't been created yet, in which case
+  // there's nothing to scope a Supplier SKU duplicate check against.
+  const effectiveSupplierId = linkedOrder ? linkedOrder.supplierId : supplierId || null;
+
   const branchLabel = useMemo(
     () => locations.find((location) => location.id === locationId)?.name ?? "—",
     [locationId, locations],
@@ -627,7 +632,13 @@ export function ReceivingForm({
       productId: product.id,
       name: row?.name.trim() ? row.name : product.name,
       sku: product.sku ?? "",
-      receiptSupplierSku: receiptSupplierSkuAfterMatch(priorReceipt, product, "internal", priorReceipt || undefined),
+      receiptSupplierSku: receiptSupplierSkuAfterMatch(
+        priorReceipt,
+        product,
+        "internal",
+        effectiveSupplierId,
+        priorReceipt || undefined,
+      ),
       matchedBy: "internal",
       existingPrice: product.price,
       existingCostPrice: product.costPrice,
@@ -679,7 +690,7 @@ export function ReceivingForm({
         const row = previous.find((r) => r.key === key);
         if (!row) return previous;
         const available = availableProductsFor(row, previous, pool);
-        const patch = resolveRowPatch(row, available);
+        const patch = resolveRowPatch(row, available, effectiveSupplierId);
         if (!patch) return previous;
         const productId = patch.productId;
         if (productId) {
@@ -700,7 +711,7 @@ export function ReceivingForm({
         let resolvedNow = 0;
         const next = previous.map((row) => {
           const available = availableProductsFor(row, previous, pool);
-          const patch = resolveRowPatch(row, available);
+          const patch = resolveRowPatch(row, available, effectiveSupplierId);
           if (patch) {
             resolvedNow++;
             const productId = patch.productId;
@@ -938,6 +949,7 @@ export function ReceivingForm({
                   line.sku ?? "",
                   product,
                   line.matchedBy ?? "internal",
+                  effectiveSupplierId,
                   line.sku ?? undefined,
                 )
               : (line.sku ?? ""),
@@ -1685,6 +1697,8 @@ export function ReceivingForm({
                     hasSupplier={hasSupplier}
                     showMatchPicker={showMatchPicker}
                     showInternalSku={showInternalSkuField(row)}
+                    supplierId={effectiveSupplierId}
+                    supplierName={supplierLabel === "—" ? "" : supplierLabel}
                     matchedProduct={product}
                     currentStock={product?.stockQuantity ?? null}
                     matchLocationId={locationId || undefined}

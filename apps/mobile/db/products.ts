@@ -52,9 +52,9 @@ function toProductWithEstimate(row: ProductRow): ProductWithEstimatedStock {
     id: row.id,
     name: row.name,
     sku: row.sku,
-    // Not stored locally — mobile POS never displays or matches on this, unlike admin.
-    supplierSku: null,
     supplierNames: row.supplier_names ?? "",
+    // Not stored locally — mobile POS never displays or matches on this, unlike admin.
+    supplierLinks: [],
     price: row.price,
     costPrice: row.cost_price,
     stockQuantity: row.stock_quantity,

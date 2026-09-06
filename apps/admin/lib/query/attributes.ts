@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  addProductVariantSupplier,
   attachProductAttribute,
   createCompanyAttribute,
   createCompanyAttributeValue,
@@ -13,7 +14,9 @@ import {
   listCompanyAttributes,
   listProductAttributes,
   listProductVariants,
+  removeProductVariantSupplier,
   updateProductVariant,
+  updateProductVariantSupplier,
 } from "@double-a/api-client/queries";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 import { queryKeys } from "./keys";
@@ -139,6 +142,44 @@ export function useUpdateProductVariant(productId: string) {
   return useMutation({
     mutationFn: ({ variantId, ...patch }: { variantId: string } & Parameters<typeof updateProductVariant>[2]) =>
       updateProductVariant(getBrowserApiClient(), variantId, patch),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["products", "variants", productId] });
+    },
+  });
+}
+
+export function useAddProductVariantSupplier(productId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      variantId,
+      ...input
+    }: { variantId: string } & Parameters<typeof addProductVariantSupplier>[2]) =>
+      addProductVariantSupplier(getBrowserApiClient(), variantId, input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["products", "variants", productId] });
+    },
+  });
+}
+
+export function useUpdateProductVariantSupplier(productId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      linkId,
+      ...patch
+    }: { linkId: string } & Parameters<typeof updateProductVariantSupplier>[2]) =>
+      updateProductVariantSupplier(getBrowserApiClient(), linkId, patch),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["products", "variants", productId] });
+    },
+  });
+}
+
+export function useRemoveProductVariantSupplier(productId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (linkId: string) => removeProductVariantSupplier(getBrowserApiClient(), linkId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["products", "variants", productId] });
     },

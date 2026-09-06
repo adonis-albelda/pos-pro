@@ -49,8 +49,8 @@ export interface ProductAttrs {
   name: string;
   description: string | null;
   sku: string | null;
-  supplier_sku: string | null;
   supplier_names?: string;
+  supplier_links?: { supplier_id: string; supplier_sku: string }[];
   price: number;
   stock_quantity: number;
   category: string | null;
@@ -87,8 +87,11 @@ export function toProduct(resource: JsonApiResource<ProductAttrs>): Product {
     name: a.name,
     description: a.description,
     sku: a.sku,
-    supplierSku: a.supplier_sku,
     supplierNames: a.supplier_names ?? "",
+    supplierLinks: (a.supplier_links ?? []).map((link) => ({
+      supplierId: link.supplier_id,
+      supplierSku: link.supplier_sku,
+    })),
     price: Number(a.price),
     costPrice: Number(a.cost_price),
     stockQuantity: Number(a.stock_quantity),
@@ -126,7 +129,6 @@ export function toProduct(resource: JsonApiResource<ProductAttrs>): Product {
 export interface ProductVariantAttrs {
   product_id: string;
   sku: string | null;
-  supplier_sku: string | null;
   barcode: string | null;
   price: number;
   cost_price: number;
@@ -147,7 +149,6 @@ export function toProductVariant(resource: JsonApiResource<ProductVariantAttrs>)
     id: resource.id,
     productId: a.product_id,
     sku: a.sku,
-    supplierSku: a.supplier_sku,
     barcode: a.barcode,
     price: Number(a.price),
     costPrice: Number(a.cost_price),
@@ -396,6 +397,7 @@ export interface StoreSettingAttrs {
   invoice_prefix: string | null;
   invoice_digits: number | null;
   invoice_next_number: number | null;
+  idle_timeout_minutes: number | null;
   location_id?: string | null;
   company_id?: string | null;
   updated_at: string | null;
@@ -412,6 +414,7 @@ export function toStoreSettings(resource: JsonApiResource<StoreSettingAttrs>): S
     invoicePrefix: a.invoice_prefix,
     invoiceDigits: a.invoice_digits ?? 6,
     invoiceNextNumber: a.invoice_next_number ?? 1,
+    idleTimeoutMinutes: a.idle_timeout_minutes ?? 5,
     locationId: a.location_id ?? resource.id,
     updatedAt: a.updated_at ?? "",
   };

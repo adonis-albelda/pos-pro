@@ -20,6 +20,7 @@ import { countPendingSales } from "@/db/sales";
 import { countLocalUsers } from "@/db/users";
 import { getDeviceId, getDeviceLabel } from "@/lib/device";
 import { useLayout } from "@/lib/layout";
+import { usePriceInquiry } from "@/lib/price-inquiry";
 import { useSession } from "@/lib/session";
 import { useStoreSettings } from "@/lib/store";
 import { useSync } from "@/sync/sync-provider";
@@ -36,6 +37,7 @@ import {
   Send,
   Smartphone,
   Store,
+  Tag,
 } from "lucide-react-native";
 import { WaveBackdrop } from "@/components/wave-backdrop";
 import { Badge, Button, Card, ErrorNote, SectionTitle, SuccessNote } from "@/components/ui";
@@ -52,6 +54,7 @@ export default function SettingsScreen() {
   const { lock } = useSession();
   const { dataVersion } = useSync();
   const store = useStoreSettings();
+  const { style: priceInquiryStyle, setStyle: setPriceInquiryStyle } = usePriceInquiry();
 
   const [settings, setSettings] = useState<PrinterSettings | null>(null);
   const [host, setHost] = useState("");
@@ -297,6 +300,44 @@ export default function SettingsScreen() {
         <Row label="Name" value={store.name} />
         <Row label="Address" value={store.address ?? "Not set"} />
         <Row label="Phone" value={store.phone ?? "Not set"} />
+      </Card>
+
+      <Card style={[{ gap: space.sm }, styles.floatShadow, { borderRadius: radius.sm }]}>
+        <SectionTitle
+          icon={Tag}
+          title="Price inquiry"
+          hint="Floating stays reachable from every screen. Menu keeps it tucked in the account drawer instead."
+        />
+        <View style={{ flexDirection: "row", gap: space.sm }}>
+          {(["floating", "menu"] as const).map((option) => {
+            const active = priceInquiryStyle === option;
+            return (
+              <Pressable
+                key={option}
+                onPress={() => setPriceInquiryStyle(option)}
+                style={{
+                  flex: 1,
+                  paddingVertical: space.sm,
+                  borderRadius: radius.sm,
+                  borderWidth: 1,
+                  borderColor: active ? color.primary : color.border,
+                  backgroundColor: active ? color.primarySoft : color.surface,
+                  alignItems: "center",
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: fontSize.body,
+                    fontWeight: "700",
+                    color: active ? color.primary : color.ink,
+                  }}
+                >
+                  {option === "floating" ? "Floating button" : "Menu item"}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
       </Card>
 
       <Card style={[{ gap: space.md }, styles.floatShadow, { borderRadius: radius.sm }]}>

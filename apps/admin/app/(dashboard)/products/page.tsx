@@ -6,8 +6,11 @@ import type { ProductSort, ProductStockState } from "@double-a/api-client/querie
 import { DEFAULT_PAGE_SIZE, isInitialQueryLoad, parseListQuery } from "@/lib/list-query";
 import { Card, StatCard } from "@/components/ui";
 import { ProductsPanel } from "./products-panel";
-import { useProducts, useProductStats } from "@/lib/query/products";
+import { useProducts, useProductStats, useProductVariantsList } from "@/lib/query/products";
 import { useLocationFilter } from "@/components/location-filter-provider";
+
+/** Default view is one row per variant — "Products" is the opt-in rollup. */
+type ProductsView = "variants" | "products";
 
 const PRODUCT_STATES: ProductStockState[] = ["attention", "low", "out", "oversold", "healthy", "hidden"];
 const PRODUCT_SORTS: ProductSort[] = [
@@ -31,27 +34,30 @@ export default function ProductsPage() {
   const sortParam = searchParams.get("sort") ?? "";
   const state = PRODUCT_STATES.find((entry) => entry === stateParam);
   const sort = PRODUCT_SORTS.find((entry) => entry === sortParam);
+  const view: ProductsView = searchParams.get("view") === "products" ? "products" : "variants";
 
   const statsQuery = useProductStats({ locationId: locationId ?? undefined });
-  const productsQuery = useProducts({
+  const sharedOptions = {
     q,
     page,
     pageSize: DEFAULT_PAGE_SIZE,
     includeInactive: true,
     locationId: locationId ?? undefined,
-    trashed: trashed ? "only" : undefined,
+    trashed: trashed ? ("only" as const) : undefined,
     state,
     sort,
-  });
+  };
+  const productsQuery = useProducts(sharedOptions, { enabled: view === "products" });
+  const variantsQuery = useProductVariantsList(sharedOptions, { enabled: view === "variants" });
+  const activeQuery = view === "products" ? productsQuery : variantsQuery;
 
   // Stats are whole-catalogue figures — meaningless once viewing the trash,
   // so skip that query's loading/error state from gating this view.
   const pending = trashed
-    ? isInitialQueryLoad(productsQuery.isPending, Boolean(productsQuery.data))
-    : isInitialQueryLoad(productsQuery.isPending, Boolean(productsQuery.data)) ||
-      statsQuery.isPending;
-  const isError = productsQuery.isError || (!trashed && statsQuery.isError);
-  const error = productsQuery.error ?? (trashed ? undefined : statsQuery.error);
+    ? isInitialQueryLoad(activeQuery.isPending, Boolean(activeQuery.data))
+    : isInitialQueryLoad(activeQuery.isPending, Boolean(activeQuery.data)) || statsQuery.isPending;
+  const isError = activeQuery.isError || (!trashed && statsQuery.isError);
+  const error = activeQuery.error ?? (trashed ? undefined : statsQuery.error);
 
   const stats = statsQuery.data ?? {
     total: 0,
@@ -109,13 +115,15 @@ export default function ProductsPage() {
           )}
 
           <ProductsPanel
+            view={view}
             products={productsQuery.data?.products ?? []}
+            variants={variantsQuery.data?.variants ?? []}
             query={q}
-            page={productsQuery.data?.page ?? page}
-            pageCount={productsQuery.data?.pageCount ?? 1}
-            total={productsQuery.data?.total ?? 0}
+            page={activeQuery.data?.page ?? page}
+            pageCount={activeQuery.data?.pageCount ?? 1}
+            total={activeQuery.data?.total ?? 0}
             pageSize={DEFAULT_PAGE_SIZE}
-            fetching={productsQuery.isFetching && Boolean(productsQuery.data)}
+            fetching={activeQuery.isFetching && Boolean(activeQuery.data)}
             trashed={trashed}
           />
         </>

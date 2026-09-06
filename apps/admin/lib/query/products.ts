@@ -3,21 +3,25 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import {
+  adjustStock,
   assembleBundle,
   cloneProduct,
   countProducts,
   deleteProduct,
   deleteProductPhoto,
+  getNextSku,
   getProduct,
   getProductStats,
   listBelowReorder,
   listProductLabelsPage,
   listProductsPage,
+  listProductVariantsPage,
   restoreProduct,
   setBundleItems,
   setProductActive,
   uploadProductPhoto,
   type ListProductsPageOptions,
+  type ListProductVariantsPageOptions,
 } from "@double-a/api-client/queries";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 import { queryKeys } from "./keys";
@@ -49,6 +53,37 @@ export function useProducts(
       }
 
       const corrected = await listProductsPage(client, { ...options, page: safePage });
+      return { ...corrected, page: safePage, pageCount };
+    },
+  });
+}
+
+/**
+ * Same "requested page past the end → refetch the last valid page"
+ * correction as `useProducts`, against the company-wide variant list
+ * (`GET /product-variants`) instead — the Products page's variant view.
+ */
+export function useProductVariantsList(
+  options: ListProductVariantsPageOptions = {},
+  queryOptions: { enabled?: boolean } = {},
+) {
+  return useQuery({
+    queryKey: queryKeys.products.variantsList({ ...options }),
+    placeholderData: keepPreviousData,
+    enabled: queryOptions.enabled ?? true,
+    queryFn: async () => {
+      const client = getBrowserApiClient();
+      const pageSize = options.pageSize ?? 25;
+      const first = await listProductVariantsPage(client, options);
+      const pageCount = Math.max(1, Math.ceil(first.total / pageSize));
+      const requestedPage = options.page ?? 1;
+      const safePage = Math.min(requestedPage, pageCount);
+
+      if (safePage === requestedPage || first.total === 0) {
+        return { ...first, page: safePage, pageCount };
+      }
+
+      const corrected = await listProductVariantsPage(client, { ...options, page: safePage });
       return { ...corrected, page: safePage, pageCount };
     },
   });
@@ -205,6 +240,36 @@ export function useAssembleBundle() {
     }) => assembleBundle(getBrowserApiClient(), id, { quantity, locationId, note }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
+    },
+  });
+}
+
+/**
+ * Claims (not previews) the next sequential SKU — call once, on mount, for
+ * a brand-new product's prefilled-but-editable SKU field. A mutation, not a
+ * query: it has a side effect (advances the company's counter), so it must
+ * never re-fire on a re-render or a refetch.
+ */
+export function useClaimNextSku() {
+  return useMutation({
+    mutationFn: () => getNextSku(getBrowserApiClient()),
+  });
+}
+
+/**
+ * Second, narrower entry point to the same backend action the /inventory
+ * page's own restock/adjust flow already calls — reachable from the product
+ * form so a merchant never has to leave it to correct a count. That page's
+ * own moveStock Server Action is untouched.
+ */
+export function useAdjustProductStock(productId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Parameters<typeof adjustStock>[2]) =>
+      adjustStock(getBrowserApiClient(), productId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
+      queryClient.invalidateQueries({ queryKey: ["products", "variants", productId] });
     },
   });
 }

@@ -1,6 +1,7 @@
 export * from "./activity";
 export * from "./app-version";
 export * from "./products";
+export * from "./product-variant-list";
 export * from "./attributes";
 export * from "./addon-groups";
 export * from "./categories";

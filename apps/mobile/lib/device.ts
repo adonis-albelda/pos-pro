@@ -14,6 +14,8 @@ const ENROLLED_ROLE_KEY = "double-a.enrolled-role";
 const ACTIVE_LOCATION_ID_KEY = "double-a.active-location-id";
 /** Default is online-first (unset/"0"). "1" reverts this terminal to the classic queue + manual Sync flow. */
 const OFFLINE_MODE_KEY = "double-a.offline-mode-enabled";
+/** How this terminal reaches price inquiry — a draggable button, or a menu entry. Default "floating". */
+const PRICE_INQUIRY_STYLE_KEY = "double-a.price-inquiry-style";
 
 export type EnrolledRole = "admin" | "device";
 
@@ -110,4 +112,16 @@ export async function getOfflineModeEnabled(): Promise<boolean> {
 
 export async function setOfflineModeEnabled(enabled: boolean): Promise<void> {
   await SecureStore.setItemAsync(OFFLINE_MODE_KEY, enabled ? "1" : "0");
+}
+
+export type PriceInquiryStyle = "floating" | "menu";
+
+/** A draggable button reachable from anywhere, same as admin's — the default, unless this terminal has chosen the menu entry instead. */
+export async function getPriceInquiryStyle(): Promise<PriceInquiryStyle> {
+  const value = await SecureStore.getItemAsync(PRICE_INQUIRY_STYLE_KEY);
+  return "menu" === value ? "menu" : "floating";
+}
+
+export async function setPriceInquiryStyle(style: PriceInquiryStyle): Promise<void> {
+  await SecureStore.setItemAsync(PRICE_INQUIRY_STYLE_KEY, style);
 }

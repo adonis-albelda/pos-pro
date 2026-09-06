@@ -212,6 +212,8 @@ export interface StoreSettings {
   invoiceDigits: number;
   /** Next number AssignInvoiceNumber will hand out — editable in settings. */
   invoiceNextNumber: number;
+  /** Minutes of no touch activity before the POS forces a cashier back to PIN-unlock. 0 disables auto-lock. */
+  idleTimeoutMinutes: number;
   /** Branch these settings belong to. */
   locationId?: string | null;
   updatedAt: string;
@@ -230,6 +232,7 @@ export const DEFAULT_STORE_SETTINGS: StoreSettings = {
   invoicePrefix: null,
   invoiceDigits: 6,
   invoiceNextNumber: 1,
+  idleTimeoutMinutes: 5,
   updatedAt: "",
 };
 
@@ -482,10 +485,16 @@ export interface Product {
   id: string;
   name: string;
   sku: string | null;
-  /** Supplier's item code on price lists — matched on import and photo extract too. */
-  supplierSku: string | null;
   /** Flattened, comma-joined names of every linked supplier — "" if none. */
   supplierNames: string;
+  /**
+   * (supplierId, supplierSku) pairs across every variant's supplier links —
+   * a variant can be sourced from several suppliers, each at their own
+   * code, so this is a list, not a single field. Receiving's client-side
+   * line-matching uses this to resolve a typed code against the receipt's
+   * chosen supplier without a round trip per keystroke.
+   */
+  supplierLinks: { supplierId: string; supplierSku: string }[];
   /** The shelf price. What the attendant charges may be lower — see CartLine. */
   price: number;
   /** What the supplier charges us. The owner's margin hangs off this. */
@@ -559,7 +568,6 @@ export interface ProductVariant {
   id: string;
   productId: string;
   sku: string | null;
-  supplierSku: string | null;
   barcode: string | null;
   price: number;
   costPrice: number;

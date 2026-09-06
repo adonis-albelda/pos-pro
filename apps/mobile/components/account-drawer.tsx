@@ -20,6 +20,7 @@ import {
   Settings,
   Shield,
   ShoppingCart,
+  Tag,
   Truck,
   UserRound,
   WifiOff,
@@ -28,6 +29,7 @@ import {
 } from "lucide-react-native";
 import { APP_VERSION } from "@/lib/api/client";
 import { useLayout } from "@/lib/layout";
+import { usePriceInquiry } from "@/lib/price-inquiry";
 import { useSession } from "@/lib/session";
 import { useStoreSettings } from "@/lib/store";
 import { useSync } from "@/sync/sync-provider";
@@ -81,6 +83,7 @@ export function AccountDrawer({
   const { cashier, lock } = useSession();
   const store = useStoreSettings();
   const { offlineModeEnabled, setOfflineModeEnabled } = useSync();
+  const { style: priceInquiryStyle, open: openPriceInquiryModal } = usePriceInquiry();
   const { compact } = useLayout();
   const { width } = useWindowDimensions();
   const panelWidth = Math.min(width * DRAWER_WIDTH_RATIO, DRAWER_MAX_WIDTH);
@@ -117,6 +120,11 @@ export function AccountDrawer({
   function go(href: (typeof POS_TABS)[number]["href"] | typeof ADMIN_TAB.href) {
     onClose();
     setTimeout(() => router.replace(href), ANIM_MS);
+  }
+
+  function openPriceInquiry() {
+    onClose();
+    setTimeout(openPriceInquiryModal, ANIM_MS);
   }
 
   function endShift() {
@@ -218,6 +226,15 @@ export function AccountDrawer({
                 description={ADMIN_TAB.description}
                 active={pathname === ADMIN_TAB.href}
                 onPress={() => go(ADMIN_TAB.href)}
+              />
+            ) : null}
+            {priceInquiryStyle === "menu" ? (
+              <DrawerTab
+                key="price-inquiry"
+                icon={Tag}
+                label="Price inquiry"
+                active={false}
+                onPress={openPriceInquiry}
               />
             ) : null}
           </View>

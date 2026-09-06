@@ -115,7 +115,11 @@ async function insertDraft(draft: ScannedProductDraft): Promise<string | null> {
     await createProduct(client, {
       name: input.name,
       sku: input.sku,
-      supplierSku: input.supplierSku,
+      // Not persisted: supplier SKU now lives on product_variant_suppliers,
+      // one row per (variant, supplier) — this screen has no supplier
+      // picker to attach it to (unlike receiving, where one supplier is
+      // already chosen for the whole batch). Still shown/typeable in the
+      // review UI purely as a reference against the photo.
       price: input.price,
       costPrice: input.costPrice,
       categoryId: input.categoryId,
