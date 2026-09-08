@@ -95,7 +95,7 @@ export function CustomersPanel({
                       />
                       <Link
                         href={`/customers/${customer.id}` as Route}
-                        className="inline-flex size-10 items-center justify-center rounded-sm text-ink-muted hover:bg-border/60 hover:text-ink sm:size-8"
+                        className="inline-flex size-10 items-center justify-center rounded-sm text-ink-muted transition-colors hover:bg-border/60 hover:text-ink sm:size-8"
                         title="Open customer"
                         aria-label="Open customer"
                       >

@@ -82,7 +82,7 @@ function AttributeCard({ attribute }: { attribute: { id: string; name: string; v
                   })
                 }
                 aria-label={`Remove ${value.value}`}
-                className="text-ink-muted hover:text-danger"
+                className="text-ink-muted transition-colors hover:text-danger"
               >
                 <X size={12} strokeWidth={2} />
               </button>

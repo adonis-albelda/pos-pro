@@ -286,6 +286,25 @@ export async function generateProductVariants(
   return data.map(toProductVariant);
 }
 
+/**
+ * One shot for a product with no attribute yet: create the attribute, its
+ * values, attach it, and generate a variant per value — see
+ * QuickCreateAttributeAndGenerateVariantsAction. The first value reuses
+ * the product's existing default variant (its own SKU/price/stock carry
+ * over); the rest are fresh, same as generateProductVariants().
+ */
+export async function quickCreateAttributeAndGenerateVariants(
+  client: ApiClient,
+  productId: string,
+  input: { attributeName: string; values: string[] },
+): Promise<ProductVariant[]> {
+  const { data } = await client.post<{ data: JsonApiResource<ProductVariantAttrs>[] }>(
+    `/products/${productId}/attributes/quick-create`,
+    { attribute_name: input.attributeName, values: input.values },
+  );
+  return data.map(toProductVariant);
+}
+
 export async function updateProductVariant(
   client: ApiClient,
   variantId: string,
@@ -391,4 +410,95 @@ export async function deleteProductVariantPhoto(client: ApiClient, variantId: st
     `/product-variants/${variantId}/photo`,
   );
   return toProductVariant(data);
+}
+
+/** One image in a variant's gallery — see ProductVariant.photoUrl for the single "cover" image every other reader (POS tiles, receipts, mobile sync) relies on instead. */
+export interface VariantGalleryPhoto {
+  id: string;
+  variantId: string;
+  url: string;
+  sortOrder: number;
+  isCover: boolean;
+  createdAt: string | null;
+}
+
+interface VariantGalleryPhotoAttrs {
+  variant_id: string;
+  url: string;
+  sort_order: number;
+  is_cover: boolean;
+  created_at: string | null;
+}
+
+function toVariantGalleryPhoto(resource: JsonApiResource<VariantGalleryPhotoAttrs>): VariantGalleryPhoto {
+  const a = resource.attributes;
+  return {
+    id: resource.id,
+    variantId: a.variant_id,
+    url: a.url,
+    sortOrder: a.sort_order,
+    isCover: a.is_cover,
+    createdAt: a.created_at,
+  };
+}
+
+export async function listVariantPhotos(client: ApiClient, variantId: string): Promise<VariantGalleryPhoto[]> {
+  const { data } = await client.get<{ data: JsonApiResource<VariantGalleryPhotoAttrs>[] }>(
+    `/product-variants/${variantId}/photos`,
+  );
+  return data.map(toVariantGalleryPhoto);
+}
+
+/** Adds one photo to the gallery. First photo for a variant is auto-promoted to cover server-side. */
+export async function uploadVariantPhoto(
+  client: ApiClient,
+  variantId: string,
+  photo: MultipartFile,
+): Promise<VariantGalleryPhoto[]> {
+  const formData = new FormData();
+  await appendMultipartFile(formData, "photo", photo);
+  const { data } = await client.postMultipart<{ data: JsonApiResource<VariantGalleryPhotoAttrs>[] }>(
+    `/product-variants/${variantId}/photos`,
+    formData,
+  );
+  return data.map(toVariantGalleryPhoto);
+}
+
+/** Removing the cover promotes the next photo (if any) server-side. */
+export async function deleteVariantPhoto(client: ApiClient, photoId: string): Promise<VariantGalleryPhoto[]> {
+  const { data } = await client.delete<{ data: JsonApiResource<VariantGalleryPhotoAttrs>[] }>(
+    `/product-variant-photos/${photoId}`,
+  );
+  return data.map(toVariantGalleryPhoto);
+}
+
+export async function reorderVariantPhotos(
+  client: ApiClient,
+  variantId: string,
+  photoIds: string[],
+  setCoverId?: string,
+): Promise<VariantGalleryPhoto[]> {
+  const { data } = await client.patch<{ data: JsonApiResource<VariantGalleryPhotoAttrs>[] }>(
+    `/product-variants/${variantId}/photos/reorder`,
+    { photo_ids: photoIds, set_cover_id: setCoverId },
+  );
+  return data.map(toVariantGalleryPhoto);
+}
+
+export interface VariantLocationStock {
+  locationId: string;
+  locationName: string;
+  quantity: number;
+}
+
+/** Every active branch's current quantity for this variant — zero-filled for branches with no stock row yet. */
+export async function getVariantStockByLocation(client: ApiClient, variantId: string): Promise<VariantLocationStock[]> {
+  const { data } = await client.get<{
+    data: { location_id: string; location_name: string; quantity: number }[];
+  }>(`/product-variants/${variantId}/stock-by-location`);
+  return data.map((row) => ({
+    locationId: row.location_id,
+    locationName: row.location_name,
+    quantity: Number(row.quantity),
+  }));
 }

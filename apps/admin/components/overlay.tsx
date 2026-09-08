@@ -19,6 +19,7 @@ import {
   EyeOff,
   FlaskConical,
   Loader2,
+  Package,
   Sparkles,
   Trash2,
   X,
@@ -149,6 +150,7 @@ export function Dialog({
   title,
   description,
   children,
+  footer,
   className,
 }: {
   open: boolean;
@@ -156,6 +158,8 @@ export function Dialog({
   title: string;
   description?: string;
   children: ReactNode;
+  /** Stays below the scroll body — actions never scroll away. */
+  footer?: ReactNode;
   className?: string;
 }) {
   const titleId = useId();
@@ -206,12 +210,15 @@ export function Dialog({
                 {title}
               </h2>
               {description ? (
-                <p className="mt-1 text-caption text-ink-muted">{description}</p>
+                <p className="mt-1 text-caption text-ink-muted/70">{description}</p>
               ) : null}
             </div>
             <OverlayCloseButton />
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">{children}</div>
+          {footer ? (
+            <div className="shrink-0 border-t border-border px-5 py-4">{footer}</div>
+          ) : null}
         </div>
       </div>
     </OverlayContext.Provider>
@@ -283,7 +290,7 @@ export function Sheet({
                 {title}
               </h2>
               {description ? (
-                <p className="mt-1 text-caption text-ink-muted">{description}</p>
+                <p className="mt-1 text-caption text-ink-muted/70">{description}</p>
               ) : null}
             </div>
             <OverlayCloseButton />
@@ -427,6 +434,120 @@ export function FetchingDataOverlay({
               {message}
               <ProcessingDots />
             </p>
+          </div>
+        </div>
+      </div>
+    </OverlayPortal>
+  );
+}
+
+/**
+ * Full-screen busy state for create-full product. One multipart request has no
+ * real server %, so the bar eases toward ~92% while open and snaps to 100% when
+ * `complete` flips true (success, just before navigation).
+ */
+export function CreateProductProcessingOverlay({
+  open,
+  complete = false,
+  variantCount,
+  productName,
+}: {
+  open: boolean;
+  complete?: boolean;
+  variantCount: number;
+  productName?: string;
+}) {
+  const labelId = useId();
+  const { mounted, entered } = usePresence(open || complete);
+  const [percent, setPercent] = useState(0);
+
+  useBodyScrollLock(mounted);
+
+  useEffect(() => {
+    if (!open && !complete) {
+      setPercent(0);
+      return;
+    }
+    if (complete) {
+      setPercent(100);
+      return;
+    }
+    setPercent((current) => (current > 0 ? current : 3));
+    const id = window.setInterval(() => {
+      setPercent((current) => {
+        if (current >= 92) return current;
+        const step =
+          current < 35 ? 4 + Math.random() * 5 : current < 65 ? 2 + Math.random() * 3 : 0.5 + Math.random();
+        return Math.min(92, Math.round(current + step));
+      });
+    }, 450);
+    return () => window.clearInterval(id);
+  }, [open, complete]);
+
+  if (!mounted) return null;
+
+  const variantLabel =
+    1 === variantCount ? "1 variant" : `${variantCount.toLocaleString()} variants`;
+  const message = `Creating your product with ${variantLabel}`;
+
+  return (
+    <OverlayPortal>
+      <div
+        className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+        role="presentation"
+      >
+        <div
+          className={cx(backdropClass, "z-0", entered ? "opacity-100" : "opacity-0")}
+          aria-hidden
+        />
+        <div
+          role="status"
+          aria-live="polite"
+          aria-labelledby={labelId}
+          data-state={entered ? "open" : "closed"}
+          className={cx(
+            "relative z-10 flex w-full max-w-md flex-col items-center gap-5 rounded-lg border border-border bg-surface px-8 py-10 shadow-lg",
+            "transition-[opacity,transform] duration-[180ms] ease-out motion-reduce:transition-none",
+            entered ? "translate-y-0 scale-100 opacity-100" : "translate-y-1.5 scale-[0.98] opacity-0",
+          )}
+        >
+          <div className="relative flex size-16 items-center justify-center">
+            <Package size={36} strokeWidth={1.75} className="text-primary" aria-hidden />
+            <Loader2
+              size={22}
+              className="absolute -right-1 -bottom-1 animate-spin text-ink-muted"
+              aria-hidden
+            />
+          </div>
+          <div className="w-full space-y-3 text-center">
+            <div>
+              <p id={labelId} className="text-heading-sm font-semibold text-ink">
+                {message}
+                {!complete ? <ProcessingDots /> : null}
+              </p>
+              {productName ? (
+                <p className="mt-1 text-caption text-ink-muted">{productName}</p>
+              ) : null}
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3 text-caption">
+                <span className="text-ink-muted">
+                  {complete ? "Done" : "Processing"}
+                </span>
+                <span className="font-medium tabular-nums text-ink">{percent}%</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-border">
+                <div
+                  className="h-full rounded-full bg-primary transition-[width] duration-300 ease-out"
+                  style={{ width: `${percent}%` }}
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={percent}
+                />
+              </div>
+            </div>
+            <p className="text-caption text-ink-muted">Please wait — do not close this page.</p>
           </div>
         </div>
       </div>

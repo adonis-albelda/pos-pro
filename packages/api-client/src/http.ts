@@ -177,16 +177,25 @@ export class ApiClient {
   }
 
   /**
-   * A file upload — the only caller so far is products/extract-from-photo.
-   * Separate from request()/post() because those always JSON.stringify the
-   * body and set Content-Type: application/json; a multipart body needs
-   * fetch to set its own Content-Type (with the boundary) instead.
+   * A file upload — multipart body; fetch sets Content-Type (with boundary).
+   * Pass `idempotent: true` for create endpoints that carry `idempotency`
+   * middleware (e.g. create-full) so a retried submit never double-writes.
    */
-  async postMultipart<T>(path: string, formData: FormData): Promise<T> {
+  async postMultipart<T>(
+    path: string,
+    formData: FormData,
+    options: Pick<RequestOptions, "idempotent"> = {},
+  ): Promise<T> {
     const token = await this.getToken();
+    const dynamicHeaders = (await this.getExtraHeaders?.()) ?? {};
 
-    const headers: Record<string, string> = { ...this.extraHeaders, Accept: "application/json" };
+    const headers: Record<string, string> = {
+      ...this.extraHeaders,
+      ...dynamicHeaders,
+      Accept: "application/json",
+    };
     if (token) headers.Authorization = `Bearer ${token}`;
+    if (options.idempotent) headers["Idempotency-Key"] = generateIdempotencyKey();
 
     const response = await fetch(`${this.baseUrl}${path}`, {
       method: "POST",

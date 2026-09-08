@@ -19,6 +19,14 @@ export interface ProductInput {
   allowDecimal?: boolean;
   isActive?: boolean;
   isBundle?: boolean;
+  brandId?: string | null;
+  productType?: string;
+  notes?: string | null;
+  isSellable?: boolean;
+  isPurchasable?: boolean;
+  isTrackInventory?: boolean;
+  /** Create-only, transient — see ProductObserver::withoutDefaultVariant() (Laravel). */
+  skipDefaultVariant?: boolean;
 }
 
 function toPayload(input: Partial<ProductInput>): Record<string, unknown> {
@@ -38,6 +46,13 @@ function toPayload(input: Partial<ProductInput>): Record<string, unknown> {
   if (input.allowDecimal !== undefined) payload.allow_decimal = input.allowDecimal;
   if (input.isActive !== undefined) payload.is_active = input.isActive;
   if (input.isBundle !== undefined) payload.is_bundle = input.isBundle;
+  if (input.brandId !== undefined) payload.brand_id = input.brandId;
+  if (input.productType !== undefined) payload.product_type = input.productType;
+  if (input.notes !== undefined) payload.notes = input.notes;
+  if (input.isSellable !== undefined) payload.is_sellable = input.isSellable;
+  if (input.isPurchasable !== undefined) payload.is_purchasable = input.isPurchasable;
+  if (input.isTrackInventory !== undefined) payload.is_track_inventory = input.isTrackInventory;
+  if (input.skipDefaultVariant !== undefined) payload.skip_default_variant = input.skipDefaultVariant;
   return payload;
 }
 
@@ -403,12 +418,222 @@ export async function getProduct(client: ApiClient, id: string): Promise<Product
  * ported; use `pullSync()` instead.
  */
 
-export async function createProduct(client: ApiClient, input: ProductInput): Promise<Product> {
-  const { data } = await client.post<{ data: JsonApiResource<ProductAttrs> }>(
-    "/products",
-    toPayload(input),
-  );
-  return toProduct(data);
+export interface VariantSignal {
+  detected: boolean;
+  matchedText?: string;
+  patternType?: string;
+  suggestedAttributeName?: string;
+}
+
+interface VariantSignalAttrs {
+  detected: boolean;
+  matched_text?: string;
+  pattern_type?: string;
+  suggested_attribute_name?: string;
+}
+
+function toVariantSignal(attrs: VariantSignalAttrs): VariantSignal {
+  return {
+    detected: attrs.detected,
+    matchedText: attrs.matched_text,
+    patternType: attrs.pattern_type,
+    suggestedAttributeName: attrs.suggested_attribute_name,
+  };
+}
+
+/**
+ * The create/update response carries a `meta.variant_signal` suggestion
+ * alongside the saved product — computed from the same name in the same
+ * request, not a separate round trip a caller has to remember to make and
+ * that could otherwise race a post-save redirect.
+ */
+export async function createProduct(
+  client: ApiClient,
+  input: ProductInput,
+): Promise<{ product: Product; variantSignal: VariantSignal }> {
+  const { data, meta } = await client.post<{
+    data: JsonApiResource<ProductAttrs>;
+    meta?: { variant_signal?: VariantSignalAttrs };
+  }>("/products", toPayload(input));
+  return {
+    product: toProduct(data),
+    variantSignal: toVariantSignal(meta?.variant_signal ?? { detected: false }),
+  };
+}
+
+interface CreateFullProductVocabRef {
+  id?: string;
+  name?: string;
+}
+
+interface CreateFullProductSupplierLink {
+  supplierId: string;
+  supplierSku?: string | null;
+  supplierPrice?: number | null;
+}
+
+/**
+ * Everything the create-product wizard collects, across every step, sent
+ * as one payload — see CreateFullProductAction (Laravel). Nothing above
+ * this call ever touches the database; a `{ id }` ref reuses an existing
+ * Brand/Tag/CompanyAttribute(Value), a `{ name }` ref creates one
+ * transactionally alongside the product itself.
+ */
+export interface CreateFullProductInput {
+  productKind: "single" | "with_variants";
+  product: {
+    name: string;
+    description?: string | null;
+    sku?: string | null;
+    price?: number;
+    costPrice?: number;
+    categoryId?: string | null;
+    unit?: string;
+    barcode?: string | null;
+    reorderPoint?: number;
+    replenishQuantity?: number;
+    bulkPrice?: number | null;
+    bulkMinQuantity?: number | null;
+    allowDecimal?: boolean;
+    isBundle?: boolean;
+    productType?: string;
+    notes?: string | null;
+    isSellable?: boolean;
+    isPurchasable?: boolean;
+    isTrackInventory?: boolean;
+  };
+  brand?: CreateFullProductVocabRef | null;
+  tags?: CreateFullProductVocabRef[];
+  openingStock?: { locationId: string; quantity: number }[];
+  openingStockNote?: string | null;
+  /** Single-product only — attached to the new default variant. */
+  suppliers?: CreateFullProductSupplierLink[];
+  /** With-variants only. */
+  attributes?: {
+    id?: string;
+    name?: string;
+    values: CreateFullProductVocabRef[];
+  }[];
+  /**
+   * With-variants only — outer index must match the cartesian-product
+   * order `attributes` produces (attribute order, then value order,
+   * exactly as given) so combo N here lines up with generated variant N.
+   */
+  variantSuppliers?: CreateFullProductSupplierLink[][];
+  /**
+   * With-variants only — per-generated-variant price/barcode/reorder/
+   * replenish/opening stock, same index convention as variantSuppliers.
+   * SKU and cost price are always server-assigned/resolved.
+   */
+  variants?: {
+    price?: number | null;
+    costPrice?: number | null;
+    barcode?: string | null;
+    reorderPoint?: number;
+    replenishQuantity?: number;
+    bulkPrice?: number | null;
+    bulkMinQuantity?: number | null;
+    openingStock?: { locationId: string; quantity: number }[];
+  }[];
+}
+
+function toFullProductPayload(input: CreateFullProductInput): Record<string, unknown> {
+  const toSupplierLink = (link: CreateFullProductSupplierLink) => ({
+    supplier_id: link.supplierId,
+    supplier_sku: link.supplierSku ?? null,
+    supplier_price: link.supplierPrice ?? null,
+  });
+
+  return {
+    product_kind: input.productKind,
+    product: {
+      name: input.product.name,
+      description: input.product.description ?? null,
+      sku: input.product.sku ?? null,
+      price: input.product.price,
+      cost_price: input.product.costPrice,
+      category_id: input.product.categoryId ?? null,
+      unit: input.product.unit,
+      barcode: input.product.barcode ?? null,
+      reorder_point: input.product.reorderPoint,
+      replenish_quantity: input.product.replenishQuantity,
+      bulk_price: input.product.bulkPrice ?? null,
+      bulk_min_quantity: input.product.bulkMinQuantity ?? null,
+      allow_decimal: input.product.allowDecimal,
+      is_bundle: input.product.isBundle,
+      product_type: input.product.productType,
+      notes: input.product.notes ?? null,
+      is_sellable: input.product.isSellable,
+      is_purchasable: input.product.isPurchasable,
+      is_track_inventory: input.product.isTrackInventory,
+    },
+    brand: input.brand ? { id: input.brand.id, name: input.brand.name } : null,
+    tags: (input.tags ?? []).map((tag) => ({ id: tag.id, name: tag.name })),
+    opening_stock: (input.openingStock ?? []).map((row) => ({
+      location_id: row.locationId,
+      quantity: row.quantity,
+    })),
+    opening_stock_note: input.openingStockNote ?? null,
+    suppliers: (input.suppliers ?? []).map(toSupplierLink),
+    attributes: (input.attributes ?? []).map((attribute) => ({
+      id: attribute.id,
+      name: attribute.name,
+      values: attribute.values.map((value) => ({ id: value.id, name: value.name })),
+    })),
+    variant_suppliers: (input.variantSuppliers ?? []).map((links) => links.map(toSupplierLink)),
+    variants: (input.variants ?? []).map((variant) => ({
+      price: variant.price ?? null,
+      cost_price: variant.costPrice ?? null,
+      barcode: variant.barcode ?? null,
+      reorder_point: variant.reorderPoint,
+      replenish_quantity: variant.replenishQuantity,
+      bulk_price: variant.bulkPrice ?? null,
+      bulk_min_quantity: variant.bulkMinQuantity ?? null,
+      opening_stock: (variant.openingStock ?? []).map((row) => ({
+        location_id: row.locationId,
+        quantity: row.quantity,
+      })),
+    })),
+  };
+}
+
+/**
+ * The whole create-product wizard in one call — product details, brand/
+ * tags, opening stock, gallery photos, suppliers, and (with-variants)
+ * attributes/values/generated variants, committed atomically server-side.
+ * See CreateFullProductAction (Laravel).
+ *
+ * Multipart:
+ * - `photos[]` — product-level gallery (single-product default variant, or
+ *   with-variants product cover when provided).
+ * - `variant_photos[N][]` — with-variants only; N matches `variants[]`
+ *   index in the JSON payload (same cartesian order as variant_suppliers).
+ */
+export async function createFullProduct(
+  client: ApiClient,
+  input: CreateFullProductInput,
+  photos: MultipartFile[] = [],
+  variantPhotos: MultipartFile[][] = [],
+): Promise<{ product: Product; variantSignal: VariantSignal }> {
+  const formData = new FormData();
+  appendMultipartField(formData, "payload", JSON.stringify(toFullProductPayload(input)));
+  for (const photo of photos) {
+    await appendMultipartFile(formData, "photos[]", photo);
+  }
+  for (let index = 0; index < variantPhotos.length; index++) {
+    for (const photo of variantPhotos[index] ?? []) {
+      await appendMultipartFile(formData, `variant_photos[${index}][]`, photo);
+    }
+  }
+
+  const { data, meta } = await client.postMultipart<{
+    data: JsonApiResource<ProductAttrs>;
+    meta?: { variant_signal?: VariantSignalAttrs };
+  }>("/products/create-full", formData, { idempotent: true });
+  return {
+    product: toProduct(data),
+    variantSignal: toVariantSignal(meta?.variant_signal ?? { detected: false }),
+  };
 }
 
 /** stock_quantity is intentionally not part of ProductInput — see AdjustStockAction / adjustStock(). */
@@ -416,12 +641,15 @@ export async function updateProduct(
   client: ApiClient,
   id: string,
   patch: Partial<ProductInput>,
-): Promise<Product> {
-  const { data } = await client.patch<{ data: JsonApiResource<ProductAttrs> }>(
-    `/products/${id}`,
-    toPayload(patch),
-  );
-  return toProduct(data);
+): Promise<{ product: Product; variantSignal: VariantSignal }> {
+  const { data, meta } = await client.patch<{
+    data: JsonApiResource<ProductAttrs>;
+    meta?: { variant_signal?: VariantSignalAttrs };
+  }>(`/products/${id}`, toPayload(patch));
+  return {
+    product: toProduct(data),
+    variantSignal: toVariantSignal(meta?.variant_signal ?? { detected: false }),
+  };
 }
 
 /** Claims and returns the next sequential SKU (SKU-000000001, ...) — for real, not a preview. See NextSkuController. */
@@ -473,6 +701,11 @@ export async function checkSupplierSku(
     },
   );
   return data;
+}
+
+/** "No, keep as regular text" — this product never shows the suggestion again. */
+export async function dismissVariantSignal(client: ApiClient, id: string): Promise<void> {
+  await client.post(`/products/${id}/dismiss-variant-signal`);
 }
 
 export async function setProductActive(client: ApiClient, id: string, isActive: boolean): Promise<void> {

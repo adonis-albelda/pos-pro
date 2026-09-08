@@ -8,6 +8,7 @@ import { AdminGate } from "@/components/admin-gate";
 import { StoreForm } from "./store-form";
 import { AiSettingsCard } from "./ai-settings-card";
 import { SecuritySettingsCard } from "./security-settings-card";
+import { CatalogSettingsCard } from "./catalog-settings-card";
 import { useStoreSettings } from "@/lib/query/settings";
 import { useAiSettings } from "@/lib/query/ai-settings";
 
@@ -66,26 +67,29 @@ function SettingsPageClient() {
       <TabNav items={tabs} active={tab} ariaLabel="Company settings" />
 
       {tab === "info" ? (
-        <Card>
-          <CardHeader
-            icon={Store}
-            title="Company details"
-            description="Terminals show the name and logo, and pick up changes on their next sync."
-          />
-          <div className="px-4 py-5 sm:px-6">
-            {settingsQuery.isPending ? (
-              <p className="py-8 text-center text-body text-ink-muted">Loading…</p>
-            ) : settingsQuery.isError ? (
-              <p className="py-8 text-center text-body text-danger">
-                {settingsQuery.error instanceof Error
-                  ? settingsQuery.error.message
-                  : "Could not load settings."}
-              </p>
-            ) : (
-              <StoreForm settings={settingsQuery.data} />
-            )}
-          </div>
-        </Card>
+        <div className="space-y-6">
+          <Card>
+            <CardHeader
+              icon={Store}
+              title="Company details"
+              description="Terminals show the name and logo, and pick up changes on their next sync."
+            />
+            <div className="px-4 py-5 sm:px-6">
+              {settingsQuery.isPending ? (
+                <p className="py-8 text-center text-body text-ink-muted">Loading…</p>
+              ) : settingsQuery.isError ? (
+                <p className="py-8 text-center text-body text-danger">
+                  {settingsQuery.error instanceof Error
+                    ? settingsQuery.error.message
+                    : "Could not load settings."}
+                </p>
+              ) : (
+                <StoreForm settings={settingsQuery.data} />
+              )}
+            </div>
+          </Card>
+          <CatalogSettingsCard />
+        </div>
       ) : tab === "ai" ? (
         <>
           {aiQuery.isPending ? (

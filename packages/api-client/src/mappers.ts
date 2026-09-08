@@ -48,6 +48,7 @@ import type { JsonApiResource } from "./http";
 export interface ProductAttrs {
   name: string;
   description: string | null;
+  description_html?: string | null;
   sku: string | null;
   supplier_names?: string;
   supplier_links?: { supplier_id: string; supplier_sku: string }[];
@@ -75,6 +76,14 @@ export interface ProductAttrs {
     cost_price: number;
   }[];
   addon_group_ids?: string[];
+  brand_id?: string | null;
+  brand_name?: string | null;
+  product_type?: string;
+  notes?: string | null;
+  tags?: { id: string; name: string }[];
+  is_sellable?: boolean;
+  is_purchasable?: boolean;
+  is_track_inventory?: boolean;
   created_at: string | null;
   updated_at: string | null;
   deleted_at?: string | null;
@@ -86,6 +95,7 @@ export function toProduct(resource: JsonApiResource<ProductAttrs>): Product {
     id: resource.id,
     name: a.name,
     description: a.description,
+    descriptionHtml: a.description_html ?? null,
     sku: a.sku,
     supplierNames: a.supplier_names ?? "",
     supplierLinks: (a.supplier_links ?? []).map((link) => ({
@@ -110,6 +120,9 @@ export function toProduct(resource: JsonApiResource<ProductAttrs>): Product {
     // `undefined` crashes expo-sqlite's native bind on the mobile write path.
     photoUrl: a.photo_url ?? null,
     isBundle: a.is_bundle ?? false,
+    isSellable: a.is_sellable ?? true,
+    isPurchasable: a.is_purchasable ?? true,
+    isTrackInventory: a.is_track_inventory ?? true,
     bundleItems: (a.bundle_items ?? []).map(
       (item): BundleItem => ({
         productId: item.product_id,
@@ -121,6 +134,11 @@ export function toProduct(resource: JsonApiResource<ProductAttrs>): Product {
       }),
     ),
     addonGroupIds: a.addon_group_ids ?? [],
+    brandId: a.brand_id ?? null,
+    brandName: a.brand_name ?? null,
+    productType: (a.product_type as "physical" | "service" | undefined) ?? "physical",
+    notes: a.notes ?? null,
+    tags: a.tags ?? [],
     updatedAt: a.updated_at ?? "",
     deletedAt: a.deleted_at ?? null,
   };

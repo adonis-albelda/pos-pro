@@ -147,7 +147,7 @@ export function ExpenseBillsPanel({
                 <li key={bill.id} className="flex items-center justify-between gap-2">
                   <button
                     type="button"
-                    className="text-left hover:text-primary hover:underline"
+                    className="text-left transition-colors hover:text-primary hover:underline"
                     onClick={() => setEditing(bill)}
                   >
                     {bill.description}

@@ -172,7 +172,7 @@ export function AddItemForm({ groupId }: { groupId: string }) {
                   key={product.id}
                   type="button"
                   onClick={() => pickProduct(product.id)}
-                  className="flex w-full items-center justify-between px-3 py-2 text-left text-caption hover:bg-canvas"
+                  className="flex w-full items-center justify-between px-3 py-2 text-left text-caption transition-colors hover:bg-canvas"
                 >
                   <span>{product.name}</span>
                   <Money value={product.price} className="text-ink-muted" />

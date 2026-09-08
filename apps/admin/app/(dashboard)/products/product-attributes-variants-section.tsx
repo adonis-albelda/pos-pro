@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useIsMutating } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Boxes,
   Camera,
@@ -9,8 +9,11 @@ import {
   ChevronDown,
   ExternalLink,
   ImageOff,
+  Images,
   Layers,
   Loader2,
+  MoreVertical,
+  Pencil,
   Plus,
   ScanBarcode,
   Sparkles,
@@ -20,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { ApiError } from "@double-a/api-client";
 import { shelfPriceFromMarkup } from "@double-a/shared-types";
 import type { Product } from "@double-a/shared-types";
 import type { CompanyAttribute, MarginType, ProductVariant, VariantSupplierLink } from "@double-a/api-client/queries";
@@ -37,9 +41,13 @@ import {
   MoneyInput,
   Money,
   Select,
+  Table,
+  Td,
+  Th,
 } from "@/components/ui";
-import { ConfirmDialog, Dialog } from "@/components/overlay";
+import { ConfirmDialog, Dialog, Sheet } from "@/components/overlay";
 import { BarcodeScanCamera, canUseBarcodeScanner } from "@/components/barcode-scan-camera";
+import { VariantPhotoGallery } from "./variant-photo-gallery";
 import {
   useAddProductVariantSupplier,
   useAttachProductAttribute,
@@ -53,6 +61,7 @@ import {
   useGenerateProductVariants,
   useProductAttributes,
   useProductVariants,
+  useQuickCreateAttributeAndGenerateVariants,
   useRemoveProductVariantSupplier,
   useUpdateProductVariant,
   useUpdateProductVariantSupplier,
@@ -66,6 +75,10 @@ import { useSkuAvailability } from "@/lib/use-sku-check";
 import { isImageFile, NOT_AN_IMAGE_MESSAGE } from "@/lib/is-image-file";
 
 function errorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiError && error.isValidation) {
+    const first = Object.values(error.errors ?? {})[0]?.[0];
+    if (first) return first;
+  }
   return error instanceof Error ? error.message : fallback;
 }
 
@@ -162,7 +175,7 @@ function AttachedAttributeCard({ productId, attribute }: { productId: string; at
         }}
         pending={detach.isPending}
         title={`Remove "${attribute.name}" from this product?`}
-        description="Variants built from its values are not deleted, just this choice's link to the product."
+        description="Only possible while no variant uses one of its values yet — delete those variants first otherwise."
         confirmLabel="Remove"
       />
       <ConfirmDialog
@@ -333,7 +346,7 @@ function VariantSupplierLinkRow({ productId, link }: { productId: string; link: 
  * come from a different supplier (and code) than its Blue/S, and the same
  * variant can be sourced from more than one supplier at once.
  */
-function VariantSupplierLinksEditor({
+export function VariantSupplierLinksEditor({
   productId,
   variant,
 }: {
@@ -458,59 +471,55 @@ const STOCK_ADJUST_MODES = [
 ] as const;
 
 /**
- * Second, narrower entry point to the same adjust-stock action the
- * /inventory page's own restock/adjust flow calls — reachable right from
- * the variant it targets, so a merchant never has to leave the product page
- * to correct a count. "Set counted total" mode stays /inventory-only: that
- * flow already has this location's current quantity loaded to compute the
- * delta from, which this compact widget doesn't fetch.
+ * Same adjust-stock action the /inventory page's own restock/adjust flow
+ * calls — reachable right from the variant it targets via the "View stock"
+ * drawer, so a merchant never has to leave the product page to correct a
+ * count. "Set counted total" mode stays /inventory-only: that flow already
+ * has this location's current quantity loaded to compute the delta from,
+ * which this compact form doesn't fetch. Rendered only as a Sheet's
+ * children — the Sheet's own open/close is the reveal mechanism, no
+ * collapse state of its own.
  */
-/**
- * Inline expand, no dialog/portal — the fields drop open right below the
- * trigger.
- */
-function VariantStockButton({
+function VariantStockAdjustForm({
   productId,
   variantId,
   variantLabel,
   suppliers,
+  onDone,
 }: {
   productId: string;
   variantId: string;
   variantLabel: string;
   suppliers: VariantSupplierLink[];
+  onDone: () => void;
 }) {
   const locationsQuery = useLocations({ type: "branch" });
   const adjustStock = useAdjustProductStock(productId);
-  const [expanded, setExpanded] = useState(false);
   const [mode, setMode] = useState<(typeof STOCK_ADJUST_MODES)[number]["key"]>("in");
-  const [locationId, setLocationId] = useState("");
+  const [locationId, setLocationId] = useState(locationsQuery.data?.[0]?.id ?? "");
   const [supplierId, setSupplierId] = useState("");
   const [quantity, setQuantity] = useState("");
   const [note, setNote] = useState("");
   const [branchError, setBranchError] = useState<string | null>(null);
   const [quantityError, setQuantityError] = useState<string | null>(null);
+  const [supplierError, setSupplierError] = useState<string | null>(null);
   const [confirmSubmit, setConfirmSubmit] = useState(false);
 
-  function toggle() {
-    if (!expanded) {
-      setMode("in");
-      setLocationId(locationsQuery.data?.[0]?.id ?? "");
-      setSupplierId("");
-      setQuantity("");
-      setNote("");
-      setBranchError(null);
-      setQuantityError(null);
+  useEffect(() => {
+    if (!locationId && locationsQuery.data?.[0]) {
+      setLocationId(locationsQuery.data[0].id);
     }
-    setExpanded((current) => !current);
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only ever needs to fill in the initial default once branches load.
+  }, [locationsQuery.data]);
 
   function reviewSubmit() {
     const magnitude = Number(quantity);
     const invalidQuantity = quantity.trim() === "" || !Number.isFinite(magnitude) || magnitude <= 0;
     setQuantityError(invalidQuantity ? "Enter a quantity greater than zero." : null);
     setBranchError(locationId ? null : "Choose a branch.");
-    if (invalidQuantity || !locationId) return;
+    const missingSupplier = "in" === mode && !supplierId;
+    setSupplierError(missingSupplier ? "Choose which supplier this stock came from." : null);
+    if (invalidQuantity || !locationId || missingSupplier) return;
     setConfirmSubmit(true);
   }
 
@@ -530,7 +539,7 @@ function VariantStockButton({
         onSuccess: () => {
           toast.success("Stock updated.");
           setConfirmSubmit(false);
-          setExpanded(false);
+          onDone();
         },
         onError: (error) => toast.error(errorMessage(error, "Could not adjust stock.")),
       },
@@ -541,101 +550,85 @@ function VariantStockButton({
   const branchName = (locationsQuery.data ?? []).find((branch) => branch.id === locationId)?.name ?? "—";
 
   return (
-    <div className="w-full rounded-md border border-border">
-      <button
-        type="button"
-        onClick={toggle}
-        aria-expanded={expanded}
-        className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-caption font-medium text-ink transition-colors hover:bg-paper/80"
-      >
-        <Boxes size={13} strokeWidth={2} className="shrink-0 text-primary" />
-        Adjust stock — {variantLabel}
-        <ChevronDown
-          size={14}
-          strokeWidth={2}
-          className={`ml-auto shrink-0 text-ink-muted transition-transform ${expanded ? "rotate-180" : ""}`}
-        />
-      </button>
-
-      {expanded ? (
-        <div className="space-y-4 border-t border-border px-3 py-3">
-          <Field label="Action" required>
+    <div className="space-y-4">
+      <Field label="Action" required>
+        <Select
+          value={mode}
+          onChange={(event) => setMode(event.target.value as (typeof STOCK_ADJUST_MODES)[number]["key"])}
+        >
+          {STOCK_ADJUST_MODES.map((option) => (
+            <option key={option.key} value={option.key}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <div className={HALF_ROW}>
+        <div className={HALF_CELL}>
+          <Field label="Branch" required>
             <Select
-              value={mode}
-              onChange={(event) => setMode(event.target.value as (typeof STOCK_ADJUST_MODES)[number]["key"])}
+              value={locationId}
+              onChange={(event) => {
+                setLocationId(event.target.value);
+                setBranchError(null);
+              }}
             >
-              {STOCK_ADJUST_MODES.map((option) => (
-                <option key={option.key} value={option.key}>
-                  {option.label}
+              <option value="">Choose branch</option>
+              {(locationsQuery.data ?? []).map((branch) => (
+                <option key={branch.id} value={branch.id}>
+                  {branch.name}
                 </option>
               ))}
             </Select>
+            {branchError ? <p className="mt-1 text-caption text-danger">{branchError}</p> : null}
           </Field>
-          <div className={HALF_ROW}>
-            <div className={HALF_CELL}>
-              <Field label="Branch" required>
-                <Select
-                  value={locationId}
-                  onChange={(event) => {
-                    setLocationId(event.target.value);
-                    setBranchError(null);
-                  }}
-                >
-                  <option value="">Choose branch</option>
-                  {(locationsQuery.data ?? []).map((branch) => (
-                    <option key={branch.id} value={branch.id}>
-                      {branch.name}
-                    </option>
-                  ))}
-                </Select>
-                {branchError ? <p className="mt-1 text-caption text-danger">{branchError}</p> : null}
-              </Field>
-            </div>
-            <div className={HALF_CELL}>
-              <Field label="Quantity" required>
-                <Input
-                  type="number"
-                  min="0.001"
-                  step="any"
-                  value={quantity}
-                  onChange={(event) => {
-                    setQuantity(event.target.value);
-                    setQuantityError(null);
-                  }}
-                />
-                {quantityError ? <p className="mt-1 text-caption text-danger">{quantityError}</p> : null}
-              </Field>
-            </div>
-          </div>
-          {"in" === mode ? (
-            <Field label="Supplier" required={false} hint="Which supplier this delivery came from.">
-              <Select value={supplierId} onChange={(event) => setSupplierId(event.target.value)}>
-                <option value="">No supplier</option>
-                {suppliers.map((link) => (
-                  <option key={link.supplierId} value={link.supplierId}>
-                    {link.supplierName ?? "Unknown supplier"}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          ) : null}
-          <Field label="Note" required={false}>
-            <Input
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-              placeholder="Optional"
-            />
-          </Field>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="secondary" icon={X} onClick={() => setExpanded(false)}>
-              Cancel
-            </Button>
-            <Button type="button" icon={Check} onClick={reviewSubmit}>
-              Save
-            </Button>
-          </div>
         </div>
+        <div className={HALF_CELL}>
+          <Field label="Quantity" required>
+            <Input
+              type="number"
+              min="0.001"
+              step="any"
+              value={quantity}
+              onChange={(event) => {
+                setQuantity(event.target.value);
+                setQuantityError(null);
+              }}
+            />
+            {quantityError ? <p className="mt-1 text-caption text-danger">{quantityError}</p> : null}
+          </Field>
+        </div>
+      </div>
+      {"in" === mode ? (
+        <Field label="Supplier" required hint="Which supplier this delivery came from.">
+          <Select
+            value={supplierId}
+            onChange={(event) => {
+              setSupplierId(event.target.value);
+              setSupplierError(null);
+            }}
+          >
+            <option value="">Choose supplier</option>
+            {suppliers.map((link) => (
+              <option key={link.supplierId} value={link.supplierId}>
+                {link.supplierName ?? "Unknown supplier"}
+              </option>
+            ))}
+          </Select>
+          {supplierError ? <p className="mt-1 text-caption text-danger">{supplierError}</p> : null}
+        </Field>
       ) : null}
+      <Field label="Note" required={false}>
+        <Input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Optional" />
+      </Field>
+      <div className="sticky bottom-0 -mx-5 -mb-5 flex shrink-0 items-center justify-end gap-2 border-t border-border bg-surface px-5 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
+        <Button type="button" variant="secondary" icon={X} onClick={onDone}>
+          Cancel
+        </Button>
+        <Button type="button" icon={Check} onClick={reviewSubmit}>
+          Save
+        </Button>
+      </div>
 
       <ConfirmDialog
         open={confirmSubmit}
@@ -670,6 +663,101 @@ function RowSkuFeedback({
     return <p className="mt-1 text-[11px] text-ink-muted">Checking…</p>;
   }
   return null;
+}
+
+const VARIANT_ROW_ACTIONS = [
+  { panel: "suppliers" as const, label: "Modify suppliers", icon: Truck },
+  { panel: "variant" as const, label: "Edit variant", icon: Pencil },
+  { panel: "stock" as const, label: "Modify stock", icon: Boxes },
+  { panel: "photos" as const, label: "Manage photos", icon: Images },
+];
+
+/**
+ * One "···" trigger per row — opens a small menu instead of three separate
+ * icon-button columns. Rendered via portal into document.body and positioned
+ * with fixed coordinates from the trigger's own rect: the table it lives in
+ * scrolls with `overflow-x-auto` (which clips vertical overflow too), so an
+ * absolutely-positioned menu nested inside it gets cut off or painted under
+ * whatever row comes next. Escaping the table's DOM subtree is what makes it
+ * "always on top" instead of fighting stacking/clipping context by context.
+ */
+function VariantRowActionsMenu({
+  label,
+  onSelect,
+}: {
+  label: string;
+  onSelect: (panel: "suppliers" | "variant" | "stock" | "photos") => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [coords, setCoords] = useState({ top: 0, right: 0 });
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function reposition() {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setCoords({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+    }
+    reposition();
+
+    function onPointerDown(event: MouseEvent) {
+      const target = event.target as Node;
+      if (triggerRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+    };
+  }, [open]);
+
+  return (
+    <div className="inline-block">
+      <IconButton
+        ref={triggerRef}
+        icon={MoreVertical}
+        label={`Actions for ${label}`}
+        onClick={() => setOpen((current) => !current)}
+      />
+      {open
+        ? createPortal(
+            <div
+              ref={menuRef}
+              style={{ top: coords.top, right: coords.right }}
+              className="fixed z-[100] w-48 rounded-md border border-border bg-surface py-1 shadow-lg"
+            >
+              {VARIANT_ROW_ACTIONS.map((action) => (
+                <button
+                  key={action.panel}
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    onSelect(action.panel);
+                  }}
+                  className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-body text-ink transition-colors hover:bg-paper"
+                >
+                  <action.icon size={15} strokeWidth={2} className="text-ink-muted" />
+                  {action.label}
+                </button>
+              ))}
+            </div>,
+            document.body,
+          )
+        : null}
+    </div>
+  );
 }
 
 const HALF_ROW = "grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-4 max-sm:grid-cols-1";
@@ -850,41 +938,43 @@ function VariantStockPlanningFields({
             </button>
           ))}
         </div>
-        <div className={HALF_ROW}>
-          <div className={HALF_CELL}>
-            <Field
-              label={"percent" === marginType ? "Margin %" : "Margin amount"}
-              hint="Suggests a selling price from this variant's cost."
-              required={false}
-            >
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                value={marginValue}
-                onChange={(event) => onMarginValueChange(event.target.value)}
-                placeholder={"percent" === marginType ? "e.g. 10" : "e.g. 25"}
-              />
-            </Field>
-          </div>
-          <div className={HALF_CELL}>
-            <Field label="Suggested selling price" required={false}>
-              <div className="flex min-h-11 w-full items-center justify-between gap-2 rounded-sm border border-border bg-canvas px-3">
-                {null !== suggestedPrice ? (
-                  <Money value={suggestedPrice} className="text-ink" />
-                ) : (
-                  <span className="text-caption text-ink-muted">Enter a margin</span>
-                )}
-                <button
-                  type="button"
-                  disabled={null === suggestedPrice}
-                  onClick={() => null !== suggestedPrice && onUsePrice(suggestedPrice)}
-                  className="shrink-0 text-caption font-medium text-primary underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:text-ink-muted disabled:no-underline"
-                >
-                  Use this price
-                </button>
-              </div>
-            </Field>
+        <div className="py-4">
+          <div className={HALF_ROW}>
+            <div className={HALF_CELL}>
+              <Field
+                label={"percent" === marginType ? "Margin %" : "Margin amount"}
+                hint="Suggests a selling price from this variant's cost."
+                required={false}
+              >
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={marginValue}
+                  onChange={(event) => onMarginValueChange(event.target.value)}
+                  placeholder={"percent" === marginType ? "e.g. 10" : "e.g. 25"}
+                />
+              </Field>
+            </div>
+            <div className={HALF_CELL}>
+              <Field label="Suggested selling price" required={false}>
+                <div className="flex min-h-11 w-full items-center justify-between gap-2 rounded-sm border border-border bg-canvas px-3">
+                  {null !== suggestedPrice ? (
+                    <Money value={suggestedPrice} className="text-ink" />
+                  ) : (
+                    <span className="text-caption text-ink-muted">Enter a margin</span>
+                  )}
+                  <button
+                    type="button"
+                    disabled={null === suggestedPrice}
+                    onClick={() => null !== suggestedPrice && onUsePrice(suggestedPrice)}
+                    className="shrink-0 text-caption font-medium text-primary underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:text-ink-muted disabled:no-underline"
+                  >
+                    Use this price
+                  </button>
+                </div>
+              </Field>
+            </div>
           </div>
         </div>
       </div>
@@ -1002,8 +1092,8 @@ function VariantDetailPanel({
   const label = variant.isDefault ? productName : `${productName} — ${combo}`;
 
   return (
-    <div className={variant.isActive ? "bg-surface" : "bg-canvas opacity-70"}>
-      <div className="flex w-full min-w-0 items-center gap-3 px-4 py-3">
+    <div className={variant.isActive ? undefined : "opacity-70"}>
+      <div className="flex w-full min-w-0 items-center gap-3 pb-3">
         <div className="min-w-0 flex-1">
           <p className="truncate text-body font-medium text-ink">{label}</p>
           <p className="mt-0.5 truncate text-caption text-ink-muted">
@@ -1015,7 +1105,7 @@ function VariantDetailPanel({
         {!variant.isActive ? <Badge tone="neutral">Inactive</Badge> : null}
       </div>
 
-      <div className="space-y-4 border-t border-border px-4 py-4">
+      <div className="space-y-4 border-t border-border pt-4">
         <VariantPhotoField productId={productId} variant={variant} />
 
           <div className={HALF_ROW}>
@@ -1125,7 +1215,7 @@ function VariantDetailPanel({
             />
           </div>
 
-          <div className="flex justify-end gap-2">
+          <div className="sticky bottom-0 -mx-5 -mb-5 flex shrink-0 items-center justify-end gap-2 border-t border-border bg-surface px-5 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
             <Button
               type="button"
               variant="danger"
@@ -1143,25 +1233,6 @@ function VariantDetailPanel({
             >
               Update
             </Button>
-          </div>
-
-          <div className="space-y-6">
-            <div className="border-t border-border pt-4">
-              <VariantSupplierLinksEditor productId={productId} variant={variant} />
-            </div>
-
-            <div className="border-t border-border pt-4">
-              <span className="mb-2 flex shrink-0 items-center gap-1.5 text-body font-medium text-ink">
-                <Boxes size={16} strokeWidth={2} />
-                Stock per branch
-              </span>
-              <VariantStockButton
-                productId={productId}
-                variantId={variant.id}
-                variantLabel={label}
-                suppliers={variant.suppliers}
-              />
-            </div>
           </div>
       </div>
 
@@ -1199,85 +1270,6 @@ function VariantDetailPanel({
  * has no accordion/delete around it. Owns its own draft state and mutation
  * since VariantStockPlanningFields is purely presentational now.
  */
-function DefaultVariantStockPlanning({ productId, variant }: { productId: string; variant: ProductVariant }) {
-  const update = useUpdateProductVariant(productId);
-  const [reorderPoint, setReorderPoint] = useState(String(variant.reorderPoint));
-  const [replenishQuantity, setReplenishQuantity] = useState(String(variant.replenishQuantity));
-  const [marginType, setMarginType] = useState<MarginType>(variant.marginType);
-  const [marginValue, setMarginValue] = useState(
-    variant.marginValue !== null ? String(variant.marginValue) : "",
-  );
-  const [price, setPrice] = useState(String(variant.price));
-
-  const parsedPrice = Number(price);
-  const parsedReorderPoint = Number(reorderPoint);
-  const parsedReplenishQuantity = Number(replenishQuantity);
-  const parsedMarginValue = marginValue.trim() === "" ? null : Number(marginValue);
-
-  const isDirty =
-    parsedPrice !== variant.price ||
-    parsedReorderPoint !== variant.reorderPoint ||
-    parsedReplenishQuantity !== variant.replenishQuantity ||
-    marginType !== variant.marginType ||
-    parsedMarginValue !== variant.marginValue;
-
-  function onUpdate() {
-    if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
-      toast.error("Shelf price must be zero or more.");
-      return;
-    }
-    if (!Number.isInteger(parsedReorderPoint) || parsedReorderPoint < 0) {
-      toast.error("Reorder point must be a whole number, zero or more.");
-      return;
-    }
-    if (!Number.isInteger(parsedReplenishQuantity) || parsedReplenishQuantity < 0) {
-      toast.error("Replenish quantity must be a whole number, zero or more.");
-      return;
-    }
-    if (null !== parsedMarginValue && (!Number.isFinite(parsedMarginValue) || parsedMarginValue < 0)) {
-      toast.error("Margin must be zero or more.");
-      return;
-    }
-
-    update.mutate(
-      {
-        variantId: variant.id,
-        price: parsedPrice,
-        reorderPoint: parsedReorderPoint,
-        replenishQuantity: parsedReplenishQuantity,
-        marginType,
-        marginValue: parsedMarginValue,
-      },
-      {
-        onSuccess: () => toast.success("Variant updated."),
-        onError: (error) => toast.error(errorMessage(error, "Could not save this variant.")),
-      },
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <VariantStockPlanningFields
-        costPrice={variant.costPrice}
-        reorderPoint={reorderPoint}
-        onReorderPointChange={setReorderPoint}
-        replenishQuantity={replenishQuantity}
-        onReplenishQuantityChange={setReplenishQuantity}
-        marginType={marginType}
-        onMarginTypeChange={setMarginType}
-        marginValue={marginValue}
-        onMarginValueChange={setMarginValue}
-        onUsePrice={(suggested) => setPrice(String(suggested))}
-      />
-      <div className="flex justify-end">
-        <Button type="button" icon={Check} loading={update.isPending} disabled={!isDirty} onClick={onUpdate}>
-          Update
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 function AddUnitDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const create = useCreateUnit();
   const [name, setName] = useState("");
@@ -1315,6 +1307,18 @@ function AddUnitDialog({ open, onClose }: { open: boolean; onClose: () => void }
         <Button type="button" loading={create.isPending} onClick={submit} className="w-full">
           Add unit
         </Button>
+      </div>
+    </Dialog>
+  );
+}
+
+/** Blocking progress indicator while a generate-variants request is in flight — not dismissible, closes itself once the mutation settles. */
+function GeneratingVariantsDialog({ open }: { open: boolean }) {
+  return (
+    <Dialog open={open} onClose={() => {}} title="Generating variants">
+      <div className="flex flex-col items-center gap-3 py-6">
+        <Loader2 size={28} strokeWidth={2} className="animate-spin text-primary" />
+        <p className="text-body text-ink-muted">Generating variants…</p>
       </div>
     </Dialog>
   );
@@ -1417,48 +1421,171 @@ function GenerateVariantsForm({ productId, attributes }: { productId: string; at
           </div>
         </div>
       ) : null}
+      <GeneratingVariantsDialog open={generate.isPending} />
     </div>
   );
 }
 
-/** Everything here autosaves per field/action — this just confirms it, no click handler. */
-function SaveStatusBadge() {
-  const isMutating = useIsMutating() > 0;
+/**
+ * "Yes, set up as attribute" on the variant-signal popup lands here —
+ * unlike the rest of this page, nothing here autosaves. Attribute name and
+ * values are edited purely in local state; the attribute, its values, the
+ * attach, and the generated variants are all only written once "Generate
+ * Variants" is clicked (see QuickCreateAttributeAndGenerateVariantsAction
+ * — the first value reuses the existing default variant's SKU/price/stock
+ * instead of starting blank).
+ */
+function NewAttributeFromSignalWizard({
+  productId,
+  suggestion,
+  onDone,
+}: {
+  productId: string;
+  suggestion: { attributeName: string; matchedText: string };
+  onDone: () => void;
+}) {
+  const [attributeName, setAttributeName] = useState(suggestion.attributeName);
+  const [values, setValues] = useState<string[]>(suggestion.matchedText ? [suggestion.matchedText] : []);
+  const [newValue, setNewValue] = useState("");
+  const generate = useQuickCreateAttributeAndGenerateVariants(productId);
+
+  function addValue() {
+    const trimmed = newValue.trim();
+    if (!trimmed || values.includes(trimmed)) return;
+    setValues((current) => [...current, trimmed]);
+    setNewValue("");
+  }
+
+  function removeValue(value: string) {
+    setValues((current) => current.filter((entry) => entry !== value));
+  }
+
+  function onGenerate() {
+    const trimmedName = attributeName.trim();
+    if (!trimmedName || values.length === 0) return;
+    generate.mutate(
+      { attributeName: trimmedName, values },
+      {
+        onSuccess: (created) => {
+          toast.success(`Created ${created.length} variant${created.length === 1 ? "" : "s"}.`);
+          onDone();
+        },
+        onError: (error) => toast.error(errorMessage(error, "Could not generate variants.")),
+      },
+    );
+  }
 
   return (
-    <span
-      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-caption font-medium ${
-        isMutating ? "bg-warning/12 text-warning" : "bg-success/12 text-success"
-      }`}
-    >
-      {isMutating ? (
-        <Loader2 size={13} strokeWidth={2} className="animate-spin" />
-      ) : (
-        <Check size={13} strokeWidth={2} />
-      )}
-      {isMutating ? "Saving…" : "All changes saved"}
-    </span>
+    <div className="space-y-4 rounded-md border border-dashed border-primary/40 bg-primary-tint p-4">
+      <div className="flex items-center gap-1.5 text-body font-medium text-ink">
+        <Sparkles size={16} className="text-primary" />
+        Set up as an attribute
+      </div>
+
+      <Field label="Attribute name">
+        <Input
+          value={attributeName}
+          onChange={(event) => setAttributeName(event.target.value)}
+          placeholder="e.g. Size"
+        />
+      </Field>
+
+      <Field label="Values" hint="Press Enter or the plus button to add another.">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {values.map((value) => (
+            <AttributeValueBadge key={value} value={{ id: value, value }} onRemove={() => removeValue(value)} />
+          ))}
+          <span className="inline-flex shrink-0 items-center gap-1.5">
+            <Input
+              value={newValue}
+              onChange={(event) => setNewValue(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  addValue();
+                }
+              }}
+              placeholder="Add value…"
+              className="h-7 w-28 text-caption sm:h-7"
+            />
+            <IconButton
+              icon={Plus}
+              label="Add value"
+              onClick={addValue}
+              disabled={!newValue.trim()}
+              className="size-7 sm:size-7"
+            />
+          </span>
+        </div>
+      </Field>
+
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button type="button" variant="secondary" onClick={onDone} disabled={generate.isPending}>
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          icon={Layers}
+          loading={generate.isPending}
+          disabled={!attributeName.trim() || values.length === 0}
+          onClick={onGenerate}
+        >
+          Generate Variants
+        </Button>
+      </div>
+      <GeneratingVariantsDialog open={generate.isPending} />
+    </div>
   );
 }
 
-export function ProductAttributesAndVariantsSection({ product }: { product: Product }) {
+export function ProductAttributesAndVariantsSection({
+  product,
+  pendingSignalSuggestion,
+  onSignalSuggestionHandled,
+  initialAttributesExpanded,
+  bare = false,
+}: {
+  product: Product;
+  /** Set when the merchant clicked "Yes" on the variant-signal popup — create+attach this attribute once, then clear it. */
+  pendingSignalSuggestion?: { attributeName: string; matchedText: string } | null;
+  onSignalSuggestionHandled?: () => void;
+  /** Landed here via "Product With Variants" on create (?expand_attributes=1) — open straight to the picker. */
+  initialAttributesExpanded?: boolean;
+  /** true = no Card/CardHeader wrapper (already inside a bordered tab panel). */
+  bare?: boolean;
+}) {
   const allAttributesQuery = useCompanyAttributes();
   const attachedQuery = useProductAttributes(product.id);
   const variantsQuery = useProductVariants(product.id);
   const attach = useAttachProductAttribute(product.id);
   const createAttribute = useCreateCompanyAttribute();
   const [pickerValue, setPickerValue] = useState("");
-  const [activeVariantId, setActiveVariantId] = useState<string | null>(null);
+  const [attributesExpanded, setAttributesExpanded] = useState(initialAttributesExpanded ?? false);
+  // Undecided = the banner below asking whether this is heading toward
+  // variants at all. Landing here already expanded (Product With Variants
+  // create flow, or the name-signal "yes") means that's already decided.
+  const [variantIntent, setVariantIntent] = useState<"undecided" | "no" | "yes">(
+    initialAttributesExpanded ? "yes" : "undecided",
+  );
+  const [viewing, setViewing] = useState<{
+    variantId: string;
+    panel: "variant" | "suppliers" | "stock" | "photos";
+  } | null>(null);
 
   const attached = attachedQuery.data ?? [];
   const attachedIds = new Set(attached.map((a) => a.id));
-  // Every variant gets its own tab with stock planning/photo/barcode/supplier
-  // fields — including the default one. Once attributes are attached it has
-  // no other UI surface, so leaving it out here would make it permanently
-  // unreachable.
+  // Every variant gets its own row with stock planning/photo/barcode/supplier
+  // fields reachable via a drawer — including the default one. Once
+  // attributes are attached it has no other UI surface, so leaving it out
+  // here would make it permanently unreachable.
   const allVariants = variantsQuery.data ?? [];
   const defaultVariant = allVariants.find((v) => v.isDefault);
-  const activeVariant = allVariants.find((v) => v.id === activeVariantId) ?? allVariants[0];
+  const viewingVariant = viewing ? allVariants.find((v) => v.id === viewing.variantId) : undefined;
+
+  function variantLabel(variant: ProductVariant): string {
+    const combo = variant.attributeValues.map((v) => v.value).filter(Boolean).join(" / ") || "—";
+    return variant.isDefault ? product.name : `${product.name} — ${combo}`;
+  }
 
   function onAttachExisting(id: string) {
     if (!id) return;
@@ -1507,68 +1634,181 @@ export function ProductAttributesAndVariantsSection({ product }: { product: Prod
     );
   }
 
-  return (
-    <Card>
-      <CardHeader
-        icon={Tag}
-        title="Variants"
-        description="Size, color, or anything else this product varies by. Leave empty for a simple product — price and cost above still apply directly."
-        action={<SaveStatusBadge />}
-      />
+  // "Yes, set up as attribute" on the variant-signal popup lands here —
+  // just keep the section open. NewAttributeFromSignalWizard (rendered
+  // below, in place of the simple-product branch) owns everything from
+  // here — nothing is written until its own "Generate Variants" click.
+  useEffect(() => {
+    if (pendingSignalSuggestion) {
+      setAttributesExpanded(true);
+      setVariantIntent("yes");
+    }
+  }, [pendingSignalSuggestion]);
+
+  const body = (
+    <>
       <CardBody className="space-y-4">
-        <div className="space-y-2">
-          <span className="flex items-center gap-1.5 text-body font-medium text-ink">
-            <Tag size={16} strokeWidth={2} />
-            Attributes
-          </span>
-          <div className="w-full max-w-md rounded-md border border-border p-4">
-            <Field
-              label="Add a choice"
-              hint={
-                allAttributesQuery.isError
-                  ? errorMessage(allAttributesQuery.error, "Could not load existing choices.")
-                  : "Pick an existing one, or type a new name to create it."
-              }
-            >
-              <Combobox
-                value={pickerValue}
-                onChange={(value) => {
-                  setPickerValue(value);
-                  onAttachExisting(value);
-                }}
-                placeholder={allAttributesQuery.isPending ? "Loading…" : "Choose or type to create"}
-                emptyLabel={
-                  allAttributesQuery.isError
-                    ? "Could not load existing choices — see above."
-                    : allAttributesQuery.isPending
-                      ? "Loading…"
-                      : undefined
-                }
-                options={(allAttributesQuery.data ?? []).map((a) => ({
-                  value: a.id,
-                  label: attachedIds.has(a.id) ? `${a.name} (already added)` : a.name,
-                  disabled: attachedIds.has(a.id),
-                }))}
-                creatable
-                createOptionLabel={(typed) => `“${typed}” doesn't exist — create it`}
-                onCreate={onCreateAndAttach}
-              />
-            </Field>
+        {attached.length > 0 || "yes" === variantIntent ? (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <span className="flex items-center gap-1.5 text-body font-medium text-ink">
+                <Tag size={16} strokeWidth={2} />
+                Attributes
+              </span>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                icon={ChevronDown}
+                onClick={() => setAttributesExpanded((current) => !current)}
+                className={attributesExpanded ? "[&_svg]:rotate-180" : undefined}
+              >
+                {attributesExpanded ? "Hide attributes" : "Show attributes"}
+              </Button>
+            </div>
+
+            {attributesExpanded ? (
+              <div className="w-full max-w-md rounded-md border border-border p-4">
+                <Field
+                  label="Add a choice"
+                  hint={
+                    allAttributesQuery.isError
+                      ? errorMessage(allAttributesQuery.error, "Could not load existing choices.")
+                      : "Pick an existing one, or type a new name to create it."
+                  }
+                >
+                  <Combobox
+                    value={pickerValue}
+                    onChange={(value) => {
+                      setPickerValue(value);
+                      onAttachExisting(value);
+                    }}
+                    placeholder={allAttributesQuery.isPending ? "Loading…" : "Choose or type to create"}
+                    emptyLabel={
+                      allAttributesQuery.isError
+                        ? "Could not load existing choices — see above."
+                        : allAttributesQuery.isPending
+                          ? "Loading…"
+                          : undefined
+                    }
+                    options={(allAttributesQuery.data ?? []).map((a) => ({
+                      value: a.id,
+                      label: attachedIds.has(a.id) ? `${a.name} (already added)` : a.name,
+                      disabled: attachedIds.has(a.id),
+                    }))}
+                    creatable
+                    createOptionLabel={(typed) => `“${typed}” doesn't exist — create it`}
+                    onCreate={onCreateAndAttach}
+                  />
+                </Field>
+              </div>
+            ) : null}
           </div>
-        </div>
+        ) : null}
 
         {attached.length > 0 ? (
-          <div className="space-y-3">
-            {attached.map((attribute) => (
-              <AttachedAttributeCard key={attribute.id} productId={product.id} attribute={attribute} />
-            ))}
+          attributesExpanded ? (
+            <div className="space-y-3">
+              {attached.map((attribute) => (
+                <AttachedAttributeCard key={attribute.id} productId={product.id} attribute={attribute} />
+              ))}
+            </div>
+          ) : null
+        ) : pendingSignalSuggestion ? (
+          <div className="border-t border-border pt-4">
+            <NewAttributeFromSignalWizard
+              productId={product.id}
+              suggestion={pendingSignalSuggestion}
+              onDone={() => onSignalSuggestionHandled?.()}
+            />
           </div>
-        ) : defaultVariant ? (
-          <div className="space-y-3 border-t border-border pt-4">
-            <VariantPhotoField productId={product.id} variant={defaultVariant} />
-            <p className="text-body font-medium text-ink">Stock planning</p>
-            <DefaultVariantStockPlanning productId={product.id} variant={defaultVariant} />
+        ) : "undecided" === variantIntent ? (
+          <div className="border-t border-border pt-4">
+            <div className="flex flex-col items-center gap-3 rounded-md border border-primary/30 bg-primary-tint px-6 py-8 text-center">
+              <span className="flex size-11 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <Layers size={20} strokeWidth={2} />
+              </span>
+              <div className="max-w-md space-y-1">
+                <p className="text-body-lg font-semibold text-ink">
+                  Are you planning to add variants for this product?
+                </p>
+                <p className="text-body text-ink-muted">
+                  A variant is a different version of the same product — like Small/Medium/Large, or Red/Blue —
+                  each with its own SKU, price, and stock. If this product is only ever sold one way, you don't
+                  need this — its details already live in the Product Details tab.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button type="button" variant="secondary" size="sm" onClick={() => setVariantIntent("no")}>
+                  No, this is a single product
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => {
+                    setVariantIntent("yes");
+                    setAttributesExpanded(true);
+                  }}
+                >
+                  Yes, set up variants
+                </Button>
+              </div>
+            </div>
           </div>
+        ) : "no" === variantIntent && defaultVariant ? (
+          <div className="space-y-2 border-t border-border pt-4">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-body font-medium text-ink">Product details</p>
+              <button
+                type="button"
+                onClick={() => setVariantIntent("undecided")}
+                className="text-caption text-ink-muted underline-offset-2 transition-colors hover:text-ink hover:underline"
+              >
+                Add variants instead?
+              </button>
+            </div>
+            <div className="overflow-x-auto rounded-md border border-border">
+              <Table>
+                <thead>
+                  <tr>
+                    <Th>Product</Th>
+                    <Th>SKU</Th>
+                    <Th numeric>Cost price</Th>
+                    <Th numeric>Selling price</Th>
+                    <Th align="center">Suppliers</Th>
+                    <Th align="center">Stock</Th>
+                    <Th align="center">Actions</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <Td>{variantLabel(defaultVariant)}</Td>
+                    <Td className="whitespace-nowrap text-ink-muted">{defaultVariant.sku ?? "—"}</Td>
+                    <Td numeric>
+                      <Money value={defaultVariant.costPrice} />
+                    </Td>
+                    <Td numeric>
+                      <Money value={defaultVariant.price} />
+                    </Td>
+                    <Td numeric align="center">{defaultVariant.suppliers.length}</Td>
+                    <Td numeric align="center">{defaultVariant.stockQuantity ?? 0}</Td>
+                    <Td align="center">
+                      <div className="flex justify-center">
+                        <VariantRowActionsMenu
+                          label={variantLabel(defaultVariant)}
+                          onSelect={(panel) => setViewing({ variantId: defaultVariant.id, panel })}
+                        />
+                      </div>
+                    </Td>
+                  </tr>
+                </tbody>
+              </Table>
+            </div>
+          </div>
+        ) : !defaultVariant ? (
+          <p className="border-t border-border pt-4 text-body text-ink-muted">
+            Add at least one attribute above to define this product&apos;s variants.
+          </p>
         ) : null}
 
         {attached.length > 0 ? (
@@ -1581,48 +1821,126 @@ export function ProductAttributesAndVariantsSection({ product }: { product: Prod
             <GenerateVariantsForm productId={product.id} attributes={attached} />
 
             {allVariants.length > 0 ? (
-              <div className="overflow-hidden rounded-md border border-border">
-                <div role="tablist" className="flex divide-x divide-border overflow-x-auto">
-                  {allVariants.map((variant) => {
-                    const isActive = variant.id === activeVariant?.id;
-                    const combo =
-                      variant.attributeValues.map((v) => v.value).filter(Boolean).join(" / ") || "—";
-                    const tabLabel = variant.isDefault ? product.name : combo;
-                    return (
-                      <button
-                        key={variant.id}
-                        type="button"
-                        role="tab"
-                        aria-selected={isActive}
-                        onClick={() => setActiveVariantId(variant.id)}
-                        className={`flex h-12 min-w-0 flex-1 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap border-b px-4 text-body transition-colors ${
-                          isActive
-                            ? "border-b-transparent bg-surface font-semibold text-ink"
-                            : "border-b-border bg-canvas font-medium text-ink-muted hover:bg-paper"
-                        }`}
-                      >
-                        <span className="truncate">{tabLabel}</span>
-                        {variant.isDefault ? <Badge tone="success">Default</Badge> : null}
-                        {!variant.isActive ? <Badge tone="neutral">Inactive</Badge> : null}
-                      </button>
-                    );
-                  })}
+              <div className="space-y-2">
+                <p className="text-body font-medium text-ink">Variants ({allVariants.length})</p>
+                <div className="overflow-x-auto rounded-md border border-border">
+                <Table>
+                  <thead>
+                    <tr>
+                      <Th>Variant</Th>
+                      <Th>SKU</Th>
+                      <Th numeric>Cost price</Th>
+                      <Th numeric>Selling price</Th>
+                      <Th align="center">Suppliers</Th>
+                      <Th align="center">Stock</Th>
+                      <Th align="center">Actions</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allVariants.map((variant) => (
+                      <tr key={variant.id} className={variant.isActive ? undefined : "opacity-70"}>
+                        <Td>
+                          <span className="flex items-center gap-1.5">
+                            {variantLabel(variant)}
+                            {variant.isDefault ? <Badge tone="success">Default</Badge> : null}
+                            {!variant.isActive ? <Badge tone="neutral">Inactive</Badge> : null}
+                          </span>
+                        </Td>
+                        <Td className="whitespace-nowrap text-ink-muted">{variant.sku ?? "—"}</Td>
+                        <Td numeric>
+                          <Money value={variant.costPrice} />
+                        </Td>
+                        <Td numeric>
+                          <Money value={variant.price} />
+                        </Td>
+                        <Td numeric align="center">{variant.suppliers.length}</Td>
+                        <Td numeric align="center">{variant.stockQuantity ?? 0}</Td>
+                        <Td align="center">
+                          <div className="flex justify-center">
+                            <VariantRowActionsMenu
+                              label={variantLabel(variant)}
+                              onSelect={(panel) => setViewing({ variantId: variant.id, panel })}
+                            />
+                          </div>
+                        </Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
                 </div>
-
-                {activeVariant ? (
-                  <VariantDetailPanel
-                    key={activeVariant.id}
-                    productId={product.id}
-                    productName={product.name}
-                    variant={activeVariant}
-                    onDeleted={() => setActiveVariantId(null)}
-                  />
-                ) : null}
               </div>
             ) : null}
           </div>
         ) : null}
       </CardBody>
+
+      <Sheet
+        open={Boolean(viewingVariant) && viewing?.panel === "variant"}
+        onClose={() => setViewing(null)}
+        title={viewingVariant ? variantLabel(viewingVariant) : ""}
+        className="max-w-4xl"
+      >
+        {viewingVariant ? (
+          <VariantDetailPanel
+            key={viewingVariant.id}
+            productId={product.id}
+            productName={product.name}
+            variant={viewingVariant}
+            onDeleted={() => setViewing(null)}
+          />
+        ) : null}
+      </Sheet>
+
+      <Sheet
+        open={Boolean(viewingVariant) && viewing?.panel === "suppliers"}
+        onClose={() => setViewing(null)}
+        title={viewingVariant ? `Suppliers — ${variantLabel(viewingVariant)}` : ""}
+        className="max-w-4xl"
+      >
+        {viewingVariant ? (
+          <VariantSupplierLinksEditor key={viewingVariant.id} productId={product.id} variant={viewingVariant} />
+        ) : null}
+      </Sheet>
+
+      <Sheet
+        open={Boolean(viewingVariant) && viewing?.panel === "stock"}
+        onClose={() => setViewing(null)}
+        title={viewingVariant ? `Stock — ${variantLabel(viewingVariant)}` : ""}
+        className="max-w-4xl"
+      >
+        {viewingVariant ? (
+          <VariantStockAdjustForm
+            key={viewingVariant.id}
+            productId={product.id}
+            variantId={viewingVariant.id}
+            variantLabel={variantLabel(viewingVariant)}
+            suppliers={viewingVariant.suppliers}
+            onDone={() => setViewing(null)}
+          />
+        ) : null}
+      </Sheet>
+
+      <Sheet
+        open={Boolean(viewingVariant) && viewing?.panel === "photos"}
+        onClose={() => setViewing(null)}
+        title={viewingVariant ? `Photos — ${variantLabel(viewingVariant)}` : ""}
+        className="max-w-4xl"
+      >
+        {viewingVariant ? <VariantPhotoGallery key={viewingVariant.id} variantId={viewingVariant.id} /> : null}
+      </Sheet>
+    </>
+  );
+
+  if (bare) return body;
+
+  return (
+    <Card>
+      <CardHeader
+        icon={Tag}
+        title="Variants"
+        description="Size, color, or anything else this product varies by. Leave empty for a simple product — price and cost above still apply directly."
+      />
+      {body}
     </Card>
   );
 }

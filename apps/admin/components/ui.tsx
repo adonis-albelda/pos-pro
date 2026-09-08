@@ -303,7 +303,7 @@ export function CardHeader({
         <div className="min-w-0">
           <h2 className="text-heading-sm font-semibold">{title}</h2>
           {description ? (
-            <p className="mt-1 text-caption text-ink-muted">{description}</p>
+            <p className="mt-1 text-caption text-ink-muted/70">{description}</p>
           ) : null}
         </div>
       </div>
@@ -505,26 +505,43 @@ export function Table({
   );
 }
 
-export function Th({ className, numeric, ...props }: ComponentProps<"th"> & { numeric?: boolean }) {
+/** Only one text-align utility is ever emitted — two alignment classes on the same cell race in Tailwind's generated CSS, not JSX source order. */
+function alignClass(numeric: boolean | undefined, align: "left" | "center" | "right" | undefined): string {
+  if (align) return `text-${align}`;
+  return numeric ? "text-right" : "text-left";
+}
+
+export function Th({
+  className,
+  numeric,
+  align,
+  ...props
+}: ComponentProps<"th"> & { numeric?: boolean; align?: "left" | "center" | "right" }) {
   return (
     <th
       {...props}
       className={cx(
         "border-b border-border bg-paper/60 px-3 py-2.5 text-caption font-semibold tracking-wide text-ink-muted uppercase sm:px-6 sm:py-3",
-        numeric ? "text-right" : "text-left",
+        alignClass(numeric, align),
         className,
       )}
     />
   );
 }
 
-export function Td({ className, numeric, ...props }: ComponentProps<"td"> & { numeric?: boolean }) {
+export function Td({
+  className,
+  numeric,
+  align,
+  ...props
+}: ComponentProps<"td"> & { numeric?: boolean; align?: "left" | "center" | "right" }) {
   return (
     <td
       {...props}
       className={cx(
         "border-b border-border px-3 py-2.5 align-middle sm:px-6 sm:py-3",
-        numeric && "num text-right",
+        numeric && "num",
+        alignClass(numeric, align),
         className,
       )}
     />
@@ -563,7 +580,7 @@ export function Field({
         )}
       </span>
       {children}
-      {hint ? <span className="mt-1 block text-caption text-ink-muted">{hint}</span> : null}
+      {hint ? <span className="mt-1 block text-caption text-ink-muted/70">{hint}</span> : null}
     </label>
   );
 }
@@ -882,7 +899,7 @@ export function Combobox({
                       if (!option.disabled) commit(option.value);
                     }}
                     className={cx(
-                      "flex w-full rounded-sm px-3 py-2 text-left text-body",
+                      "flex w-full rounded-sm px-3 py-2 text-left text-body transition-colors",
                       option.sublabel
                         ? "flex-col items-start gap-0.5"
                         : "items-center justify-between gap-2",

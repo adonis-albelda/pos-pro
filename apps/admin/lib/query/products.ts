@@ -7,8 +7,10 @@ import {
   assembleBundle,
   cloneProduct,
   countProducts,
+  createFullProduct,
   deleteProduct,
   deleteProductPhoto,
+  dismissVariantSignal,
   getNextSku,
   getProduct,
   getProductStats,
@@ -19,9 +21,12 @@ import {
   restoreProduct,
   setBundleItems,
   setProductActive,
+  updateProduct,
   uploadProductPhoto,
+  type CreateFullProductInput,
   type ListProductsPageOptions,
   type ListProductVariantsPageOptions,
+  type ProductInput,
 } from "@double-a/api-client/queries";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 import { queryKeys } from "./keys";
@@ -172,6 +177,44 @@ export function useCloneProduct() {
   });
 }
 
+/** Plain client-side patch — for the create-with-variants wizard's step-1 revisit, which has no bundle/photo-deferred complexity to route through the saveProduct server action for. */
+export function useUpdateProduct() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...patch }: { id: string } & Partial<ProductInput>) =>
+      updateProduct(getBrowserApiClient(), id, patch),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
+    },
+  });
+}
+
+/**
+ * The whole create-product wizard in one request — see
+ * CreateFullProductAction (Laravel). Nothing above this call ever writes
+ * to the database; the product, its brand/tag attachments, opening stock,
+ * gallery photos, suppliers, and (with-variants) generated variants all
+ * land in one transaction.
+ */
+export function useCreateFullProduct() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      input,
+      photos,
+      variantPhotos,
+    }: {
+      input: CreateFullProductInput;
+      photos?: File[];
+      /** With-variants only — outer index matches `input.variants` order. */
+      variantPhotos?: File[][];
+    }) => createFullProduct(getBrowserApiClient(), input, photos ?? [], variantPhotos ?? []),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
+    },
+  });
+}
+
 export function useDeleteProduct() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -207,6 +250,16 @@ export function useDeleteProductPhoto() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => deleteProductPhoto(getBrowserApiClient(), id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
+    },
+  });
+}
+
+export function useDismissVariantSignal() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => dismissVariantSignal(getBrowserApiClient(), id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
     },

@@ -516,8 +516,10 @@ export interface Product {
   reorderPoint: number;
   /** Suggested qty to order when restocking (from supplier lists). */
   replenishQuantity: number;
-  /** Optional longer notes — separate from the shelf name. */
+  /** Server-stripped plain text — safe for any consumer that renders it raw (mobile POS tiles included). */
   description: string | null;
+  /** Raw HTML as authored in the admin rich-text editor. Writes still go through `description` on the wire — this is read-only. */
+  descriptionHtml: string | null;
   /** Contractor price, offered once the line reaches `bulkMinQuantity`. */
   bulkPrice: number | null;
   bulkMinQuantity: number | null;
@@ -535,6 +537,19 @@ export interface Product {
   bundleItems: BundleItem[];
   /** Ids into the pull's whole-replace AddonGroup list — empty if none attached. */
   addonGroupIds: string[];
+  brandId: string | null;
+  /** Flattened for display, same convention as supplierNames — null unless a brand is set. */
+  brandName: string | null;
+  productType: "physical" | "service";
+  /** Internal merchant/admin notes — never shown to a customer. */
+  notes: string | null;
+  tags: { id: string; name: string }[];
+  /** Can this item be sold to customers? Independent of isPurchasable/isTrackInventory — a service can be sellable with neither. */
+  isSellable: boolean;
+  /** Can this item be purchased/replenished from a supplier? False for a service or a finished good the business itself produces. */
+  isPurchasable: boolean;
+  /** Should stock quantity be tracked for this item? False for services, fees, or other non-inventory items. */
+  isTrackInventory: boolean;
   updatedAt: string;
   /** Soft delete marker — null unless fetched with trashed=only. */
   deletedAt: string | null;

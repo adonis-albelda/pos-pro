@@ -132,7 +132,7 @@ export function SuppliersPanel({
                         <Link
                           href={`/suppliers/${supplier.id}` as Route}
                           prefetch={false}
-                          className="inline-flex size-10 items-center justify-center rounded-sm text-ink-muted hover:bg-border/60 hover:text-ink sm:size-8"
+                          className="inline-flex size-10 items-center justify-center rounded-sm text-ink-muted transition-colors hover:bg-border/60 hover:text-ink sm:size-8"
                           title="Open supplier"
                           aria-label="Open supplier"
                         >

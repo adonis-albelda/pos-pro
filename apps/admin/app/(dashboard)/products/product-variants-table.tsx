@@ -3,12 +3,12 @@
 import { useState } from "react";
 import type { Route } from "next";
 import { useRouter } from "next/navigation";
-import { Camera, Copy, Eye, EyeOff, Pencil, RotateCcw, Trash2 } from "lucide-react";
+import { Camera, Copy, Eye, EyeOff, Monitor, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ApiError } from "@double-a/api-client";
 import type { ProductVariantListRow } from "@double-a/api-client/queries";
 import { formatPercent, marginPercent, stockLevel } from "@double-a/shared-types";
-import { Badge, IconButton, IconLink, Money, Table, Td, Th } from "@/components/ui";
+import { Badge, Money, Table, Td, Th } from "@/components/ui";
 import { ConfirmDialog } from "@/components/overlay";
 import {
   useCloneProduct,
@@ -16,6 +16,7 @@ import {
   useRestoreProduct,
   useSetProductActive,
 } from "@/lib/query/products";
+import { ProductRowActionsMenu } from "./product-row-actions-menu";
 
 /** "Red / L" — blank for a product's only/default variant, which has no combination of its own. */
 function combinationLabel(variant: ProductVariantListRow): string {
@@ -31,9 +32,33 @@ function moreSuffix(supplierCount: number): string {
   return supplierCount > 1 ? ` (+${supplierCount - 1} more)` : "";
 }
 
+const SUPPLIER_LINK_CLASS =
+  "text-ink-muted transition-colors hover:text-primary hover:underline";
+
+function VariantSupplierCell({ variant }: { variant: ProductVariantListRow }) {
+  const link = defaultSupplierLink(variant);
+  if (!link) return "—";
+
+  const name = link.supplierName?.trim() || "Supplier";
+
+  return (
+    <>
+      <a
+        href={`/suppliers/${link.supplierId}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={SUPPLIER_LINK_CLASS}
+      >
+        {name}
+      </a>
+      {moreSuffix(variant.suppliers.length)}
+    </>
+  );
+}
+
 /**
  * Same columns/actions as ProductsTable, one row per variant instead of per
- * product. Row actions (Edit/Hide/Clone/Delete/Restore) are still product-
+ * product. Row actions (View/Hide/Clone/Delete/Restore) are still product-
  * scoped — hiding, cloning, or deleting a SKU has always meant the whole
  * product, so every action here targets `variant.productId`, identical to
  * what clicking the same action on the product-level row already does.
@@ -113,7 +138,6 @@ export function ProductVariantsTable({
           <tr>
             <Th className="sticky left-0 z-10 border-r border-border bg-paper">Product</Th>
             <Th>SKU</Th>
-            <Th>Supplier SKU</Th>
             <Th>Category</Th>
             <Th>Supplier</Th>
             <Th>Sold by</Th>
@@ -154,14 +178,9 @@ export function ProductVariantsTable({
                   </div>
                 </Td>
                 <Td className="num text-ink-muted">{variant.sku ?? "—"}</Td>
-                <Td className="num text-ink-muted">
-                  {defaultSupplierLink(variant)?.supplierSkuDisplay ?? "—"}
-                  {moreSuffix(variant.suppliers.length)}
-                </Td>
                 <Td className="text-ink-muted">{variant.productCategory ?? "—"}</Td>
                 <Td className="text-ink-muted">
-                  {defaultSupplierLink(variant)?.supplierName ?? "—"}
-                  {moreSuffix(variant.suppliers.length)}
+                  <VariantSupplierCell variant={variant} />
                 </Td>
                 <Td className="text-ink-muted">{variant.productUnit}</Td>
                 <Td numeric className="text-ink-muted">
@@ -191,40 +210,52 @@ export function ProductVariantsTable({
                   )}
                 </Td>
                 <Td>
-                  <div className="flex justify-end gap-1">
-                    {trashed ? (
-                      <IconButton
-                        icon={RotateCcw}
-                        label="Restore product"
-                        disabled={restoreProduct.isPending}
-                        onClick={() => restore(variant)}
-                      />
-                    ) : (
-                      <>
-                        <IconLink
-                          icon={Pencil}
-                          label="Edit product"
-                          href={`/products/${variant.productId}` as Route}
-                        />
-                        <IconButton
-                          icon={variant.productIsActive ? EyeOff : Eye}
-                          label={variant.productIsActive ? "Hide from terminals" : "Show on terminals"}
-                          onClick={() => setHiding(variant)}
-                        />
-                        <IconButton
-                          icon={Copy}
-                          label="Clone product"
-                          disabled={cloneProduct.isPending}
-                          onClick={() => clone(variant)}
-                        />
-                        <IconButton
-                          icon={Trash2}
-                          label="Delete product"
-                          tone="danger"
-                          onClick={() => setDeleting(variant)}
-                        />
-                      </>
-                    )}
+                  <div className="flex justify-end">
+                    <ProductRowActionsMenu
+                      label={variant.productName}
+                      items={
+                        trashed
+                          ? [
+                              {
+                                id: "restore",
+                                label: "Restore product",
+                                icon: RotateCcw,
+                                disabled: restoreProduct.isPending,
+                                onSelect: () => restore(variant),
+                              },
+                            ]
+                          : [
+                              {
+                                id: "view",
+                                label: "View product",
+                                icon: Eye,
+                                href: `/products/${variant.productId}`,
+                              },
+                              {
+                                id: "hide",
+                                label: variant.productIsActive
+                                  ? "Hide from terminals"
+                                  : "Show on terminals",
+                                icon: variant.productIsActive ? EyeOff : Monitor,
+                                onSelect: () => setHiding(variant),
+                              },
+                              {
+                                id: "clone",
+                                label: "Clone product",
+                                icon: Copy,
+                                disabled: cloneProduct.isPending,
+                                onSelect: () => clone(variant),
+                              },
+                              {
+                                id: "delete",
+                                label: "Delete product",
+                                icon: Trash2,
+                                tone: "danger",
+                                onSelect: () => setDeleting(variant),
+                              },
+                            ]
+                      }
+                    />
                   </div>
                 </Td>
               </tr>

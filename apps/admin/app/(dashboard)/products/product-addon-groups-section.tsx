@@ -26,7 +26,14 @@ function errorMessage(error: unknown, fallback: string): string {
  * /addon-groups screen, which stays for cross-product group management
  * (renaming, single/multiple, required) and browsing every group at once.
  */
-export function ProductAddonGroupsSection({ product }: { product: Product }) {
+export function ProductAddonGroupsSection({
+  product,
+  bare = false,
+}: {
+  product: Product;
+  /** true = no Card/CardHeader wrapper (already inside a bordered tab panel). */
+  bare?: boolean;
+}) {
   const allGroupsQuery = useAddonGroups();
   const linkedQuery = useProductAddonGroups(product.id);
   const link = useLinkProductAddonGroup(product.id);
@@ -52,14 +59,8 @@ export function ProductAddonGroupsSection({ product }: { product: Product }) {
     );
   }
 
-  return (
-    <Card>
-      <CardHeader
-        icon={Layers}
-        title="Add-ons"
-        description="Extras a cashier can add to this sale alongside this product — priced items from your own catalogue."
-      />
-      <CardBody className="space-y-4">
+  const body = (
+    <CardBody className="space-y-4">
         {group ? (
           <>
             <div className="flex items-center justify-between gap-2">
@@ -75,7 +76,7 @@ export function ProductAddonGroupsSection({ product }: { product: Product }) {
                     onError: (error) => toast.error(errorMessage(error, "Could not remove this add-on group.")),
                   })
                 }
-                className="flex items-center gap-1 text-caption text-ink-muted hover:text-danger"
+                className="flex items-center gap-1 text-caption text-ink-muted transition-colors hover:text-danger"
               >
                 <X size={12} strokeWidth={2} />
                 Remove group
@@ -106,7 +107,19 @@ export function ProductAddonGroupsSection({ product }: { product: Product }) {
             </Field>
           </div>
         )}
-      </CardBody>
+    </CardBody>
+  );
+
+  if (bare) return body;
+
+  return (
+    <Card>
+      <CardHeader
+        icon={Layers}
+        title="Add-ons"
+        description="Extras a cashier can add to this sale alongside this product — priced items from your own catalogue."
+      />
+      {body}
     </Card>
   );
 }

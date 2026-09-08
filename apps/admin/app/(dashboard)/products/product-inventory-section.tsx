@@ -18,7 +18,14 @@ const TIMESTAMP_FORMAT: Intl.DateTimeFormatOptions = {
 };
 
 /** Read-only ledger for this one product — balances change only through Inventory movements, never edited here. */
-export function ProductInventorySection({ product }: { product: Product }) {
+export function ProductInventorySection({
+  product,
+  bare = false,
+}: {
+  product: Product;
+  /** true = no Card/CardHeader wrapper (already inside a bordered tab panel). */
+  bare?: boolean;
+}) {
   const [page, setPage] = useState(1);
   const movementsQuery = useInventoryMovements(
     { productId: product.id, page, pageSize: PAGE_SIZE },
@@ -29,13 +36,8 @@ export function ProductInventorySection({ product }: { product: Product }) {
   const lastPage = movementsQuery.data?.lastPage ?? 1;
   const total = movementsQuery.data?.total ?? 0;
 
-  return (
-    <Card>
-      <CardHeader
-        icon={History}
-        title="Inventory"
-        description="Every stock movement for this product, most recent first. Balances only ever change here."
-      />
+  const body = (
+    <>
       {movementsQuery.isPending ? (
         <div className="space-y-3 px-4 py-4 sm:px-6">
           <Skeleton className="h-10 w-full" />
@@ -139,6 +141,19 @@ export function ProductInventorySection({ product }: { product: Product }) {
           </div>
         </>
       )}
+    </>
+  );
+
+  if (bare) return body;
+
+  return (
+    <Card>
+      <CardHeader
+        icon={History}
+        title="Inventory"
+        description="Every stock movement for this product, most recent first. Balances only ever change here."
+      />
+      {body}
     </Card>
   );
 }

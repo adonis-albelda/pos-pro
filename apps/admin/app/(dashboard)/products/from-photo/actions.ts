@@ -29,6 +29,7 @@ function describeSaveError(error: unknown): string {
     if (error.errors?.sku) return "That SKU is already used by another product.";
     if (error.errors?.supplier_sku) return "That supplier SKU is already used by another product.";
     if (error.errors?.barcode) return "That barcode is already on another product.";
+    if (error.errors?.name) return "A product with that name already exists.";
     if (error.errors?.bulk_price || error.errors?.bulk_min_quantity) {
       return "Bulk pricing needs both a bulk price and a minimum quantity.";
     }
@@ -81,6 +82,13 @@ function lineToDraft(
   };
 }
 
+// Description is now rendered as HTML by the admin rich-text editor — a
+// plain-text value with a literal "<" or "&" (e.g. "10cm < 15cm bracket")
+// would otherwise corrupt on the next edit/render.
+function escapePlainTextForHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 function draftToInput(draft: ScannedProductDraft) {
   const optionalNumber = (raw: string): number | null =>
     raw.trim() === "" ? null : Number(raw);
@@ -94,7 +102,7 @@ function draftToInput(draft: ScannedProductDraft) {
     categoryId: draft.categoryId.trim() || null,
     unit: draft.unit.trim() || "pc",
     barcode: draft.barcode.trim() || null,
-    description: draft.description.trim() || null,
+    description: draft.description.trim() ? escapePlainTextForHtml(draft.description.trim()) : null,
     reorderPoint: Number(draft.reorderPoint || 0),
     bulkPrice: optionalNumber(draft.bulkPrice),
     bulkMinQuantity: optionalNumber(draft.bulkMinQuantity),

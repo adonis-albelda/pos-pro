@@ -114,7 +114,7 @@ export function SupplierProductsPanel({ supplierId }: { supplierId: string }) {
                   visibleProducts.map((product) => (
                     <label
                       key={product.id}
-                      className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-2 text-body hover:bg-paper"
+                      className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-2 text-body transition-colors hover:bg-paper"
                     >
                       <input
                         type="checkbox"

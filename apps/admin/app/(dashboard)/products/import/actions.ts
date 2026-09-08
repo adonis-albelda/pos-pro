@@ -105,6 +105,13 @@ function ignoredSourceColumns(
   return sourceHeaders.filter((header) => !mapped.has(header));
 }
 
+// Description is now rendered as HTML by the admin rich-text editor — a
+// plain-text CSV value with a literal "<" or "&" (e.g. "10cm < 15cm bracket")
+// would otherwise corrupt on the next edit/render.
+function escapePlainTextForHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 function toImportRow(row: {
   line: number;
   values: NonNullable<ImportState["plan"]>["rows"][number]["values"];
@@ -128,7 +135,7 @@ function toImportRow(row: {
     bulk_min_quantity: row.values.bulk_min_quantity,
     allow_decimal: row.values.allow_decimal,
     is_active: row.values.is_active,
-    description: row.values.description,
+    description: row.values.description ? escapePlainTextForHtml(row.values.description) : row.values.description,
     category_path: row.categoryPath,
     supplier_name: row.supplierName,
     stock_quantity: row.values.stock_quantity,

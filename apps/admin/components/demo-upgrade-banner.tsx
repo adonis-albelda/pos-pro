@@ -42,7 +42,7 @@ export function DemoUpgradeBanner() {
       <button
         type="button"
         onClick={() => setVisible(false)}
-        className="shrink-0 rounded-sm p-1 text-ink-muted hover:bg-surface hover:text-ink"
+        className="shrink-0 rounded-sm p-1 text-ink-muted transition-colors hover:bg-surface hover:text-ink"
         aria-label="Dismiss upgrade notice"
       >
         <X size={14} strokeWidth={2} />

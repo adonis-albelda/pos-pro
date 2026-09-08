@@ -95,7 +95,7 @@ export function ReceiptLayoutForm({
         {TOGGLES.map(({ key, label, hint }) => (
           <label
             key={key}
-            className="flex cursor-pointer items-start gap-3 rounded-sm border border-border px-3 py-3 hover:bg-paper"
+            className="flex cursor-pointer items-start gap-3 rounded-sm border border-border px-3 py-3 transition-colors hover:bg-paper"
           >
             <input type="hidden" name={FIELD_NAMES[key]} value={layout[key] ? "true" : "false"} />
             <input

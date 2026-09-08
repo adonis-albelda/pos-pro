@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect } from "react";
-import { RotateCw, ServerCrash } from "lucide-react";
-import { Button, Card, EmptyState } from "@/components/ui";
+import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, RotateCw } from "lucide-react";
+import { Button } from "@/components/ui";
 
 /**
  * Shared body for every `error.tsx` in the app — root, and one per route
@@ -20,24 +22,32 @@ export function ErrorFallback({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const router = useRouter();
+
   useEffect(() => {
     console.error(error);
   }, [error]);
 
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
-      <Card className="w-full max-w-md">
-        <EmptyState
-          icon={ServerCrash}
-          title="Something went wrong loading this page"
-          instruction="That's on us, not you. Try reloading — if it keeps happening, let an admin know."
-          action={
-            <Button icon={RotateCw} onClick={reset}>
-              Reload
-            </Button>
-          }
-        />
-      </Card>
+      <div className="flex w-full max-w-md flex-col items-center gap-5 text-center">
+        <Image src="/logo.png" alt="" width={48} height={48} className="size-12 object-contain" />
+        <p className="font-display text-display font-bold tracking-wide text-primary">SORRY</p>
+        <div className="space-y-1.5">
+          <p className="text-heading-sm font-semibold text-ink">Something went wrong loading this page</p>
+          <p className="text-body text-ink-muted">
+            That&apos;s on us, not you. Try reloading — if it keeps happening, let an admin know.
+          </p>
+        </div>
+        <div className="flex items-center gap-3 pt-2">
+          <Button variant="secondary" icon={ArrowLeft} onClick={() => router.back()}>
+            Go Back
+          </Button>
+          <Button icon={RotateCw} onClick={reset}>
+            Reload
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -2,8 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { validateProductInput } from "@double-a/shared-types";
-import { isValidQuantity, QUANTITY_DECIMALS } from "@double-a/shared-types";
-import { adjustStock, createProduct, listLocations, updateProduct } from "@double-a/api-client/queries";
+import { updateProduct } from "@double-a/api-client/queries";
 import { ApiError } from "@double-a/api-client";
 import type { FormState } from "@/lib/form-state";
 import { getAuthedClient } from "@/lib/api/session";
@@ -18,10 +17,6 @@ function optionalNumber(formData: FormData, key: string): number | null {
   return raw === "" ? null : Number(raw);
 }
 
-function roundQuantity(value: number): number {
-  return Number(value.toFixed(QUANTITY_DECIMALS));
-}
-
 function readProductForm(formData: FormData) {
   return {
     name: text(formData, "name"),
@@ -33,10 +28,10 @@ function readProductForm(formData: FormData) {
     allowDecimal: formData.get("allow_decimal") !== null,
     barcode: text(formData, "barcode") || null,
     description: text(formData, "description") || null,
-    // Only present in the form when creating — reorder point/replenish
-    // quantity live on the Variants tab once a product (and its default
-    // variant) exists. `undefined` here, not 0, so an edit save never sends
-    // these and zeroes them out via UpdateProductController's redirect.
+    // `undefined`, not 0, when absent (single-product-only fields — a
+    // Product With Variants create has no default variant yet) so an
+    // unrelated save never zeroes these out via UpdateProductController's
+    // pass-through to the default variant.
     reorderPoint: formData.has("reorder_point") ? Number(formData.get("reorder_point")) : undefined,
     replenishQuantity: formData.has("replenish_quantity") ? Number(formData.get("replenish_quantity")) : undefined,
     // The two bulk fields live or die together, so an empty pair is two nulls
@@ -44,6 +39,13 @@ function readProductForm(formData: FormData) {
     bulkPrice: optionalNumber(formData, "bulk_price"),
     bulkMinQuantity: optionalNumber(formData, "bulk_min_quantity"),
     isBundle: formData.get("is_bundle") !== null,
+    brandId: text(formData, "brand_id") || null,
+    productType: text(formData, "product_type") || "physical",
+    notes: text(formData, "notes") || null,
+    isSellable: formData.get("is_sellable") !== null,
+    isPurchasable: formData.get("is_purchasable") !== null,
+    isTrackInventory: formData.get("is_track_inventory") !== null,
+    skipDefaultVariant: formData.get("skip_default_variant") === "1",
   };
 }
 
@@ -57,6 +59,7 @@ function describeSaveError(error: unknown): string {
     // backend (SkuConflict) — prefer it over a generic line.
     if (error.errors?.sku?.[0]) return error.errors.sku[0];
     if (error.errors?.barcode) return "That barcode is already on another product.";
+    if (error.errors?.name) return "A product with that name already exists.";
     if (error.errors?.bulk_price || error.errors?.bulk_min_quantity) {
       return "Bulk pricing needs both a bulk price and a minimum quantity.";
     }
@@ -68,14 +71,17 @@ function describeSaveError(error: unknown): string {
   return `Could not save the product: ${message}`;
 }
 
+/**
+ * Editing an existing product only — creation (both single-product and
+ * with-variants) goes through `createFullProduct` (one-shot client-side
+ * mutation) instead. See CLAUDE.md's rule that new admin work should be a
+ * direct client-side call rather than a Server Action.
+ */
 export async function saveProduct(
   _prev: FormState,
   formData: FormData,
 ): Promise<FormState> {
   const id = String(formData.get("id") ?? "");
-  const openingStock = optionalNumber(formData, "opening_stock_quantity");
-  const stockLocationId = text(formData, "stock_location_id") || null;
-  const openingStockNote = text(formData, "opening_stock_note");
   const input = readProductForm(formData);
 
   const validation = validateProductInput(input);
@@ -100,67 +106,23 @@ export async function saveProduct(
     bulkPrice: input.bulkPrice,
     bulkMinQuantity: input.bulkMinQuantity,
     isBundle: input.isBundle,
+    brandId: input.brandId,
+    productType: input.productType,
+    notes: input.notes,
+    isSellable: input.isSellable,
+    isPurchasable: input.isPurchasable,
+    isTrackInventory: input.isTrackInventory,
+    skipDefaultVariant: input.skipDefaultVariant,
   };
 
   const client = getAuthedClient();
-
-  let openingStockLocationId: string | null = null;
-
-  if (!id && openingStock !== null) {
-    if (!Number.isFinite(openingStock) || openingStock < 0) {
-      return { error: "Opening stock must be zero or more.", ok: false };
-    }
-    if (openingStock > 0) {
-      const floor = input.allowDecimal ? 0.001 : 1;
-      if (!isValidQuantity(openingStock, input.allowDecimal, floor)) {
-        return {
-          error: input.allowDecimal
-            ? "Opening stock must be greater than zero."
-            : "Opening stock must be a whole number greater than zero.",
-          ok: false,
-        };
-      }
-
-      const branches = await listLocations(client, { type: "branch" });
-      openingStockLocationId =
-        branches.length === 1
-          ? branches[0]!.id
-          : stockLocationId && branches.some((branch) => branch.id === stockLocationId)
-            ? stockLocationId
-            : null;
-
-      if (!openingStockLocationId) {
-        return {
-          error:
-            branches.length === 0
-              ? "Add a branch before recording opening stock."
-              : "Choose which branch receives the opening stock.",
-          ok: false,
-        };
-      }
-    }
-  }
-
-  let createdId: string | null = null;
+  let variantSignal: FormState["variantSignal"];
 
   try {
-    if (id) {
-      // stock_quantity is deliberately absent: stock only moves through the
-      // inventory page, which writes a movement row the trigger applies.
-      await updateProduct(client, id, row);
-    } else {
-      const created = await createProduct(client, row);
-      createdId = created.id;
-
-      if (openingStockLocationId && openingStock !== null && openingStock > 0) {
-        await adjustStock(client, created.id, {
-          changeQuantity: roundQuantity(openingStock),
-          reason: "adjustment",
-          note: openingStockNote || "Opening stock",
-          locationId: openingStockLocationId,
-        });
-      }
-    }
+    // stock_quantity is deliberately absent: stock only moves through the
+    // inventory page, which writes a movement row the trigger applies.
+    const updated = await updateProduct(client, id, row);
+    variantSignal = updated.variantSignal;
   } catch (error) {
     return { error: describeSaveError(error), ok: false };
   }
@@ -168,5 +130,5 @@ export async function saveProduct(
   revalidatePath("/products");
   revalidatePath("/inventory");
   revalidatePath("/reports");
-  return { error: null, ok: true, id: createdId ?? undefined };
+  return { error: null, ok: true, variantSignal };
 }

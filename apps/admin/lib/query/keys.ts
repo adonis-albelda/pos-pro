@@ -28,6 +28,14 @@ export const queryKeys = {
     all: ["attributes"] as const,
     list: () => ["attributes", "list"] as const,
   },
+  brands: {
+    all: ["brands"] as const,
+    list: () => ["brands", "list"] as const,
+  },
+  tags: {
+    all: ["tags"] as const,
+    list: () => ["tags", "list"] as const,
+  },
   units: {
     all: ["units"] as const,
     list: () => ["units", "list"] as const,
@@ -139,6 +147,10 @@ export const queryKeys = {
   securitySettings: {
     all: ["security-settings"] as const,
     detail: () => ["security-settings", "detail"] as const,
+  },
+  catalogSettings: {
+    all: ["catalog-settings"] as const,
+    detail: () => ["catalog-settings", "detail"] as const,
   },
   mfaStatus: {
     all: ["mfa-status"] as const,

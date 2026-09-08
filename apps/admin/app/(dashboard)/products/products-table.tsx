@@ -3,12 +3,12 @@
 import { useState } from "react";
 import type { Route } from "next";
 import { useRouter } from "next/navigation";
-import { Camera, Copy, Eye, EyeOff, Pencil, RotateCcw, Trash2 } from "lucide-react";
+import { Camera, Copy, Eye, EyeOff, Monitor, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ApiError } from "@double-a/api-client";
 import type { Product } from "@double-a/shared-types";
 import { formatPercent, marginPercent, stockLevel } from "@double-a/shared-types";
-import { Badge, IconButton, IconLink, Money, Table, Td, Th } from "@/components/ui";
+import { Badge, Money, Table, Td, Th } from "@/components/ui";
 import { ConfirmDialog } from "@/components/overlay";
 import {
   useCloneProduct,
@@ -16,6 +16,55 @@ import {
   useRestoreProduct,
   useSetProductActive,
 } from "@/lib/query/products";
+import { ProductRowActionsMenu } from "./product-row-actions-menu";
+
+const SUPPLIER_LINK_CLASS =
+  "text-ink-muted transition-colors hover:text-primary hover:underline";
+
+/** Unique supplier ids in link order, paired with `supplierNames` for display. */
+function productSupplierEntries(product: Product): { id: string; name: string }[] {
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  for (const link of product.supplierLinks) {
+    if (seen.has(link.supplierId)) continue;
+    seen.add(link.supplierId);
+    ids.push(link.supplierId);
+  }
+  if (ids.length === 0) return [];
+  // One supplier: keep the full joined string (names may contain commas).
+  if (ids.length === 1) {
+    const name = product.supplierNames.trim();
+    return [{ id: ids[0]!, name: name || "Supplier" }];
+  }
+  const names = product.supplierNames
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return ids.map((id, index) => ({ id, name: names[index] ?? "Supplier" }));
+}
+
+function ProductSuppliersCell({ product }: { product: Product }) {
+  const entries = productSupplierEntries(product);
+  if (entries.length === 0) return "—";
+
+  return (
+    <>
+      {entries.map((entry, index) => (
+        <span key={entry.id}>
+          {index > 0 ? ", " : null}
+          <a
+            href={`/suppliers/${entry.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={SUPPLIER_LINK_CLASS}
+          >
+            {entry.name}
+          </a>
+        </span>
+      ))}
+    </>
+  );
+}
 
 export function ProductsTable({
   products,
@@ -129,7 +178,9 @@ export function ProductsTable({
                 </Td>
                 <Td className="num text-ink-muted">{product.sku ?? "—"}</Td>
                 <Td className="text-ink-muted">{product.category ?? "—"}</Td>
-                <Td className="text-ink-muted">{product.supplierNames || "—"}</Td>
+                <Td className="text-ink-muted">
+                  <ProductSuppliersCell product={product} />
+                </Td>
                 <Td className="text-ink-muted">{product.unit}</Td>
                 <Td numeric className="text-ink-muted">
                   <Money value={product.costPrice} />
@@ -163,42 +214,52 @@ export function ProductsTable({
                   )}
                 </Td>
                 <Td>
-                  <div className="flex justify-end gap-1">
-                    {trashed ? (
-                      <IconButton
-                        icon={RotateCcw}
-                        label="Restore product"
-                        disabled={restoreProduct.isPending}
-                        onClick={() => restore(product)}
-                      />
-                    ) : (
-                      <>
-                        <IconLink
-                          icon={Pencil}
-                          label="Edit product"
-                          href={`/products/${product.id}` as Route}
-                        />
-                        <IconButton
-                          icon={product.isActive ? EyeOff : Eye}
-                          label={
-                            product.isActive ? "Hide from terminals" : "Show on terminals"
-                          }
-                          onClick={() => setHiding(product)}
-                        />
-                        <IconButton
-                          icon={Copy}
-                          label="Clone product"
-                          disabled={cloneProduct.isPending}
-                          onClick={() => clone(product)}
-                        />
-                        <IconButton
-                          icon={Trash2}
-                          label="Delete product"
-                          tone="danger"
-                          onClick={() => setDeleting(product)}
-                        />
-                      </>
-                    )}
+                  <div className="flex justify-end">
+                    <ProductRowActionsMenu
+                      label={product.name}
+                      items={
+                        trashed
+                          ? [
+                              {
+                                id: "restore",
+                                label: "Restore product",
+                                icon: RotateCcw,
+                                disabled: restoreProduct.isPending,
+                                onSelect: () => restore(product),
+                              },
+                            ]
+                          : [
+                              {
+                                id: "view",
+                                label: "View product",
+                                icon: Eye,
+                                href: `/products/${product.id}`,
+                              },
+                              {
+                                id: "hide",
+                                label: product.isActive
+                                  ? "Hide from terminals"
+                                  : "Show on terminals",
+                                icon: product.isActive ? EyeOff : Monitor,
+                                onSelect: () => setHiding(product),
+                              },
+                              {
+                                id: "clone",
+                                label: "Clone product",
+                                icon: Copy,
+                                disabled: cloneProduct.isPending,
+                                onSelect: () => clone(product),
+                              },
+                              {
+                                id: "delete",
+                                label: "Delete product",
+                                icon: Trash2,
+                                tone: "danger",
+                                onSelect: () => setDeleting(product),
+                              },
+                            ]
+                      }
+                    />
                   </div>
                 </Td>
               </tr>

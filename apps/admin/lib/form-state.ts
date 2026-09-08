@@ -1,8 +1,10 @@
+import type { VariantSignal } from "@double-a/api-client/queries";
+
 export interface FormState {
   error: string | null;
   ok: boolean;
-  /** Set by a handful of actions (e.g. saveProduct on create) that a caller needs the new row's id for. */
-  id?: string;
+  /** Set by saveProduct — the update response's own variant-signal suggestion, no separate check call needed. */
+  variantSignal?: VariantSignal;
 }
 
 // Lives outside the action files because a "use server" module may only export

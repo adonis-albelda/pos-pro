@@ -181,7 +181,7 @@ export function SupplierForm({
             <button
               type="button"
               onClick={clearAllVisible}
-              className="text-caption font-medium text-ink-muted hover:text-ink hover:underline"
+              className="text-caption font-medium text-ink-muted transition-colors hover:text-ink hover:underline"
             >
               Clear shown
             </button>
@@ -203,7 +203,7 @@ export function SupplierForm({
               visibleProducts.map((product) => (
                 <label
                   key={product.id}
-                  className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-2 text-body hover:bg-paper"
+                  className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-2 text-body transition-colors hover:bg-paper"
                 >
                   <input
                     type="checkbox"
