@@ -38,7 +38,9 @@ function readProductForm(formData: FormData) {
     // rather than a price with no minimum that would never apply.
     bulkPrice: optionalNumber(formData, "bulk_price"),
     bulkMinQuantity: optionalNumber(formData, "bulk_min_quantity"),
-    isBundle: formData.get("is_bundle") !== null,
+    isBundle: formData.has("is_bundle_field")
+      ? formData.get("is_bundle") !== null
+      : undefined,
     brandId: text(formData, "brand_id") || null,
     productType: text(formData, "product_type") || "physical",
     notes: text(formData, "notes") || null,
@@ -46,6 +48,10 @@ function readProductForm(formData: FormData) {
     isPurchasable: formData.get("is_purchasable") !== null,
     isTrackInventory: formData.get("is_track_inventory") !== null,
     skipDefaultVariant: formData.get("skip_default_variant") === "1",
+    // Only present on single-SKU Details — with-variants hide visibility per variant.
+    isActive: formData.has("is_active_field")
+      ? formData.get("is_active") !== null
+      : undefined,
   };
 }
 
@@ -105,7 +111,6 @@ export async function saveProduct(
     replenishQuantity: input.replenishQuantity,
     bulkPrice: input.bulkPrice,
     bulkMinQuantity: input.bulkMinQuantity,
-    isBundle: input.isBundle,
     brandId: input.brandId,
     productType: input.productType,
     notes: input.notes,
@@ -113,16 +118,16 @@ export async function saveProduct(
     isPurchasable: input.isPurchasable,
     isTrackInventory: input.isTrackInventory,
     skipDefaultVariant: input.skipDefaultVariant,
+    ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
+    ...(input.isBundle !== undefined ? { isBundle: input.isBundle } : {}),
   };
 
   const client = getAuthedClient();
-  let variantSignal: FormState["variantSignal"];
 
   try {
     // stock_quantity is deliberately absent: stock only moves through the
     // inventory page, which writes a movement row the trigger applies.
-    const updated = await updateProduct(client, id, row);
-    variantSignal = updated.variantSignal;
+    await updateProduct(client, id, row);
   } catch (error) {
     return { error: describeSaveError(error), ok: false };
   }
@@ -130,5 +135,5 @@ export async function saveProduct(
   revalidatePath("/products");
   revalidatePath("/inventory");
   revalidatePath("/reports");
-  return { error: null, ok: true, variantSignal };
+  return { error: null, ok: true };
 }

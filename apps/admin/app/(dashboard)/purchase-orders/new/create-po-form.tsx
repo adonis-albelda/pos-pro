@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import type { Route } from "next";
 import { Plus, Save, Trash2 } from "lucide-react";
 import { formatMoney, roundMoney } from "@double-a/shared-types";
-import type { Product, Supplier } from "@double-a/shared-types";
+import type { Supplier } from "@double-a/shared-types";
+import type { ProductVariantListRow } from "@double-a/api-client/queries";
 import {
   Button,
   Combobox,
@@ -18,13 +19,17 @@ import {
   Td,
   Th,
 } from "@/components/ui";
-import { MatchProductCombobox } from "@/app/(dashboard)/receiving/match-product-combobox";
+import {
+  MatchProductCombobox,
+  variantListLabel,
+} from "@/app/(dashboard)/receiving/match-product-combobox";
 import { createPurchaseOrderAction } from "./actions";
 import { useInvalidatePurchaseOrders } from "@/lib/query/purchase-orders";
 
 interface ItemRow {
   key: string;
   productId: string;
+  variantId: string;
   quantityOrdered: string;
   unitCost: string;
 }
@@ -58,13 +63,14 @@ export function CreatePurchaseOrderForm({
   const [expectedDate, setExpectedDate] = useState("");
   const [referenceNo, setReferenceNo] = useState("");
   const [notes, setNotes] = useState("");
-  const [onlySupplierProducts, setOnlySupplierProducts] = useState(true);
 
   const [items, setItems] = useState<ItemRow[]>([
-    { key: newKey(), productId: "", quantityOrdered: "1", unitCost: "" },
+    { key: newKey(), productId: "", variantId: "", quantityOrdered: "1", unitCost: "" },
   ]);
   const [terms, setTerms] = useState<TermRow[]>([]);
-  const [pickedProducts, setPickedProducts] = useState<Map<string, Product>>(() => new Map());
+  const [pickedVariants, setPickedVariants] = useState<Map<string, ProductVariantListRow>>(
+    () => new Map(),
+  );
 
   const total = roundMoney(
     items.reduce((sum, item) => {
@@ -84,28 +90,29 @@ export function CreatePurchaseOrderForm({
     );
   }
 
-  function pickProduct(key: string, product: Product) {
-    setPickedProducts((previous) => new Map(previous).set(product.id, product));
+  function pickVariant(key: string, variant: ProductVariantListRow) {
+    setPickedVariants((previous) => new Map(previous).set(variant.id, variant));
     updateItem(key, {
-      productId: product.id,
-      unitCost: String(product.costPrice),
+      productId: variant.productId,
+      variantId: variant.id,
+      unitCost: String(variant.costPrice),
     });
   }
 
   function clearProduct(key: string) {
-    updateItem(key, { productId: "", unitCost: "" });
+    updateItem(key, { productId: "", variantId: "", unitCost: "" });
   }
 
-  function excludeProductIds(currentKey: string): string[] {
+  function excludeVariantIds(currentKey: string): string[] {
     return items
-      .filter((item) => item.key !== currentKey && item.productId)
-      .map((item) => item.productId);
+      .filter((item) => item.key !== currentKey && item.variantId)
+      .map((item) => item.variantId);
   }
 
   function addItem() {
     setItems((previous) => [
       ...previous,
-      { key: newKey(), productId: "", quantityOrdered: "1", unitCost: "" },
+      { key: newKey(), productId: "", variantId: "", quantityOrdered: "1", unitCost: "" },
     ]);
   }
 
@@ -154,14 +161,12 @@ export function CreatePurchaseOrderForm({
     const cleanItems = items
       .filter((item) => item.productId && Number(item.quantityOrdered) > 0)
       .map((item) => {
-        const product = pickedProducts.get(item.productId);
+        const variant = item.variantId ? pickedVariants.get(item.variantId) : undefined;
         const raw = Number(item.quantityOrdered) || 0;
-        const quantityOrdered = product?.allowDecimal
-          ? Math.max(0.001, Number(raw.toFixed(3)))
-          : Math.max(1, Math.round(raw));
+        const quantityOrdered = Math.max(0.001, Number(raw.toFixed(3)));
         return {
           productId: item.productId,
-          productName: product?.name ?? "Unknown product",
+          productName: variant ? variantListLabel(variant) : "Unknown product",
           quantityOrdered,
           unitCost: Math.max(0, Number(item.unitCost) || 0),
         };
@@ -249,15 +254,6 @@ export function CreatePurchaseOrderForm({
       <div className="rounded-md border border-border bg-surface">
         <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <h2 className="text-heading-sm font-semibold">Line items</h2>
-          <label className="flex items-center gap-2 text-caption text-ink-muted">
-            <input
-              type="checkbox"
-              className="size-4 accent-primary"
-              checked={onlySupplierProducts}
-              onChange={(event) => setOnlySupplierProducts(event.target.checked)}
-            />
-            Only this supplier&rsquo;s linked products
-          </label>
         </div>
 
         <Table>
@@ -274,26 +270,24 @@ export function CreatePurchaseOrderForm({
             {items.map((item) => {
               const qty = Number(item.quantityOrdered) || 0;
               const cost = Number(item.unitCost) || 0;
-              const picked = item.productId ? pickedProducts.get(item.productId) : undefined;
-              const rowAllowsDecimal = picked?.allowDecimal ?? false;
+              const picked = item.variantId ? pickedVariants.get(item.variantId) : undefined;
               return (
                 <tr key={item.key}>
                   <Td>
                     <MatchProductCombobox
-                      supplierId={onlySupplierProducts ? supplierId || undefined : undefined}
-                      excludeProductIds={excludeProductIds(item.key)}
-                      value={item.productId}
-                      selectedLabel={picked?.name}
-                      onPick={(product) => pickProduct(item.key, product)}
+                      excludeVariantIds={excludeVariantIds(item.key)}
+                      value={item.variantId}
+                      selectedLabel={picked ? variantListLabel(picked) : undefined}
+                      onPick={(variant) => pickVariant(item.key, variant)}
                       onClear={() => clearProduct(item.key)}
-                      placeholder="Search products…"
+                      placeholder="Search your catalogue…"
                     />
                   </Td>
                   <Td numeric>
                     <Input
                       type="number"
-                      min={rowAllowsDecimal ? "0.001" : "1"}
-                      step={rowAllowsDecimal ? "0.001" : "1"}
+                      min="0.001"
+                      step="0.001"
                       className="num text-right"
                       value={item.quantityOrdered}
                       onChange={(event) =>

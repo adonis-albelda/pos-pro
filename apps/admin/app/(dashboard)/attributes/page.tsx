@@ -128,7 +128,7 @@ export default function AttributesPage() {
     <div className="space-y-6">
       <PageHeader
         icon={Tags}
-        title="Choices"
+        title="Options"
         description="Build the vocabulary a product's variants draw from — Size, Color, Diameter. Pre-build a standard run here, or add one inline while editing a product."
       />
 
@@ -136,7 +136,7 @@ export default function AttributesPage() {
         <CardBody>
           <div className="flex flex-wrap items-end gap-2">
             <div className="w-64">
-              <Field label="New choice">
+              <Field label="New option">
                 <Input
                   value={name}
                   onChange={(event) => setName(event.target.value)}

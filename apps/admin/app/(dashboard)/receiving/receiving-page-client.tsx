@@ -3,18 +3,27 @@
 import { useEffect, useState } from "react";
 import type { Route } from "next";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { ChevronRight, Camera, PackageCheck, Plus } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import {
+  Camera,
+  CheckCircle2,
+  ChevronRight,
+  PackageCheck,
+  PackageOpen,
+  Plus,
+  TriangleAlert,
+} from "lucide-react";
 import type { GoodsReceipt } from "@double-a/api-client/queries";
 import type { Location } from "@double-a/shared-types";
 import { STORE_TIME_ZONE } from "@double-a/shared-types";
 import { formatStoreDay, storeDayOf } from "@/lib/date-range";
 import { isInitialQueryLoad, matchesQuery, paginateItems, parseListQuery } from "@/lib/list-query";
-import { Badge, ButtonLink, Card, CardHeader, EmptyState, Table, Td, Th } from "@/components/ui";
+import { Badge, ButtonLink, Card, CardHeader, EmptyState, StatCard, Table, Td, Th } from "@/components/ui";
 import { Pagination, SearchField } from "@/components/record-list";
 import { useLocationFilter } from "@/components/location-filter-provider";
 import { useLocationMutationsLocked } from "@/components/location-mutations-banner";
 import { useGoodsReceipts } from "@/lib/query/goods-receipts";
+import { useOpenPurchaseOrdersCount } from "@/lib/query/purchase-orders";
 import { useLocations } from "@/lib/query/locations";
 import { useSuppliers } from "@/lib/query/suppliers";
 import { ReceivingFollowUpBanner } from "./receiving-follow-up-banner";
@@ -44,12 +53,22 @@ function receiptSupplierLabel(
   return "—";
 }
 
+function buildReceivingHref(params: { q?: string; discrepancy?: boolean }): Route {
+  const search = new URLSearchParams();
+  if (params.q) search.set("q", params.q);
+  if (params.discrepancy) search.set("discrepancy", "1");
+  const qs = search.toString();
+  return (qs ? `/receiving?${qs}` : "/receiving") as Route;
+}
+
 export function ReceivingPageClient() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { q, page } = parseListQuery({
     q: searchParams.get("q") ?? undefined,
     page: searchParams.get("page") ?? undefined,
   });
+  const discrepancyOnly = searchParams.get("discrepancy") === "1";
   const { locationId: currentLocationFilter } = useLocationFilter();
   const [followUp, setFollowUp] = useState<ReceivingFollowUp | null>(null);
 
@@ -60,6 +79,7 @@ export function ReceivingPageClient() {
   const receiptsQuery = useGoodsReceipts({ pageSize: 200 });
   const locationsQuery = useLocations({ type: "branch" });
   const suppliersQuery = useSuppliers();
+  const openPosQuery = useOpenPurchaseOrdersCount();
 
   const loading =
     isInitialQueryLoad(receiptsQuery.isPending, Boolean(receiptsQuery.data)) ||
@@ -67,11 +87,59 @@ export function ReceivingPageClient() {
     suppliersQuery.isPending;
   const error = receiptsQuery.error ?? locationsQuery.error ?? suppliersQuery.error;
 
+  const receipts = receiptsQuery.data ?? [];
+  const scoped = currentLocationFilter
+    ? receipts.filter((receipt) => receipt.locationId === currentLocationFilter)
+    : receipts;
+  const discrepancyCount = scoped.filter(receiptHasCountDiscrepancy).length;
+  const matchedCount = scoped.length - discrepancyCount;
+  const locationHint = currentLocationFilter
+    ? "Counts for the selected branch"
+    : "Company-wide receipt totals";
+
   return (
     <div className="space-y-6">
       {followUp ? (
         <ReceivingFollowUpBanner followUp={followUp} onDismiss={() => setFollowUp(null)} />
       ) : null}
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          icon={PackageCheck}
+          label="Received"
+          value={receiptsQuery.data ? String(scoped.length) : "—"}
+          hint={locationHint}
+          loading={receiptsQuery.isPending}
+          onClick={() => router.push(buildReceivingHref({ q }))}
+        />
+        <StatCard
+          icon={TriangleAlert}
+          label="Discrepancies"
+          value={receiptsQuery.data ? String(discrepancyCount) : "—"}
+          hint="Qty differs from purchase order"
+          tone={discrepancyCount > 0 ? "warning" : "neutral"}
+          loading={receiptsQuery.isPending}
+          onClick={() => router.push(buildReceivingHref({ q, discrepancy: true }))}
+        />
+        <StatCard
+          icon={CheckCircle2}
+          label="Matched"
+          value={receiptsQuery.data ? String(matchedCount) : "—"}
+          hint="No count mismatch"
+          tone={matchedCount > 0 ? "success" : "neutral"}
+          loading={receiptsQuery.isPending}
+          onClick={() => router.push(buildReceivingHref({ q }))}
+        />
+        <StatCard
+          icon={PackageOpen}
+          label="Open POs"
+          value={openPosQuery.data !== undefined ? String(openPosQuery.data) : "—"}
+          hint="Ordered or partially received"
+          tone={openPosQuery.data && openPosQuery.data > 0 ? "warning" : "neutral"}
+          loading={openPosQuery.isPending}
+          onClick={() => router.push("/purchase-orders" as Route)}
+        />
+      </div>
 
       {loading ? (
         <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>
@@ -81,12 +149,13 @@ export function ReceivingPageClient() {
         </Card>
       ) : (
         <ReceivingListBody
-          receipts={receiptsQuery.data ?? []}
+          receipts={receipts}
           locations={locationsQuery.data ?? []}
           suppliers={suppliersQuery.data ?? []}
           locationFilter={currentLocationFilter}
           q={q}
           page={page}
+          discrepancyOnly={discrepancyOnly}
           fetching={receiptsQuery.isFetching && Boolean(receiptsQuery.data)}
         />
       )}
@@ -101,6 +170,7 @@ function ReceivingListBody({
   locationFilter,
   q,
   page,
+  discrepancyOnly,
   fetching = false,
 }: {
   receipts: GoodsReceipt[];
@@ -109,6 +179,7 @@ function ReceivingListBody({
   locationFilter: string | null;
   q: string;
   page: number;
+  discrepancyOnly: boolean;
   fetching?: boolean;
 }) {
   const mutationsLocked = useLocationMutationsLocked();
@@ -120,20 +191,25 @@ function ReceivingListBody({
     ? receipts.filter((receipt) => receipt.locationId === locationFilter)
     : receipts;
 
-  const filtered = scoped.filter((receipt) =>
-    matchesQuery(
-      [
-        receiptSupplierLabel(receipt, supplierNameById),
-        receipt.referenceNo,
-        receipt.notes,
-        locationNameById.get(receipt.locationId),
-      ],
-      q,
-    ),
-  );
+  const filtered = scoped
+    .filter((receipt) => !discrepancyOnly || receiptHasCountDiscrepancy(receipt))
+    .filter((receipt) =>
+      matchesQuery(
+        [
+          receiptSupplierLabel(receipt, supplierNameById),
+          receipt.referenceNo,
+          receipt.notes,
+          locationNameById.get(receipt.locationId),
+        ],
+        q,
+      ),
+    );
   const { pageItems, page: safePage, pageCount, total, pageSize } = paginateItems(filtered, page);
 
-  const listQuery = { q: q || undefined };
+  const listQuery = {
+    q: q || undefined,
+    discrepancy: discrepancyOnly ? "1" : undefined,
+  };
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
 
   return (
@@ -173,14 +249,18 @@ function ReceivingListBody({
       {total === 0 ? (
         <EmptyState
           icon={PackageCheck}
-          title={q ? "Nothing matches that search" : "No received orders yet"}
+          title={
+            q || discrepancyOnly ? "Nothing matches that search" : "No received orders yet"
+          }
           instruction={
-            q
-              ? "Try a different supplier or reference."
-              : "Log a delivery to restock inventory and record what actually arrived."
+            discrepancyOnly
+              ? "No receipts with a count mismatch in this view."
+              : q
+                ? "Try a different supplier or reference."
+                : "Log a delivery to restock inventory and record what actually arrived."
           }
           action={
-            !q ? (
+            !q && !discrepancyOnly ? (
               <ButtonLink
                 href={mutationsLocked ? "/receiving" : "/receiving/new"}
                 className={mutationsLocked ? "pointer-events-none opacity-40" : undefined}

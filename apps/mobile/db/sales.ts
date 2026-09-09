@@ -12,10 +12,12 @@ import {
   type LocalSale,
   type LocalSaleWithItems,
   type PaymentMethod,
+  type SaleDiscount,
   type SaleItem,
   type SaleItemAddon,
 } from "@double-a/shared-types";
 import { getDb } from "./index";
+import { insertSaleDiscounts, listSaleDiscountsForSales } from "./discounts";
 import { getEnrolledCompanyId, getActiveLocationId } from "@/lib/device";
 
 interface SaleRow {
@@ -118,6 +120,11 @@ export interface CompleteSaleInput {
   paymentMethod: PaymentMethod;
   customer?: CustomerDetails;
   fulfillment?: Fulfillment;
+  /**
+   * Order-level simple/complex discounts (Senior/PWD, promos). Separate from
+   * counter line discounts already baked into unitPrice vs listPrice.
+   */
+  orderDiscounts?: Omit<SaleDiscount, "saleId">[];
 }
 
 export async function completeSale(
@@ -127,8 +134,25 @@ export async function completeSale(
 
   const saleId = Crypto.randomUUID();
   const createdAt = new Date().toISOString();
-  const total = cartTotal(input.lines);
-  const discount = cartDiscount(input.lines);
+  const lineTotal = cartTotal(input.lines);
+  const lineDiscount = cartDiscount(input.lines);
+
+  const orderDiscounts: SaleDiscount[] = (input.orderDiscounts ?? []).map((d) => ({
+    ...d,
+    saleId,
+  }));
+
+  const orderDiscountSum = roundMoney(
+    orderDiscounts.reduce(
+      (sum, d) => sum + d.discountAmount + (d.vatRemoved ?? 0),
+      0,
+    ),
+  );
+  // Payable after order-level discounts. VAT-exempt rows already encode
+  // "remove VAT + % off exclusive" into discountAmount+vatRemoved vs sticker.
+  const total = roundMoney(Math.max(lineTotal - orderDiscountSum, 0));
+  const discount = roundMoney(lineDiscount + orderDiscountSum);
+
   const customer = normaliseCustomerDetails(input.customer ?? {});
   const fulfillment = input.fulfillment ?? "pickup";
   const isPaid = isPaidByDefault(input.paymentMethod);
@@ -202,6 +226,8 @@ export async function completeSale(
         JSON.stringify(item.addons),
       );
     }
+
+    await insertSaleDiscounts(orderDiscounts);
   });
 
   return {
@@ -226,6 +252,7 @@ export async function completeSale(
     syncStatus: "pending",
     syncedAt: null,
     items,
+    discounts: orderDiscounts,
   };
 }
 
@@ -300,9 +327,12 @@ async function hydrateSales(sales: SaleRow[]): Promise<LocalSaleWithItems[]> {
     bySale.set(row.sale_id, list);
   }
 
+  const discountsBySale = await listSaleDiscountsForSales(sales.map((s) => s.id));
+
   return sales.map((sale) => ({
     ...toLocalSale(sale),
     items: bySale.get(sale.id) ?? [],
+    discounts: discountsBySale.get(sale.id) ?? [],
   }));
 }
 
@@ -320,7 +350,13 @@ export async function getLocalSale(
     saleId,
   );
 
-  return { ...toLocalSale(sale), items: items.map(toLocalSaleItem) };
+  const discountsBySale = await listSaleDiscountsForSales([saleId]);
+
+  return {
+    ...toLocalSale(sale),
+    items: items.map(toLocalSaleItem),
+    discounts: discountsBySale.get(saleId) ?? [],
+  };
 }
 
 export async function listLocalSales(

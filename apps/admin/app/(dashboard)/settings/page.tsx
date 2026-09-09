@@ -1,19 +1,20 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Settings, ShieldCheck, Sparkles, Store } from "lucide-react";
+import { Percent, Settings, ShieldCheck, Sparkles, Store } from "lucide-react";
 import { Card, CardHeader, PageHeader } from "@/components/ui";
 import { TabNav } from "@/components/tab-nav";
 import { AdminGate } from "@/components/admin-gate";
 import { StoreForm } from "./store-form";
 import { AiSettingsCard } from "./ai-settings-card";
 import { SecuritySettingsCard } from "./security-settings-card";
-import { CatalogSettingsCard } from "./catalog-settings-card";
+import { TaxSettingsCard } from "./tax-settings-card";
 import { useStoreSettings } from "@/lib/query/settings";
 import { useAiSettings } from "@/lib/query/ai-settings";
 
 const SETTINGS_TABS = [
   { key: "info", label: "Company info", icon: Store },
+  { key: "tax", label: "Tax & discounts", icon: Percent },
   { key: "ai", label: "AI Usage", icon: Sparkles },
   { key: "security", label: "Security", icon: ShieldCheck },
 ] as const;
@@ -23,6 +24,7 @@ type SettingsTab = (typeof SETTINGS_TABS)[number]["key"];
 function parseTab(raw: string | undefined): SettingsTab {
   if (raw === "ai") return "ai";
   if (raw === "security") return "security";
+  if (raw === "tax") return "tax";
   return "info";
 }
 
@@ -88,8 +90,9 @@ function SettingsPageClient() {
               )}
             </div>
           </Card>
-          <CatalogSettingsCard />
         </div>
+      ) : tab === "tax" ? (
+        <TaxSettingsCard />
       ) : tab === "ai" ? (
         <>
           {aiQuery.isPending ? (

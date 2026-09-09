@@ -7,10 +7,9 @@ const CHECK_INTERVAL_MS = 15_000;
 
 /**
  * Forces the cashier back to PIN-unlock after `timeoutMinutes` of no touch
- * activity. Wall-clock, not foreground-dwell-only — backgrounding the app
- * (switching apps, phone lock) does not pause the clock, so walking away
- * with the app backgrounded still locks it; checked immediately on
- * returning to the foreground, not just via the running interval.
+ * activity, and immediately when the app is backgrounded (switch to another
+ * app / home). iOS `inactive` alone (Control Center) does not lock — only
+ * `background` does, plus the foreground idle interval.
  *
  * `timeoutMinutes <= 0` disables auto-lock entirely (a merchant's explicit
  * choice, from store_settings.idle_timeout_minutes).
@@ -39,6 +38,10 @@ export function useIdleLock(timeoutMinutes: number): () => void {
 
     const interval = setInterval(checkIdle, CHECK_INTERVAL_MS);
     const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "background") {
+        lock();
+        return;
+      }
       if (state === "active") checkIdle();
     });
 

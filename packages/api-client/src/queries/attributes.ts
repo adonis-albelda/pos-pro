@@ -55,6 +55,16 @@ export interface ProductVariant {
   marginValue: number | null;
   isDefault: boolean;
   isActive: boolean;
+  isBundle: boolean;
+  /** This kit SKU's recipe. Empty when not a kit / not loaded. */
+  bundleItems: {
+    productId: string;
+    name: string | null;
+    sku: string | null;
+    unit: string | null;
+    quantity: number;
+    costPrice: number;
+  }[];
   attributeValues: { companyAttributeId: string | null; companyAttributeValueId: string; value: string | null }[];
   /** Every supplier this variant is sourced from — a t-shirt's Red/L might come from a different supplier (and code/price) than its Blue/S. */
   suppliers: VariantSupplierLink[];
@@ -130,6 +140,15 @@ interface ProductVariantAttrs {
   margin_value: number | null;
   is_default: boolean;
   is_active: boolean;
+  is_bundle: boolean;
+  bundle_items?: {
+    product_id: string;
+    name: string | null;
+    sku: string | null;
+    unit: string | null;
+    quantity: number;
+    cost_price: number;
+  }[];
   attribute_values: { company_attribute_id: string | null; company_attribute_value_id: string; value: string | null }[];
   suppliers: VariantSupplierLinkAttrs[];
   stock_quantity: number | null;
@@ -195,6 +214,15 @@ function toProductVariant(resource: JsonApiResource<ProductVariantAttrs>): Produ
     marginValue: a.margin_value !== null ? Number(a.margin_value) : null,
     isDefault: a.is_default,
     isActive: a.is_active,
+    isBundle: Boolean(a.is_bundle),
+    bundleItems: (a.bundle_items ?? []).map((item) => ({
+      productId: item.product_id,
+      name: item.name,
+      sku: item.sku,
+      unit: item.unit,
+      quantity: Number(item.quantity),
+      costPrice: Number(item.cost_price),
+    })),
     attributeValues: (a.attribute_values ?? []).map((value) => ({
       companyAttributeId: value.company_attribute_id,
       companyAttributeValueId: value.company_attribute_value_id,
@@ -319,6 +347,7 @@ export async function updateProductVariant(
     marginType: MarginType;
     marginValue: number | null;
     isActive: boolean;
+    isBundle: boolean;
   }>,
 ): Promise<ProductVariant> {
   const payload: Record<string, unknown> = {};
@@ -332,10 +361,37 @@ export async function updateProductVariant(
   if (patch.marginType !== undefined) payload.margin_type = patch.marginType;
   if (patch.marginValue !== undefined) payload.margin_value = patch.marginValue;
   if (patch.isActive !== undefined) payload.is_active = patch.isActive;
+  if (patch.isBundle !== undefined) payload.is_bundle = patch.isBundle;
 
   const { data } = await client.patch<{ data: JsonApiResource<ProductVariantAttrs> }>(
     `/product-variants/${variantId}`,
     payload,
+  );
+  return toProductVariant(data);
+}
+
+/** Replace-all recipe for one kit SKU. */
+export async function setVariantBundleItems(
+  client: ApiClient,
+  variantId: string,
+  items: { productId: string; quantity: number }[],
+): Promise<ProductVariant> {
+  const { data } = await client.put<{ data: JsonApiResource<ProductVariantAttrs> }>(
+    `/product-variants/${variantId}/bundle-items`,
+    { items: items.map((item) => ({ product_id: item.productId, quantity: item.quantity })) },
+  );
+  return toProductVariant(data);
+}
+
+/** Convert component stock into this kit SKU's stock at one location. */
+export async function assembleVariantBundle(
+  client: ApiClient,
+  variantId: string,
+  input: { quantity: number; locationId: string; note?: string | null },
+): Promise<ProductVariant> {
+  const { data } = await client.post<{ data: JsonApiResource<ProductVariantAttrs> }>(
+    `/product-variants/${variantId}/assemble`,
+    { quantity: input.quantity, location_id: input.locationId, note: input.note },
   );
   return toProductVariant(data);
 }

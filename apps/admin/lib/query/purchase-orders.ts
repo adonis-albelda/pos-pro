@@ -5,6 +5,7 @@ import type { InventoryMovement } from "@double-a/shared-types";
 import {
   countOpenPurchaseOrders,
   getPurchaseOrder,
+  getPurchaseOrderListStats,
   listMovementsPage,
   listPurchaseOrders,
   listUpcomingSupplierPayments,
@@ -20,6 +21,14 @@ export function usePurchaseOrders(filter: PurchaseOrdersFilter & { limit?: numbe
     queryKey: queryKeys.purchaseOrders.list(filter as Record<string, unknown>),
     placeholderData: keepPreviousData,
     queryFn: () => listPurchaseOrders(getBrowserApiClient(), filter),
+  });
+}
+
+/** Status counts + supplier balance for the purchase-orders list header. */
+export function usePurchaseOrderStats() {
+  return useQuery({
+    queryKey: queryKeys.purchaseOrders.stats(),
+    queryFn: () => getPurchaseOrderListStats(getBrowserApiClient()),
   });
 }
 

@@ -10,8 +10,10 @@ import { LocationSwitcher } from "@/components/location-switcher";
 import { LocationMutationsBanner } from "@/components/location-mutations-banner";
 import { BrandFooter } from "@/components/brand-footer";
 import { UiModeToggle } from "@/components/ui-mode-toggle";
-import { filterNavGroupsByFeatures, NAV_GROUPS } from "@/lib/nav";
+import { filterNavGroupsByFeatures, filterNavGroupsByPermissions, NAV_GROUPS } from "@/lib/nav";
 import { useNavFeatureEnabled } from "@/lib/query/nav-features";
+import { useCurrentUser } from "@/lib/query/session";
+import { canPermission } from "@/lib/authz";
 import type { UiMode } from "@/lib/ui-mode";
 
 /**
@@ -38,7 +40,11 @@ export function ClassicShell({
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { isEnabled } = useNavFeatureEnabled();
-  const navGroups = filterNavGroupsByFeatures(NAV_GROUPS, isEnabled);
+  const { data: user } = useCurrentUser();
+  const navGroups = filterNavGroupsByPermissions(
+    filterNavGroupsByFeatures(NAV_GROUPS, isEnabled),
+    (key) => canPermission(user, key),
+  );
 
   useEffect(() => {
     setOpenGroup(null);
@@ -268,7 +274,7 @@ export function ClassicShell({
       <main className="flex-1 px-2 py-2 sm:px-3 sm:py-3">{children}</main>
 
       {/* Status strip */}
-      <footer className="border-t border-border bg-surface px-3 py-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))]">
+      <footer className="border-t border-border bg-primary/5 px-3 py-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))]">
         <BrandFooter userEmail={userEmail} compact={embedded} />
       </footer>
     </div>

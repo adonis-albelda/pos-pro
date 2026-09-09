@@ -1,53 +1,33 @@
 "use client";
 
+import Link from "next/link";
+import type { Route } from "next";
 import { useSearchParams } from "next/navigation";
-import { HandHelping, Shield, Smartphone, Truck, UserCog, UserRound, Users } from "lucide-react";
-import type { User, UserRole } from "@double-a/shared-types";
+import { ClipboardList, Plus, Users } from "lucide-react";
+import type { User } from "@double-a/shared-types";
 import { matchesQuery, paginateItems, parseListQuery } from "@/lib/list-query";
-import { Card, PageHeader } from "@/components/ui";
-import { TabNav } from "@/components/tab-nav";
-import { UsersPanel } from "./users-panel";
+import { Badge, ButtonLink, Card, PageHeader, Table, Td, Th } from "@/components/ui";
 import { useUsers } from "@/lib/query/users";
 
-const USER_TABS: { key: Exclude<UserRole, "superadmin">; label: string }[] = [
-  { key: "admin", label: "Admins" },
-  { key: "manager", label: "Managers" },
-  { key: "cashier", label: "Cashiers" },
-  { key: "driver", label: "Drivers" },
-  { key: "helper", label: "Helpers" },
-  { key: "device", label: "Terminals" },
-];
-
-const TAB_ICONS: Record<Exclude<UserRole, "superadmin">, typeof UserRound> = {
-  admin: Shield,
-  manager: UserCog,
-  cashier: UserRound,
-  driver: Truck,
-  helper: HandHelping,
-  device: Smartphone,
+const ROLE_LABEL: Record<string, string> = {
+  admin: "Admin",
+  manager: "Manager",
+  cashier: "Cashier",
+  inventory_clerk: "Inventory Clerk",
+  driver: "Driver",
+  helper: "Helper",
+  device: "Terminal (legacy)",
 };
 
-function buildHref(params: Record<string, string | undefined>): string {
-  const search = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value) search.set(key, value);
-  }
-  const query = search.toString();
-  return query ? `/users?${query}` : "/users";
-}
-
-function parseTab(raw: string | undefined): Exclude<UserRole, "superadmin"> {
-  if (
-    raw === "admin" ||
-    raw === "manager" ||
-    raw === "cashier" ||
-    raw === "driver" ||
-    raw === "helper" ||
-    raw === "device"
-  ) {
-    return raw;
-  }
-  return "cashier";
+function formatWhen(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 export default function UsersPage() {
@@ -56,8 +36,6 @@ export default function UsersPage() {
     q: searchParams.get("q") ?? undefined,
     page: searchParams.get("page") ?? undefined,
   });
-  const tab = parseTab(searchParams.get("tab") ?? undefined);
-
   const usersQuery = useUsers({ includeInactive: true });
 
   return (
@@ -65,7 +43,12 @@ export default function UsersPage() {
       <PageHeader
         icon={Users}
         title="Users"
-        description="Admins sign in here. Cashiers unlock with a PIN. Terminals enroll once per device."
+        description="One directory for every login. Create opens a full form — email/username, password, PIN, role."
+        action={
+          <ButtonLink href={"/users/new" as Route} icon={Plus}>
+            New user
+          </ButtonLink>
+        }
       />
 
       {usersQuery.isPending ? (
@@ -75,57 +58,113 @@ export default function UsersPage() {
           {usersQuery.error instanceof Error ? usersQuery.error.message : "Could not load users."}
         </Card>
       ) : (
-        <UsersBody users={usersQuery.data ?? []} tab={tab} q={q} page={page} />
+        <UsersTable users={usersQuery.data ?? []} q={q} page={page} />
       )}
     </div>
   );
 }
 
-function UsersBody({
-  users,
-  tab,
-  q,
-  page,
-}: {
-  users: User[];
-  tab: Exclude<UserRole, "superadmin">;
-  q: string;
-  page: number;
-}) {
-  const counts = {
-    admin: users.filter((user) => user.role === "admin").length,
-    manager: users.filter((user) => user.role === "manager").length,
-    cashier: users.filter((user) => user.role === "cashier").length,
-    driver: users.filter((user) => user.role === "driver").length,
-    helper: users.filter((user) => user.role === "helper").length,
-    device: users.filter((user) => user.role === "device").length,
-  };
-
-  const inTab = users.filter((user) => user.role === tab);
-  const filtered = inTab.filter((user) => matchesQuery([user.name, user.email], q));
-  const { pageItems, page: safePage, pageCount, total, pageSize } = paginateItems(filtered, page);
-
-  const tabs = USER_TABS.map((entry) => ({
-    key: entry.key,
-    label: entry.label,
-    icon: TAB_ICONS[entry.key],
-    count: counts[entry.key],
-    href: buildHref({ tab: entry.key, q: q || undefined }),
-  }));
+function UsersTable({ users, q, page }: { users: User[]; q: string; page: number }) {
+  const filtered = users.filter((user) =>
+    matchesQuery([user.name, user.email, user.username ?? "", user.role], q),
+  );
+  const { pageItems, pageCount } = paginateItems(filtered, page);
 
   return (
-    <>
-      <TabNav items={tabs} active={tab} ariaLabel="User roles" />
-
-      <UsersPanel
-        tab={tab}
-        users={pageItems}
-        query={q}
-        page={safePage}
-        pageCount={pageCount}
-        total={total}
-        pageSize={pageSize}
-      />
-    </>
+    <Card className="overflow-hidden p-0">
+      <Table>
+        <thead>
+          <tr>
+            <Th>Name</Th>
+            <Th>Email / username</Th>
+            <Th>Role</Th>
+            <Th>Status</Th>
+            <Th>Last login</Th>
+            <Th className="w-24" />
+          </tr>
+        </thead>
+        <tbody>
+          {pageItems.length === 0 ? (
+            <tr>
+              <Td colSpan={6} className="py-8 text-center text-ink-muted">
+                No users match.
+              </Td>
+            </tr>
+          ) : (
+            pageItems.map((user) => (
+              <tr key={user.id} className="border-t border-border">
+                <Td>
+                  <div className="flex items-center gap-2.5">
+                    {user.avatarUrl ? (
+                      <img
+                        src={user.avatarUrl}
+                        alt=""
+                        className="size-8 rounded-full object-cover"
+                      />
+                    ) : (
+                      <span className="flex size-8 items-center justify-center rounded-full bg-primary/10 text-caption font-semibold text-primary">
+                        {user.name.slice(0, 1).toUpperCase()}
+                      </span>
+                    )}
+                    <span className="font-medium text-ink">{user.name}</span>
+                  </div>
+                </Td>
+                <Td>
+                  <div className="min-w-0">
+                    <p className="truncate text-body text-ink">{user.email}</p>
+                    {user.username ? (
+                      <p className="truncate text-caption text-ink-muted">@{user.username}</p>
+                    ) : null}
+                  </div>
+                </Td>
+                <Td>
+                  <Badge tone="neutral">{ROLE_LABEL[user.role] ?? user.role}</Badge>
+                </Td>
+                <Td>
+                  <Badge tone={user.isActive ? "success" : "danger"}>
+                    {user.isActive ? "Active" : "Inactive"}
+                  </Badge>
+                </Td>
+                <Td className="text-caption text-ink-muted">{formatWhen(user.lastLoginAt)}</Td>
+                <Td>
+                  <Link
+                    href={`/users/${user.id}` as Route}
+                    className="inline-flex items-center gap-1 text-caption font-medium text-primary hover:underline"
+                  >
+                    <ClipboardList size={14} strokeWidth={2} />
+                    Edit
+                  </Link>
+                </Td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </Table>
+      {pageCount > 1 ? (
+        <div className="flex items-center justify-between border-t border-border px-4 py-2 text-caption text-ink-muted">
+          <span>
+            Page {page} of {pageCount}
+          </span>
+          <div className="flex gap-2">
+            {page > 1 ? (
+              <Link
+                href={`/users?q=${encodeURIComponent(q)}&page=${page - 1}` as Route}
+                className="text-primary"
+              >
+                Prev
+              </Link>
+            ) : null}
+            {page < pageCount ? (
+              <Link
+                href={`/users?q=${encodeURIComponent(q)}&page=${page + 1}` as Route}
+                className="text-primary"
+              >
+                Next
+              </Link>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </Card>
   );
 }

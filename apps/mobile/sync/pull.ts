@@ -4,6 +4,11 @@ import { replaceAddonGroups } from "@/db/addon-groups";
 import { saveLocalAiSettings } from "@/db/ai-settings";
 import { replaceCategories } from "@/db/categories";
 import { replaceSyncedCustomers } from "@/db/customers";
+import {
+  replaceComplexDiscountRules,
+  replaceDiscountRules,
+  saveLocalTaxSettings,
+} from "@/db/discounts";
 import { replaceFeatureFlags } from "@/db/feature-flags";
 import { getSyncMeta, recordSyncSuccess } from "@/db/meta";
 import { countLocalProducts, replaceProducts, upsertProducts } from "@/db/products";
@@ -90,6 +95,9 @@ export async function pull(
   await replaceSyncedCustomers(result.customers);
   await replaceFeatureFlags(result.featureFlags);
   await replaceAddonGroups(result.addonGroups);
+  await replaceDiscountRules(result.discountRules);
+  await replaceComplexDiscountRules(result.complexDiscountRules);
+  await saveLocalTaxSettings(result.taxSettings);
 
   try {
     const aiSettings = await getCompanyAiSettings(client);

@@ -23,3 +23,19 @@ export function isShopOwner(user: User | null | undefined): user is User {
 export function isSuperadmin(user: User | null | undefined): user is User {
   return Boolean(user && user.role === "superadmin");
 }
+
+/**
+ * Spatie permission check against `/auth/me` permissions. Missing user or
+ * missing permissions array = unrestricted (session still loading, or API
+ * not upgraded). Shop admin / superadmin always allowed client-side too
+ * (server Gate::before is the real authority).
+ */
+export function canPermission(
+  user: User | null | undefined,
+  permissionKey: string,
+): boolean {
+  if (!user) return true;
+  if (user.role === "admin" || user.role === "superadmin") return true;
+  if (user.permissions === undefined) return true;
+  return user.permissions.includes(permissionKey);
+}

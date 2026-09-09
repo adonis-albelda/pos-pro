@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { formatMoney, formatQuantity, roundMoney } from "@double-a/shared-types";
 import type { Product } from "@double-a/shared-types";
+import type { ProductVariantListRow } from "@double-a/api-client/queries";
 import {
   Badge,
   Button,
@@ -156,14 +157,15 @@ export function ReceivingLineAccordion({
   supplierId,
   supplierName,
   matchedProduct,
+  matchedVariantLabel,
   currentStock,
   matchLocationId,
-  excludeMatchProductIds,
+  excludeMatchVariantIds,
   categoryOptions,
   creatingCategory,
   onCreateCategory,
   onUpdate,
-  onPickProduct,
+  onPickVariant,
   onClearProduct,
   onResolve,
   onToggleExcluded,
@@ -182,15 +184,17 @@ export function ReceivingLineAccordion({
   supplierName: string;
   /** Matched catalogue product — used for supplier SKU fallback. */
   matchedProduct?: Product;
+  /** Label for a matched variant when the picker page hasn't loaded it yet. */
+  matchedVariantLabel?: string;
   /** Branch stock for a matched catalogue product. */
   currentStock: number | null;
   matchLocationId?: string;
-  excludeMatchProductIds: string[];
+  excludeMatchVariantIds: string[];
   categoryOptions: CategoryOption[];
   creatingCategory: boolean;
   onCreateCategory: (name: string) => void;
   onUpdate: (patch: Partial<LineRow>) => void;
-  onPickProduct: (product: Product) => void;
+  onPickVariant: (variant: ProductVariantListRow) => void;
   onClearProduct: () => void;
   onResolve: () => void;
   onToggleExcluded: () => void;
@@ -484,10 +488,10 @@ export function ReceivingLineAccordion({
                 <div className="mt-3 w-full">
                   <MatchProductCombobox
                     locationId={matchLocationId}
-                    excludeProductIds={excludeMatchProductIds}
-                    value={row.productId ?? ""}
-                    selectedLabel={matchedProduct?.name}
-                    onPick={onPickProduct}
+                    excludeVariantIds={excludeMatchVariantIds}
+                    value={row.variantId ?? ""}
+                    selectedLabel={matchedVariantLabel}
+                    onPick={onPickVariant}
                     onClear={onClearProduct}
                     placeholder="Search your catalogue…"
                     disabled={inputsDisabled}

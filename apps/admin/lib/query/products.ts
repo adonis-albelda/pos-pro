@@ -10,7 +10,6 @@ import {
   createFullProduct,
   deleteProduct,
   deleteProductPhoto,
-  dismissVariantSignal,
   getNextSku,
   getProduct,
   getProductStats,
@@ -250,16 +249,6 @@ export function useDeleteProductPhoto() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => deleteProductPhoto(getBrowserApiClient(), id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
-    },
-  });
-}
-
-export function useDismissVariantSignal() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => dismissVariantSignal(getBrowserApiClient(), id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
     },

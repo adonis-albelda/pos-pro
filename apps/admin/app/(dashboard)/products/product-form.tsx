@@ -23,7 +23,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import type { CreateFullProductInput, VariantSignal } from "@double-a/api-client/queries";
+import type { CreateFullProductInput } from "@double-a/api-client/queries";
 import type { Product } from "@double-a/shared-types";
 import {
   defaultAllowDecimal,
@@ -37,6 +37,7 @@ import {
   UNIT_LABELS,
 } from "@double-a/shared-types";
 import {
+  Badge,
   Button,
   ButtonLink,
   Card,
@@ -70,21 +71,30 @@ import { useSuppliers } from "@/lib/query/suppliers";
 import { useAttachProductTag, useCreateTag, useDetachProductTag, useTags } from "@/lib/query/tags";
 import {
   useAdjustProductStock,
-  useAssembleBundle,
   useClaimNextSku,
   useCreateFullProduct,
-  useDismissVariantSignal,
   useInvalidateProducts,
-  useProducts,
   useSetBundleItems,
 } from "@/lib/query/products";
 import { useSkuAvailability } from "@/lib/use-sku-check";
 import { saveProduct } from "./actions";
+import {
+  collectProductFormChanges,
+  type ProductFieldChange,
+} from "./product-form-change-summary";
 import { ProductActivitySection } from "./product-activity-section";
 import { ProductAddonGroupsSection } from "./product-addon-groups-section";
 import { ProductAttributesAndVariantsSection, VariantSupplierLinksEditor } from "./product-attributes-variants-section";
 import { ProductInventorySection } from "./product-inventory-section";
 import { PendingPhotoGallery, VariantPhotoGallery } from "./variant-photo-gallery";
+import {
+  AssembleBundleSection,
+  BundleFields,
+  emptyBundleRow,
+  persistBundleRows,
+  type BundleRow,
+} from "./product-bundle-section";
+import { ProductBlockSkeleton } from "./product-form-skeletons";
 
 const PRODUCT_FORM_TABS = [
   { id: "details", label: "Details", icon: FileText },
@@ -95,12 +105,6 @@ const PRODUCT_FORM_TABS = [
 ] as const;
 
 type ProductFormTab = (typeof PRODUCT_FORM_TABS)[number]["id"];
-
-interface BundleRow {
-  key: string;
-  productId: string;
-  quantity: string;
-}
 
 function newRowKey(): string {
   return Math.random().toString(36).slice(2);
@@ -489,194 +493,6 @@ function readFormDraft(form: HTMLFormElement): Record<string, string | boolean> 
   return draft;
 }
 
-function emptyBundleRow(): BundleRow {
-  return { key: newRowKey(), productId: "", quantity: "1" };
-}
-
-/**
- * The recipe editor — component picker + quantity per row, same shape as
- * the stock-transfers multi-row form. Bundles and the product itself are
- * excluded from the picker: no nested bundles, no self-reference.
- */
-function BundleItemsEditor({
-  rows,
-  onChange,
-  excludeProductId,
-}: {
-  rows: BundleRow[];
-  onChange: (rows: BundleRow[]) => void;
-  excludeProductId?: string;
-}) {
-  const productsQuery = useProducts({ includeInactive: false, pageSize: 200 });
-  const candidates = (productsQuery.data?.products ?? []).filter(
-    (candidate) => !candidate.isBundle && candidate.id !== excludeProductId,
-  );
-
-  function updateRow(key: string, patch: Partial<BundleRow>) {
-    onChange(rows.map((row) => (row.key === key ? { ...row, ...patch } : row)));
-  }
-
-  function addRow() {
-    onChange([...rows, emptyBundleRow()]);
-  }
-
-  function removeRow(key: string) {
-    onChange(rows.length > 1 ? rows.filter((row) => row.key !== key) : rows);
-  }
-
-  return (
-    <div className="sm:col-span-2 space-y-2">
-      <span className="text-caption font-medium text-ink-muted">
-        Components
-      </span>
-      {rows.map((row) => {
-        const usedElsewhere = new Set(
-          rows
-            .filter((other) => other.key !== row.key && other.productId)
-            .map((other) => other.productId),
-        );
-        return (
-          <div key={row.key} className="flex items-start gap-2">
-            <div className="w-full">
-              <Combobox
-                value={row.productId}
-                onChange={(productId) => updateRow(row.key, { productId })}
-                placeholder={
-                  productsQuery.isPending
-                    ? "Loading products…"
-                    : "Select product"
-                }
-                emptyLabel="Every matching product is already on another row."
-                options={candidates
-                  .filter((candidate) => !usedElsewhere.has(candidate.id))
-                  .map((candidate) => ({
-                    value: candidate.id,
-                    label: candidate.name,
-                  }))}
-              />
-            </div>
-            <div className="w-28 shrink-0">
-              <Input
-                type="number"
-                min="0.001"
-                step="any"
-                placeholder="Qty"
-                value={row.quantity}
-                onChange={(event) =>
-                  updateRow(row.key, { quantity: event.target.value })
-                }
-              />
-            </div>
-            <IconButton
-              icon={Trash2}
-              label="Remove component"
-              tone="danger"
-              disabled={rows.length === 1}
-              onClick={() => removeRow(row.key)}
-            />
-          </div>
-        );
-      })}
-      <Button
-        type="button"
-        variant="secondary"
-        size="sm"
-        icon={Plus}
-        onClick={addRow}
-      >
-        Add another component
-      </Button>
-    </div>
-  );
-}
-
-/**
- * Stock isn't editable here — it only moves through Inventory (or, for a
- * bundle, through Assemble below). One assemble converts component stock
- * into bundle stock at one location; it's a live mutation, not part of the
- * surrounding form's submit, since it needs its own success/error toast.
- */
-function AssembleBundleSection({ product }: { product: Product }) {
-  const assemble = useAssembleBundle();
-  const locationsQuery = useLocations({ type: "branch" });
-  const branches = locationsQuery.data ?? [];
-  const [quantity, setQuantity] = useState("1");
-  const [locationId, setLocationId] = useState("");
-
-  async function onAssemble() {
-    const qty = Number(quantity);
-    if (!Number.isFinite(qty) || qty <= 0) {
-      toast.error("Quantity must be greater than zero.");
-      return;
-    }
-    if (!locationId) {
-      toast.error("Choose a location.");
-      return;
-    }
-    try {
-      const updated = await assemble.mutateAsync({
-        id: product.id,
-        quantity: qty,
-        locationId,
-      });
-      toast.success(`Assembled ${qty}× ${updated.name}.`);
-      setQuantity("1");
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Could not assemble this bundle.",
-      );
-    }
-  }
-
-  return (
-    <Card>
-      <CardHeader
-        title="Assemble"
-        description="Converts component stock into bundle stock at one location, right now."
-      />
-      <CardBody>
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="Quantity to assemble" required>
-            <Input
-              type="number"
-              min="0.001"
-              step="any"
-              value={quantity}
-              onChange={(event) => setQuantity(event.target.value)}
-            />
-          </Field>
-          <Field label="Location" required>
-            <Select
-              value={locationId}
-              onChange={(event) => setLocationId(event.target.value)}
-            >
-              <option value="">Choose branch</option>
-              {branches.map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {branch.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <div className="flex items-end">
-            <Button
-              type="button"
-              icon={Package}
-              loading={assemble.isPending}
-              onClick={onAssemble}
-              className="w-full"
-            >
-              Assemble
-            </Button>
-          </div>
-        </div>
-      </CardBody>
-    </Card>
-  );
-}
-
 /** Below the SKU field — the 3s-debounced realtime duplicate check's result. */
 function SkuFeedback({
   checking,
@@ -976,6 +792,10 @@ interface WizardVariantConfig {
   bulkPrice: string;
   bulkMinQuantity: string;
   trackInventory: boolean;
+  /** Show on terminals — false hides this SKU after sync (same idea as product isActive). */
+  isActive: boolean;
+  /** Kit flag — written to product_variants.is_bundle on create. */
+  isBundle: boolean;
   stockByLocation: Record<string, string>;
 }
 
@@ -989,6 +809,8 @@ function emptyVariantConfig(): WizardVariantConfig {
     bulkPrice: "",
     bulkMinQuantity: "",
     trackInventory: true,
+    isActive: true,
+    isBundle: false,
     stockByLocation: {},
   };
 }
@@ -1154,7 +976,7 @@ function StockByLocationCreateTable({
   showNote?: boolean;
 }) {
   if (loading) {
-    return <p className="text-caption text-ink-muted sm:col-span-2">Loading branches…</p>;
+    return <ProductBlockSkeleton className="sm:col-span-2" />;
   }
   if (branches.length === 0) {
     return (
@@ -1254,7 +1076,7 @@ function StockByLocationEditTable({ productId, variantId }: { productId: string;
   }
 
   if (stockQuery.isPending) {
-    return <p className="text-caption text-ink-muted sm:col-span-2">Loading branches…</p>;
+    return <ProductBlockSkeleton className="sm:col-span-2" />;
   }
   if (rows.length === 0) {
     return (
@@ -1740,7 +1562,7 @@ function WizardAttributesStep({
               const expanded = openVariantKeys.has(key);
 
               return (
-                <div key={key} className="overflow-hidden rounded-md border border-border bg-surface">
+                <div key={key} className={`overflow-hidden rounded-md border border-border bg-surface ${config.isActive ? "" : "opacity-70"}`}>
                   <div className="flex items-center gap-1 pr-2">
                     <button
                       type="button"
@@ -1751,6 +1573,7 @@ function WizardAttributesStep({
                       <span className="min-w-0 flex-1 text-body font-medium text-ink">
                         {index + 1}. {variantLabel}
                       </span>
+                      {!config.isActive ? <Badge tone="neutral">Hidden</Badge> : null}
                       <ChevronDown
                         size={16}
                         strokeWidth={2}
@@ -1767,6 +1590,36 @@ function WizardAttributesStep({
 
                   {expanded ? (
                     <div className="grid items-start gap-4 border-t border-border p-4 lg:grid-cols-2">
+                      <div className="space-y-4 lg:col-span-2">
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-sm border border-border bg-paper px-3 py-2.5">
+                          <div>
+                            <p className="text-body font-medium text-ink">Show on terminals</p>
+                            <p className="text-caption text-ink-muted">
+                              Hidden variants stay in admin but stop appearing on POS after the next sync.
+                            </p>
+                          </div>
+                          <ToggleSwitch
+                            name={`is_active__${key}`}
+                            checked={config.isActive}
+                            onChange={(checked) => setConfig({ isActive: checked })}
+                            label={config.isActive ? "Shown" : "Hidden"}
+                          />
+                        </div>
+                        <div className="rounded-sm border border-border bg-paper px-3 py-2.5">
+                          <label className="flex cursor-pointer items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={config.isBundle}
+                              onChange={(event) => setConfig({ isBundle: event.target.checked })}
+                              className="h-4 w-4 accent-primary"
+                            />
+                            <span className="text-body">This variant is a bundle (kit)</span>
+                          </label>
+                          <p className="mt-1 text-caption text-ink-muted">
+                            Recipe components are set after create on the Variants tab.
+                          </p>
+                        </div>
+                      </div>
                       <div className="space-y-4">
                         <FormSection
                           title="Pricing"
@@ -2328,6 +2181,7 @@ export function ProductForm({
   const [decimalTouched, setDecimalTouched] = useState(false);
   const [isBundle, setIsBundle] = useState(product?.isBundle ?? false);
   const [trackInventory, setTrackInventory] = useState(product?.isTrackInventory ?? true);
+  const [productIsActive, setProductIsActive] = useState(product?.isActive ?? true);
 
   const [sku, setSku] = useState(product?.sku ?? "");
   const [barcode, setBarcode] = useState(product?.barcode ?? "");
@@ -2366,6 +2220,7 @@ export function ProductForm({
       : [emptyBundleRow()],
   );
   const formRef = useRef<HTMLFormElement>(null);
+  const saveConfirmedRef = useRef(false);
   const draftKey = draftStorageKey(product?.id);
   const pendingDraftRef = useRef<ProductFormDraft | null>(null);
   const pendingPhotosRef = useRef<DraftPhotosState | null>(null);
@@ -2404,6 +2259,11 @@ export function ProductForm({
   // this page looks like once step 1 is saved. Cached so a refresh keeps
   // the last pick without waiting on the draft banner.
   const [productKind, setProductKind] = useState<"single" | "with_variants">("single");
+  // Create: productKind. Edit: one SKU (default only) → Details hosts show/hide;
+  // multi-variant products use per-variant toggles instead.
+  const isSingleProductUi = !product
+    ? "single" === productKind
+    : !variantsQuery.isPending && (variantsQuery.data?.length ?? 0) <= 1;
   const [productKindInfoOpen, setProductKindInfoOpen] = useState<"single" | "with_variants" | null>(null);
   const [kindSwitchConfirmOpen, setKindSwitchConfirmOpen] = useState(false);
 
@@ -2636,8 +2496,6 @@ export function ProductForm({
   const brandsQuery = useBrands();
   const [createPreviewOpen, setCreatePreviewOpen] = useState(false);
   const [createProgressComplete, setCreateProgressComplete] = useState(false);
-  const [createVariantSignal, setCreateVariantSignal] = useState<VariantSignal | null>(null);
-  const [createdSingleProductId, setCreatedSingleProductId] = useState<string | null>(null);
   const [brandId, setBrandId] = useState(product?.brandId ?? "");
   // Edit mode: onAdd/onRemove below hit real attach/detach mutations and
   // this just mirrors the result. Create mode: purely local — the tag ids
@@ -2646,75 +2504,82 @@ export function ProductForm({
   const [tags, setTags] = useState(product?.tags ?? []);
   const attachTag = useAttachProductTag(product?.id ?? "");
   const detachTag = useDetachProductTag(product?.id ?? "");
-  const dismissVariantSignal = useDismissVariantSignal();
-  const [suggestionDismissed, setSuggestionDismissed] = useState(false);
-  // Carried over the create → edit-page redirect below (?signal_attribute=
-  // &signal_value=) — the merchant already said "Yes" on the create page,
-  // so this lands the wizard open immediately instead of asking again.
-  const [pendingSignalSuggestion, setPendingSignalSuggestion] = useState<{
-    attributeName: string;
-    matchedText: string;
-  } | null>(() => {
-    const attributeName = searchParams.get("signal_attribute");
-    if (!attributeName) return null;
-    return { attributeName, matchedText: searchParams.get("signal_value") ?? "" };
-  });
-
-  // Reset for every new save attempt — state.variantSignal only carries
-  // meaning for the save that just produced it.
-  useEffect(() => {
-    setSuggestionDismissed(false);
-  }, [state]);
+  const [saveConfirmOpen, setSaveConfirmOpen] = useState(false);
+  const [pendingSaveChanges, setPendingSaveChanges] = useState<ProductFieldChange[]>([]);
 
   // Toast, not an inline banner — a save success shouldn't sit at the
   // bottom of a long form waiting to be scrolled to. Only edit-mode's
   // `<form action>` still flows through `state` — create (both single and
   // with-variants) toasts from its own mutation's onSuccess instead.
   useEffect(() => {
-    if (!state.ok) return;
+    if (!state.ok || !product) return;
     toast.success("Product updated.");
+    if (!isSingleProductUi) return;
+    void persistBundleRows(setBundleItems, product.id, isBundle, bundleRows).catch((error) => {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Product saved, but the bundle recipe could not be saved.",
+      );
+    });
   }, [state]);
 
-  // Edit mode's suggestion rides the `saveProduct` server action's own
-  // response; single-product create's rides createFullProduct's instead —
-  // only one of the two is ever active per page load. Moot once "Product
-  // With Variants" was already chosen up front.
-  const activeVariantSignal = product ? state.variantSignal : createVariantSignal;
-  const suggestion =
-    "with_variants" !== productKind && !suggestionDismissed && activeVariantSignal?.detected
-      ? activeVariantSignal
-      : null;
-
-  function onNameSignalNo() {
-    if (product) dismissVariantSignal.mutate(product.id);
-    setSuggestionDismissed(true);
-    // Create has no Variants tab to show — this was the redirect the popup paused.
-    if (!product && saveRedirectHref) router.push(saveRedirectHref as Route);
-  }
-
-  function onNameSignalYes() {
-    if (!suggestion?.suggestedAttributeName) return;
-    setSuggestionDismissed(true);
-    if (!product) {
-      // Just-created — this page has no Variants tab (product is still
-      // undefined here until a real navigation happens), so go straight to
-      // the new product's own edit page with the suggestion carried in the
-      // URL instead of the list the redirect would otherwise have used.
-      if (createdSingleProductId) {
-        const params = new URLSearchParams({
-          tab: "variants",
-          signal_attribute: suggestion.suggestedAttributeName,
-          signal_value: suggestion.matchedText ?? "",
-        });
-        router.push(`/products/${createdSingleProductId}?${params.toString()}` as Route);
-      }
+  function openSaveConfirm() {
+    const form = formRef.current;
+    if (!product || !form) return;
+    const brands = brandsQuery.data ?? [];
+    const changes = collectProductFormChanges(
+      product,
+      form,
+      {
+        categoryLabel: (id) => {
+          if (!id) return "—";
+          const match = categories.find((category) => category.id === id);
+          if (match) return `${indentLabel(match)}${match.isActive ? "" : " (hidden)"}`.trim();
+          if (id === product.categoryId) return product.category?.trim() || "—";
+          return "—";
+        },
+        brandLabel: (id) => {
+          if (!id) return "—";
+          const match = brands.find((brand) => brand.id === id)?.name;
+          if (match) return match;
+          if (id === product.brandId) return product.brandName?.trim() || "—";
+          return "—";
+        },
+      },
+      {
+        description,
+        reorderPoint: defaultVariant?.reorderPoint ?? product.reorderPoint,
+        replenishQuantity: defaultVariant?.replenishQuantity ?? product.replenishQuantity,
+      },
+    );
+    if (changes.length === 0) {
+      toast.message("No changes to save.");
       return;
     }
-    setPendingSignalSuggestion({
-      attributeName: suggestion.suggestedAttributeName,
-      matchedText: suggestion.matchedText ?? "",
-    });
-    setTab("variants");
+    setPendingSaveChanges(changes);
+    setSaveConfirmOpen(true);
+  }
+
+  function confirmSaveChanges() {
+    const form = formRef.current;
+    if (!form) return;
+    if (!form.checkValidity()) {
+      form.reportValidity();
+      return;
+    }
+    setSaveConfirmOpen(false);
+    saveConfirmedRef.current = true;
+    form.requestSubmit();
+  }
+
+  function handleEditSubmit(event: React.FormEvent<HTMLFormElement>) {
+    if (saveConfirmedRef.current) {
+      saveConfirmedRef.current = false;
+      return;
+    }
+    event.preventDefault();
+    openSaveConfirm();
   }
 
   function onUnitChange(next: string) {
@@ -2793,6 +2658,7 @@ export function ProductForm({
         isSellable: formData.get("is_sellable") !== null,
         isPurchasable: formData.get("is_purchasable") !== null,
         isTrackInventory: trackInventory,
+        isActive: productIsActive,
       },
       brand: brandId ? { id: brandId } : null,
       tags: tags.map((tag) => ({ id: tag.id })),
@@ -2808,7 +2674,7 @@ export function ProductForm({
     createFullProductMutation.mutate(
       { input, photos: pendingGalleryFiles },
       {
-        onSuccess: async ({ product: created, variantSignal }) => {
+        onSuccess: async ({ product: created }) => {
           try {
             window.localStorage.removeItem(draftKey);
             window.localStorage.removeItem(PRODUCT_KIND_STORAGE_KEY);
@@ -2817,8 +2683,6 @@ export function ProductForm({
           }
           void clearDraftPhotos(draftKey);
           toast.success("Product added.");
-          setCreatedSingleProductId(created.id);
-          setCreateVariantSignal(variantSignal.detected ? variantSignal : null);
 
           // The one deliberate follow-up call — a bundle recipe references
           // other existing products by id, not vocabulary this endpoint
@@ -2840,7 +2704,7 @@ export function ProductForm({
           }
 
           invalidate();
-          if (saveRedirectHref && !variantSignal.detected) {
+          if (saveRedirectHref) {
             router.push(saveRedirectHref as Route);
           }
         },
@@ -2890,6 +2754,8 @@ export function ProductForm({
           replenishQuantity: config.replenishQuantity.trim() ? Number(config.replenishQuantity) : undefined,
           bulkPrice: config.bulkPrice.trim() ? Number(config.bulkPrice) : null,
           bulkMinQuantity: config.bulkMinQuantity.trim() ? Number(config.bulkMinQuantity) : null,
+          isActive: false !== config.isActive,
+          isBundle: true === config.isBundle,
           openingStock: trackInventory
             ? Object.entries(config.stockByLocation)
                 .filter(([, quantity]) => "" !== quantity.trim() && Number(quantity) > 0)
@@ -3165,7 +3031,7 @@ export function ProductForm({
         id="product-form"
         ref={formRef}
         action={product ? action : undefined}
-        onSubmit={product ? undefined : handleCreateSubmit}
+        onSubmit={product ? handleEditSubmit : handleCreateSubmit}
         className={`space-y-6 ${product ? "p-4 sm:p-6" : ""} ${product && tab !== "details" ? "hidden" : ""}`}
       >
         {product ? <input type="hidden" name="id" value={product.id} /> : null}
@@ -3267,7 +3133,7 @@ export function ProductForm({
                 ) : defaultVariant ? (
                   <VariantPhotoGallery variantId={defaultVariant.id} />
                 ) : (
-                  <p className="text-body text-ink-muted">Loading…</p>
+                  <ProductBlockSkeleton />
                 )}
               </div>
             </FormSection>
@@ -3404,7 +3270,7 @@ export function ProductForm({
                     </Field>
                   </>
                 ) : (
-                  <p className="text-body text-ink-muted sm:col-span-2">Loading…</p>
+                  <ProductBlockSkeleton className="sm:col-span-2" />
                 )}
 
                 <div className="sm:col-span-2 border-t border-border pt-4">
@@ -3430,7 +3296,7 @@ export function ProductForm({
                 ) : defaultVariant ? (
                   <StockByLocationEditTable productId={product.id} variantId={defaultVariant.id} />
                 ) : (
-                  <p className="text-body text-ink-muted sm:col-span-2">Loading…</p>
+                  <ProductBlockSkeleton className="sm:col-span-2" />
                 )}
                 </div>
               </FormSection>
@@ -3483,6 +3349,26 @@ export function ProductForm({
                 </Field>
               </div>
               <div className="sm:col-span-2 space-y-2 border-t border-border pt-4">
+                {product && variantsQuery.isPending ? (
+                  <ProductBlockSkeleton />
+                ) : isSingleProductUi ? (
+                  <label className="flex min-h-11 cursor-pointer items-start gap-2 rounded-sm border border-border bg-surface px-3 py-2.5">
+                    <input type="hidden" name="is_active_field" value="1" />
+                    <input
+                      type="checkbox"
+                      name="is_active"
+                      checked={productIsActive}
+                      onChange={(event) => setProductIsActive(event.target.checked)}
+                      className="mt-0.5 h-4 w-4 accent-primary"
+                    />
+                    <span>
+                      <span className="block text-body">Show on terminals</span>
+                      <span className="block text-caption text-ink-muted">
+                        Hidden products stay in admin but stop appearing on POS after the next sync.
+                      </span>
+                    </span>
+                  </label>
+                ) : null}
                 <label className="flex min-h-11 cursor-pointer items-start gap-2 rounded-sm border border-border bg-surface px-3 py-2.5">
                   <input
                     type="checkbox"
@@ -3623,46 +3509,23 @@ export function ProductForm({
                     <VariantSupplierLinksEditor productId={product.id} variant={defaultVariant} />
                   </div>
                 ) : (
-                  <p className="text-body text-ink-muted sm:col-span-2">Loading…</p>
+                  <ProductBlockSkeleton className="sm:col-span-2" />
                 )}
               </FormSection>
             ) : null}
 
-            {product || "single" === productKind ? (
+            {isSingleProductUi ? (
               <FormSection
                 title="Bundle"
                 description="A set of other products sold and stocked as one item, e.g. a starter kit."
               >
-                <div className="sm:col-span-2">
-                  <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-sm border border-border bg-surface px-3">
-                    <input
-                      type="checkbox"
-                      name="is_bundle"
-                      checked={isBundle}
-                      onChange={(event) => setIsBundle(event.target.checked)}
-                      className="h-4 w-4 accent-primary"
-                    />
-                    <span className="text-body">
-                      This is a bundle assembled from other products
-                    </span>
-                  </label>
-                </div>
-                {isBundle ? (
-                  <BundleItemsEditor
-                    rows={bundleRows}
-                    onChange={setBundleRows}
-                    excludeProductId={product?.id}
-                  />
-                ) : (
-                  <p className="flex items-start gap-2 text-caption text-ink-muted sm:col-span-2">
-                    <Info size={14} className="mt-0.5 shrink-0" />
-                    <span>
-                      Its own price and stock, same as any product. Turn this on to
-                      define which products (and how many of each) it&apos;s made
-                      from.
-                    </span>
-                  </p>
-                )}
+                <BundleFields
+                  isBundle={isBundle}
+                  onIsBundleChange={setIsBundle}
+                  rows={bundleRows}
+                  onRowsChange={setBundleRows}
+                  excludeProductId={product?.id}
+                />
               </FormSection>
             ) : null}
           </div>
@@ -3683,15 +3546,15 @@ export function ProductForm({
         ) : null}
 
         {state.error ? <ErrorNote>{state.error}</ErrorNote> : null}
-        {product?.isBundle && tab === "details" ? (
+        {product?.isBundle && isSingleProductUi && tab === "details" ? (
           <AssembleBundleSection product={product} />
         ) : null}
         </form>
         {product && tab === "variants" ? (
           <ProductAttributesAndVariantsSection
             product={product}
-            pendingSignalSuggestion={pendingSignalSuggestion}
-            onSignalSuggestionHandled={() => setPendingSignalSuggestion(null)}
+            showActiveToggle={!isSingleProductUi}
+            showBundleSection={!isSingleProductUi}
             initialAttributesExpanded={"1" === searchParams.get("expand_attributes")}
             bare
           />
@@ -3734,24 +3597,29 @@ export function ProductForm({
       </div>
 
       <Dialog
-        open={Boolean(suggestion)}
-        onClose={onNameSignalNo}
-        title="This looks like it could be an attribute"
-        description={
-          suggestion?.matchedText
-            ? `We noticed "${suggestion.matchedText}" in the product name — this looks like a spec that varies, like different ${suggestion.suggestedAttributeName ?? "options"} of the same item.`
-            : undefined
-        }
+        open={saveConfirmOpen}
+        onClose={() => setSaveConfirmOpen(false)}
+        title="Save these changes?"
+        description="Review what will update on this product before confirming."
       >
-        <p className="text-body text-ink-muted">
-          Want to set this up as an attribute so you can add more options later?
-        </p>
+        <ul className="max-h-72 space-y-2 overflow-y-auto rounded-sm border border-border bg-paper px-3 py-2">
+          {pendingSaveChanges.map((change) => (
+            <li key={change.label} className="border-b border-border py-2 last:border-b-0">
+              <p className="text-caption font-medium text-ink-muted">{change.label}</p>
+              <p className="mt-0.5 text-body text-ink">
+                <span className="text-ink-muted line-through">{change.before}</span>
+                <span className="mx-1.5 text-ink-muted">→</span>
+                <span className="font-medium">{change.after}</span>
+              </p>
+            </li>
+          ))}
+        </ul>
         <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button type="button" variant="secondary" onClick={onNameSignalNo}>
-            No, keep as regular text
+          <Button type="button" variant="secondary" icon={X} onClick={() => setSaveConfirmOpen(false)}>
+            Cancel
           </Button>
-          <Button type="button" onClick={onNameSignalYes}>
-            Yes, set up as attribute
+          <Button type="button" icon={Check} onClick={confirmSaveChanges}>
+            Save changes
           </Button>
         </div>
       </Dialog>

@@ -49,6 +49,14 @@ import { ConfirmDialog, Dialog, Sheet } from "@/components/overlay";
 import { BarcodeScanCamera, canUseBarcodeScanner } from "@/components/barcode-scan-camera";
 import { VariantPhotoGallery } from "./variant-photo-gallery";
 import {
+  AssembleBundleSection,
+  BundleFields,
+  bundleRowsFromProduct,
+  persistBundleRows,
+  type BundleRow,
+} from "./product-bundle-section";
+import { useSetBundleItems } from "@/lib/query/products";
+import {
   useAddProductVariantSupplier,
   useAttachProductAttribute,
   useCompanyAttributes,
@@ -61,7 +69,6 @@ import {
   useGenerateProductVariants,
   useProductAttributes,
   useProductVariants,
-  useQuickCreateAttributeAndGenerateVariants,
   useRemoveProductVariantSupplier,
   useUpdateProductVariant,
   useUpdateProductVariantSupplier,
@@ -73,6 +80,7 @@ import { useSuppliers } from "@/lib/query/suppliers";
 import { useCreateUnit, useUnits } from "@/lib/query/units";
 import { useSkuAvailability } from "@/lib/use-sku-check";
 import { isImageFile, NOT_AN_IMAGE_MESSAGE } from "@/lib/is-image-file";
+import { ProductTabSkeleton } from "./product-form-skeletons";
 
 function errorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiError && error.isValidation) {
@@ -990,16 +998,23 @@ function VariantStockPlanningFields({
 function VariantDetailPanel({
   productId,
   productName,
+  product,
   variant,
+  showActiveToggle = true,
+  showBundleSection = false,
   onDeleted,
 }: {
   productId: string;
   productName: string;
+  product: Product;
   variant: ProductVariant;
+  showActiveToggle?: boolean;
+  showBundleSection?: boolean;
   onDeleted?: () => void;
 }) {
   const update = useUpdateProductVariant(productId);
   const remove = useDeleteProductVariant(productId);
+  const setBundleItems = useSetBundleItems();
   const unitsQuery = useUnits();
   const [addingUnit, setAddingUnit] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -1016,6 +1031,9 @@ function VariantDetailPanel({
   const [marginValue, setMarginValue] = useState(
     variant.marginValue !== null ? String(variant.marginValue) : "",
   );
+  const [isActive, setIsActive] = useState(variant.isActive);
+  const [isBundle, setIsBundle] = useState(variant.isBundle);
+  const [bundleRows, setBundleRows] = useState<BundleRow[]>(() => bundleRowsFromProduct(product));
 
   const parsedPrice = Number(price);
   const parsedReorderPoint = Number(reorderPoint);
@@ -1031,7 +1049,21 @@ function VariantDetailPanel({
     parsedReorderPoint !== variant.reorderPoint ||
     parsedReplenishQuantity !== variant.replenishQuantity ||
     marginType !== variant.marginType ||
-    parsedMarginValue !== variant.marginValue;
+    parsedMarginValue !== variant.marginValue ||
+    (showActiveToggle && isActive !== variant.isActive) ||
+    (showBundleSection && isBundle !== variant.isBundle) ||
+    (showBundleSection &&
+      JSON.stringify(
+        bundleRows
+          .filter((row) => row.productId)
+          .map((row) => ({ productId: row.productId, quantity: Number(row.quantity) })),
+      ) !==
+        JSON.stringify(
+          (product.bundleItems ?? []).map((item) => ({
+            productId: item.productId,
+            quantity: Number(item.quantity),
+          })),
+        ));
 
   function onUpdate() {
     if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
@@ -1063,9 +1095,31 @@ function VariantDetailPanel({
         replenishQuantity: parsedReplenishQuantity,
         marginType,
         marginValue: parsedMarginValue,
+        ...(showActiveToggle ? { isActive } : {}),
+        ...(showBundleSection ? { isBundle } : {}),
       },
       {
-        onSuccess: () => toast.success("Variant updated."),
+        onSuccess: async () => {
+          if (showBundleSection) {
+            // Recipe is product-scoped — only write when this SKU is a kit,
+            // or when clearing after turning kit off. Never wipe siblings'
+            // shared recipe on a price-only save of a non-kit variant.
+            const shouldWriteRecipe = isBundle || variant.isBundle;
+            if (shouldWriteRecipe) {
+              try {
+                await persistBundleRows(setBundleItems, productId, isBundle, bundleRows);
+              } catch (error) {
+                toast.error(
+                  error instanceof Error
+                    ? error.message
+                    : "Variant saved, but the bundle recipe could not be saved.",
+                );
+                return;
+              }
+            }
+          }
+          toast.success("Variant updated.");
+        },
         onError: (error) => toast.error(errorMessage(error, "Could not save this variant.")),
       },
     );
@@ -1092,7 +1146,7 @@ function VariantDetailPanel({
   const label = variant.isDefault ? productName : `${productName} — ${combo}`;
 
   return (
-    <div className={variant.isActive ? undefined : "opacity-70"}>
+    <div className={isActive ? undefined : "opacity-70"}>
       <div className="flex w-full min-w-0 items-center gap-3 pb-3">
         <div className="min-w-0 flex-1">
           <p className="truncate text-body font-medium text-ink">{label}</p>
@@ -1102,10 +1156,40 @@ function VariantDetailPanel({
         </div>
         <Money value={variant.price} className="shrink-0 text-body font-semibold" />
         {variant.isDefault ? <Badge tone="success">Default</Badge> : null}
-        {!variant.isActive ? <Badge tone="neutral">Inactive</Badge> : null}
+        {!isActive ? <Badge tone="neutral">Hidden</Badge> : null}
       </div>
 
       <div className="space-y-4 border-t border-border pt-4">
+        {showActiveToggle ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-sm border border-border bg-paper px-3 py-2.5">
+            <div>
+              <p className="text-body font-medium text-ink">Show on terminals</p>
+              <p className="text-caption text-ink-muted">
+                Hidden variants stay in admin but stop appearing on POS after the next sync.
+              </p>
+            </div>
+            <label className="flex cursor-pointer items-center gap-2">
+              <span className="text-caption font-medium text-ink-muted">{isActive ? "Shown" : "Hidden"}</span>
+              <span className="relative inline-flex h-6 w-11 shrink-0 items-center">
+                <input
+                  type="checkbox"
+                  checked={isActive}
+                  onChange={(event) => setIsActive(event.target.checked)}
+                  className="peer sr-only"
+                />
+                <span
+                  className={`absolute inset-0 rounded-full transition-colors ${isActive ? "bg-primary" : "bg-border"}`}
+                />
+                <span
+                  className={`relative size-5 translate-x-0.5 rounded-full bg-white shadow transition-transform ${
+                    isActive ? "translate-x-[22px]" : ""
+                  }`}
+                />
+              </span>
+            </label>
+          </div>
+        ) : null}
+
         <VariantPhotoField productId={productId} variant={variant} />
 
           <div className={HALF_ROW}>
@@ -1214,6 +1298,27 @@ function VariantDetailPanel({
               onUsePrice={(suggested) => setPrice(String(suggested))}
             />
           </div>
+
+          {showBundleSection ? (
+            <div className="space-y-3 border-t border-border pt-4">
+              <div>
+                <p className="text-body font-medium text-ink">Bundle</p>
+                <p className="text-caption text-ink-muted">
+                  Kit flag for this SKU. Recipe is shared on the product.
+                </p>
+              </div>
+              <BundleFields
+                isBundle={isBundle}
+                onIsBundleChange={setIsBundle}
+                rows={bundleRows}
+                onRowsChange={setBundleRows}
+                excludeProductId={productId}
+                checkboxName={`is_bundle__${variant.id}`}
+                includeFormSentinel={false}
+              />
+              {isBundle ? <AssembleBundleSection product={product} /> : null}
+            </div>
+          ) : null}
 
           <div className="sticky bottom-0 -mx-5 -mb-5 flex shrink-0 items-center justify-end gap-2 border-t border-border bg-surface px-5 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
             <Button
@@ -1426,129 +1531,18 @@ function GenerateVariantsForm({ productId, attributes }: { productId: string; at
   );
 }
 
-/**
- * "Yes, set up as attribute" on the variant-signal popup lands here —
- * unlike the rest of this page, nothing here autosaves. Attribute name and
- * values are edited purely in local state; the attribute, its values, the
- * attach, and the generated variants are all only written once "Generate
- * Variants" is clicked (see QuickCreateAttributeAndGenerateVariantsAction
- * — the first value reuses the existing default variant's SKU/price/stock
- * instead of starting blank).
- */
-function NewAttributeFromSignalWizard({
-  productId,
-  suggestion,
-  onDone,
-}: {
-  productId: string;
-  suggestion: { attributeName: string; matchedText: string };
-  onDone: () => void;
-}) {
-  const [attributeName, setAttributeName] = useState(suggestion.attributeName);
-  const [values, setValues] = useState<string[]>(suggestion.matchedText ? [suggestion.matchedText] : []);
-  const [newValue, setNewValue] = useState("");
-  const generate = useQuickCreateAttributeAndGenerateVariants(productId);
-
-  function addValue() {
-    const trimmed = newValue.trim();
-    if (!trimmed || values.includes(trimmed)) return;
-    setValues((current) => [...current, trimmed]);
-    setNewValue("");
-  }
-
-  function removeValue(value: string) {
-    setValues((current) => current.filter((entry) => entry !== value));
-  }
-
-  function onGenerate() {
-    const trimmedName = attributeName.trim();
-    if (!trimmedName || values.length === 0) return;
-    generate.mutate(
-      { attributeName: trimmedName, values },
-      {
-        onSuccess: (created) => {
-          toast.success(`Created ${created.length} variant${created.length === 1 ? "" : "s"}.`);
-          onDone();
-        },
-        onError: (error) => toast.error(errorMessage(error, "Could not generate variants.")),
-      },
-    );
-  }
-
-  return (
-    <div className="space-y-4 rounded-md border border-dashed border-primary/40 bg-primary-tint p-4">
-      <div className="flex items-center gap-1.5 text-body font-medium text-ink">
-        <Sparkles size={16} className="text-primary" />
-        Set up as an attribute
-      </div>
-
-      <Field label="Attribute name">
-        <Input
-          value={attributeName}
-          onChange={(event) => setAttributeName(event.target.value)}
-          placeholder="e.g. Size"
-        />
-      </Field>
-
-      <Field label="Values" hint="Press Enter or the plus button to add another.">
-        <div className="flex flex-wrap items-center gap-1.5">
-          {values.map((value) => (
-            <AttributeValueBadge key={value} value={{ id: value, value }} onRemove={() => removeValue(value)} />
-          ))}
-          <span className="inline-flex shrink-0 items-center gap-1.5">
-            <Input
-              value={newValue}
-              onChange={(event) => setNewValue(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  addValue();
-                }
-              }}
-              placeholder="Add value…"
-              className="h-7 w-28 text-caption sm:h-7"
-            />
-            <IconButton
-              icon={Plus}
-              label="Add value"
-              onClick={addValue}
-              disabled={!newValue.trim()}
-              className="size-7 sm:size-7"
-            />
-          </span>
-        </div>
-      </Field>
-
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Button type="button" variant="secondary" onClick={onDone} disabled={generate.isPending}>
-          Cancel
-        </Button>
-        <Button
-          type="button"
-          icon={Layers}
-          loading={generate.isPending}
-          disabled={!attributeName.trim() || values.length === 0}
-          onClick={onGenerate}
-        >
-          Generate Variants
-        </Button>
-      </div>
-      <GeneratingVariantsDialog open={generate.isPending} />
-    </div>
-  );
-}
-
 export function ProductAttributesAndVariantsSection({
   product,
-  pendingSignalSuggestion,
-  onSignalSuggestionHandled,
+  showActiveToggle = true,
+  showBundleSection = false,
   initialAttributesExpanded,
   bare = false,
 }: {
   product: Product;
-  /** Set when the merchant clicked "Yes" on the variant-signal popup — create+attach this attribute once, then clear it. */
-  pendingSignalSuggestion?: { attributeName: string; matchedText: string } | null;
-  onSignalSuggestionHandled?: () => void;
+  /** False for single-SKU products — Details tab owns show-on-terminals. */
+  showActiveToggle?: boolean;
+  /** Multi-SKU — Bundle lives on each variant panel, not Details. */
+  showBundleSection?: boolean;
   /** Landed here via "Product With Variants" on create (?expand_attributes=1) — open straight to the picker. */
   initialAttributesExpanded?: boolean;
   /** true = no Card/CardHeader wrapper (already inside a bordered tab panel). */
@@ -1563,7 +1557,7 @@ export function ProductAttributesAndVariantsSection({
   const [attributesExpanded, setAttributesExpanded] = useState(initialAttributesExpanded ?? false);
   // Undecided = the banner below asking whether this is heading toward
   // variants at all. Landing here already expanded (Product With Variants
-  // create flow, or the name-signal "yes") means that's already decided.
+  // create flow) means that's already decided.
   const [variantIntent, setVariantIntent] = useState<"undecided" | "no" | "yes">(
     initialAttributesExpanded ? "yes" : "undecided",
   );
@@ -1581,6 +1575,8 @@ export function ProductAttributesAndVariantsSection({
   const allVariants = variantsQuery.data ?? [];
   const defaultVariant = allVariants.find((v) => v.isDefault);
   const viewingVariant = viewing ? allVariants.find((v) => v.id === viewing.variantId) : undefined;
+  const sectionPending =
+    allAttributesQuery.isPending || attachedQuery.isPending || variantsQuery.isPending;
 
   function variantLabel(variant: ProductVariant): string {
     const combo = variant.attributeValues.map((v) => v.value).filter(Boolean).join(" / ") || "—";
@@ -1634,18 +1630,9 @@ export function ProductAttributesAndVariantsSection({
     );
   }
 
-  // "Yes, set up as attribute" on the variant-signal popup lands here —
-  // just keep the section open. NewAttributeFromSignalWizard (rendered
-  // below, in place of the simple-product branch) owns everything from
-  // here — nothing is written until its own "Generate Variants" click.
-  useEffect(() => {
-    if (pendingSignalSuggestion) {
-      setAttributesExpanded(true);
-      setVariantIntent("yes");
-    }
-  }, [pendingSignalSuggestion]);
-
-  const body = (
+  const body = sectionPending ? (
+    <ProductTabSkeleton sections={3} />
+  ) : (
     <>
       <CardBody className="space-y-4">
         {attached.length > 0 || "yes" === variantIntent ? (
@@ -1714,14 +1701,6 @@ export function ProductAttributesAndVariantsSection({
               ))}
             </div>
           ) : null
-        ) : pendingSignalSuggestion ? (
-          <div className="border-t border-border pt-4">
-            <NewAttributeFromSignalWizard
-              productId={product.id}
-              suggestion={pendingSignalSuggestion}
-              onDone={() => onSignalSuggestionHandled?.()}
-            />
-          </div>
         ) : "undecided" === variantIntent ? (
           <div className="border-t border-border pt-4">
             <div className="flex flex-col items-center gap-3 rounded-md border border-primary/30 bg-primary-tint px-6 py-8 text-center">
@@ -1843,7 +1822,8 @@ export function ProductAttributesAndVariantsSection({
                           <span className="flex items-center gap-1.5">
                             {variantLabel(variant)}
                             {variant.isDefault ? <Badge tone="success">Default</Badge> : null}
-                            {!variant.isActive ? <Badge tone="neutral">Inactive</Badge> : null}
+                            {variant.isBundle ? <Badge tone="neutral">Bundle</Badge> : null}
+                            {!variant.isActive ? <Badge tone="neutral">Hidden</Badge> : null}
                           </span>
                         </Td>
                         <Td className="whitespace-nowrap text-ink-muted">{variant.sku ?? "—"}</Td>
@@ -1885,7 +1865,10 @@ export function ProductAttributesAndVariantsSection({
             key={viewingVariant.id}
             productId={product.id}
             productName={product.name}
+            product={product}
             variant={viewingVariant}
+            showActiveToggle={showActiveToggle}
+            showBundleSection={showBundleSection}
             onDeleted={() => setViewing(null)}
           />
         ) : null}

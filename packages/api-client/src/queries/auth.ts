@@ -64,6 +64,26 @@ export async function me(client: ApiClient): Promise<User> {
   return toUser(data);
 }
 
+export interface ConfirmPinResult {
+  verified: boolean;
+  hasPin: boolean;
+}
+
+/**
+ * Soft-lock re-entry for an already-authenticated session (admin web).
+ * Verifies the caller's own PIN — does not mint a token. Distinct from
+ * POS `verifyCashierPin`, which unlocks a cashier on a device session.
+ */
+export async function confirmPin(client: ApiClient, pin: string): Promise<ConfirmPinResult> {
+  const result = await client.post<{ verified: boolean; has_pin: boolean }>("/auth/confirm-pin", {
+    pin,
+  });
+  return {
+    verified: result.verified,
+    hasPin: result.has_pin,
+  };
+}
+
 /** Revokes only the current token (the one `client` is authenticated with) — not every session. */
 export async function logout(client: ApiClient): Promise<void> {
   await client.post<void>("/auth/logout");

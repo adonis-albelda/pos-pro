@@ -19,6 +19,7 @@ import { useCategories } from "@/lib/query/categories";
 import { useProduct } from "@/lib/query/products";
 import { useProductVariants } from "@/lib/query/attributes";
 import { ProductForm } from "../product-form";
+import { ProductPageSkeleton } from "../product-form-skeletons";
 
 export default function EditProductPage() {
   const { id } = useParams<{ id: string }>();
@@ -28,7 +29,7 @@ export default function EditProductPage() {
 
   const pending = productQuery.isPending || categoriesQuery.isPending;
   if (pending) {
-    return <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>;
+    return <ProductPageSkeleton withStats />;
   }
 
   const error = productQuery.error ?? categoriesQuery.error;

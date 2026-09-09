@@ -9,6 +9,7 @@ import {
   useUploadVariantPhoto,
   useVariantPhotos,
 } from "@/lib/query/attributes";
+import { Skeleton } from "@/components/ui";
 
 function AddPhotosTile({ onPick }: { onPick: (files: FileList | null) => void }) {
   return (
@@ -74,6 +75,14 @@ export function VariantPhotoGallery({ variantId }: { variantId: string }) {
 
   return (
     <div className="flex flex-wrap gap-3">
+      {photosQuery.isPending ? (
+        <>
+          <Skeleton className="size-24 shrink-0 rounded-md" />
+          <Skeleton className="size-24 shrink-0 rounded-md" />
+          <Skeleton className="size-24 shrink-0 rounded-md" />
+        </>
+      ) : (
+        <>
       {photos.map((photo, index) => (
         <div
           key={photo.id}
@@ -131,7 +140,9 @@ export function VariantPhotoGallery({ variantId }: { variantId: string }) {
           </div>
         </div>
       ))}
-      <AddPhotosTile onPick={onPick} />
+          <AddPhotosTile onPick={onPick} />
+        </>
+      )}
     </div>
   );
 }

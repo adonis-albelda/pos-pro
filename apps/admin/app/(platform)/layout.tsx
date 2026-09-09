@@ -2,7 +2,9 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { DEFAULT_STORE_SETTINGS } from "@double-a/shared-types";
 import { PlatformShell } from "@/components/platform-shell";
+import { SessionLockProvider } from "@/components/session-lock-provider";
 import { hasBrowserSession } from "@/lib/api/browser-client";
 import { isSuperadmin } from "@/lib/authz";
 import { useCurrentUser } from "@/lib/query/session";
@@ -47,12 +49,14 @@ export default function PlatformLayout({
     .join("");
 
   return (
-    <PlatformShell
-      userName={user.name ?? null}
-      userEmail={user.email ?? null}
-      initials={initials}
-    >
-      {children}
-    </PlatformShell>
+    <SessionLockProvider idleTimeoutMinutes={DEFAULT_STORE_SETTINGS.idleTimeoutMinutes}>
+      <PlatformShell
+        userName={user.name ?? null}
+        userEmail={user.email ?? null}
+        initials={initials}
+      >
+        {children}
+      </PlatformShell>
+    </SessionLockProvider>
   );
 }

@@ -52,7 +52,7 @@ import { useCurrentUser } from "@/lib/query/session";
 import { useCreateGoodsReceipt, useExtractGoodsReceiptPhoto } from "@/lib/query/goods-receipts";
 import { useCategories, useCreateCategory } from "@/lib/query/categories";
 import { toCategoryOptions } from "@/lib/category-options";
-import { listProductsByIds, listProductsPage } from "@double-a/api-client/queries";
+import { listProductsByIds, listProductsPage, type ProductVariantListRow } from "@double-a/api-client/queries";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 import { CropPhoto } from "../products/from-photo/crop-photo";
 import {
@@ -68,6 +68,7 @@ import {
   type ReceivingDraft,
 } from "./receiving-draft";
 import { ReceivingLineAccordion } from "./receiving-line-accordion";
+import { variantListLabel } from "./match-product-combobox";
 import {
   allRowsResolved,
   applyExtractedSupplierName,
@@ -481,6 +482,9 @@ export function ReceivingForm({
   // Match picker loads pages on demand (infinite scroll). Keep matched/picked
   // rows in a local map for stock, price, and preview lookups.
   const [pickedProducts, setPickedProducts] = useState<Map<string, Product>>(() => new Map());
+  const [pickedVariants, setPickedVariants] = useState<Map<string, ProductVariantListRow>>(
+    () => new Map(),
+  );
 
   const matchedProductIds = useMemo(
     () => [...new Set(rows.map((row) => row.productId).filter((id): id is string => Boolean(id)))],
@@ -617,34 +621,30 @@ export function ReceivingForm({
   }
 
   /**
-   * Links a catalogue product for pricing — doesn't overwrite an existing
+   * Links a catalogue variant for pricing — doesn't overwrite an existing
    * `name`, which stays the receipt's own reference text (what the paper
    * actually said, editable independently of the match). Only fills it in
    * when a manually-added line hasn't been typed into yet.
    */
-  function pickProductForRow(key: string, product: Product) {
-    setPickedProducts((previous) => new Map(previous).set(product.id, product));
+  function pickVariantForRow(key: string, variant: ProductVariantListRow) {
+    const label = variantListLabel(variant);
+    setPickedVariants((previous) => new Map(previous).set(variant.id, variant));
     const row = rows.find((r) => r.key === key);
     const unitCost = Number(row?.unitCost) || 0;
     const priorReceipt =
       row?.receiptSupplierSku.trim() || (!row?.productId ? row?.sku.trim() : "") || "";
     updateRow(key, {
-      productId: product.id,
-      name: row?.name.trim() ? row.name : product.name,
-      sku: product.sku ?? "",
-      receiptSupplierSku: receiptSupplierSkuAfterMatch(
-        priorReceipt,
-        product,
-        "internal",
-        effectiveSupplierId,
-        priorReceipt || undefined,
-      ),
+      productId: variant.productId,
+      variantId: variant.id,
+      name: row?.name.trim() ? row.name : label,
+      sku: variant.sku ?? "",
+      receiptSupplierSku: priorReceipt,
       matchedBy: "internal",
-      existingPrice: product.price,
-      existingCostPrice: product.costPrice,
-      appliedPrice: String(suggestPrice(unitCost, product.price, product.costPrice)),
-      categoryId: product.categoryId ?? row?.categoryId ?? null,
-      categoryHint: product.category ?? row?.categoryHint ?? "",
+      existingPrice: variant.price,
+      existingCostPrice: variant.costPrice,
+      appliedPrice: String(suggestPrice(unitCost, variant.price, variant.costPrice)),
+      categoryId: variant.productCategoryId ?? row?.categoryId ?? null,
+      categoryHint: variant.productCategory ?? row?.categoryHint ?? "",
     });
   }
 
@@ -652,6 +652,7 @@ export function ReceivingForm({
     const row = rows.find((r) => r.key === key);
     updateRow(key, {
       productId: null,
+      variantId: null,
       matchedBy: null,
       existingPrice: null,
       existingCostPrice: null,
@@ -660,10 +661,10 @@ export function ReceivingForm({
     });
   }
 
-  function excludeMatchProductIds(currentKey: string): string[] {
+  function excludeMatchVariantIds(currentKey: string): string[] {
     return rows
-      .filter((row) => row.key !== currentKey && row.productId)
-      .map((row) => row.productId as string);
+      .filter((row) => row.key !== currentKey && row.variantId)
+      .map((row) => row.variantId as string);
   }
 
   async function fetchMatchProductPool(): Promise<Product[]> {
@@ -1687,6 +1688,7 @@ export function ReceivingForm({
             <div className="space-y-3 px-4 pb-4 sm:px-6">
               {rows.map((row, index) => {
                 const product = row.productId ? productsById.get(row.productId) : undefined;
+                const variant = row.variantId ? pickedVariants.get(row.variantId) : undefined;
                 return (
                   <ReceivingLineAccordion
                     key={row.key}
@@ -1700,14 +1702,15 @@ export function ReceivingForm({
                     supplierId={effectiveSupplierId}
                     supplierName={supplierLabel === "—" ? "" : supplierLabel}
                     matchedProduct={product}
-                    currentStock={product?.stockQuantity ?? null}
+                    matchedVariantLabel={variant ? variantListLabel(variant) : undefined}
+                    currentStock={variant?.stockQuantity ?? product?.stockQuantity ?? null}
                     matchLocationId={locationId || undefined}
-                    excludeMatchProductIds={excludeMatchProductIds(row.key)}
+                    excludeMatchVariantIds={excludeMatchVariantIds(row.key)}
                     categoryOptions={categoryOptions}
                     creatingCategory={createCategoryMutation.isPending}
                     onCreateCategory={(name) => void createCategoryForRow(row.key, name)}
                     onUpdate={(patch) => updateRow(row.key, patch)}
-                    onPickProduct={(picked) => pickProductForRow(row.key, picked)}
+                    onPickVariant={(picked) => pickVariantForRow(row.key, picked)}
                     onClearProduct={() => clearProductForRow(row.key)}
                     onResolve={() => resolveOneRow(row.key)}
                     onToggleExcluded={() => toggleRowExcluded(row.key)}

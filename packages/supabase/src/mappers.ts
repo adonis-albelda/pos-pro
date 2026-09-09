@@ -115,8 +115,13 @@ export function toUser(row: UserRowSubset): User {
     isActive: row.is_active,
     canSell: row.can_sell,
     mustChangePassword: row.must_change_password,
+    mustEnrollMfa: false,
+    isDemo: false,
+    hasPin: false,
     companyId: row.company_id ?? null,
+    locationId: null,
     companyIsActive: row.company_is_active ?? true,
+    emailVerifiedAt: null,
     updatedAt: row.updated_at,
   };
 }

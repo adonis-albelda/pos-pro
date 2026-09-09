@@ -3,10 +3,20 @@
 import { useState } from "react";
 import type { Route } from "next";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { ChevronRight, ClipboardList, Plus, SlidersHorizontal } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import {
+  CheckCircle2,
+  ChevronRight,
+  ClipboardList,
+  FilePenLine,
+  PackageOpen,
+  Plus,
+  SlidersHorizontal,
+  Wallet,
+} from "lucide-react";
 import type { PurchaseOrderStatus, Supplier } from "@double-a/shared-types";
 import {
+  formatMoney,
   PURCHASE_ORDER_STATUS_LABELS,
   poItemReceiveState,
   purchaseOrderBalance,
@@ -14,12 +24,24 @@ import {
 import type { PurchaseOrderWithLines } from "@double-a/api-client/queries";
 import { isInitialQueryLoad, matchesQuery, paginateItems, parseListQuery } from "@/lib/list-query";
 import { PO_STATUS_TONE } from "@/lib/purchase-order-status";
-import { Badge, Button, ButtonLink, Card, CardHeader, EmptyState, Money, Table, Td, Th } from "@/components/ui";
+import {
+  Badge,
+  Button,
+  ButtonLink,
+  Card,
+  CardHeader,
+  EmptyState,
+  Money,
+  StatCard,
+  Table,
+  Td,
+  Th,
+} from "@/components/ui";
 import { Dialog } from "@/components/overlay";
 import { Pagination, SearchField } from "@/components/record-list";
 import { useLocationMutationsLocked } from "@/components/location-mutations-banner";
 import { PurchaseOrdersFilters } from "./purchase-orders-filters";
-import { usePurchaseOrders } from "@/lib/query/purchase-orders";
+import { usePurchaseOrders, usePurchaseOrderStats } from "@/lib/query/purchase-orders";
 import { useSuppliers } from "@/lib/query/suppliers";
 
 function FiltersButton({ suppliers, active }: { suppliers: Supplier[]; active: boolean }) {
@@ -38,7 +60,21 @@ function FiltersButton({ suppliers, active }: { suppliers: Supplier[]; active: b
   );
 }
 
+function buildListHref(params: {
+  q?: string;
+  supplierId?: string;
+  status?: PurchaseOrderStatus;
+}): Route {
+  const search = new URLSearchParams();
+  if (params.q) search.set("q", params.q);
+  if (params.supplierId) search.set("supplierId", params.supplierId);
+  if (params.status) search.set("status", params.status);
+  const qs = search.toString();
+  return (qs ? `/purchase-orders?${qs}` : "/purchase-orders") as Route;
+}
+
 export function PurchaseOrdersPageClient() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { q, page } = parseListQuery({
     q: searchParams.get("q") ?? undefined,
@@ -50,9 +86,46 @@ export function PurchaseOrdersPageClient() {
   // One PO list request (+ suppliers for name join / filters). No catalogue walk.
   const ordersQuery = usePurchaseOrders({ supplierId, status });
   const suppliersQuery = useSuppliers({ includeInactive: true });
+  const statsQuery = usePurchaseOrderStats();
 
   return (
     <div className="space-y-6">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          icon={PackageOpen}
+          label="Open"
+          value={statsQuery.data ? String(statsQuery.data.open) : "—"}
+          hint="Ordered or partially received"
+          tone={statsQuery.data && statsQuery.data.open > 0 ? "warning" : "neutral"}
+          loading={statsQuery.isPending}
+        />
+        <StatCard
+          icon={FilePenLine}
+          label="Draft"
+          value={statsQuery.data ? String(statsQuery.data.draft) : "—"}
+          hint="Not sent to supplier yet"
+          loading={statsQuery.isPending}
+          onClick={() => router.push(buildListHref({ q, supplierId, status: "draft" }))}
+        />
+        <StatCard
+          icon={CheckCircle2}
+          label="Received"
+          value={statsQuery.data ? String(statsQuery.data.received) : "—"}
+          hint="Fully received"
+          tone={statsQuery.data && statsQuery.data.received > 0 ? "success" : "neutral"}
+          loading={statsQuery.isPending}
+          onClick={() => router.push(buildListHref({ q, supplierId, status: "received" }))}
+        />
+        <StatCard
+          icon={Wallet}
+          label="Balance due"
+          value={statsQuery.data ? formatMoney(statsQuery.data.balanceDue) : "—"}
+          hint="Unpaid supplier installments"
+          tone={statsQuery.data && statsQuery.data.balanceDue > 0 ? "danger" : "success"}
+          loading={statsQuery.isPending}
+        />
+      </div>
+
       {isInitialQueryLoad(ordersQuery.isPending, Boolean(ordersQuery.data)) ||
       suppliersQuery.isPending ? (
         <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>
@@ -158,7 +231,11 @@ function PurchaseOrdersBody({
             }
             action={
               !q ? (
-                <ButtonLink href={mutationsLocked ? "/purchase-orders" : "/purchase-orders/new"} className={mutationsLocked ? "pointer-events-none opacity-40" : undefined} aria-disabled={mutationsLocked || undefined}>
+                <ButtonLink
+                  href={mutationsLocked ? "/purchase-orders" : "/purchase-orders/new"}
+                  className={mutationsLocked ? "pointer-events-none opacity-40" : undefined}
+                  aria-disabled={mutationsLocked || undefined}
+                >
                   New purchase order
                 </ButtonLink>
               ) : undefined

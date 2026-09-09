@@ -59,6 +59,12 @@
 
   /** Login brand tagline — replays on every rotation, remounted via key={index}. */
   --animate-tagline-in: tagline-in 500ms ease-out both;
+
+  /** Sidebar nav — mount cascade (left→right). Delay set inline per row. */
+  --animate-nav-slide-in: nav-slide-in 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
+
+  /** Sidebar nav — scroll into view (bottom→top). */
+  --animate-nav-slide-up: nav-slide-up 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @keyframes page-enter {
@@ -132,6 +138,30 @@
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+@keyframes nav-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(-14px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes nav-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 

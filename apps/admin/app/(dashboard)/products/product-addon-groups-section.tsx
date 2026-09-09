@@ -14,6 +14,7 @@ import {
   useUnlinkProductAddonGroup,
 } from "@/lib/query/addon-groups";
 import { AddItemForm, AddonGroupItemsList } from "../addon-groups/addon-group-items";
+import { ProductTabSkeleton } from "./product-form-skeletons";
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
@@ -42,6 +43,7 @@ export function ProductAddonGroupsSection({
   const [pickerValue, setPickerValue] = useState("");
 
   const group = (linkedQuery.data ?? [])[0] ?? null;
+  const sectionPending = allGroupsQuery.isPending || linkedQuery.isPending;
 
   function onCreateAndAttach(name: string) {
     const trimmed = name.trim();
@@ -59,7 +61,9 @@ export function ProductAddonGroupsSection({
     );
   }
 
-  const body = (
+  const body = sectionPending ? (
+    <ProductTabSkeleton sections={1} />
+  ) : (
     <CardBody className="space-y-4">
         {group ? (
           <>

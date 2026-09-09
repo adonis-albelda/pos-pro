@@ -7,12 +7,13 @@ import { Card } from "@/components/ui";
 import { toCategoryOptions } from "@/lib/category-options";
 import { useCategories } from "@/lib/query/categories";
 import { ProductForm } from "../product-form";
+import { ProductPageSkeleton } from "../product-form-skeletons";
 
 export default function NewProductPage() {
   const categoriesQuery = useCategories({ includeInactive: true });
 
   if (categoriesQuery.isPending) {
-    return <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>;
+    return <ProductPageSkeleton />;
   }
 
   if (categoriesQuery.isError) {

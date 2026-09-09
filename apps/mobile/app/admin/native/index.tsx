@@ -34,9 +34,12 @@ interface Tile {
 }
 
 const TILES: Tile[] = [
+  // Catalog
   { href: "/admin/products", label: "Products", icon: Package },
   { href: "/admin/categories", label: "Categories", icon: FolderTree },
-  { href: "/admin/customers", label: "Customers", icon: UserRound },
+  // Inventory
+  { href: "/admin/inventory", label: "Inventory", icon: Warehouse },
+  // Purchasing
   { href: "/admin/suppliers", label: "Suppliers", icon: Truck, featureKey: "suppliers" },
   {
     href: "/admin/purchase-orders",
@@ -50,11 +53,15 @@ const TILES: Tile[] = [
     icon: PackageCheck,
     featureKey: "purchase_orders",
   },
-  { href: "/admin/inventory", label: "Inventory", icon: Warehouse },
+  // Sales
   { href: "/admin/sales", label: "Sales", icon: Receipt },
+  { href: "/admin/customers", label: "Customers", icon: UserRound },
+  // Finance
   { href: "/admin/expenses", label: "Expenses", icon: Wallet, featureKey: "expenses" },
   { href: "/admin/reports", label: "Reports", icon: ShoppingBag },
+  // People
   { href: "/admin/users", label: "Users", icon: Users },
+  // Settings
   { href: "/admin/settings", label: "Settings", icon: Settings },
   { href: "/admin/receipt", label: "Receipt layout", icon: Printer },
 ];

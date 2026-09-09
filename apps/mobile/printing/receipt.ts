@@ -127,7 +127,29 @@ export function buildReceipt(
   builder.ledgerLine();
 
   if (layout.showDiscounts && sale.discountAmount > 0) {
-    builder.columns("DISCOUNT", `-${money(sale.discountAmount)}`);
+    const orderDiscounts = sale.discounts ?? [];
+    if (orderDiscounts.length > 0) {
+      for (const d of orderDiscounts) {
+        const label = (d.name ?? "DISCOUNT").toUpperCase().slice(0, columns - 10);
+        builder.columns(label, `-${money(d.discountAmount)}`);
+        if (d.vatRemoved && d.vatRemoved > 0) {
+          builder.columns("VAT REMOVED", `-${money(d.vatRemoved)}`);
+        }
+        if (d.idNumber) {
+          builder.line(`ID: ${d.idNumber}`);
+          if (d.idHolderName) builder.line(d.idHolderName);
+        }
+      }
+      const lineOnly = roundMoney(
+        sale.discountAmount -
+          orderDiscounts.reduce((s, d) => s + d.discountAmount + (d.vatRemoved ?? 0), 0),
+      );
+      if (lineOnly > 0) {
+        builder.columns("LINE DISCOUNT", `-${money(lineOnly)}`);
+      }
+    } else {
+      builder.columns("DISCOUNT", `-${money(sale.discountAmount)}`);
+    }
   }
 
   builder.bold(true).big(true);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { Building2, Check, ChevronDown, MapPin, Warehouse } from "lucide-react";
+import { Building2, Check, ChevronDown, MapPin, Store, Warehouse } from "lucide-react";
 import type { Location } from "@double-a/shared-types";
 import { useLocations } from "@/lib/query/locations";
 import { useOptionalLocationFilter } from "@/components/location-filter-provider";
@@ -81,7 +81,7 @@ export function LocationSwitcher({
           open && tone === "onPrimary" && "ring-2 ring-white/40",
         )}
       >
-        <MapPin size={14} strokeWidth={2} className="shrink-0 text-ink-muted" aria-hidden />
+        <Store size={14} strokeWidth={2} className="shrink-0 text-ink-muted" aria-hidden />
         <span className="min-w-0 flex-1 truncate text-caption font-semibold leading-tight">
           {triggerLabel}
         </span>

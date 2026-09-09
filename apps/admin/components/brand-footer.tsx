@@ -36,6 +36,27 @@ function RotatingServices() {
   );
 }
 
+/** Quiet mark for the admin side rail — logo + powered-by, pinned under the nav. */
+export function SidebarPoweredBy({ className }: { className?: string }) {
+  return (
+    <a
+      href={BRAND_SITE}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={cx(
+        "flex items-center gap-2 px-4 py-3 text-[0.6875rem] leading-snug text-ink-muted transition-colors hover:text-ink",
+        className,
+      )}
+    >
+      <img src={APP_LOGO} alt="" className="size-5 shrink-0 object-contain opacity-90" />
+      <span>
+        Powered by{" "}
+        <span className="font-medium text-ink/75">Double-A IT Solutions 2026</span>
+      </span>
+    </a>
+  );
+}
+
 export function BrandFooter({
   className,
   userEmail,

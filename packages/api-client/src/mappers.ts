@@ -152,6 +152,7 @@ export interface ProductVariantAttrs {
   cost_price: number;
   is_default: boolean;
   is_active: boolean;
+  is_bundle?: boolean;
   stock_quantity: number | null;
   attribute_values?: {
     company_attribute_id: string | null;
@@ -173,6 +174,7 @@ export function toProductVariant(resource: JsonApiResource<ProductVariantAttrs>)
     stockQuantity: Number(a.stock_quantity ?? 0),
     isDefault: a.is_default,
     isActive: a.is_active,
+    isBundle: Boolean(a.is_bundle),
     attributeValues: (a.attribute_values ?? []).map(
       (value): VariantAttributeValue => ({
         companyAttributeId: value.company_attribute_id,
@@ -371,6 +373,8 @@ export function toExpenseBill(resource: JsonApiResource<ExpenseBillAttrs>): Expe
 
 export interface UserAttrs {
   name: string;
+  username?: string | null;
+  avatar_url?: string | null;
   email: string;
   role: string;
   company_id: string | null;
@@ -381,9 +385,13 @@ export interface UserAttrs {
   must_change_password: boolean;
   must_enroll_mfa: boolean;
   is_demo: boolean;
+  has_pin?: boolean;
   email_verified_at: string | null;
+  last_login_at?: string | null;
   created_at: string | null;
   updated_at: string | null;
+  permissions?: string[] | null;
+  roles?: string[] | null;
 }
 
 export function toUser(resource: JsonApiResource<UserAttrs>): User {
@@ -391,6 +399,8 @@ export function toUser(resource: JsonApiResource<UserAttrs>): User {
   return {
     id: resource.id,
     name: a.name,
+    username: a.username ?? null,
+    avatarUrl: a.avatar_url ?? null,
     email: a.email,
     role: a.role as UserRole,
     isActive: a.is_active,
@@ -398,10 +408,14 @@ export function toUser(resource: JsonApiResource<UserAttrs>): User {
     mustChangePassword: a.must_change_password,
     mustEnrollMfa: a.must_enroll_mfa,
     isDemo: a.is_demo,
+    hasPin: Boolean(a.has_pin),
     companyId: a.company_id ?? null,
     locationId: a.location_id ?? null,
     companyIsActive: a.company_is_active ?? true,
     emailVerifiedAt: a.email_verified_at ?? null,
+    lastLoginAt: a.last_login_at ?? null,
+    permissions: Array.isArray(a.permissions) ? a.permissions : undefined,
+    roles: Array.isArray(a.roles) ? a.roles : undefined,
     updatedAt: a.updated_at ?? "",
   };
 }

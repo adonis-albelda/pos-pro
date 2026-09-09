@@ -13,17 +13,21 @@ import { type UserAttrs, toUser } from "../mappers";
 export interface CreateUserInput {
   name: string;
   email: string;
+  username?: string | null;
   /**
    * "superadmin" cannot be created through this endpoint — platform
    * superadmin creation lives on its own flow, not here.
    */
-  role: Extract<UserRole, "cashier" | "admin" | "manager" | "driver" | "helper" | "device">;
+  role: Extract<
+    UserRole,
+    "cashier" | "admin" | "manager" | "inventory_clerk" | "driver" | "helper" | "device"
+  >;
   /**
-   * Required for role "admin"/"manager"/"device" server-side; ignored/optional
-   * for "cashier"/"driver"/"helper" (random password generated if omitted —
-   * driver/helper never sign in, so it's simply unusable for them).
+   * Required for role "admin"/"manager"/"inventory_clerk"/"device" server-side;
+   * optional for cashier/driver/helper (random password generated if omitted).
    */
   password?: string | null;
+  pin?: string | null;
   canSell?: boolean;
   isActive?: boolean;
   /** Required for role "device" — branch the terminal sells from. */
@@ -36,7 +40,9 @@ function toCreatePayload(input: CreateUserInput): Record<string, unknown> {
     email: input.email,
     role: input.role,
   };
+  if (input.username !== undefined) payload.username = input.username;
   if (input.password !== undefined) payload.password = input.password;
+  if (input.pin !== undefined) payload.pin = input.pin;
   if (input.canSell !== undefined) payload.can_sell = input.canSell;
   if (input.isActive !== undefined) payload.is_active = input.isActive;
   if (input.locationId !== undefined) payload.location_id = input.locationId;
@@ -46,6 +52,11 @@ function toCreatePayload(input: CreateUserInput): Record<string, unknown> {
 export interface UpdateUserInput {
   name?: string;
   email?: string;
+  username?: string | null;
+  role?: Extract<
+    UserRole,
+    "cashier" | "admin" | "manager" | "inventory_clerk" | "driver" | "helper" | "device"
+  >;
   canSell?: boolean;
   isActive?: boolean;
   /** Device/terminal only — rebind which branch the POS sells from. */
@@ -56,6 +67,8 @@ function toUpdatePayload(input: UpdateUserInput): Record<string, unknown> {
   const payload: Record<string, unknown> = {};
   if (input.name !== undefined) payload.name = input.name;
   if (input.email !== undefined) payload.email = input.email;
+  if (input.username !== undefined) payload.username = input.username;
+  if (input.role !== undefined) payload.role = input.role;
   if (input.canSell !== undefined) payload.can_sell = input.canSell;
   if (input.isActive !== undefined) payload.is_active = input.isActive;
   if (input.locationId !== undefined) payload.location_id = input.locationId;
@@ -66,7 +79,9 @@ function toUpdatePayload(input: UpdateUserInput): Record<string, unknown> {
  * GAP: IndexUsersController takes no `is_active` filter query param (unlike
  * the old Postgres `.eq("is_active", true)`) and returns every company user
  * unpaginated. `includeInactive` is therefore applied client-side after the
- * full list comes back — fine for a shop-sized staff list.
+ * full list comes back — fine for a shop-sized staff list. Server eager-loads
+ * company + Spatie pivots and omits the fat admin permission catalog on this
+ * list (Access page uses `/permissions` for admins).
  */
 export async function listUsers(
   client: ApiClient,

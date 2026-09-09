@@ -5,6 +5,7 @@
  * reporting, so these live here rather than being declared twice.
  */
 
+import type { SaleDiscount } from "./discounts";
 import { roundMoney } from "./money";
 
 /**
@@ -18,6 +19,7 @@ export type UserRole =
   | "cashier"
   | "admin"
   | "manager"
+  | "inventory_clerk"
   | "driver"
   | "helper"
   | "device"
@@ -212,7 +214,7 @@ export interface StoreSettings {
   invoiceDigits: number;
   /** Next number AssignInvoiceNumber will hand out — editable in settings. */
   invoiceNextNumber: number;
-  /** Minutes of no touch activity before the POS forces a cashier back to PIN-unlock. 0 disables auto-lock. */
+  /** Minutes of no activity before POS / admin web require PIN again. 0 disables auto-lock. Switching apps or browser tabs also locks when enabled. */
   idleTimeoutMinutes: number;
   /** Branch these settings belong to. */
   locationId?: string | null;
@@ -323,6 +325,8 @@ export function isDemoTeamLimitMessage(message: string): boolean {
 export interface User {
   id: string;
   name: string;
+  username?: string | null;
+  avatarUrl?: string | null;
   email: string;
   role: UserRole;
   isActive: boolean;
@@ -340,8 +344,56 @@ export interface User {
   locationId: string | null;
   /** False when the shop account is disabled. Superadmin has no company — true. */
   companyIsActive: boolean;
+  /** Whether this account has a PIN set (for soft-lock / unlock UI). Never the hash. */
+  hasPin: boolean;
   /** Null until the emailed verification link is clicked — only ever sent for admin/manager roles (see StoreUserController). Every other role is created already verified. */
   emailVerifiedAt: string | null;
+  lastLoginAt?: string | null;
+  /**
+   * Effective Spatie permission names from `/auth/me` / user resources.
+   * Shop admin (and acting superadmin) get the full catalog. Absent on older
+   * payloads — treat as unrestricted until the API is upgraded.
+   */
+  permissions?: string[];
+  /** Spatie role names (`admin` / `manager` / `cashier`). Empty for superadmin. */
+  roles?: string[];
+  updatedAt: string;
+}
+
+export type EmployeeStatus = "active" | "inactive" | "terminated";
+
+export interface Employee {
+  id: string;
+  userId: string;
+  employeeNumber: string | null;
+  firstName: string;
+  lastName: string;
+  middleName: string | null;
+  phone: string | null;
+  position: string | null;
+  department: string | null;
+  hireDate: string | null;
+  status: EmployeeStatus;
+  sssNumber: string | null;
+  philhealthNumber: string | null;
+  pagibigNumber: string | null;
+  tin: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type TerminalStatus = "active" | "inactive" | "retired";
+
+export interface Terminal {
+  id: string;
+  userId: string | null;
+  name: string;
+  code: string;
+  deviceIdentifier: string | null;
+  locationId: string | null;
+  status: TerminalStatus;
+  lastActiveAt: string | null;
+  createdAt: string;
   updatedAt: string;
 }
 
@@ -589,6 +641,7 @@ export interface ProductVariant {
   stockQuantity: number;
   isDefault: boolean;
   isActive: boolean;
+  isBundle: boolean;
   attributeValues: VariantAttributeValue[];
   updatedAt: string;
 }
@@ -870,6 +923,8 @@ export interface LocalSale extends Sale {
 
 export interface SaleWithItems extends Sale {
   items: SaleItem[];
+  /** Order-level simple/complex discounts (not counter line discounts). */
+  discounts?: SaleDiscount[];
 }
 
 /** Header stat cards on the sales list — completed sales only, same filters as the list. */
@@ -884,6 +939,7 @@ export interface SalesPageStats {
 
 export interface LocalSaleWithItems extends LocalSale {
   items: SaleItem[];
+  discounts?: SaleDiscount[];
 }
 
 export interface InventoryMovement {
@@ -1088,4 +1144,6 @@ export interface CartLine {
   quantity: number;
   /** Last synced stock, kept so the cart can warn when a line exceeds it. */
   availableStock: number;
+  /** Optional — used by complex promo category_quantity conditions. */
+  categoryId?: string | null;
 }

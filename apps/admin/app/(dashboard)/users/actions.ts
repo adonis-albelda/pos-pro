@@ -14,12 +14,14 @@ function canUnlockWithPin(role: string): boolean {
 
 /** Roles that get a real dashboard/terminal password. Driver/helper are staff records only — never sign in. */
 function hasPassword(role: string): boolean {
-  return role === "admin" || role === "manager" || role === "device";
+  return role === "admin" || role === "manager" || role === "inventory_clerk" || role === "device";
 }
 
 /** Every role this form can actually create/edit — anything else silently falling back to "cashier" was a real bug. */
-function isCreatableRole(role: string): role is "cashier" | "admin" | "manager" | "driver" | "helper" | "device" {
-  return ["cashier", "admin", "manager", "driver", "helper", "device"].includes(role);
+function isCreatableRole(
+  role: string,
+): role is "cashier" | "admin" | "manager" | "inventory_clerk" | "driver" | "helper" | "device" {
+  return ["cashier", "admin", "manager", "inventory_clerk", "driver", "helper", "device"].includes(role);
 }
 
 function errorMessage(error: unknown): string {
@@ -74,7 +76,7 @@ export async function saveCashier(
     return { error: "Set a PIN so this cashier can unlock a terminal.", ok: false };
   }
 
-  if (!id && (role === "admin" || role === "manager") && !password) {
+  if (!id && (role === "admin" || role === "manager" || role === "inventory_clerk") && !password) {
     return { error: "Set a password so this person can sign in to the dashboard.", ok: false };
   }
   if (!id && role === "device" && !password) {

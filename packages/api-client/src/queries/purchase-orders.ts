@@ -361,6 +361,39 @@ export async function countOpenPurchaseOrders(client: ApiClient): Promise<number
   return ordered.total + partial.total;
 }
 
+export interface PurchaseOrderListStats {
+  draft: number;
+  open: number;
+  received: number;
+  cancelled: number;
+  /** Unpaid installment total across non-cancelled POs. */
+  balanceDue: number;
+}
+
+/**
+ * Header stats for the purchase-orders list. Status counts use the same
+ * `pageSize: 1` meta.total trick as `countOpenPurchaseOrders`; balance reuses
+ * `GET /suppliers/balances`.
+ */
+export async function getPurchaseOrderListStats(client: ApiClient): Promise<PurchaseOrderListStats> {
+  const [draft, ordered, partial, received, cancelled, balanceDue] = await Promise.all([
+    listPurchaseOrdersPage(client, { status: "draft", page: 1, pageSize: 1 }),
+    listPurchaseOrdersPage(client, { status: "ordered", page: 1, pageSize: 1 }),
+    listPurchaseOrdersPage(client, { status: "partially_received", page: 1, pageSize: 1 }),
+    listPurchaseOrdersPage(client, { status: "received", page: 1, pageSize: 1 }),
+    listPurchaseOrdersPage(client, { status: "cancelled", page: 1, pageSize: 1 }),
+    sumSupplierBalance(client),
+  ]);
+
+  return {
+    draft: draft.total,
+    open: ordered.total + partial.total,
+    received: received.total,
+    cancelled: cancelled.total,
+    balanceDue,
+  };
+}
+
 /**
  * `GET /suppliers/balances` (`IndexSupplierBalancesController`) already
  * sums unpaid `purchase_order_payments` across non-cancelled POs, grouped

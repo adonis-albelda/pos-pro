@@ -3,9 +3,10 @@
 import { useState } from "react";
 import { ChevronLeft, ChevronRight, History, Receipt } from "lucide-react";
 import type { Product } from "@double-a/shared-types";
-import { Badge, Button, Card, CardHeader, EmptyState, IconLink, Skeleton, Table, Td, Th } from "@/components/ui";
+import { Badge, Button, Card, CardHeader, EmptyState, IconLink, Table, Td, Th } from "@/components/ui";
 import { useInventoryMovements } from "@/lib/query/inventory";
 import { movementSaleId, reasonIcon, reasonLabel } from "@/lib/inventory-reasons";
+import { ProductRowsSkeleton } from "./product-form-skeletons";
 
 const PAGE_SIZE = 20;
 
@@ -39,11 +40,7 @@ export function ProductInventorySection({
   const body = (
     <>
       {movementsQuery.isPending ? (
-        <div className="space-y-3 px-4 py-4 sm:px-6">
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
-        </div>
+        <ProductRowsSkeleton rows={5} />
       ) : movements.length === 0 ? (
         <EmptyState icon={History} title="No movements yet" instruction="Stock changes for this product will show up here." />
       ) : (

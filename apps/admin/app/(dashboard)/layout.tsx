@@ -9,6 +9,7 @@ import { ImpersonationBanner } from "@/components/impersonation-banner";
 import { LocationFilterProvider } from "@/components/location-filter-provider";
 import { PriceInquiryFab } from "@/components/price-inquiry-fab";
 import { PushNotificationRegistrar } from "@/components/push-notification-registrar";
+import { SessionLockProvider } from "@/components/session-lock-provider";
 import { getUiMode, isAdminEmbedded } from "@/lib/ui-mode";
 
 export default async function DashboardLayout({
@@ -48,28 +49,18 @@ export default async function DashboardLayout({
     </>
   );
 
-  if (mode === "classic") {
-    return (
-      <LocationFilterProvider>
-        <DemoUpgradeBanner />
-        <DemoSessionBanner />
-        <ClassicShell
-          storeName={store.name}
-          storeLogoUrl={store.logoUrl}
-          userEmail={user?.email ?? null}
-          mode={mode}
-          embedded={embedded}
-        >
-          {contentWithPush}
-        </ClassicShell>
-      </LocationFilterProvider>
-    );
-  }
-
-  return (
-    <LocationFilterProvider>
-      <DemoUpgradeBanner />
-      <DemoSessionBanner />
+  const shell =
+    mode === "classic" ? (
+      <ClassicShell
+        storeName={store.name}
+        storeLogoUrl={store.logoUrl}
+        userEmail={user?.email ?? null}
+        mode={mode}
+        embedded={embedded}
+      >
+        {contentWithPush}
+      </ClassicShell>
+    ) : (
       <DashboardShell
         storeName={store.name}
         storeLogoUrl={store.logoUrl}
@@ -81,6 +72,15 @@ export default async function DashboardLayout({
       >
         {contentWithPush}
       </DashboardShell>
-    </LocationFilterProvider>
+    );
+
+  return (
+    <SessionLockProvider enabled={!embedded}>
+      <LocationFilterProvider>
+        <DemoUpgradeBanner />
+        <DemoSessionBanner />
+        {shell}
+      </LocationFilterProvider>
+    </SessionLockProvider>
   );
 }

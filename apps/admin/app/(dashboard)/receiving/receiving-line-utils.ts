@@ -16,6 +16,8 @@ export interface LineRow {
   /** Discount percent AI found for this line (its own, or the whole receipt's). Null when none. */
   discountPercent: number | null;
   productId: string | null;
+  /** Matched catalogue variant — preferred over product-level when set. */
+  variantId: string | null;
   matchedBy: "internal" | "supplier" | null;
   existingPrice: number | null;
   existingCostPrice: number | null;
@@ -317,6 +319,7 @@ export function buildProductMatchPatch(
 
   return {
     productId: product.id,
+    variantId: null,
     name: row.name.trim() ? row.name : product.name,
     sku: product.sku ?? "",
     receiptSupplierSku: receiptSkuAfterMatch(row, product, matchedBy, supplierId, matchedCode),
@@ -422,6 +425,7 @@ export function lineRowFromExtraction(line: {
     printedUnitCost: line.printedUnitCost ?? null,
     discountPercent: line.discountPercent ?? null,
     productId: line.productId,
+    variantId: null,
     matchedBy: line.matchedBy,
     existingPrice: line.existingPrice,
     existingCostPrice: line.existingCostPrice,
@@ -450,6 +454,7 @@ export function emptyManualLineRow(): Omit<LineRow, "key"> {
     printedUnitCost: null,
     discountPercent: null,
     productId: null,
+    variantId: null,
     matchedBy: null,
     existingPrice: null,
     existingCostPrice: null,
@@ -479,6 +484,7 @@ export function normalizeHeldRow(row: LineRow): LineRow {
       (legacy ? (row.productId ? "" : row.sku) : row.receiptSupplierSku) ??
       "",
     sku: legacy && !row.productId ? "" : row.sku,
+    variantId: row.variantId ?? null,
     printedUnitCost: row.printedUnitCost ?? null,
     discountPercent: row.discountPercent ?? null,
     createHidden: row.createHidden ?? true,

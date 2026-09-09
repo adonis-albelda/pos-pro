@@ -1,12 +1,15 @@
 import type {
   AddonGroup,
   Category,
+  ComplexDiscountRule,
   Customer,
+  DiscountRule,
   Product,
   ProductVariant,
   ReceiptLayout,
   SaleWithItems,
   StoreSettings,
+  TaxSettings,
   User,
 } from "@double-a/shared-types";
 import type { ApiClient, DataEnvelope, JsonApiOne } from "../http";
@@ -28,6 +31,7 @@ import {
   toStoreSettings,
   toUser,
 } from "../mappers";
+import { toComplexDiscountRule, toDiscountRule } from "./discounts";
 
 /**
  * POS-specific primitives: device enrollment, cashier PIN, and the two raw
@@ -226,6 +230,20 @@ function toPushSalePayload(sale: SaleWithItems): Record<string, unknown> {
           }))
         : undefined,
     })),
+    discounts: sale.discounts?.length
+      ? sale.discounts.map((d) => ({
+          id: d.id,
+          discount_rule_id: d.discountRuleId,
+          complex_discount_rule_id: d.complexDiscountRuleId,
+          id_number: d.idNumber,
+          id_holder_name: d.idHolderName,
+          discount_amount: d.discountAmount,
+          vat_removed: d.vatRemoved,
+          is_vat_exempt: d.isVatExempt ?? false,
+          applied_by: d.appliedBy,
+          created_at: d.createdAt,
+        }))
+      : undefined,
   };
 }
 
@@ -270,6 +288,11 @@ export interface PullSyncResult {
   receiptLayout: ReceiptLayout | null;
   /** {key: enabled} — whole-replace, same as categories (CLAUDE.md §1). */
   featureFlags: Record<string, boolean>;
+  /** Active simple discount rules — whole-replace each pull. */
+  discountRules: DiscountRule[];
+  /** Active complex promo rules — whole-replace each pull. */
+  complexDiscountRules: ComplexDiscountRule[];
+  taxSettings: TaxSettings;
 }
 
 interface PullSyncResponse {
@@ -284,6 +307,17 @@ interface PullSyncResponse {
   store_settings: { type: string; id: string; attributes: StoreSettingAttrs } | null;
   receipt_layout: { type: string; id: string; attributes: ReceiptLayoutAttrs } | null;
   feature_flags: Record<string, boolean>;
+  discount_rules?: { type: string; id: string; attributes: Parameters<typeof toDiscountRule>[0]["attributes"] }[];
+  complex_discount_rules?: {
+    type: string;
+    id: string;
+    attributes: Parameters<typeof toComplexDiscountRule>[0]["attributes"];
+  }[];
+  tax_settings?: {
+    is_vat_registered: boolean;
+    vat_rate: number;
+    auto_apply_complex_discounts: boolean;
+  };
 }
 
 type WireResource<A> = { type: string; id: string; attributes: A };
@@ -367,5 +401,16 @@ export async function pullSync(
     storeSettings: mapSingleResource(data.store_settings, "store_settings", toStoreSettings),
     receiptLayout: mapSingleResource(data.receipt_layout, "receipt_layout", toReceiptLayout),
     featureFlags: data.feature_flags ?? {},
+    discountRules: mapResourceList(data.discount_rules, "discount_rules", toDiscountRule),
+    complexDiscountRules: mapResourceList(
+      data.complex_discount_rules,
+      "complex_discount_rules",
+      toComplexDiscountRule,
+    ),
+    taxSettings: {
+      isVatRegistered: data.tax_settings?.is_vat_registered ?? false,
+      vatRate: data.tax_settings?.vat_rate ?? 12,
+      autoApplyComplexDiscounts: data.tax_settings?.auto_apply_complex_discounts ?? true,
+    },
   };
 }

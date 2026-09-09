@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { HandHelping, Shield, Smartphone, Truck, UserCog, UserRound } from "lucide-react";
+import { ClipboardList, HandHelping, Shield, Smartphone, Truck, UserCog, UserRound } from "lucide-react";
 import type { User, UserRole } from "@double-a/shared-types";
 import { Card, EmptyState } from "@/components/ui";
 import { Sheet } from "@/components/overlay";
@@ -34,6 +34,12 @@ const TAB_COPY: Record<
     emptyInstruction: "Cashiers unlock a terminal with a PIN — no dashboard login.",
     sheetTitle: "Add cashier",
   },
+  inventory_clerk: {
+    addLabel: "Add inventory clerk",
+    emptyTitle: "No inventory clerks yet",
+    emptyInstruction: "Inventory clerks manage stock, transfers, and purchasing.",
+    sheetTitle: "Add inventory clerk",
+  },
   driver: {
     addLabel: "Add driver",
     emptyTitle: "No drivers yet",
@@ -58,6 +64,7 @@ const TAB_ICONS: Record<Exclude<UserRole, "superadmin">, typeof UserRound> = {
   admin: Shield,
   manager: UserCog,
   cashier: UserRound,
+  inventory_clerk: ClipboardList,
   driver: Truck,
   helper: HandHelping,
   device: Smartphone,

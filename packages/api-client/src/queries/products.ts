@@ -501,6 +501,8 @@ export interface CreateFullProductInput {
     isSellable?: boolean;
     isPurchasable?: boolean;
     isTrackInventory?: boolean;
+    /** Single-product only — hide whole SKU from terminals when false. */
+    isActive?: boolean;
   };
   brand?: CreateFullProductVocabRef | null;
   tags?: CreateFullProductVocabRef[];
@@ -533,6 +535,10 @@ export interface CreateFullProductInput {
     replenishQuantity?: number;
     bulkPrice?: number | null;
     bulkMinQuantity?: number | null;
+    /** Defaults true when omitted — hide from terminals when false. */
+    isActive?: boolean;
+    /** Kit flag on this generated SKU (product_variants.is_bundle). */
+    isBundle?: boolean;
     openingStock?: { locationId: string; quantity: number }[];
   }[];
 }
@@ -566,6 +572,7 @@ function toFullProductPayload(input: CreateFullProductInput): Record<string, unk
       is_sellable: input.product.isSellable,
       is_purchasable: input.product.isPurchasable,
       is_track_inventory: input.product.isTrackInventory,
+      is_active: input.product.isActive ?? true,
     },
     brand: input.brand ? { id: input.brand.id, name: input.brand.name } : null,
     tags: (input.tags ?? []).map((tag) => ({ id: tag.id, name: tag.name })),
@@ -589,6 +596,8 @@ function toFullProductPayload(input: CreateFullProductInput): Record<string, unk
       replenish_quantity: variant.replenishQuantity,
       bulk_price: variant.bulkPrice ?? null,
       bulk_min_quantity: variant.bulkMinQuantity ?? null,
+      is_active: variant.isActive ?? true,
+      is_bundle: variant.isBundle ?? false,
       opening_stock: (variant.openingStock ?? []).map((row) => ({
         location_id: row.locationId,
         quantity: row.quantity,

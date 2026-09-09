@@ -27,7 +27,7 @@ export function PlatformShell({
   }, [pathname]);
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen lg:h-dvh lg:overflow-hidden">
       <header className="fixed inset-x-0 top-0 z-40 border-b border-border bg-surface pt-[env(safe-area-inset-top)] lg:hidden">
         <div className="flex h-14 items-center gap-3 px-3">
           <button
@@ -62,7 +62,7 @@ export function PlatformShell({
           "fixed inset-y-0 left-0 z-50 flex w-[min(16.5rem,88vw)] flex-col border-r border-border bg-surface",
           "pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]",
           "transition-transform duration-200 ease-out motion-reduce:transition-none",
-          "lg:sticky lg:top-0 lg:z-0 lg:h-screen lg:w-60 lg:shrink-0 lg:translate-x-0",
+          "lg:static lg:z-0 lg:h-full lg:w-60 lg:shrink-0 lg:translate-x-0",
           open ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
         ].join(" ")}
       >
@@ -173,7 +173,7 @@ export function PlatformShell({
         </div>
       </aside>
 
-      <main className="flex min-h-screen min-w-0 flex-1 flex-col pt-[calc(3.5rem+env(safe-area-inset-top))] lg:pt-0">
+      <main className="flex min-h-screen min-w-0 flex-1 flex-col pt-[calc(3.5rem+env(safe-area-inset-top))] lg:min-h-0 lg:overflow-y-auto lg:pt-0">
         <div className="flex-1 px-3 py-3 sm:px-4 sm:py-4 lg:px-5 lg:py-5">{children}</div>
       </main>
     </div>

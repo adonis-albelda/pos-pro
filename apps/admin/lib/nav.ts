@@ -1,6 +1,7 @@
 import type { Route } from "next";
 import {
   ArrowLeftRight,
+  BadgePercent,
   Boxes,
   ChartColumn,
   ClipboardList,
@@ -16,6 +17,7 @@ import {
   Printer,
   QrCode,
   Receipt,
+  Shield,
   Store,
   Tags,
   Truck,
@@ -34,6 +36,11 @@ export interface NavItem {
   tone: "primary" | "accent" | "success" | "warning" | "danger" | "neutral";
   /** Matches a key in FeatureCatalog (Laravel) — hidden when useFeatureFlags().isEnabled(key) is false. Absent = always shown. */
   featureKey?: string;
+  /**
+   * Spatie permission name from /auth/me. Absent = any signed-in shop admin
+   * may see the item once feature flags allow it.
+   */
+  permissionKey?: string;
 }
 
 export interface NavGroup {
@@ -42,8 +49,22 @@ export interface NavGroup {
 }
 
 /**
- * One nav definition, read by both shells. Categories sit under Settings with
- * company details: both shape how the shop is set up, not day-to-day selling.
+ * Reserved Spatie keys for People modules that are not in the live nav yet.
+ * Seed these with spatie/laravel-permission; add nav rows when screens ship.
+ */
+export const RESERVED_PERMISSION_KEYS = [
+  "people.employees.view",
+  "people.attendance.view",
+] as const;
+
+/**
+ * One nav definition, read by both shells.
+ *
+ * Groups follow shop jobs so Spatie gates can map 1:1 later:
+ * Catalog → Inventory → Purchasing → Sales → Finance → People → Settings.
+ * Categories / attributes / add-ons sit under Catalog (with products), not
+ * Company settings. People today is Users only; Employees + Attendance come
+ * next under the same group (see RESERVED_PERMISSION_KEYS).
  */
 export const NAV_GROUPS: NavGroup[] = [
   {
@@ -55,6 +76,7 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: LayoutDashboard,
         blurb: "Today's takings at a glance",
         tone: "primary",
+        permissionKey: "dashboard.view",
       },
     ],
   },
@@ -67,13 +89,68 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Package,
         blurb: "Prices, cost, barcodes",
         tone: "primary",
+        permissionKey: "catalog.products.view",
       },
+      {
+        href: "/categories",
+        label: "Categories",
+        icon: FolderTree,
+        blurb: "Shelf tree and markup",
+        tone: "success",
+        permissionKey: "catalog.categories.view",
+      },
+      {
+        href: "/attributes" as Route,
+        label: "Variant Options",
+        icon: Tags,
+        blurb: "Size, color — build the vocabulary for variants",
+        tone: "accent",
+        permissionKey: "catalog.attributes.view",
+      },
+      {
+        href: "/addon-groups" as Route,
+        label: "Add-on groups",
+        icon: Layers,
+        blurb: "Toppings, accessories — merchant-configurable extras",
+        tone: "warning",
+        permissionKey: "catalog.addon_groups.view",
+      },
+      {
+        href: "/product-qr" as Route,
+        label: "Product QR codes",
+        icon: QrCode,
+        blurb: "Print SKU QR sheets",
+        tone: "accent",
+        permissionKey: "catalog.labels.view",
+      },
+    ],
+  },
+  {
+    label: "Inventory",
+    items: [
       {
         href: "/inventory",
         label: "Inventory",
         icon: Boxes,
         blurb: "Stock counts and movements",
         tone: "success",
+        permissionKey: "inventory.stock.view",
+      },
+      {
+        href: "/stock-transfers" as Route,
+        label: "Stock transfers",
+        icon: ArrowLeftRight,
+        blurb: "Move stock between locations",
+        tone: "success",
+        permissionKey: "inventory.transfers.view",
+      },
+      {
+        href: "/locations" as Route,
+        label: "Locations",
+        icon: MapPin,
+        blurb: "Branches and warehouses",
+        tone: "neutral",
+        permissionKey: "inventory.locations.view",
       },
     ],
   },
@@ -87,6 +164,7 @@ export const NAV_GROUPS: NavGroup[] = [
         blurb: "Who you buy stock from",
         tone: "accent",
         featureKey: "suppliers",
+        permissionKey: "purchasing.suppliers.view",
       },
       {
         href: "/purchase-orders" as Route,
@@ -95,6 +173,7 @@ export const NAV_GROUPS: NavGroup[] = [
         blurb: "Terms, balances, receiving",
         tone: "warning",
         featureKey: "purchase_orders",
+        permissionKey: "purchasing.orders.view",
       },
       {
         href: "/receiving" as Route,
@@ -103,6 +182,7 @@ export const NAV_GROUPS: NavGroup[] = [
         blurb: "Log a delivery, restock, adjust prices",
         tone: "success",
         featureKey: "purchase_orders",
+        permissionKey: "purchasing.receiving.view",
       },
     ],
   },
@@ -115,6 +195,7 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Receipt,
         blurb: "Every receipt on file",
         tone: "accent",
+        permissionKey: "sales.list.view",
       },
       {
         href: "/sales/new" as Route,
@@ -122,6 +203,7 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Plus,
         blurb: "Ring up a phone order",
         tone: "primary",
+        permissionKey: "sales.create",
       },
       {
         href: "/customers" as Route,
@@ -129,7 +211,21 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: ContactRound,
         blurb: "Names, addresses, contacts",
         tone: "neutral",
+        permissionKey: "sales.customers.view",
       },
+      {
+        href: "/discounts" as Route,
+        label: "Discounts",
+        icon: BadgePercent,
+        blurb: "Senior/PWD, promos, VAT rules",
+        tone: "warning",
+        permissionKey: "sales.discounts.view",
+      },
+    ],
+  },
+  {
+    label: "Finance",
+    items: [
       {
         href: "/expenses" as Route,
         label: "Expenses",
@@ -137,6 +233,7 @@ export const NAV_GROUPS: NavGroup[] = [
         blurb: "Rent, wages, utilities",
         tone: "danger",
         featureKey: "expenses",
+        permissionKey: "finance.expenses.view",
       },
       {
         href: "/reports",
@@ -144,79 +241,7 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: ChartColumn,
         blurb: "Profit, discounts, dead stock",
         tone: "warning",
-      },
-    ],
-  },
-  {
-    label: "Operations",
-    items: [
-      {
-        href: "/locations" as Route,
-        label: "Locations",
-        icon: MapPin,
-        blurb: "Branches and warehouses",
-        tone: "neutral",
-      },
-      {
-        href: "/stock-transfers" as Route,
-        label: "Stock transfers",
-        icon: ArrowLeftRight,
-        blurb: "Move stock between locations",
-        tone: "success",
-      },
-      {
-        href: "/users",
-        label: "Users",
-        icon: Users,
-        blurb: "Cashiers, admins, terminals",
-        tone: "primary",
-      },
-    ],
-  },
-  {
-    label: "Settings",
-    items: [
-      {
-        href: "/categories",
-        label: "Categories",
-        icon: FolderTree,
-        blurb: "Shelf tree and markup",
-        tone: "success",
-      },
-      {
-        href: "/attributes" as Route,
-        label: "Choices",
-        icon: Tags,
-        blurb: "Size, color — build the vocabulary for variants",
-        tone: "accent",
-      },
-      {
-        href: "/addon-groups" as Route,
-        label: "Add-on groups",
-        icon: Layers,
-        blurb: "Toppings, accessories — merchant-configurable extras",
-        tone: "warning",
-      },
-      {
-        href: "/settings",
-        label: "Company",
-        icon: Store,
-        blurb: "Shop name, logo, receipt footer",
-        tone: "neutral",
-      },
-      {
-        href: "/receipt" as Route,
-        label: "Receipt layout",
-        icon: Printer,
-        blurb: "PT-210 blocks and preview",
-        tone: "warning",
-      },
-      {
-        href: "/product-qr" as Route,
-        label: "Product QR codes",
-        icon: QrCode,
-        blurb: "Print SKU QR sheets",
-        tone: "accent",
+        permissionKey: "finance.reports.view",
       },
       {
         href: "/export" as Route,
@@ -225,6 +250,59 @@ export const NAV_GROUPS: NavGroup[] = [
         blurb: "CSV, Excel or PDF backup",
         tone: "primary",
         featureKey: "export",
+        permissionKey: "finance.export.view",
+      },
+    ],
+  },
+  {
+    // Employees + Attendance join here when those screens ship
+    // (people.employees.view / people.attendance.view).
+    label: "People",
+    items: [
+      {
+        href: "/users",
+        label: "Users",
+        icon: Users,
+        blurb: "Logins, roles, PINs",
+        tone: "primary",
+        permissionKey: "people.users.view",
+      },
+      {
+        href: "/employees" as Route,
+        label: "Employees",
+        icon: ContactRound,
+        blurb: "HR profiles linked to users",
+        tone: "success",
+        permissionKey: "people.employees.view",
+      },
+      {
+        href: "/access" as Route,
+        label: "Access",
+        icon: Shield,
+        blurb: "Roles and permissions per user",
+        tone: "warning",
+        permissionKey: "people.roles.manage",
+      },
+    ],
+  },
+  {
+    label: "Settings",
+    items: [
+      {
+        href: "/settings",
+        label: "Company",
+        icon: Store,
+        blurb: "Shop name, logo, receipt footer",
+        tone: "neutral",
+        permissionKey: "settings.company.view",
+      },
+      {
+        href: "/receipt" as Route,
+        label: "Receipt layout",
+        icon: Printer,
+        blurb: "PT-210 blocks and preview",
+        tone: "warning",
+        permissionKey: "settings.receipt.view",
       },
     ],
   },
@@ -241,6 +319,22 @@ export function filterNavGroupsByFeatures(
     .map((group) => ({
       ...group,
       items: group.items.filter((item) => !item.featureKey || isEnabled(item.featureKey)),
+    }))
+    .filter((group) => group.items.length > 0);
+}
+
+/**
+ * Spatie-ready filter. Call after filterNavGroupsByFeatures once /auth/me
+ * returns permission names. Items without permissionKey stay visible.
+ */
+export function filterNavGroupsByPermissions(
+  groups: NavGroup[],
+  can: (permissionKey: string) => boolean,
+): NavGroup[] {
+  return groups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => !item.permissionKey || can(item.permissionKey)),
     }))
     .filter((group) => group.items.length > 0);
 }

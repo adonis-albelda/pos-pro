@@ -71,6 +71,7 @@ export const queryKeys = {
     all: ["purchase-orders"] as const,
     list: (params?: Record<string, unknown>) => ["purchase-orders", "list", params] as const,
     detail: (id: string) => ["purchase-orders", "detail", id] as const,
+    stats: () => ["purchase-orders", "stats"] as const,
     upcomingPayments: () => ["purchase-orders", "upcoming-payments"] as const,
   },
   goodsReceipts: {
@@ -89,6 +90,19 @@ export const queryKeys = {
   users: {
     all: ["users"] as const,
     list: (params?: Record<string, unknown>) => ["users", "list", params] as const,
+    detail: (id: string) => ["users", "detail", id] as const,
+  },
+  employees: {
+    all: ["employees"] as const,
+    list: () => ["employees", "list"] as const,
+  },
+  terminals: {
+    all: ["terminals"] as const,
+    list: (params?: Record<string, unknown>) => ["terminals", "list", params] as const,
+  },
+  access: {
+    all: ["access"] as const,
+    catalog: () => ["access", "catalog"] as const,
   },
   locations: {
     all: ["locations"] as const,
@@ -151,6 +165,18 @@ export const queryKeys = {
   catalogSettings: {
     all: ["catalog-settings"] as const,
     detail: () => ["catalog-settings", "detail"] as const,
+  },
+  taxSettings: {
+    all: ["tax-settings"] as const,
+    detail: () => ["tax-settings", "detail"] as const,
+  },
+  discountRules: {
+    all: ["discount-rules"] as const,
+    list: () => ["discount-rules", "list"] as const,
+  },
+  complexDiscountRules: {
+    all: ["complex-discount-rules"] as const,
+    list: () => ["complex-discount-rules", "list"] as const,
   },
   mfaStatus: {
     all: ["mfa-status"] as const,

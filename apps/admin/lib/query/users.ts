@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { countUsers, listUsers, sendUserEmailVerification, updateUser } from "@double-a/api-client/queries";
+import { countUsers, getUser, listUsers, sendUserEmailVerification, updateUser } from "@double-a/api-client/queries";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 import { queryKeys } from "./keys";
 
@@ -10,6 +10,18 @@ export function useUsers(options: { includeInactive?: boolean } = {}) {
   return useQuery({
     queryKey: queryKeys.users.list(options),
     queryFn: () => listUsers(getBrowserApiClient(), options),
+  });
+}
+
+/**
+ * Single user with Spatie permissions — used by Access after the directory
+ * list stopped shipping perms (GET /users was timing out on Spatie pivots).
+ */
+export function useUser(id: string | null) {
+  return useQuery({
+    queryKey: queryKeys.users.detail(id ?? ""),
+    queryFn: () => getUser(getBrowserApiClient(), id!),
+    enabled: Boolean(id),
   });
 }
 
