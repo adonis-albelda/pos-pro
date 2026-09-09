@@ -27,7 +27,7 @@ interface FlyToCartContextValue {
 
 const FlyToCartContext = createContext<FlyToCartContextValue | null>(null);
 
-const FLIGHT_MS = 550;
+const FLIGHT_MS = 700;
 const CLONE_SIZE = 56;
 
 interface Flight {
@@ -63,10 +63,10 @@ export function FlyToCartProvider({ children }: { children: ReactNode }) {
     Animated.timing(progress, {
       toValue: 1,
       duration: FLIGHT_MS,
-      // Accelerating, not decelerating — a Shopee/Lazada-style add-to-cart
-      // flight reads as "getting pulled into the cart," speeding up right
-      // at the end, rather than a thrown object gently landing.
-      easing: Easing.in(Easing.quad),
+      // Cubic, not quad — a stronger slow start so the "leaves slowly, then
+      // rushes into the cart" shape actually reads at a glance instead of
+      // looking uniformly fast the whole flight.
+      easing: Easing.in(Easing.cubic),
       useNativeDriver: true,
     }).start(({ finished }) => {
       if (finished) setFlights((current) => current.filter((flight) => flight.id !== id));

@@ -29,19 +29,22 @@ export function StoreHeader() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const onSellScreen = pathname === "/pos";
 
-  // Where a "flying" product lands (lib/fly-to-cart.tsx) — re-measured
-  // whenever this row re-lays out (rotation, compact/tablet, the chip
-  // showing/hiding with onSellScreen), via the ref callback below.
+  // Where a "flying" product lands (lib/fly-to-cart.tsx) — only on phone.
+  // On tablet the cart is always visible as its own right-side panel
+  // (CartShell, in app/pos/index.tsx), which registers itself as the
+  // landing spot instead — this chip is a smaller, secondary summary there,
+  // not where a cashier is actually looking when something gets added.
   const { setTarget } = useFlyToCart();
   const cartChipRef = useRef<View>(null);
   function measureCartChip() {
+    if (!compact) return;
     cartChipRef.current?.measureInWindow((x, y, width, height) => {
       if (width > 0 && height > 0) setTarget({ x, y, width, height });
     });
   }
   useEffect(() => {
-    if (!onSellScreen) setTarget(null);
-  }, [onSellScreen, setTarget]);
+    if (compact && !onSellScreen) setTarget(null);
+  }, [compact, onSellScreen, setTarget]);
 
   useMinuteTick();
   const look = syncLook(state);

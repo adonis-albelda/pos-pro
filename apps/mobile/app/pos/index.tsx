@@ -3425,8 +3425,29 @@ function CartShell({
   onClose: () => void;
   children: ReactNode;
 }) {
+  // On tablet this panel is always on screen, so it — not the header's
+  // smaller cart chip — is where a flying product should land (see
+  // components/store-header.tsx's own half of this). Registered/cleared
+  // here rather than measured once: the panel's on-screen position can
+  // change (rotation, the grid's own width recalculating).
+  const { setTarget } = useFlyToCart();
+  const shellRef = useRef<View>(null);
+  useEffect(() => {
+    if (compact) return;
+    return () => setTarget(null);
+  }, [compact, setTarget]);
+
+  function measureShell() {
+    if (compact) return;
+    shellRef.current?.measureInWindow((x, y, w, h) => {
+      if (w > 0 && h > 0) setTarget({ x, y, width: w, height: h });
+    });
+  }
+
   const body = (
     <View
+      ref={shellRef}
+      onLayout={measureShell}
       style={{
         // Phone modal: fill the sheet. Tablet: fixed width, stretch tall so the
         // line list can grow — never flex along the row (that empties the grid).
