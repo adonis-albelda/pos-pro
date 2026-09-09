@@ -2,14 +2,11 @@ import { useRef, useState } from "react";
 import { ActivityIndicator, Modal, Pressable, ScrollView, Text, View } from "react-native";
 import {
   Check,
-  Cloud,
-  Droplets,
-  Flame,
   Grid3x3,
   Image as ImageIcon,
   Layers,
   Palette,
-  Square,
+  Sparkles,
   SquareStack,
   Type,
 } from "lucide-react-native";
@@ -39,11 +36,25 @@ const RADIUS_OPTIONS: { id: RadiusStyle; label: string; hint: string }[] = [
   { id: "full", label: "Rounded", hint: "Today's look" },
 ];
 
-const BACKGROUND_OPTIONS: { id: BackgroundEffect; label: string; icon: typeof Cloud }[] = [
-  { id: "none", label: "None", icon: Square },
-  { id: "bubbles", label: "Bubbles", icon: Cloud },
-  { id: "rain", label: "Rain", icon: Droplets },
-  { id: "fire", label: "Fire", icon: Flame },
+const BACKGROUND_OPTIONS: { id: BackgroundEffect; label: string; emoji: string; hint?: string }[] = [
+  { id: "none", label: "None", emoji: "🚫" },
+  { id: "bubbles", label: "Bubbles", emoji: "🫧" },
+  { id: "rain", label: "Rain", emoji: "🌧️" },
+  { id: "snow", label: "Snow", emoji: "❄️" },
+  { id: "leaves", label: "Falling Leaves", emoji: "🍂" },
+  { id: "petals", label: "Sakura", emoji: "🌸" },
+  { id: "hearts", label: "Hearts", emoji: "❤️" },
+  { id: "fireflies", label: "Fireflies", emoji: "✨" },
+  { id: "stars", label: "Stars", emoji: "⭐" },
+  { id: "sparkles", label: "Sparkles", emoji: "✨" },
+  { id: "clouds", label: "Clouds", emoji: "☁️" },
+  { id: "fireworks", label: "Fireworks", emoji: "🎆" },
+  {
+    id: "confetti",
+    label: "Confetti",
+    emoji: "🎉",
+    hint: "Not a background — bursts once after each sale instead.",
+  },
 ];
 
 const CARD_DISPLAY_OPTIONS: {
@@ -182,11 +193,11 @@ export default function ThemeScreen() {
 
         <Card style={[{ gap: space.md }, styles.floatShadow, { borderRadius: radius.sm }]}>
           <SectionTitle
-            icon={Cloud}
+            icon={Sparkles}
             title="Background effect"
-            hint="A subtle looping decoration behind every screen. Purely visual."
+            hint="A looping decoration behind the sell screen. Purely visual — Confetti is the one exception (see its own note)."
           />
-          <View style={{ flexDirection: "row", gap: space.sm }}>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space.sm }}>
             {BACKGROUND_OPTIONS.map((option) => (
               <BackgroundOptionCard
                 key={option.id}
@@ -362,21 +373,21 @@ function BackgroundOptionCard({
   active,
   onPress,
 }: {
-  option: { id: BackgroundEffect; label: string; icon: typeof Cloud };
+  option: { id: BackgroundEffect; label: string; emoji: string; hint?: string };
   active: boolean;
   onPress: () => void;
 }) {
-  const Icon = option.icon;
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${option.label}${active ? ", selected" : ""}`}
+      accessibilityLabel={`${option.label}${active ? ", selected" : ""}${option.hint ? `. ${option.hint}` : ""}`}
       style={({ pressed }) => ({
-        flex: 1,
+        width: 84,
         alignItems: "center",
         gap: space.xs,
         paddingVertical: space.md,
+        paddingHorizontal: space.xs,
         borderRadius: radius.sm,
         borderWidth: active ? 2 : 1,
         borderColor: active ? color.primary : color.border,
@@ -384,9 +395,11 @@ function BackgroundOptionCard({
         opacity: pressed ? 0.85 : 1,
       })}
     >
-      <Icon size={20} color={active ? color.primary : color.inkMuted} strokeWidth={2} />
+      <Text style={{ fontSize: 22 }}>{option.emoji}</Text>
       <Text
+        numberOfLines={2}
         style={{
+          textAlign: "center",
           fontSize: fontSize.caption,
           fontWeight: "700",
           color: active ? color.primary : color.ink,

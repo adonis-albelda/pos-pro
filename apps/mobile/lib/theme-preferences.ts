@@ -14,7 +14,26 @@ export type ThemeColorId =
   | "forest"
   | "slate";
 export type ProductViewMode = "product" | "variant";
-export type BackgroundEffect = "none" | "bubbles" | "rain" | "fire";
+/**
+ * "confetti" is not a continuous decoration like the rest — selecting it
+ * arms a one-shot celebration burst that fires after a successful sale
+ * (see lib/sale-celebration.tsx), rather than looping in the background the
+ * whole time a screen is open.
+ */
+export type BackgroundEffect =
+  | "none"
+  | "bubbles"
+  | "rain"
+  | "snow"
+  | "confetti"
+  | "leaves"
+  | "fireflies"
+  | "stars"
+  | "hearts"
+  | "petals"
+  | "fireworks"
+  | "sparkles"
+  | "clouds";
 /**
  * "text" drops the thumbnail entirely (name/price/stock only). "image-text"
  * is today's existing tile (a small thumbnail beside the name, unchanged).

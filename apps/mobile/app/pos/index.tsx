@@ -131,6 +131,7 @@ import { LoadingState } from "@/components/loading-state";
 import { ProductDetailSheet, ProductTile } from "@/components/product-tile";
 import { SelectField } from "@/components/select-field";
 import { ThemeBackgroundEffect } from "@/components/theme-background-effect";
+import { useSaleCelebration } from "@/lib/sale-celebration";
 import {
   VariantAddonPicker,
   type VariantAddonSelection,
@@ -240,7 +241,8 @@ export default function SellScreen() {
   const { compact, columns } = layout;
 
   const [products, setProducts] = useState<ProductWithEstimatedStock[]>([]);
-  const { productViewMode } = useThemePreferences();
+  const { productViewMode, backgroundEffect } = useThemePreferences();
+  const { celebrate, node: confettiNode } = useSaleCelebration();
   // Only populated in "By variant" mode (Theme menu — lib/theme-preferences.ts).
   // Keyed by product id; fetched for whatever page of `products` is currently
   // loaded, not paginated on its own — the product fetch/search/category
@@ -1187,6 +1189,11 @@ export default function SellScreen() {
         orderDiscounts,
       });
 
+      // "confetti" is the one background option that isn't a continuous
+      // decoration (lib/theme-preferences.ts) — it only ever fires here, on
+      // an actual completed sale, never on its own.
+      if (backgroundEffect === "confetti") celebrate();
+
       setLines([]);
       setOverridden([]);
       setOrderDiscounts([]);
@@ -2006,6 +2013,7 @@ export default function SellScreen() {
         above — so it always draws on top of it.
       */}
       <ThemeBackgroundEffect />
+      {confettiNode}
     </View>
   );
 }
