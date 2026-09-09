@@ -9,7 +9,7 @@ import {
 } from "react";
 import { Animated, Easing, Image } from "react-native";
 import { Package } from "lucide-react-native";
-import { color, radius } from "@/theme";
+import { color } from "@/theme";
 
 export interface FlyRect {
   x: number;
@@ -27,8 +27,8 @@ interface FlyToCartContextValue {
 
 const FlyToCartContext = createContext<FlyToCartContextValue | null>(null);
 
-const FLIGHT_MS = 480;
-const CLONE_SIZE = 44;
+const FLIGHT_MS = 550;
+const CLONE_SIZE = 56;
 
 interface Flight {
   id: number;
@@ -63,7 +63,10 @@ export function FlyToCartProvider({ children }: { children: ReactNode }) {
     Animated.timing(progress, {
       toValue: 1,
       duration: FLIGHT_MS,
-      easing: Easing.out(Easing.cubic),
+      // Accelerating, not decelerating — a Shopee/Lazada-style add-to-cart
+      // flight reads as "getting pulled into the cart," speeding up right
+      // at the end, rather than a thrown object gently landing.
+      easing: Easing.in(Easing.quad),
       useNativeDriver: true,
     }).start(({ finished }) => {
       if (finished) setFlights((current) => current.filter((flight) => flight.id !== id));
@@ -96,17 +99,28 @@ function FlyingClone({ flight, target }: { flight: Flight; target: FlyRect | nul
   const startY = source.y + source.height / 2 - CLONE_SIZE / 2;
   const endX = landing.x + landing.width / 2 - CLONE_SIZE / 2;
   const endY = landing.y + landing.height / 2 - CLONE_SIZE / 2;
-  // A slight arc, not a straight line — rises partway through before
-  // descending into the chip, like a thrown object's path ("like a plane").
-  const liftY = Math.min(startY, endY) - 60;
+  // A pronounced arc, not a straight line — rises well above both the start
+  // and the landing point before dropping into the chip, the shape a tossed
+  // object makes ("like a plane"/Shopee's own add-to-cart flight).
+  const liftY = Math.min(startY, endY) - 110;
 
-  const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [startX, endX] });
+  const translateX = progress.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [startX, (startX + endX) / 2, endX],
+  });
   const translateY = progress.interpolate({
     inputRange: [0, 0.5, 1],
     outputRange: [startY, liftY, endY],
   });
-  const scale = progress.interpolate({ inputRange: [0, 1], outputRange: [1, 0.35] });
-  const opacity = progress.interpolate({ inputRange: [0, 0.7, 1], outputRange: [1, 1, 0] });
+  // Barely shrinks on the way up, then rapidly shrinks into the chip — reads
+  // as being "pulled in" right at the landing instead of shrinking evenly
+  // the whole way, same asymmetry as the accelerating easing above.
+  const scale = progress.interpolate({
+    inputRange: [0, 0.6, 1],
+    outputRange: [1, 0.85, 0.2],
+  });
+  const rotate = progress.interpolate({ inputRange: [0, 0.5, 1], outputRange: ["0deg", "12deg", "-6deg"] });
+  const opacity = progress.interpolate({ inputRange: [0, 0.75, 1], outputRange: [1, 1, 0] });
 
   return (
     <Animated.View
@@ -117,14 +131,20 @@ function FlyingClone({ flight, target }: { flight: Flight; target: FlyRect | nul
         top: 0,
         width: CLONE_SIZE,
         height: CLONE_SIZE,
-        borderRadius: radius.sm,
+        // Fully round, not the card's own corner radius — this is meant to
+        // read as a distinct "flying chip," not a shrinking copy of the card.
+        borderRadius: CLONE_SIZE / 2,
         overflow: "hidden",
         backgroundColor: photoUrl ? color.surface : color.primary,
         alignItems: "center",
         justifyContent: "center",
-        borderWidth: photoUrl ? 1 : 0,
-        borderColor: color.border,
-        transform: [{ translateX }, { translateY }, { scale }],
+        borderWidth: photoUrl ? 2 : 0,
+        borderColor: color.surface,
+        shadowColor: "#000",
+        shadowOpacity: 0.25,
+        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 3 },
+        transform: [{ translateX }, { translateY }, { scale }, { rotate }],
         opacity,
         elevation: 30,
         zIndex: 1000,
