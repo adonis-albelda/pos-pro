@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { ActivityIndicator, Image, Pressable, Text, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, Animated, Image, Pressable, Text, View } from "react-native";
 import { usePathname, useRouter } from "expo-router";
 import { ChevronRight, Menu, ShoppingCart } from "lucide-react-native";
 import { formatMoney, storeInitial } from "@double-a/shared-types";
@@ -33,6 +33,24 @@ export function StoreHeader() {
   const StatusIcon = look.icon;
 
   const logoSize = compact ? 32 : 36;
+
+  // Pops the cart chip every time a tap on a tile adds to it — the only
+  // feedback a cashier gets that the add actually registered, now that the
+  // chip lives up here instead of a bottom bar the tile sat right next to.
+  // Keyed off itemCount rising, not the chip being pressed — the chip's own
+  // onPress opens the cart, it never adds to it.
+  const cartScale = useRef(new Animated.Value(1)).current;
+  const previousItemCount = useRef(cart.itemCount);
+  useEffect(() => {
+    if (cart.itemCount > previousItemCount.current) {
+      cartScale.setValue(1);
+      Animated.sequence([
+        Animated.spring(cartScale, { toValue: 1.22, speed: 40, bounciness: 14, useNativeDriver: true }),
+        Animated.spring(cartScale, { toValue: 1, speed: 20, bounciness: 8, useNativeDriver: true }),
+      ]).start();
+    }
+    previousItemCount.current = cart.itemCount;
+  }, [cart.itemCount, cartScale]);
 
   return (
     <>
@@ -127,17 +145,26 @@ export function StoreHeader() {
               opacity: pressed ? 0.8 : 1,
             })}
           >
-            <ShoppingCart size={16} color={color.onPrimary} strokeWidth={2.25} />
-            <Text
-              numberOfLines={1}
+            <Animated.View
               style={{
-                fontSize: compact ? fontSize.body : fontSize.bodyLg,
-                fontWeight: "700",
-                color: color.onPrimary,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: space.xs,
+                transform: [{ scale: cartScale }],
               }}
             >
-              {cart.itemCount === 0 ? "Cart empty" : `${cart.itemCount} · ${formatMoney(cart.total)}`}
-            </Text>
+              <ShoppingCart size={16} color={color.onPrimary} strokeWidth={2.25} />
+              <Text
+                numberOfLines={1}
+                style={{
+                  fontSize: compact ? fontSize.body : fontSize.bodyLg,
+                  fontWeight: "700",
+                  color: color.onPrimary,
+                }}
+              >
+                {cart.itemCount === 0 ? "Cart empty" : `${cart.itemCount} · ${formatMoney(cart.total)}`}
+              </Text>
+            </Animated.View>
           </Pressable>
         ) : (
           <View style={{ flex: 1, minWidth: 0 }} />
