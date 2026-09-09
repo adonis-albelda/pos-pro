@@ -15,20 +15,30 @@ export type ThemeColorId =
   | "slate";
 export type ProductViewMode = "product" | "variant";
 export type BackgroundEffect = "none" | "bubbles" | "rain" | "fire";
+/**
+ * "text" drops the thumbnail entirely (name/price/stock only). "image-text"
+ * is today's existing tile (a small thumbnail beside the name, unchanged).
+ * "image-dominant" covers the whole tile with the product photo and shows
+ * only a name overlay — no price or stock line — falling back to a plain
+ * color plate for a product with no photo (components/product-tile.tsx).
+ */
+export type CardDisplayStyle = "text" | "image-text" | "image-dominant";
 
 export interface ThemePreferences {
   radiusStyle: RadiusStyle;
   colorId: ThemeColorId;
   productViewMode: ProductViewMode;
   backgroundEffect: BackgroundEffect;
+  cardDisplayStyle: CardDisplayStyle;
 }
 
-/** "full" = today's existing corner scale (packages/ui's radius token) and "teal" = today's existing brand color — an un-migrated device looks unchanged. */
+/** "full" = today's existing corner scale (packages/ui's radius token), "teal" = today's existing brand color, "image-text" = today's existing tile layout — an un-migrated device looks unchanged. */
 const DEFAULT_PREFERENCES: ThemePreferences = {
   radiusStyle: "full",
   colorId: "teal",
   productViewMode: "product",
   backgroundEffect: "none",
+  cardDisplayStyle: "image-text",
 };
 
 export const RADIUS_SCALES: Record<RadiusStyle, { sm: number; md: number; lg: number }> = {
@@ -151,6 +161,10 @@ export async function setProductViewMode(productViewMode: ProductViewMode): Prom
 
 export async function setBackgroundEffect(backgroundEffect: BackgroundEffect): Promise<void> {
   await persist({ ...cache, backgroundEffect });
+}
+
+export async function setCardDisplayStyle(cardDisplayStyle: CardDisplayStyle): Promise<void> {
+  await persist({ ...cache, cardDisplayStyle });
 }
 
 /** Re-renders the calling component on any theme preference change — the Theme screen itself uses this to keep its selection UI in sync; most of the app instead relies on the root remount (app/_layout.tsx). */

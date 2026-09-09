@@ -71,16 +71,17 @@ function buildStyles() {
   },
   card: {
     backgroundColor: color.surface,
-    // A literal, not radius.md — this app's own rounder-corner direction,
-    // kept local to mobile rather than changing the shared token admin reads too.
-    borderRadius: 18,
+    // radius.lg, not a literal — this is the Theme menu's corner-style
+    // setting (lib/theme-preferences.ts), and product tiles on the Sell
+    // grid are the highest-visibility surface it has to reach.
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: color.border,
   },
   /** A card that should read as brand surface rather than plain paper. */
   cardTinted: {
     backgroundColor: color.primaryTint,
-    borderRadius: 18,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: color.primarySoft,
   },

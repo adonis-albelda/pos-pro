@@ -1,8 +1,9 @@
 import { useRef } from "react";
-import { Pressable, Text, View } from "react-native";
+import { ImageBackground, Pressable, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { Minus, Package, Tag, Trash2, Truck, X } from "lucide-react-native";
 import { formatMoney, stockLevel, type ProductWithEstimatedStock } from "@double-a/shared-types";
+import { useThemePreferences } from "@/lib/theme-preferences";
 import { color, fontSize, radius, space, styles } from "@/theme";
 import { BottomSheet } from "./bottom-sheet";
 import { Badge, IconButton } from "./ui";
@@ -39,6 +40,12 @@ export function ProductTile({
   const unitSuffix = product.unit === "pc" ? "" : ` ${product.unit}`;
   // At one, taking one off drops the line entirely, so the control says so.
   const RemoveIcon = inCart === 1 ? Trash2 : Minus;
+  // Theme menu (app/pos/theme.tsx) — "text" drops the thumbnail below,
+  // "image-dominant" replaces this component's whole body with a full-bleed
+  // photo, "image-text" is this file's original layout, untouched.
+  const { cardDisplayStyle } = useThemePreferences();
+  const imageDominant = cardDisplayStyle === "image-dominant";
+  const showThumbnail = cardDisplayStyle !== "text";
 
   // Manual hold timer, same reason as the cart row: Pressable's built-in
   // onLongPress can misfire as a child of a FlatList row. didHold suppresses
@@ -86,8 +93,11 @@ export function ProductTile({
         {
           flex: 1,
           minHeight: minHeight ?? (compact ? 96 : 112),
-          padding,
-          justifyContent: "space-between",
+          // Image-dominant bleeds the photo to every edge — an inset would
+          // leave a plain border strip around it instead of a full cover.
+          padding: imageDominant ? 0 : padding,
+          overflow: imageDominant ? "hidden" : undefined,
+          justifyContent: imageDominant ? undefined : "space-between",
           // A tile already in the cart is filled, not just outlined — the state
           // has to survive a glance across a counter.
           borderColor: inCartNow ? color.primary : color.border,
@@ -101,9 +111,20 @@ export function ProductTile({
         },
       ]}
     >
+      {imageDominant ? (
+        <ImageDominantBody
+          product={product}
+          inCartNow={inCartNow}
+          inCart={inCart}
+          RemoveIcon={RemoveIcon}
+          onRemove={onRemove}
+        />
+      ) : (
+        <>
       <View style={{ gap: space.xs }}>
         {/* On a phone the tile is too narrow to carry the icon and still leave
             room for a readable product name, so the icon is dropped there. */}
+        {showThumbnail ? (
         <View style={{ flexDirection: "row", alignItems: "flex-start", gap: space.sm }}>
           {compact ? (
             product.photoUrl ? (
@@ -139,6 +160,21 @@ export function ProductTile({
             {product.name}
           </Text>
         </View>
+        ) : (
+          // "Text only" (Theme menu) — no thumbnail, so the name needs its
+          // own line instead of sharing a row with an icon.
+          <Text
+            numberOfLines={2}
+            style={{
+              fontSize: compact ? fontSize.body : fontSize.bodyLg,
+              fontWeight: "600",
+              color: color.ink,
+              lineHeight: compact ? 18 : 22,
+            }}
+          >
+            {product.name}
+          </Text>
+        )}
         <View style={{ flexDirection: "row", alignItems: "baseline", gap: space.xs }}>
           <Text
             numberOfLines={1}
@@ -263,7 +299,131 @@ export function ProductTile({
           </Pressable>
         ) : null}
       </View>
+        </>
+      )}
     </Pressable>
+  );
+}
+
+/**
+ * "Image dominant" (Theme menu — lib/theme-preferences.ts's cardDisplayStyle):
+ * the whole tile is the product photo, with only its name overlaid — no
+ * price, no stock line, by explicit design. The in-cart "-" control stays
+ * (dropping it would leave no way to correct a cart from the grid at all),
+ * rendered as a plain icon button instead of the pill-with-count the other
+ * two display styles use, since there is no room here to spell out
+ * "N in cart" over a photo without crowding the name. A product with no
+ * photo falls back to a solid brand-tint plate so the mode still reads as
+ * "cards," not a broken image icon.
+ */
+function ImageDominantBody({
+  product,
+  inCartNow,
+  inCart,
+  RemoveIcon,
+  onRemove,
+}: {
+  product: ProductWithEstimatedStock;
+  inCartNow: boolean;
+  inCart: number;
+  RemoveIcon: typeof Minus;
+  onRemove: () => void;
+}) {
+  const overlay = (
+    <>
+      {/* Flat scrim, not a gradient — no linear-gradient dependency in this
+          app; solid + the name's own text shadow below keeps it legible over
+          a bright photo without needing one. */}
+      <View
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          paddingHorizontal: space.sm,
+          paddingVertical: space.sm,
+          backgroundColor: "rgba(0,0,0,0.45)",
+          flexDirection: "row",
+          alignItems: "center",
+          gap: space.xs,
+        }}
+      >
+        <Text
+          numberOfLines={2}
+          style={{
+            flex: 1,
+            fontSize: fontSize.body,
+            fontWeight: "700",
+            color: "#FFFFFF",
+          }}
+        >
+          {product.name}
+        </Text>
+        {inCartNow ? (
+          <Pressable
+            onPress={onRemove}
+            accessibilityRole="button"
+            accessibilityLabel={
+              inCart === 1
+                ? `Remove ${product.name} from cart`
+                : `Take one ${product.name} off the cart, ${inCart} on it`
+            }
+            hitSlop={space.sm}
+            style={({ pressed }) => ({
+              width: 28,
+              height: 28,
+              borderRadius: 14,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: pressed ? color.primaryDark : color.primary,
+            })}
+          >
+            <RemoveIcon size={14} color={color.onPrimary} strokeWidth={2.5} />
+          </Pressable>
+        ) : null}
+      </View>
+      {inCartNow ? (
+        <View
+          style={{
+            position: "absolute",
+            top: space.xs,
+            right: space.xs,
+            minWidth: 22,
+            height: 22,
+            paddingHorizontal: 6,
+            borderRadius: 11,
+            backgroundColor: color.primary,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Text style={{ color: color.onPrimary, fontSize: fontSize.caption, fontWeight: "700" }}>
+            {inCart}
+          </Text>
+        </View>
+      ) : null}
+    </>
+  );
+
+  if (!product.photoUrl) {
+    return (
+      <View style={{ flex: 1, backgroundColor: color.primarySoft, justifyContent: "flex-end" }}>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <Package size={32} color={color.primary} strokeWidth={1.5} />
+        </View>
+        {overlay}
+      </View>
+    );
+  }
+
+  return (
+    <ImageBackground
+      source={{ uri: product.photoUrl }}
+      resizeMode="cover"
+      style={{ flex: 1, justifyContent: "flex-end" }}
+    >
+      {overlay}
+    </ImageBackground>
   );
 }
 

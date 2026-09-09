@@ -5,21 +5,25 @@ import {
   Droplets,
   Flame,
   Grid3x3,
+  Image as ImageIcon,
   Layers,
   Palette,
   Square,
   SquareStack,
+  Type,
 } from "lucide-react-native";
 import { useLayout } from "@/lib/layout";
 import {
   THEME_COLOR_PRESETS,
   resolvePrimaryPalette,
   setBackgroundEffect,
+  setCardDisplayStyle,
   setProductViewMode,
   setRadiusStyle,
   setThemeColorId,
   useThemePreferences,
   type BackgroundEffect,
+  type CardDisplayStyle,
   type ProductViewMode,
   type RadiusStyle,
   type ThemeColorId,
@@ -39,6 +43,27 @@ const BACKGROUND_OPTIONS: { id: BackgroundEffect; label: string; icon: typeof Cl
   { id: "bubbles", label: "Bubbles", icon: Cloud },
   { id: "rain", label: "Rain", icon: Droplets },
   { id: "fire", label: "Fire", icon: Flame },
+];
+
+const CARD_DISPLAY_OPTIONS: {
+  id: CardDisplayStyle;
+  label: string;
+  description: string;
+  icon: typeof Type;
+}[] = [
+  { id: "text", label: "Text only", description: "Name, price, and stock — no thumbnail.", icon: Type },
+  {
+    id: "image-text",
+    label: "Image + text",
+    description: "Today's look: a small thumbnail beside the name.",
+    icon: ImageIcon,
+  },
+  {
+    id: "image-dominant",
+    label: "Image dominant",
+    description: "The photo fills the card; only the name overlays it.",
+    icon: ImageIcon,
+  },
 ];
 
 /**
@@ -115,6 +140,25 @@ export default function ThemeScreen() {
             active={prefs.productViewMode === "variant"}
             onPress={() => void setProductViewMode("variant")}
           />
+        </Card>
+
+        <Card style={[{ gap: space.md }, styles.floatShadow, { borderRadius: radius.sm }]}>
+          <SectionTitle
+            icon={ImageIcon}
+            title="Product cards"
+            hint="How each tile in the sell grid presents a product."
+          />
+          {CARD_DISPLAY_OPTIONS.map((option) => (
+            <ViewModeOption
+              key={option.id}
+              id={option.id}
+              label={option.label}
+              description={option.description}
+              icon={option.icon}
+              active={prefs.cardDisplayStyle === option.id}
+              onPress={() => void setCardDisplayStyle(option.id)}
+            />
+          ))}
         </Card>
 
         <Card style={[{ gap: space.md }, styles.floatShadow, { borderRadius: radius.sm }]}>
@@ -221,6 +265,7 @@ function ColorSwatch({
   );
 }
 
+/** Shared by the Sell grid and Product cards sections — an id-labeled row with a description, used generically enough that `id` itself is never read here (each call site's own onPress already knows what to set). */
 function ViewModeOption({
   label,
   description,
@@ -228,7 +273,7 @@ function ViewModeOption({
   active,
   onPress,
 }: {
-  id: ProductViewMode;
+  id: ProductViewMode | CardDisplayStyle;
   label: string;
   description: string;
   icon: typeof Grid3x3;

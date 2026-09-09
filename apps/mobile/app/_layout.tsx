@@ -164,7 +164,6 @@ export default function RootLayout() {
                 <StatusBar style="dark" />
                 <View style={{ flex: 1, backgroundColor: color.paper }}>
                   <PaperBackdrop />
-                  <ThemeBackgroundEffect />
                   <Stack
                     screenOptions={{
                       headerShown: false,
@@ -175,6 +174,17 @@ export default function RootLayout() {
                       animationDuration: 180,
                     }}
                   />
+                  {/*
+                    After Stack, not before: a screen like the Sell grid is
+                    wall-to-wall opaque product tiles, so an effect painted
+                    underneath the Stack (its old position) had almost no
+                    open background left to show through. Painted on top
+                    instead — still pointerEvents="none", still low-opacity
+                    by design (see theme-background-effect.tsx) — so it
+                    reads on every screen, tiles included, without blocking
+                    a single tap.
+                  */}
+                  <ThemeBackgroundEffect />
                 </View>
                 <PullProgressModal />
                 {showUpdateDialog ? (
