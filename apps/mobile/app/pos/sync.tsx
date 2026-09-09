@@ -131,18 +131,30 @@ export default function SyncScreen() {
   );
 }
 
-const TONE_COLOR = {
-  accent: color.accent,
-  primary: color.primary,
-  warning: color.warning,
-} as const;
+type SyncTone = "accent" | "primary" | "warning";
+
+// Functions, not module-level constants — a plain object here would read
+// color.primary/color.accent/etc. exactly once at import, before caching
+// forever, and never pick up a later Theme menu pick. See components/ui.tsx's
+// buttonFill for the same fix on the shared Button.
+function toneColor(tone: SyncTone): string {
+  const colors: Record<SyncTone, string> = {
+    accent: color.accent,
+    primary: color.primary,
+    warning: color.warning,
+  };
+  return colors[tone];
+}
 
 // Amber tones (accent, warning) are too light for white button text.
-const TONE_ON_COLOR = {
-  accent: color.ink,
-  primary: color.onPrimary,
-  warning: color.ink,
-} as const;
+function toneOnColor(tone: SyncTone): string {
+  const colors: Record<SyncTone, string> = {
+    accent: color.ink,
+    primary: color.onPrimary,
+    warning: color.ink,
+  };
+  return colors[tone];
+}
 
 /** A flat row inside the one card — icon, title, button on the right, description below. Not its own card. */
 function ActionLine({
@@ -155,15 +167,15 @@ function ActionLine({
   onPress,
 }: {
   icon: typeof CloudUpload;
-  tone: keyof typeof TONE_COLOR;
+  tone: SyncTone;
   title: string;
   body: string;
   buttonLabel: string;
   busy: boolean;
   onPress: () => void;
 }) {
-  const tint = TONE_COLOR[tone];
-  const onTint = TONE_ON_COLOR[tone];
+  const tint = toneColor(tone);
+  const onTint = toneOnColor(tone);
 
   return (
     <View style={{ gap: space.xs }}>
