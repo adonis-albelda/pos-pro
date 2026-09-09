@@ -116,6 +116,7 @@ import {
 import { getApiClient } from "@/lib/api/session";
 import { useCartSummary } from "@/lib/cart-summary";
 import { getDeviceId } from "@/lib/device";
+import { useFlyToCart, type FlyRect } from "@/lib/fly-to-cart";
 import { useFeatureFlags } from "@/lib/features";
 import { useLayout } from "@/lib/layout";
 import { useSession } from "@/lib/session";
@@ -652,7 +653,7 @@ export default function SellScreen() {
    * resolved, so a repeat tap just bumps quantity, same speed-critical path
    * as a plain product always had.
    */
-  async function addToCart(product: ProductWithEstimatedStock) {
+  async function addToCart(product: ProductWithEstimatedStock, sourceRect?: FlyRect) {
     rememberProducts([product]);
 
     // Product-level mode never creates more than one line per product (the
@@ -665,6 +666,7 @@ export default function SellScreen() {
     const existing = lines.find((line) => line.productId === product.id);
     if (existing) {
       changeQuantity(product.id, 1, existing.variantId);
+      if (sourceRect) flyToCart(sourceRect, product.photoUrl);
       return;
     }
 
@@ -674,6 +676,7 @@ export default function SellScreen() {
     ]);
 
     if (variants.length > 1 || addonGroups.length > 0) {
+      // Opens the picker instead — nothing has been added yet, so no flight.
       setPickerState({ product, variants, addonGroups });
       return;
     }
@@ -684,7 +687,7 @@ export default function SellScreen() {
     // straight to the same out-of-stock/commit path the picker itself uses.
     const [onlyVariant] = variants;
     if (variants.length === 1 && onlyVariant) {
-      void commitVariantSelection(product, onlyVariant, []);
+      void commitVariantSelection(product, onlyVariant, [], sourceRect);
       return;
     }
 
@@ -694,25 +697,34 @@ export default function SellScreen() {
         `${product.name} shows none on hand. Sell it anyway? New stock added later settles this automatically.`,
         [
           { text: "Cancel", style: "cancel" },
-          { text: "Sell anyway", onPress: () => commitAddToCart(product) },
+          {
+            text: "Sell anyway",
+            onPress: () => {
+              commitAddToCart(product);
+              if (sourceRect) flyToCart(sourceRect, product.photoUrl);
+            },
+          },
         ],
       );
       return;
     }
 
     commitAddToCart(product);
+    if (sourceRect) flyToCart(sourceRect, product.photoUrl);
   }
 
   /**
-   * Shared by the picker's own confirm (onPickerConfirm) and the
-   * "exactly one variant" auto-resolve path above (and, in variant-level
-   * grid view, a tile that's already scoped to one specific variant) —
-   * same estimate-then-alert-then-commit shape either way.
+   * Shared by the picker's own confirm (onPickerConfirm — no `sourceRect`,
+   * since that add happens from a sheet, not the tile itself, so no flight
+   * plays there) and the "exactly one variant" auto-resolve path above (and,
+   * in variant-level grid view, a tile that's already scoped to one specific
+   * variant) — same estimate-then-alert-then-commit shape either way.
    */
   async function commitVariantSelection(
     product: ProductWithEstimatedStock,
     variant: ProductVariant,
     addons: VariantAddonSelection["addons"],
+    sourceRect?: FlyRect,
   ): Promise<void> {
     const pending = await getVariantPendingQuantity(variant.id);
     const estimatedStock = variant.stockQuantity - pending;
@@ -725,13 +737,20 @@ export default function SellScreen() {
         `${product.name} (${label}) shows none on hand. Sell it anyway? New stock added later settles this automatically.`,
         [
           { text: "Cancel", style: "cancel" },
-          { text: "Sell anyway", onPress: () => commitAddToCart(product, resolved) },
+          {
+            text: "Sell anyway",
+            onPress: () => {
+              commitAddToCart(product, resolved);
+              if (sourceRect) flyToCart(sourceRect, product.photoUrl);
+            },
+          },
         ],
       );
       return;
     }
 
     commitAddToCart(product, resolved);
+    if (sourceRect) flyToCart(sourceRect, product.photoUrl);
   }
 
   /**
@@ -741,9 +760,9 @@ export default function SellScreen() {
    * (if the product has any) still get their own step, same picker
    * component, just pre-scoped to this one variant instead of every one.
    */
-  async function handleTilePress(tile: GridTile) {
+  async function handleTilePress(tile: GridTile, sourceRect?: FlyRect) {
     if (!tile.variant) {
-      await addToCart(tile.realProduct);
+      await addToCart(tile.realProduct, sourceRect);
       return;
     }
 
@@ -753,6 +772,7 @@ export default function SellScreen() {
     );
     if (existing) {
       changeQuantity(tile.realProduct.id, 1, tile.variant.id);
+      if (sourceRect) flyToCart(sourceRect, tile.display.photoUrl);
       return;
     }
 
@@ -762,7 +782,7 @@ export default function SellScreen() {
       return;
     }
 
-    await commitVariantSelection(tile.realProduct, tile.variant, []);
+    await commitVariantSelection(tile.realProduct, tile.variant, [], sourceRect);
   }
 
   function commitAddToCart(product: ProductWithEstimatedStock, selection?: ResolvedSelection) {
@@ -1207,6 +1227,7 @@ export default function SellScreen() {
   // already always on-screen, so the header chip there is a plain summary,
   // not a second way to reach it.
   const { setCartSummary, clearCartSummary } = useCartSummary();
+  const { flyToCart } = useFlyToCart();
   useEffect(() => {
     setCartSummary({
       itemCount,
@@ -1426,7 +1447,7 @@ export default function SellScreen() {
                     compact={compact}
                     minHeight={layout.tileMinHeight}
                     padding={space.md}
-                    onPress={() => void handleTilePress(item)}
+                    onPress={(sourceRect) => void handleTilePress(item, sourceRect)}
                     onRemove={() => changeQuantity(item.realProduct.id, -1, item.variant?.id)}
                     onHoldRemove={() =>
                       confirmRemoveLine(item.realProduct.id, item.display.name, item.variant?.id)

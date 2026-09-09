@@ -3,6 +3,7 @@ import { ImageBackground, Pressable, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { Minus, Package, Tag, Trash2, Truck, X } from "lucide-react-native";
 import { formatMoney, stockLevel, type ProductWithEstimatedStock } from "@double-a/shared-types";
+import { type FlyRect } from "@/lib/fly-to-cart";
 import { useThemePreferences } from "@/lib/theme-preferences";
 import { color, fontSize, radius, space, styles } from "@/theme";
 import { BottomSheet } from "./bottom-sheet";
@@ -25,7 +26,8 @@ export function ProductTile({
   compact?: boolean;
   minHeight?: number;
   padding?: number;
-  onPress: () => void;
+  /** Passed this tile's own on-screen rect, measured at the moment of the tap — see lib/fly-to-cart.tsx. The caller decides whether an add actually happened and, if so, flies from it. */
+  onPress: (sourceRect: FlyRect) => void;
   onRemove: () => void;
   /** Holding a tile already in the cart drops the whole line, with confirmation. */
   onHoldRemove: () => void;
@@ -52,6 +54,7 @@ export function ProductTile({
   // the trailing onPress (add-to-cart) once the hold has already removed it.
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const didHold = useRef(false);
+  const tileRef = useRef<View>(null);
 
   function clearHoldTimer() {
     if (holdTimer.current) {
@@ -62,6 +65,7 @@ export function ProductTile({
 
   return (
     <Pressable
+      ref={tileRef}
       onPressIn={() => {
         clearHoldTimer();
         didHold.current = false;
@@ -80,7 +84,9 @@ export function ProductTile({
           didHold.current = false;
           return;
         }
-        onPress();
+        tileRef.current?.measureInWindow((x, y, width, height) => {
+          onPress({ x, y, width, height });
+        });
       }}
       accessibilityRole="button"
       accessibilityLabel={

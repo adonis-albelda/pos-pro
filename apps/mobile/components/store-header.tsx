@@ -6,6 +6,7 @@ import { formatMoney, storeInitial } from "@double-a/shared-types";
 import { AccountDrawer } from "@/components/account-drawer";
 import { LocationSwitcher } from "@/components/location-switcher";
 import { useCartSummary } from "@/lib/cart-summary";
+import { useFlyToCart } from "@/lib/fly-to-cart";
 import { useStoreSettings } from "@/lib/store";
 import { useLayout } from "@/lib/layout";
 import { useSync } from "@/sync/sync-provider";
@@ -27,6 +28,20 @@ export function StoreHeader() {
   const { compact } = useLayout();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const onSellScreen = pathname === "/pos";
+
+  // Where a "flying" product lands (lib/fly-to-cart.tsx) — re-measured
+  // whenever this row re-lays out (rotation, compact/tablet, the chip
+  // showing/hiding with onSellScreen), via the ref callback below.
+  const { setTarget } = useFlyToCart();
+  const cartChipRef = useRef<View>(null);
+  function measureCartChip() {
+    cartChipRef.current?.measureInWindow((x, y, width, height) => {
+      if (width > 0 && height > 0) setTarget({ x, y, width, height });
+    });
+  }
+  useEffect(() => {
+    if (!onSellScreen) setTarget(null);
+  }, [onSellScreen, setTarget]);
 
   useMinuteTick();
   const look = syncLook(state);
@@ -124,6 +139,8 @@ export function StoreHeader() {
             space empty next to the logo. */}
         {onSellScreen ? (
           <Pressable
+            ref={cartChipRef}
+            onLayout={measureCartChip}
             onPress={cart.open}
             disabled={!cart.open || cart.itemCount === 0}
             accessibilityRole="button"
