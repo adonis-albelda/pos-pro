@@ -10,7 +10,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { getAppVersion, type AppVersion } from "@double-a/api-client/queries";
 import { PaperBackdrop } from "@/components/paper-backdrop";
 import { PullProgressModal } from "@/components/pull-progress-modal";
-import { ThemeBackgroundEffect } from "@/components/theme-background-effect";
 import { UpdateDialog } from "@/components/update-dialog";
 import { migrate } from "@/db";
 import { APP_VERSION } from "@/lib/api/client";
@@ -174,17 +173,6 @@ export default function RootLayout() {
                       animationDuration: 180,
                     }}
                   />
-                  {/*
-                    After Stack, not before: a screen like the Sell grid is
-                    wall-to-wall opaque product tiles, so an effect painted
-                    underneath the Stack (its old position) had almost no
-                    open background left to show through. Painted on top
-                    instead — still pointerEvents="none", still low-opacity
-                    by design (see theme-background-effect.tsx) — so it
-                    reads on every screen, tiles included, without blocking
-                    a single tap.
-                  */}
-                  <ThemeBackgroundEffect />
                 </View>
                 <PullProgressModal />
                 {showUpdateDialog ? (

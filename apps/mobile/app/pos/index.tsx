@@ -130,6 +130,7 @@ import { CategoryDialog, type CategoryFilter } from "@/components/category-tabs"
 import { LoadingState } from "@/components/loading-state";
 import { ProductDetailSheet, ProductTile } from "@/components/product-tile";
 import { SelectField } from "@/components/select-field";
+import { ThemeBackgroundEffect } from "@/components/theme-background-effect";
 import {
   VariantAddonPicker,
   type VariantAddonSelection,
@@ -1992,6 +1993,19 @@ export default function SellScreen() {
         onCancel={() => setPickerState(null)}
         onConfirm={(selection) => void onPickerConfirm(selection)}
       />
+
+      {/*
+        Rendered here, inside this screen's own tree, rather than up in
+        app/_layout.tsx or app/pos/_layout.tsx — expo-router's Stack is a
+        native-stack (react-native-screens) navigator, and each of its
+        screens is its own native Screen surface. A plain overlay View
+        sitting as a sibling of a <Stack> outside this component does not
+        reliably paint above what a Screen renders, which is why the effect
+        was invisible over the product grid despite sitting later in the
+        JSX. Placed last here — same screen, same view tree as the grid
+        above — so it always draws on top of it.
+      */}
+      <ThemeBackgroundEffect />
     </View>
   );
 }

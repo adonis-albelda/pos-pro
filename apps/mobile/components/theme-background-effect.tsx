@@ -4,10 +4,17 @@ import { useThemePreferences } from "@/lib/theme-preferences";
 import { color } from "@/theme";
 
 /**
- * Sits behind every screen (see app/_layout.tsx, mounted next to
- * PaperBackdrop) — subtle, low-opacity, looping decoration a shop can pick
- * from the Theme menu. `pointerEvents="none"` throughout: this must never
- * steal a tap from the POS above it. "none" (the default) renders nothing.
+ * A looping decoration a shop can pick from the Theme menu.
+ * `pointerEvents="none"` throughout: this must never steal a tap from the
+ * POS above it. "none" (the default) renders nothing.
+ *
+ * Mounted from inside app/pos/index.tsx's own tree, not up in a shared
+ * layout — expo-router's Stack is a native-stack (react-native-screens)
+ * navigator, and each screen it renders is its own native Screen surface, so
+ * a plain overlay sitting as a sibling of a <Stack> outside a given screen
+ * does not reliably paint above what that screen renders. Only the Sell
+ * screen currently mounts this; add it to another screen's own tree the
+ * same way if it should show there too.
  */
 export function ThemeBackgroundEffect() {
   const { backgroundEffect } = useThemePreferences();
@@ -64,16 +71,21 @@ function useLoop(count: number, durationRange: [number, number]) {
   return { items, progress, width, height };
 }
 
-/** Soft circles drifting up from the bottom, fading out near the top. */
+/**
+ * A lot of soft circles, all starting below the bottom edge and rising past
+ * the top before looping back — genuinely bottom-to-top, not just "somewhere
+ * near the top" (the previous version's start point was a bug: 15% down
+ * from the *top*, so it barely rose at all).
+ */
 function BubblesEffect() {
-  const { items, progress, height } = useLoop(10, [7000, 13000]);
+  const { items, progress, height } = useLoop(32, [6000, 12000]);
 
   return (
     <View style={STYLES.layer} pointerEvents="none">
       {items.map((item, index) => {
         const value = progress[index];
         if (!value) return null;
-        const size = 18 + (index % 4) * 10;
+        const size = 14 + (index % 5) * 8;
         return (
           <Animated.View
             key={index}
@@ -85,14 +97,17 @@ function BubblesEffect() {
               borderRadius: size / 2,
               backgroundColor: color.primary,
               opacity: value.interpolate({
-                inputRange: [0, 0.15, 0.85, 1],
-                outputRange: [0, 0.16, 0.1, 0],
+                inputRange: [0, 0.1, 0.85, 1],
+                outputRange: [0, 0.18, 0.12, 0],
               }),
               transform: [
                 {
+                  // Starts a full bubble-height below the visible area and
+                  // rises to a full bubble-height above it — every bubble's
+                  // entire rise happens on-screen, edge to edge.
                   translateY: value.interpolate({
                     inputRange: [0, 1],
-                    outputRange: [height * 0.15, -height * 0.25],
+                    outputRange: [height + size, -size],
                   }),
                 },
               ],
