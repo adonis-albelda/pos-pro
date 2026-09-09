@@ -152,34 +152,186 @@ function RainEffect() {
   );
 }
 
-/** A warm glow along the bottom edge with a slow flicker — never actual flame shapes, just enough motion to read as "fire" without being distracting on a shop-floor screen. */
-function FireEffect() {
-  const flicker = useRef(new Animated.Value(0)).current;
+/** Each flame's own back-and-forth flicker, all on independent random timing so a row of flames never breathes in unison. */
+function useFlicker(count: number, durationRange: [number, number]) {
+  const values = useRef(Array.from({ length: count }, () => new Animated.Value(0))).current;
+  const timing = useMemo(
+    () =>
+      Array.from({ length: count }, () => ({
+        duration: durationRange[0] + Math.random() * (durationRange[1] - durationRange[0]),
+        delay: Math.random() * durationRange[1],
+      })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- randomized once per mount
+    [count],
+  );
 
   useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(flicker, { toValue: 1, duration: 1400, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        Animated.timing(flicker, { toValue: 0, duration: 1400, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-      ]),
+    const loops = values.map((value, index) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(value, {
+            toValue: 1,
+            duration: timing[index]?.duration ?? 900,
+            delay: timing[index]?.delay ?? 0,
+            easing: Easing.inOut(Easing.sin),
+            useNativeDriver: true,
+          }),
+          Animated.timing(value, {
+            toValue: 0,
+            duration: timing[index]?.duration ?? 900,
+            easing: Easing.inOut(Easing.sin),
+            useNativeDriver: true,
+          }),
+        ]),
+      ),
     );
-    loop.start();
-    return () => loop.stop();
-  }, [flicker]);
+    loops.forEach((loop) => loop.start());
+    return () => loops.forEach((loop) => loop.stop());
+  }, [values, timing]);
+
+  return values;
+}
+
+const FLAME_COLORS = {
+  base: "#D9481F",
+  mid: "#F2994A",
+  tip: "#FBD97A",
+};
+
+/**
+ * A row of flame shapes (three stacked, tapering blobs each — base/mid/tip,
+ * the cheap-but-recognizable way to fake a flame silhouette without an SVG
+ * or gradient library) plus embers drifting up out of them. The previous
+ * version was a flat, flickering rectangle — no flame shape at all, which
+ * is why it didn't read as fire.
+ */
+function FireEffect() {
+  const { width } = useWindowDimensions();
+  const flameCount = Math.max(5, Math.round(width / 70));
+  const flicker = useFlicker(flameCount, [700, 1300]);
+  const { items: embers, progress: emberProgress } = useLoop(18, [1400, 2400]);
 
   return (
     <View style={STYLES.layer} pointerEvents="none">
-      <Animated.View
+      {/* Base glow — grounds the flames in a warm wash instead of them
+          floating on bare background. */}
+      <View
         style={{
           position: "absolute",
           left: 0,
           right: 0,
           bottom: 0,
-          height: 140,
-          backgroundColor: "#E8622F",
-          opacity: flicker.interpolate({ inputRange: [0, 1], outputRange: [0.06, 0.14] }),
+          height: 60,
+          backgroundColor: FLAME_COLORS.base,
+          opacity: 0.12,
         }}
       />
+
+      {Array.from({ length: flameCount }).map((_, index) => {
+        const value = flicker[index];
+        if (!value) return null;
+        const left = (width / flameCount) * index + (width / flameCount) * 0.5 * ((index % 2) - 0.5);
+        const flameWidth = 34 + (index % 3) * 10;
+        const flameHeight = 70 + (index % 4) * 18;
+
+        return (
+          <Animated.View
+            key={index}
+            style={{
+              position: "absolute",
+              left,
+              bottom: 0,
+              width: flameWidth,
+              height: flameHeight,
+              alignItems: "center",
+              justifyContent: "flex-end",
+              transform: [
+                { scaleY: value.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1.15] }) },
+                { translateX: value.interpolate({ inputRange: [0, 1], outputRange: [-3, 3] }) },
+              ],
+            }}
+          >
+            {/* base */}
+            <View
+              style={{
+                position: "absolute",
+                bottom: 0,
+                width: flameWidth,
+                height: flameWidth * 1.5,
+                borderRadius: flameWidth,
+                backgroundColor: FLAME_COLORS.base,
+                opacity: 0.5,
+              }}
+            />
+            {/* mid */}
+            <View
+              style={{
+                position: "absolute",
+                bottom: flameWidth * 0.55,
+                width: flameWidth * 0.68,
+                height: flameWidth * 1.15,
+                borderRadius: flameWidth,
+                backgroundColor: FLAME_COLORS.mid,
+                opacity: 0.55,
+              }}
+            />
+            {/* tip */}
+            <View
+              style={{
+                position: "absolute",
+                bottom: flameWidth * 1.15,
+                width: flameWidth * 0.34,
+                height: flameWidth * 0.62,
+                borderRadius: flameWidth,
+                backgroundColor: FLAME_COLORS.tip,
+                opacity: 0.6,
+              }}
+            />
+          </Animated.View>
+        );
+      })}
+
+      {/* Embers — small sparks drifting up out of the flames and fading, a
+          short rise (not edge-to-edge like Bubbles), same useLoop rise
+          mechanics reused with fire's own timing/colors. */}
+      {embers.map((item, index) => {
+        const value = emberProgress[index];
+        if (!value) return null;
+        const size = 3 + (index % 3) * 2;
+        const rise = 160 + (index % 5) * 30;
+        return (
+          <Animated.View
+            key={index}
+            style={{
+              position: "absolute",
+              left: item.left,
+              bottom: 0,
+              width: size,
+              height: size,
+              borderRadius: size / 2,
+              backgroundColor: index % 2 === 0 ? FLAME_COLORS.tip : FLAME_COLORS.mid,
+              opacity: value.interpolate({
+                inputRange: [0, 0.15, 0.8, 1],
+                outputRange: [0, 0.7, 0.4, 0],
+              }),
+              transform: [
+                {
+                  translateY: value.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -rise],
+                  }),
+                },
+                {
+                  translateX: value.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [0, index % 2 === 0 ? 10 : -10, 0],
+                  }),
+                },
+              ],
+            }}
+          />
+        );
+      })}
     </View>
   );
 }
