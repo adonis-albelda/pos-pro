@@ -23,10 +23,18 @@ export { MIN_TAP_TARGET, fontSize, space };
  * A property read reflects the *latest* choice the instant it runs, but a
  * component only re-runs its render (and thus re-reads) when React decides
  * to re-render it — which a settings change alone does not cause for a
- * screen sitting elsewhere in the tree. app/_layout.tsx forces that: it
- * remounts the whole app (a `key` bump) whenever a theme preference
- * changes, which is what makes a Theme menu pick apply live instead of
- * "next time you happen to revisit this screen."
+ * screen sitting elsewhere in the tree. Deliberately NOT "fixed" with a
+ * whole-app remount: an earlier version keyed the root view on a theme-tick
+ * counter to force one, which also remounted SessionProvider/SyncProvider/
+ * LocationScopeProvider underneath it — wiping the signed-in cashier and
+ * bouncing straight to the unlock screen every time someone picked a color.
+ * In practice this still applies promptly without that: the Theme screen
+ * itself re-renders instantly (app/pos/theme.tsx calls useThemePreferences,
+ * which subscribes), and every POS tab is reached via router.replace()
+ * (app/pos/_layout.tsx's lateral tabs), which remounts that screen fresh —
+ * so the very next tab visited already reads the new values. Only whatever
+ * screen was sitting mounted *before* the change, off-screen, might show
+ * stale colors until it next re-renders on its own.
  */
 export const color: typeof baseColor = new Proxy(baseColor, {
   get(target, prop: string | symbol) {

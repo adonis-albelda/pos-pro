@@ -1,4 +1,5 @@
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { useRef, useState } from "react";
+import { ActivityIndicator, Modal, Pressable, ScrollView, Text, View } from "react-native";
 import {
   Check,
   Cloud,
@@ -68,15 +69,33 @@ const CARD_DISPLAY_OPTIONS: {
 
 /**
  * The Theme menu (item 4) — appearance and a couple of behavior choices,
- * all persisted on-device (lib/theme-preferences.ts) and applied live via
- * theme.ts's color/radius/styles Proxies plus the root-remount effect in
- * app/_layout.tsx. Nothing here touches Supabase; this is purely local to
- * this terminal, same spirit as the Bluetooth printer pairing on
+ * all persisted on-device (lib/theme-preferences.ts) and applied via theme.ts's
+ * color/radius/styles Proxies. Nothing here touches Supabase; this is purely
+ * local to this terminal, same spirit as the Bluetooth printer pairing on
  * pos/settings.tsx.
+ *
+ * No app-wide remount on a pick (that used to log the cashier out — see
+ * theme.ts's own comment on the Proxies for why) — instead every option
+ * here briefly shows "Preparing your theme…" while the write to SecureStore
+ * finishes, then just lets this screen's own re-render (already live, via
+ * useThemePreferences below) show the result. Other already-mounted screens
+ * pick it up next time they naturally re-render or get revisited.
  */
 export default function ThemeScreen() {
   const layout = useLayout();
   const prefs = useThemePreferences();
+  const [applying, setApplying] = useState(false);
+  const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  async function applyChange(action: () => Promise<void>) {
+    if (dismissTimer.current) clearTimeout(dismissTimer.current);
+    setApplying(true);
+    await action();
+    // A deliberate minimum, not just "however long the write takes" — the
+    // write is fast enough that a flash-and-gone dialog would read as a
+    // glitch rather than as feedback that the pick registered.
+    dismissTimer.current = setTimeout(() => setApplying(false), 500);
+  }
 
   return (
     <View style={styles.screen}>
@@ -98,7 +117,7 @@ export default function ThemeScreen() {
                 key={option.id}
                 option={option}
                 active={prefs.radiusStyle === option.id}
-                onPress={() => void setRadiusStyle(option.id)}
+                onPress={() => void applyChange(() => setRadiusStyle(option.id))}
               />
             ))}
           </View>
@@ -112,7 +131,7 @@ export default function ThemeScreen() {
                 key={id}
                 id={id}
                 active={prefs.colorId === id}
-                onPress={() => void setThemeColorId(id)}
+                onPress={() => void applyChange(() => setThemeColorId(id))}
               />
             ))}
           </View>
@@ -130,7 +149,7 @@ export default function ThemeScreen() {
             description="One tile per product. Picking one with 2+ variants asks which; a single variant is added straight away."
             icon={Layers}
             active={prefs.productViewMode === "product"}
-            onPress={() => void setProductViewMode("product")}
+            onPress={() => void applyChange(() => setProductViewMode("product"))}
           />
           <ViewModeOption
             id="variant"
@@ -138,7 +157,7 @@ export default function ThemeScreen() {
             description="Every variant gets its own tile (e.g. Shirt — Red, M and Shirt — Red, L side by side) — one tap adds it, no picker."
             icon={Grid3x3}
             active={prefs.productViewMode === "variant"}
-            onPress={() => void setProductViewMode("variant")}
+            onPress={() => void applyChange(() => setProductViewMode("variant"))}
           />
         </Card>
 
@@ -156,7 +175,7 @@ export default function ThemeScreen() {
               description={option.description}
               icon={option.icon}
               active={prefs.cardDisplayStyle === option.id}
-              onPress={() => void setCardDisplayStyle(option.id)}
+              onPress={() => void applyChange(() => setCardDisplayStyle(option.id))}
             />
           ))}
         </Card>
@@ -173,12 +192,40 @@ export default function ThemeScreen() {
                 key={option.id}
                 option={option}
                 active={prefs.backgroundEffect === option.id}
-                onPress={() => void setBackgroundEffect(option.id)}
+                onPress={() => void applyChange(() => setBackgroundEffect(option.id))}
               />
             ))}
           </View>
         </Card>
       </ScrollView>
+
+      <Modal visible={applying} transparent animationType="fade">
+        <View
+          style={{
+            flex: 1,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: "rgba(0,0,0,0.25)",
+          }}
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: space.sm,
+              paddingHorizontal: space.lg,
+              paddingVertical: space.md,
+              borderRadius: radius.md,
+              backgroundColor: color.surface,
+            }}
+          >
+            <ActivityIndicator color={color.primary} />
+            <Text style={{ fontSize: fontSize.body, fontWeight: "600", color: color.ink }}>
+              Preparing your theme…
+            </Text>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

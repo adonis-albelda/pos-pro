@@ -18,7 +18,7 @@ import { LocationScopeProvider } from "@/lib/location-scope";
 import { registerDevicePushToken, watchForPushTokenChanges } from "@/lib/push";
 import { SessionProvider } from "@/lib/session";
 import { SyncProvider } from "@/sync/sync-provider";
-import { hydrateThemePreferences, subscribeThemePreferences } from "@/lib/theme-preferences";
+import { hydrateThemePreferences } from "@/lib/theme-preferences";
 import { getUpdateStatus } from "@/lib/version-check";
 import { color, space, styles } from "@/theme";
 
@@ -50,12 +50,6 @@ export default function RootLayout() {
   const [error, setError] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState<AppVersion | null>(null);
   const [updateDismissed, setUpdateDismissed] = useState(false);
-  // Bumped by the Theme menu (lib/theme-preferences.ts) on every change and
-  // used as this tree's `key` below — remounting is what makes a new
-  // color/radius/background choice apply immediately everywhere already on
-  // screen, instead of only the next screen a cashier happens to visit. See
-  // theme.ts's color/radius/styles Proxies for the other half of this.
-  const [themeTick, setThemeTick] = useState(0);
 
   // The local database is created on first launch, before anything can read it.
   // Theme preferences hydrate alongside it — both must finish before `ready`,
@@ -69,8 +63,6 @@ export default function RootLayout() {
       )
       .finally(() => void SplashScreen.hideAsync());
   }, []);
-
-  useEffect(() => subscribeThemePreferences(() => setThemeTick((tick) => tick + 1)), []);
 
   // Checked before (or without) any login, so a force-update dialog can
   // block even at the boot/setup screens — not just once fully unlocked.
@@ -154,7 +146,7 @@ export default function RootLayout() {
   }
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }} key={themeTick}>
+    <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
           <SessionProvider>
