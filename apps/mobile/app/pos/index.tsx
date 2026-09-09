@@ -16,6 +16,7 @@ import Swipeable, {
 import { useFocusEffect, useRouter } from "expo-router";
 import * as Crypto from "expo-crypto";
 import {
+  BadgePercent,
   Bookmark,
   BookmarkCheck,
   Banknote,
@@ -65,11 +66,15 @@ import {
   timeAgo,
   type AddonGroup,
   type CartLine,
+  type ComplexDiscountRule,
   type CustomerDetails,
+  type DiscountRule,
   type Fulfillment,
   type PaymentMethod,
   type ProductVariant,
   type ProductWithEstimatedStock,
+  type TaxSettings,
+  DEFAULT_TAX_SETTINGS,
 } from "@double-a/shared-types";
 import { listLocalAddonGroups } from "@/db/addon-groups";
 import { listLocalCategories, type LocalCategory } from "@/db/categories";
@@ -85,9 +90,23 @@ import {
 import {
   getVariantPendingQuantity,
   listLocalVariantsForProduct,
+  listLocalVariantsForProducts,
   variantAttributeLabel,
+  type VariantWithEstimatedStock,
 } from "@/db/product-variants";
 import { completeSale } from "@/db/sales";
+import {
+  getLocalTaxSettings,
+  listLocalComplexDiscountRules,
+  listLocalDiscountRules,
+} from "@/db/discounts";
+import {
+  applyComplexRuleToCart,
+  applySimpleRuleToCart,
+  orderDiscountImpact,
+  qualifyingComplexRules,
+  type AppliedOrderDiscount,
+} from "@/lib/order-discounts";
 import {
   addCartDraft,
   listCartDrafts,
@@ -95,10 +114,12 @@ import {
   type CartDraft,
 } from "@/lib/cart-draft";
 import { getApiClient } from "@/lib/api/session";
+import { useCartSummary } from "@/lib/cart-summary";
 import { getDeviceId } from "@/lib/device";
 import { useFeatureFlags } from "@/lib/features";
 import { useLayout } from "@/lib/layout";
 import { useSession } from "@/lib/session";
+import { useThemePreferences } from "@/lib/theme-preferences";
 import { printReceipt } from "@/printing/receipt";
 import { useSync } from "@/sync/sync-provider";
 import { BottomSheet } from "@/components/bottom-sheet";
@@ -170,6 +191,41 @@ interface ResolvedSelection extends VariantAddonSelection {
   estimatedStock: number;
 }
 
+/**
+ * One grid tile. `display` is what the cashier sees and taps (in "By
+ * variant" mode this carries the variant's own name/price/stock, not the
+ * product's); `realProduct` is always the true product row underneath —
+ * add-ons, category id, and the cart line's productId all key off it, never
+ * off `display.id`, which is a variant id for a variant tile. `variant` is
+ * set only when this tile already resolves to one specific variant.
+ */
+interface GridTile {
+  display: ProductWithEstimatedStock;
+  realProduct: ProductWithEstimatedStock;
+  variant?: ProductVariant;
+}
+
+/** Builds a variant tile's display fields — the variant's own price/sku/stock layered onto its parent product's other fields (photo, unit, category, etc, which a variant has no copy of). */
+function toVariantTileDisplay(
+  product: ProductWithEstimatedStock,
+  variant: ProductVariant,
+  estimatedStock: number,
+): ProductWithEstimatedStock {
+  const label = variantAttributeLabel(variant);
+  return {
+    ...product,
+    id: variant.id,
+    name: label ? `${product.name} — ${label}` : product.name,
+    sku: variant.sku ?? product.sku,
+    barcode: variant.barcode ?? product.barcode,
+    price: variant.price,
+    costPrice: variant.costPrice,
+    stockQuantity: variant.stockQuantity,
+    isBundle: variant.isBundle,
+    estimatedStock,
+  };
+}
+
 export default function SellScreen() {
   const router = useRouter();
   const { cashier } = useSession();
@@ -182,14 +238,70 @@ export default function SellScreen() {
   const { compact, columns } = layout;
 
   const [products, setProducts] = useState<ProductWithEstimatedStock[]>([]);
+  const { productViewMode } = useThemePreferences();
+  // Only populated in "By variant" mode (Theme menu — lib/theme-preferences.ts).
+  // Keyed by product id; fetched for whatever page of `products` is currently
+  // loaded, not paginated on its own — the product fetch/search/category
+  // pipeline above is untouched, this only decides how each already-fetched
+  // product's tile(s) render.
+  const [variantsByProduct, setVariantsByProduct] = useState<
+    Map<string, VariantWithEstimatedStock[]>
+  >(new Map());
+
+  useEffect(() => {
+    if (productViewMode !== "variant") {
+      setVariantsByProduct(new Map());
+      return;
+    }
+    let cancelled = false;
+    void listLocalVariantsForProducts(products.map((product) => product.id)).then((map) => {
+      if (!cancelled) setVariantsByProduct(map);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [products, productViewMode]);
+
+  // One tile per product in "By product" mode. In "By variant" mode, a
+  // product with 2+ variants becomes one tile per variant; 0 or 1 variant
+  // still renders as a single tile (that one variant's own price/stock,
+  // once known — see toVariantTileDisplay). `realProduct` is always the
+  // true product row (add-ons, category id, etc. all key off it); `variant`
+  // is only set for a tile that resolves to one specific variant.
+  const gridTiles = useMemo<GridTile[]>(() => {
+    if (productViewMode !== "variant") {
+      return products.map((product) => ({ display: product, realProduct: product }));
+    }
+    return products.flatMap((product) => {
+      const variants = variantsByProduct.get(product.id);
+      if (!variants || variants.length <= 1) {
+        const only = variants?.[0];
+        return [
+          {
+            display: only
+              ? toVariantTileDisplay(product, only.variant, only.estimatedStock)
+              : product,
+            realProduct: product,
+            variant: only?.variant,
+          },
+        ];
+      }
+      return variants.map(({ variant, estimatedStock }) => ({
+        display: toVariantTileDisplay(product, variant, estimatedStock),
+        realProduct: product,
+        variant,
+      }));
+    });
+  }, [products, variantsByProduct, productViewMode]);
+
   // Pads the last row up to a full `columns` width with invisible fillers —
   // otherwise a lone leftover tile's flex:1 stretches it across the whole
   // row instead of sitting at the same width as its row-mates above.
-  const paddedProducts = useMemo<(ProductWithEstimatedStock | null)[]>(() => {
-    const remainder = products.length % columns;
-    if (remainder === 0) return products;
-    return [...products, ...Array<null>(columns - remainder).fill(null)];
-  }, [products, columns]);
+  const paddedTiles = useMemo<(GridTile | null)[]>(() => {
+    const remainder = gridTiles.length % columns;
+    if (remainder === 0) return gridTiles;
+    return [...gridTiles, ...Array<null>(columns - remainder).fill(null)];
+  }, [gridTiles, columns]);
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
   const [hasMore, setHasMore] = useState(true);
@@ -217,6 +329,12 @@ export default function SellScreen() {
   const [preDiscountPrices, setPreDiscountPrices] = useState<Record<string, number>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [discountSheetOpen, setDiscountSheetOpen] = useState(false);
+  const [ruleSheetOpen, setRuleSheetOpen] = useState(false);
+  const [orderDiscounts, setOrderDiscounts] = useState<AppliedOrderDiscount[]>([]);
+  const [discountRules, setDiscountRules] = useState<DiscountRule[]>([]);
+  const [complexRules, setComplexRules] = useState<ComplexDiscountRule[]>([]);
+  const [taxSettings, setTaxSettings] = useState<TaxSettings>(DEFAULT_TAX_SETTINGS);
+  const [promoSuggestion, setPromoSuggestion] = useState<ComplexDiscountRule | null>(null);
   const [qtyEditingId, setQtyEditingId] = useState<string | null>(null);
   const [payment, setPayment] = useState<PaymentMethod>("cash");
   // Optional, and empty for most sales. Held on the cart rather than asked for
@@ -316,6 +434,44 @@ export default function SellScreen() {
   useEffect(() => {
     void loadCategories();
   }, [loadCategories, dataVersion]);
+
+  useEffect(() => {
+    void (async () => {
+      const [simple, complex, tax] = await Promise.all([
+        listLocalDiscountRules(),
+        listLocalComplexDiscountRules(),
+        getLocalTaxSettings(),
+      ]);
+      setDiscountRules(simple);
+      setComplexRules(complex);
+      setTaxSettings(tax);
+    })();
+  }, [dataVersion]);
+
+  // Re-evaluate complex promos whenever the cart changes.
+  useEffect(() => {
+    const alreadyApplied = new Set(
+      orderDiscounts.map((d) => d.complexDiscountRuleId).filter(Boolean),
+    );
+    const qualifying = qualifyingComplexRules(complexRules, lines, orderDiscounts).filter(
+      (rule) => !alreadyApplied.has(rule.id),
+    );
+    if (qualifying.length === 0) {
+      setPromoSuggestion(null);
+      return;
+    }
+    const next = qualifying[0];
+    if (taxSettings.autoApplyComplexDiscounts) {
+      setOrderDiscounts((current) => [
+        ...current.filter((d) => d.complexDiscountRuleId !== next.id),
+        applyComplexRuleToCart({ rule: next, lines, appliedBy: cashier?.id }),
+      ]);
+      setPromoSuggestion(null);
+    } else {
+      setPromoSuggestion(next);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run on cart/rules/tax; orderDiscounts read for filter
+  }, [lines, complexRules, taxSettings.autoApplyComplexDiscounts, cashier?.id]);
 
   useEffect(() => {
     const handle = setTimeout(() => setQuery(search.trim()), 150);
@@ -432,8 +588,10 @@ export default function SellScreen() {
     return map;
   }, [products, heldTick]);
 
-  const total = cartTotal(lines);
-  const discount = cartDiscount(lines);
+  const total = roundMoney(Math.max(cartTotal(lines) - orderDiscountImpact(orderDiscounts), 0));
+  const lineDiscount = cartDiscount(lines);
+  const orderDiscount = orderDiscountImpact(orderDiscounts);
+  const discount = roundMoney(lineDiscount + orderDiscount);
   const shelfTotal = roundMoney(
     lines.reduce((sum, line) => sum + line.listPrice * line.quantity, 0),
   );
@@ -444,6 +602,19 @@ export default function SellScreen() {
     const map = new Map<string, number>();
     for (const line of lines) {
       map.set(line.productId, (map.get(line.productId) ?? 0) + line.quantity);
+    }
+    return map;
+  }, [lines]);
+
+  /** Same idea as `inCart`, keyed by variantId instead — a "By variant" grid
+   * tile's badge must reflect only its own variant's quantity, not every
+   * line the parent product has (two variants of one product are separate
+   * lines; see changeQuantity/confirmRemoveLine's variantId parameter). */
+  const inCartByVariant = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const line of lines) {
+      if (!line.variantId) continue;
+      map.set(line.variantId, (map.get(line.variantId) ?? 0) + line.quantity);
     }
     return map;
   }, [lines]);
@@ -484,8 +655,16 @@ export default function SellScreen() {
   async function addToCart(product: ProductWithEstimatedStock) {
     rememberProducts([product]);
 
-    if (lines.some((line) => line.productId === product.id)) {
-      commitAddToCart(product);
+    // Product-level mode never creates more than one line per product (the
+    // variant/add-on picker below only ever runs on the first tap), so a
+    // repeat tap always has exactly one existing line to bump — its own
+    // variantId included, whether that's unset (a plain product) or a
+    // single auto-resolved/picked variant (see changeQuantity's variantId
+    // parameter for why that distinction matters once a product has more
+    // than one variant line, which "By variant" grid tiles can produce).
+    const existing = lines.find((line) => line.productId === product.id);
+    if (existing) {
+      changeQuantity(product.id, 1, existing.variantId);
       return;
     }
 
@@ -496,6 +675,16 @@ export default function SellScreen() {
 
     if (variants.length > 1 || addonGroups.length > 0) {
       setPickerState({ product, variants, addonGroups });
+      return;
+    }
+
+    // Exactly one variant and no add-ons: nothing for a picker to ask, but
+    // the sale should still snapshot that variant's own price/cost/id rather
+    // than the parent product's — a variant is free to differ from it. Skips
+    // straight to the same out-of-stock/commit path the picker itself uses.
+    const [onlyVariant] = variants;
+    if (variants.length === 1 && onlyVariant) {
+      void commitVariantSelection(product, onlyVariant, []);
       return;
     }
 
@@ -514,9 +703,77 @@ export default function SellScreen() {
     commitAddToCart(product);
   }
 
+  /**
+   * Shared by the picker's own confirm (onPickerConfirm) and the
+   * "exactly one variant" auto-resolve path above (and, in variant-level
+   * grid view, a tile that's already scoped to one specific variant) —
+   * same estimate-then-alert-then-commit shape either way.
+   */
+  async function commitVariantSelection(
+    product: ProductWithEstimatedStock,
+    variant: ProductVariant,
+    addons: VariantAddonSelection["addons"],
+  ): Promise<void> {
+    const pending = await getVariantPendingQuantity(variant.id);
+    const estimatedStock = variant.stockQuantity - pending;
+    const resolved: ResolvedSelection = { variant, addons, estimatedStock };
+
+    if (estimatedStock <= 0) {
+      const label = variantAttributeLabel(variant) || variant.sku || "this option";
+      Alert.alert(
+        "Out of stock",
+        `${product.name} (${label}) shows none on hand. Sell it anyway? New stock added later settles this automatically.`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Sell anyway", onPress: () => commitAddToCart(product, resolved) },
+        ],
+      );
+      return;
+    }
+
+    commitAddToCart(product, resolved);
+  }
+
+  /**
+   * A "By variant" grid tile's own tap handler (lib/theme-preferences.ts's
+   * productViewMode) — the tile already names one specific variant, so
+   * there is nothing for the usual variant picker to ask; add-on groups
+   * (if the product has any) still get their own step, same picker
+   * component, just pre-scoped to this one variant instead of every one.
+   */
+  async function handleTilePress(tile: GridTile) {
+    if (!tile.variant) {
+      await addToCart(tile.realProduct);
+      return;
+    }
+
+    rememberProducts([tile.realProduct]);
+    const existing = lines.find(
+      (line) => line.productId === tile.realProduct.id && line.variantId === tile.variant?.id,
+    );
+    if (existing) {
+      changeQuantity(tile.realProduct.id, 1, tile.variant.id);
+      return;
+    }
+
+    const addonGroups = await listLocalAddonGroups(tile.realProduct.addonGroupIds);
+    if (addonGroups.length > 0) {
+      setPickerState({ product: tile.realProduct, variants: [tile.variant], addonGroups });
+      return;
+    }
+
+    await commitVariantSelection(tile.realProduct, tile.variant, []);
+  }
+
   function commitAddToCart(product: ProductWithEstimatedStock, selection?: ResolvedSelection) {
     setLines((current) => {
-      const existing = current.find((line) => line.productId === product.id);
+      // Matches on variantId too, not just productId — two variants of the
+      // same product (picked twice, or two "By variant" grid tiles) are
+      // separate lines, and re-tapping one must only ever bump that one.
+      const targetVariantId = selection?.variant.id ?? null;
+      const isTarget = (line: CartLine) =>
+        line.productId === product.id && (line.variantId ?? null) === targetVariantId;
+      const existing = current.find(isTarget);
       if (existing) {
         // A variant/add-on line's cap was fixed at add time rather than
         // re-derived from live stock on every tap — see ResolvedSelection.
@@ -525,9 +782,7 @@ export default function SellScreen() {
           : stockCapFor(product.estimatedStock, product.allowDecimal);
         if (existing.quantity >= stockCap) return current;
         return current.map((line) =>
-          line.productId === product.id
-            ? repricedFor(line, Math.min(line.quantity + 1, stockCap))
-            : line,
+          isTarget(line) ? repricedFor(line, Math.min(line.quantity + 1, stockCap)) : line,
         );
       }
 
@@ -553,6 +808,7 @@ export default function SellScreen() {
             allowDecimal: product.allowDecimal,
             quantity: 1,
             availableStock: stockCap,
+            categoryId: product.categoryId ?? null,
             addons: selection.addons.map((addon) => ({
               addonGroupItemId: addon.addonGroupItemId,
               name: addon.name,
@@ -578,6 +834,7 @@ export default function SellScreen() {
           allowDecimal: product.allowDecimal,
           quantity: 1,
           availableStock: stockCap,
+          categoryId: product.categoryId ?? null,
         },
       ];
     });
@@ -593,32 +850,24 @@ export default function SellScreen() {
     if (!pickerState) return;
     const { product } = pickerState;
     setPickerState(null);
-
-    const pending = await getVariantPendingQuantity(selection.variant.id);
-    const estimatedStock = selection.variant.stockQuantity - pending;
-    const resolved: ResolvedSelection = { ...selection, estimatedStock };
-
-    if (estimatedStock <= 0) {
-      const label = variantAttributeLabel(selection.variant) || selection.variant.sku || "this option";
-      Alert.alert(
-        "Out of stock",
-        `${product.name} (${label}) shows none on hand. Sell it anyway? New stock added later settles this automatically.`,
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "Sell anyway", onPress: () => commitAddToCart(product, resolved) },
-        ],
-      );
-      return;
-    }
-
-    commitAddToCart(product, resolved);
+    void commitVariantSelection(product, selection.variant, selection.addons);
   }
 
-  function changeQuantity(productId: string, delta: number) {
+  /**
+   * `variantId` disambiguates two lines that share the same product (a
+   * multi-variant product added twice via the picker, or the "By variant"
+   * grid mode — lib/theme-preferences.ts's productViewMode, where every
+   * variant is its own tile). Omitted, this matches on productId alone —
+   * every pre-existing call site keeps its old behavior unchanged.
+   */
+  function changeQuantity(productId: string, delta: number, variantId?: string | null) {
+    const matches = (line: CartLine) =>
+      line.productId === productId && (line.variantId ?? null) === (variantId ?? null);
+
     setLines((current) =>
       current
         .map((line) => {
-          if (line.productId !== productId) return line;
+          if (!matches(line)) return line;
           const stockCap = stockCapFor(line.availableStock, line.allowDecimal);
           const next = line.quantity + delta;
           if (delta > 0 && next > stockCap) return line;
@@ -627,19 +876,23 @@ export default function SellScreen() {
         .filter((line) => line.quantity > 0),
     );
 
-    const line = lines.find((entry) => entry.productId === productId);
+    const line = lines.find(matches);
     if (line && line.quantity + delta <= 0) forgetOverride(productId);
   }
 
   /** Holding a cart row asks once, then drops the whole line regardless of quantity. */
-  function confirmRemoveLine(productId: string, productName: string) {
+  function confirmRemoveLine(productId: string, productName: string, variantId?: string | null) {
     Alert.alert(`Remove ${productName}?`, "This takes it off the cart entirely.", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Remove",
         style: "destructive",
         onPress: () => {
-          setLines((current) => current.filter((line) => line.productId !== productId));
+          setLines((current) =>
+            current.filter(
+              (line) => !(line.productId === productId && (line.variantId ?? null) === (variantId ?? null)),
+            ),
+          );
           forgetOverride(productId);
         },
       },
@@ -718,7 +971,8 @@ export default function SellScreen() {
    */
   function applyGlobalDiscount(amount: number) {
     if (!Number.isFinite(amount) || amount <= 0 || lines.length === 0) return;
-    const capped = Math.min(amount, total);
+    const cartSubtotal = cartTotal(lines);
+    const capped = Math.min(amount, cartSubtotal);
 
     // Snapshot each line's price before this split touches it — only the
     // first time a line is caught by a global discount, so stacking a second
@@ -734,7 +988,7 @@ export default function SellScreen() {
     setLines((current) =>
       current.map((line) => {
         const lineTotal = lineSubtotal(line.unitPrice, line.quantity);
-        const share = roundMoney((lineTotal / total) * capped);
+        const share = roundMoney((lineTotal / cartSubtotal) * capped);
         return { ...line, unitPrice: Math.max(0, roundMoney(line.unitPrice - share / line.quantity)) };
       }),
     );
@@ -761,6 +1015,8 @@ export default function SellScreen() {
     setOverridden([]);
     setGlobalDiscountIds([]);
     setPreDiscountPrices({});
+    setOrderDiscounts([]);
+    setPromoSuggestion(null);
     setDiscountSheetOpen(false);
   }
 
@@ -789,6 +1045,8 @@ export default function SellScreen() {
         onPress: () => {
           setLines([]);
           setOverridden([]);
+          setOrderDiscounts([]);
+          setPromoSuggestion(null);
           setCustomer(NO_CUSTOMER);
           setFulfillment("pickup");
         },
@@ -905,10 +1163,13 @@ export default function SellScreen() {
         paymentMethod: payment,
         customer: saleCustomer,
         fulfillment,
+        orderDiscounts,
       });
 
       setLines([]);
       setOverridden([]);
+      setOrderDiscounts([]);
+      setPromoSuggestion(null);
       // The next customer is a different customer. Carrying details over would
       // put a stranger's name and address on the following receipt.
       setCustomer(NO_CUSTOMER);
@@ -939,6 +1200,21 @@ export default function SellScreen() {
   const editingLine = lines.find((line) => line.productId === editingId) ?? null;
   const qtyEditingLine =
     lines.find((line) => line.productId === qtyEditingId) ?? null;
+
+  // Publishes into StoreHeader's cart chip (item 7 — the header shows the
+  // cart instead of the shop name; the old bottom CartSummaryBar is gone).
+  // `open` is only wired on phone: on tablet the cart panel (CartShell) is
+  // already always on-screen, so the header chip there is a plain summary,
+  // not a second way to reach it.
+  const { setCartSummary, clearCartSummary } = useCartSummary();
+  useEffect(() => {
+    setCartSummary({
+      itemCount,
+      total,
+      open: compact ? () => setCartOpen(true) : undefined,
+    });
+  }, [itemCount, total, compact, setCartSummary]);
+  useEffect(() => clearCartSummary, [clearCartSummary]);
 
   return (
     <View style={{ flex: 1, flexDirection: compact ? "column" : "row" }}>
@@ -1104,9 +1380,9 @@ export default function SellScreen() {
             />
           ) : (
             <FlatList
-              data={paddedProducts}
+              data={paddedTiles}
               style={{ flex: 1 }}
-              keyExtractor={(item, index) => item?.id ?? `filler-${index}`}
+              keyExtractor={(item, index) => item?.display.id ?? `filler-${index}`}
               // numColumns cannot change on a mounted list, so the column count is
               // part of the key and a rotation remounts the grid.
               key={`grid-${columns}`}
@@ -1141,15 +1417,21 @@ export default function SellScreen() {
               renderItem={({ item }) =>
                 item ? (
                   <ProductTile
-                    product={item}
-                    inCart={inCart.get(item.id) ?? 0}
+                    product={item.display}
+                    inCart={
+                      item.variant
+                        ? (inCartByVariant.get(item.variant.id) ?? 0)
+                        : (inCart.get(item.display.id) ?? 0)
+                    }
                     compact={compact}
                     minHeight={layout.tileMinHeight}
                     padding={space.md}
-                    onPress={() => void addToCart(item)}
-                    onRemove={() => changeQuantity(item.id, -1)}
-                    onHoldRemove={() => confirmRemoveLine(item.id, item.name)}
-                    onHoldView={() => setViewingProduct(item)}
+                    onPress={() => void handleTilePress(item)}
+                    onRemove={() => changeQuantity(item.realProduct.id, -1, item.variant?.id)}
+                    onHoldRemove={() =>
+                      confirmRemoveLine(item.realProduct.id, item.display.name, item.variant?.id)
+                    }
+                    onHoldView={() => setViewingProduct(item.realProduct)}
                   />
                 ) : (
                   // Invisible filler so an incomplete last row keeps every
@@ -1299,10 +1581,10 @@ export default function SellScreen() {
                         ? (preDiscountPrices[item.productId] ?? item.unitPrice)
                         : item.unitPrice
                     }
-                    onChange={(delta) => changeQuantity(item.productId, delta)}
+                    onChange={(delta) => changeQuantity(item.productId, delta, item.variantId)}
                     onEditQuantity={() => setQtyEditingId(item.productId)}
                     onEditPrice={() => setEditingId(item.productId)}
-                    onRemove={() => confirmRemoveLine(item.productId, item.productName)}
+                    onRemove={() => confirmRemoveLine(item.productId, item.productName, item.variantId)}
                   />
                 )}
               />
@@ -1345,9 +1627,9 @@ export default function SellScreen() {
                   onPress={() => setDiscountSheetOpen(true)}
                   accessibilityRole="button"
                   accessibilityLabel={
-                    discount > 0
-                      ? `Discount given, ${formatMoney(discount)}. Edit.`
-                      : "Add a discount for the whole cart"
+                    lineDiscount > 0
+                      ? `Line discount given, ${formatMoney(lineDiscount)}. Edit.`
+                      : "Add a line discount for the whole cart"
                   }
                   style={{ flexDirection: "row", alignItems: "center", gap: space.xs }}
                 >
@@ -1360,21 +1642,88 @@ export default function SellScreen() {
                       textDecorationStyle: "dotted",
                     }}
                   >
-                    {discount > 0 ? "Discount given" : "Add discount"}
+                    {lineDiscount > 0 ? "Line discount" : "Add line discount"}
                   </Text>
                   <Pencil size={11} color={color.accentInk} strokeWidth={2} />
                 </Pressable>
-                {discount > 0 ? (
+                {lineDiscount > 0 ? (
                   <Text
                     style={[
                       styles.numeric,
                       { fontSize: fontSize.bodyLg, fontWeight: "700", color: color.accentInk },
                     ]}
                   >
-                    -{formatMoney(discount)}
+                    -{formatMoney(lineDiscount)}
                   </Text>
                 ) : null}
               </View>
+            ) : null}
+
+            {lines.length > 0 && discountRules.length > 0 ? (
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: space.sm,
+                  marginBottom: space.sm,
+                }}
+              >
+                <Pressable
+                  onPress={() => setRuleSheetOpen(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Apply Senior, PWD, or other discount rule"
+                  style={{ flexDirection: "row", alignItems: "center", gap: space.xs }}
+                >
+                  <BadgePercent size={14} color={color.primary} strokeWidth={2.5} />
+                  <Text
+                    style={{
+                      fontSize: fontSize.body,
+                      color: color.primary,
+                      textDecorationLine: "underline",
+                      textDecorationStyle: "dotted",
+                    }}
+                  >
+                    {orderDiscounts.length > 0 ? "Rules applied" : "Apply discount rule"}
+                  </Text>
+                </Pressable>
+                {orderDiscount > 0 ? (
+                  <Text
+                    style={[
+                      styles.numeric,
+                      { fontSize: fontSize.bodyLg, fontWeight: "700", color: color.primary },
+                    ]}
+                  >
+                    -{formatMoney(orderDiscount)}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
+
+            {promoSuggestion ? (
+              <Pressable
+                onPress={() => {
+                  setOrderDiscounts((current) => [
+                    ...current,
+                    applyComplexRuleToCart({
+                      rule: promoSuggestion,
+                      lines,
+                      appliedBy: cashier?.id,
+                    }),
+                  ]);
+                  setPromoSuggestion(null);
+                }}
+                style={{
+                  marginBottom: space.sm,
+                  padding: space.sm,
+                  borderRadius: radius.sm,
+                  backgroundColor: color.primaryTint,
+                }}
+              >
+                <Text style={{ fontSize: fontSize.body, color: color.primary, fontWeight: "600" }}>
+                  You've unlocked: {promoSuggestion.name}! Tap to apply
+                </Text>
+              </Pressable>
             ) : null}
 
             {/* The one number the cashier reads out loud, so it sits on its own
@@ -1502,11 +1851,33 @@ export default function SellScreen() {
 
         <DiscountSheet
           open={discountSheetOpen}
-          total={total}
-          hasDiscount={discount > 0}
+          total={cartTotal(lines)}
+          hasDiscount={lineDiscount > 0}
           onClose={() => setDiscountSheetOpen(false)}
           onApply={applyGlobalDiscount}
           onClear={clearAllDiscounts}
+        />
+
+        <RuleDiscountSheet
+          open={ruleSheetOpen}
+          rules={discountRules}
+          applied={orderDiscounts}
+          tax={taxSettings}
+          lines={lines}
+          onClose={() => setRuleSheetOpen(false)}
+          onApply={(discount) => {
+            setOrderDiscounts((current) => {
+              // One simple rule at a time; replacing clears prior simple + any promo (stacking).
+              const withoutSimple = current.filter((d) => d.discountRuleId == null);
+              if (discount.isVatExempt) {
+                return [discount];
+              }
+              return [...withoutSimple.filter((d) => !d.isVatExempt), discount];
+            });
+            setPromoSuggestion(null);
+            setRuleSheetOpen(false);
+          }}
+          onClear={() => setOrderDiscounts([])}
         />
 
         <QuantitySheet
@@ -1541,14 +1912,6 @@ export default function SellScreen() {
         />
 
       </CartShell>
-
-      {compact ? (
-        <CartSummaryBar
-          itemCount={itemCount}
-          total={total}
-          onPress={() => setCartOpen(true)}
-        />
-      ) : null}
 
       {/* Moved out of CartShell — the "Draft sales" toolbar button triggers this
           directly from the main screen, not from inside the cart modal. */}
@@ -3060,65 +3423,155 @@ function CartShell({
   );
 }
 
-function CartSummaryBar({
-  itemCount,
-  total,
-  onPress,
+/** Cashier-selected simple discount rules (Senior/PWD, Employee, etc.). */
+function RuleDiscountSheet({
+  open,
+  rules,
+  applied,
+  tax,
+  lines,
+  onClose,
+  onApply,
+  onClear,
 }: {
-  itemCount: number;
-  total: number;
-  onPress: () => void;
+  open: boolean;
+  rules: DiscountRule[];
+  applied: AppliedOrderDiscount[];
+  tax: TaxSettings;
+  lines: CartLine[];
+  onClose: () => void;
+  onApply: (discount: AppliedOrderDiscount) => void;
+  onClear: () => void;
 }) {
-  const empty = itemCount === 0;
+  const [pendingRule, setPendingRule] = useState<DiscountRule | null>(null);
+  const [idNumber, setIdNumber] = useState("");
+  const [idHolderName, setIdHolderName] = useState("");
+
+  useEffect(() => {
+    if (!open) {
+      setPendingRule(null);
+      setIdNumber("");
+      setIdHolderName("");
+    }
+  }, [open]);
+
+  function pickRule(rule: DiscountRule) {
+    if (rule.requiresIdNumber) {
+      setPendingRule(rule);
+      return;
+    }
+    onApply(applySimpleRuleToCart({ rule, lines, tax }));
+  }
+
+  function confirmId() {
+    if (!pendingRule) return;
+    if (!idNumber.trim() || !idHolderName.trim()) {
+      Alert.alert("ID required", "Enter the ID number and the cardholder's name.");
+      return;
+    }
+    onApply(
+      applySimpleRuleToCart({
+        rule: pendingRule,
+        lines,
+        tax,
+        idNumber: idNumber.trim(),
+        idHolderName: idHolderName.trim(),
+      }),
+    );
+  }
 
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={empty}
-      accessibilityRole="button"
-      accessibilityLabel={`Review cart, ${itemCount} items`}
-      style={({ pressed }) => ({
-        flexDirection: "row",
-        alignItems: "center",
-        gap: space.md,
-        minHeight: 68,
-        paddingHorizontal: space.lg,
-        paddingVertical: space.md,
-        borderTopWidth: 1,
-        borderTopColor: color.border,
-        backgroundColor: empty
-          ? color.surface
-          : pressed
-            ? color.primaryDark
-            : color.primary,
-      })}
-    >
-      <ShoppingCart
-        size={22}
-        color={empty ? color.inkMuted : color.onPrimary}
-        strokeWidth={2}
-      />
-      <Text
-        style={{
-          fontSize: fontSize.body,
-          fontWeight: "600",
-          color: empty ? color.inkMuted : color.onPrimary,
-        }}
-      >
-        {empty ? "Cart is empty" : `${itemCount} item${itemCount === 1 ? "" : "s"}`}
-      </Text>
-
-      <View style={{ marginLeft: "auto", flexDirection: "row", alignItems: "center", gap: space.sm }}>
-        <Money
-          value={total}
-          style={{
-            fontSize: fontSize.bodyLg,
-            fontWeight: "700",
-            color: empty ? color.inkMuted : color.onPrimary,
-          }}
-        />
-        {empty ? null : <ChevronRight size={20} color={color.onPrimary} strokeWidth={2} />}
+    <BottomSheet open={open} onClose={onClose} scroll>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
+        <View style={[styles.iconWell, { width: 34, height: 34 }]}>
+          <BadgePercent size={18} color={color.primary} strokeWidth={2} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.subheading}>Apply discount rule</Text>
+          <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
+            Senior/PWD remove VAT when the shop is VAT-registered. Cannot stack with a promo.
+          </Text>
+        </View>
+        <IconButton icon={X} label="Close" onPress={onClose} />
       </View>
-    </Pressable>
+
+      {pendingRule ? (
+        <View style={{ gap: space.sm }}>
+          <Text style={{ fontSize: fontSize.body, fontWeight: "600", color: color.ink }}>
+            {pendingRule.name} — ID capture
+          </Text>
+          <TextInput
+            value={idNumber}
+            onChangeText={setIdNumber}
+            placeholder="ID number"
+            accessibilityLabel="ID number"
+            style={[
+              styles.numeric,
+              {
+                minHeight: 48,
+                borderWidth: 1,
+                borderColor: color.border,
+                borderRadius: radius.sm,
+                paddingHorizontal: space.md,
+                fontSize: fontSize.body,
+                color: color.ink,
+              },
+            ]}
+          />
+          <TextInput
+            value={idHolderName}
+            onChangeText={setIdHolderName}
+            placeholder="Cardholder name"
+            accessibilityLabel="Cardholder name"
+            style={[
+              styles.numeric,
+              {
+                minHeight: 48,
+                borderWidth: 1,
+                borderColor: color.border,
+                borderRadius: radius.sm,
+                paddingHorizontal: space.md,
+                fontSize: fontSize.body,
+                color: color.ink,
+              },
+            ]}
+          />
+          <Button label="Apply with ID" large onPress={confirmId} />
+          <Button label="Back" variant="secondary" onPress={() => setPendingRule(null)} />
+        </View>
+      ) : (
+        <View style={{ gap: space.sm }}>
+          {rules.map((rule) => {
+            const active = applied.some((d) => d.discountRuleId === rule.id);
+            return (
+              <Pressable
+                key={rule.id}
+                onPress={() => pickRule(rule)}
+                style={{
+                  padding: space.md,
+                  borderRadius: radius.sm,
+                  borderWidth: 1,
+                  borderColor: active ? color.primary : color.border,
+                  backgroundColor: active ? color.primaryTint : color.surface,
+                }}
+              >
+                <Text style={{ fontSize: fontSize.body, fontWeight: "600", color: color.ink }}>
+                  {rule.name}
+                </Text>
+                <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
+                  {rule.type === "percentage" ? `${rule.value}%` : formatMoney(rule.value)}
+                  {rule.isVatExempt ? " · VAT exempt" : ""}
+                  {rule.requiresIdNumber ? " · ID required" : ""}
+                  {active ? " · applied" : ""}
+                </Text>
+              </Pressable>
+            );
+          })}
+          {applied.length > 0 ? (
+            <Button label="Clear rule discounts" variant="secondary" onPress={onClear} />
+          ) : null}
+        </View>
+      )}
+    </BottomSheet>
   );
 }

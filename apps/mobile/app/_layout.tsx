@@ -10,6 +10,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { getAppVersion, type AppVersion } from "@double-a/api-client/queries";
 import { PaperBackdrop } from "@/components/paper-backdrop";
 import { PullProgressModal } from "@/components/pull-progress-modal";
+import { ThemeBackgroundEffect } from "@/components/theme-background-effect";
 import { UpdateDialog } from "@/components/update-dialog";
 import { migrate } from "@/db";
 import { APP_VERSION } from "@/lib/api/client";
@@ -18,6 +19,7 @@ import { LocationScopeProvider } from "@/lib/location-scope";
 import { registerDevicePushToken, watchForPushTokenChanges } from "@/lib/push";
 import { SessionProvider } from "@/lib/session";
 import { SyncProvider } from "@/sync/sync-provider";
+import { hydrateThemePreferences, subscribeThemePreferences } from "@/lib/theme-preferences";
 import { getUpdateStatus } from "@/lib/version-check";
 import { color, space, styles } from "@/theme";
 
@@ -49,16 +51,27 @@ export default function RootLayout() {
   const [error, setError] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState<AppVersion | null>(null);
   const [updateDismissed, setUpdateDismissed] = useState(false);
+  // Bumped by the Theme menu (lib/theme-preferences.ts) on every change and
+  // used as this tree's `key` below — remounting is what makes a new
+  // color/radius/background choice apply immediately everywhere already on
+  // screen, instead of only the next screen a cashier happens to visit. See
+  // theme.ts's color/radius/styles Proxies for the other half of this.
+  const [themeTick, setThemeTick] = useState(0);
 
   // The local database is created on first launch, before anything can read it.
+  // Theme preferences hydrate alongside it — both must finish before `ready`,
+  // since apps/mobile/theme.ts's Proxies are read at first render and have no
+  // way to await SecureStore themselves.
   useEffect(() => {
-    migrate()
+    Promise.all([migrate(), hydrateThemePreferences()])
       .then(() => setReady(true))
       .catch((cause: unknown) =>
         setError(cause instanceof Error ? cause.message : "Could not open the database"),
       )
       .finally(() => void SplashScreen.hideAsync());
   }, []);
+
+  useEffect(() => subscribeThemePreferences(() => setThemeTick((tick) => tick + 1)), []);
 
   // Checked before (or without) any login, so a force-update dialog can
   // block even at the boot/setup screens — not just once fully unlocked.
@@ -142,7 +155,7 @@ export default function RootLayout() {
   }
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1 }} key={themeTick}>
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
           <SessionProvider>
@@ -151,6 +164,7 @@ export default function RootLayout() {
                 <StatusBar style="dark" />
                 <View style={{ flex: 1, backgroundColor: color.paper }}>
                   <PaperBackdrop />
+                  <ThemeBackgroundEffect />
                   <Stack
                     screenOptions={{
                       headerShown: false,

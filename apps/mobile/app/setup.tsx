@@ -14,6 +14,7 @@ import { createBareClient } from "@/lib/api/client";
 import { isEnrolled, setSessionToken, unenrollTerminal } from "@/lib/api/session";
 import { registerDevicePushToken } from "@/lib/push";
 import { runFirstPull } from "@/sync";
+import { useSync } from "@/sync/sync-provider";
 import {
   Eye,
   EyeOff,
@@ -56,6 +57,7 @@ export default function SetupScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const layout = useLayout();
+  const { notifyEnrollmentChanged } = useSync();
 
   const [step, setStep] = useState<Step>("sign-in");
   const [email, setEmail] = useState("");
@@ -169,6 +171,7 @@ export default function SetupScreen() {
       if (profile.role === "admin") {
         await markFirstPullSkipped();
         setStep("done");
+        notifyEnrollmentChanged();
       } else {
         setStep("first-pull");
       }
@@ -191,6 +194,7 @@ export default function SetupScreen() {
       await runFirstPull();
       setPulled(await countLocalProducts());
       setStep("done");
+      notifyEnrollmentChanged();
     } catch (cause) {
       setError(
         cause instanceof Error

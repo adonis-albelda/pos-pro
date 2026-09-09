@@ -1,7 +1,8 @@
 import type Echo from "laravel-echo";
 import type { Channel } from "laravel-echo";
-import { toProduct, type ProductAttrs } from "@double-a/api-client";
+import { toProduct, toProductVariant, type ProductAttrs, type ProductVariantAttrs } from "@double-a/api-client";
 import { updateProductCatalogFields, updateProductStock } from "@/db/products";
+import { updateVariantCatalogFields, updateVariantStock } from "@/db/product-variants";
 import { apiUrl } from "@/lib/api/client";
 import { getSessionToken } from "@/lib/api/session";
 
@@ -37,6 +38,35 @@ interface ProductUpdatedPayload {
   id: string;
   type: string;
   attributes: ProductAttrs;
+}
+
+/**
+ * Backend contract for variant realtime (item 1) — not yet emitted by the
+ * broadcast service (out of this repo); this is the shape mobile is built to
+ * consume the moment it is. Mirrors the product events one-for-one:
+ *
+ *   - VariantStockUpdated → same `location.{locationId}.stock` private
+ *     channel as ProductStockUpdated, event name `.variant.stock.updated`,
+ *     fired by the same InventoryMovementObserver write path whenever the
+ *     moved stock belongs to a variant instead of a bare product.
+ *   - VariantUpdated → same `company.{companyId}` private channel as
+ *     ProductUpdated, event name `.variant.updated`, payload a JSON:API
+ *     resource shaped like ProductVariantAttrs (packages/api-client) MINUS
+ *     stock_quantity — same reasoning as ProductUpdated: this event has no
+ *     location to scope a stock number to, so the stock channel's own event
+ *     stays the only stock writer.
+ */
+interface VariantStockUpdatedPayload {
+  variant_id: string;
+  product_id: string;
+  location_id: string;
+  quantity: number;
+}
+
+interface VariantUpdatedPayload {
+  id: string;
+  type: string;
+  attributes: ProductVariantAttrs;
 }
 
 let echo: Echo<"reverb"> | null = null;
@@ -114,6 +144,10 @@ export async function connectRealtime(
     if (__DEV__) console.warn("[realtime] stock.updated", payload);
     void updateProductStock(payload.product_id, payload.quantity).then(onStockTick);
   });
+  stockChannel.listen(".variant.stock.updated", (payload: VariantStockUpdatedPayload) => {
+    if (__DEV__) console.warn("[realtime] variant.stock.updated", payload);
+    void updateVariantStock(payload.variant_id, payload.quantity).then(onStockTick);
+  });
   stockChannel.error((error: unknown) => {
     // Almost always a 403/422 from /broadcasting/auth — wrong location_id
     // scoping, an expired token, or REVERB_* env pointed at the wrong host.
@@ -124,6 +158,10 @@ export async function connectRealtime(
   catalogChannel.listen(".product.updated", (payload: ProductUpdatedPayload) => {
     if (__DEV__) console.warn("[realtime] product.updated", payload);
     void updateProductCatalogFields(toProduct(payload)).then(onStockTick);
+  });
+  catalogChannel.listen(".variant.updated", (payload: VariantUpdatedPayload) => {
+    if (__DEV__) console.warn("[realtime] variant.updated", payload);
+    void updateVariantCatalogFields(toProductVariant(payload)).then(onStockTick);
   });
   catalogChannel.error((error: unknown) => {
     console.warn("[realtime] catalog channel auth failed", error);

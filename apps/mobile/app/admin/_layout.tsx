@@ -3,7 +3,10 @@ import { Redirect, Stack, useRouter } from "expo-router";
 import { Image, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ArrowLeft } from "lucide-react-native";
+import { useLocationScope } from "@/lib/location-scope";
 import { useSession } from "@/lib/session";
+import { useStoreSettings } from "@/lib/store";
+import { useIdleLock } from "@/lib/idle-lock";
 import { ensureFreshSession } from "@/lib/api/session";
 import { Button } from "@/components/ui";
 import { LoadingState } from "@/components/loading-state";
@@ -23,9 +26,20 @@ export default function AdminLayout() {
   const { cashier } = useSession();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { idleTimeoutMinutes } = useStoreSettings();
+  // Same idle/background lock as the POS tabs (lib/idle-lock.ts) — the admin
+  // dashboard is reached from the same shift and must not stay unlocked here
+  // just because the cashier tapped away from the Sell screen first.
+  const recordActivity = useIdleLock(idleTimeoutMinutes);
+  // "Account used to login is admin" (device.ts EnrolledRole) also opens the
+  // dashboard, regardless of which PIN shift user is on — same rule as
+  // account-drawer.tsx's ADMIN_TAB gate, kept in sync with it.
+  const { role: enrolledRole } = useLocationScope();
 
   const [check, setCheck] = useState<SessionCheck>("checking");
   const [error, setError] = useState<string | null>(null);
+  const canOpenAdminDashboard =
+    enrolledRole === "admin" || cashier?.role === "admin" || cashier?.role === "manager";
 
   // Unlocking a shift only proves the cashier's PIN was good at that moment —
   // it says nothing about whether the terminal's own stored API token is
@@ -34,7 +48,7 @@ export default function AdminLayout() {
   // every domain (categories, suppliers, products, all of it) failing at
   // once with an unclear error, instead of one clear message here.
   useEffect(() => {
-    if (!cashier || (cashier.role !== "admin" && cashier.role !== "manager")) return;
+    if (!cashier || !canOpenAdminDashboard) return;
     let cancelled = false;
     ensureFreshSession()
       .then(() => {
@@ -48,13 +62,13 @@ export default function AdminLayout() {
     return () => {
       cancelled = true;
     };
-  }, [cashier]);
+  }, [cashier, canOpenAdminDashboard]);
 
   if (!cashier) return <Redirect href="/unlock" />;
-  // Manager gets the same admin dashboard as admin, minus owner-only screens
-  // (Settings) — see that screen's own guard. Cashier/driver/helper never
-  // reach here at all.
-  if (cashier.role !== "admin" && cashier.role !== "manager") return <Redirect href="/pos" />;
+  // Manager/admin shift user gets the dashboard; so does any shift user on a
+  // device enrolled under an admin login (item 5). Everyone else (cashier,
+  // driver, helper) on a plain terminal never reaches here.
+  if (!canOpenAdminDashboard) return <Redirect href="/pos" />;
 
   if (check === "checking") {
     return <LoadingState text="Opening admin dashboard…" />;
@@ -76,7 +90,16 @@ export default function AdminLayout() {
   }
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    <View
+      style={[styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]}
+      // Catches taps on the header row and any native (non-WebView) screen
+      // under here. A tap inside the WebView itself (app/admin/index.tsx)
+      // does not bubble to RN's touch responder system, so it can't reset
+      // this clock — background/foreground locking (AppState, see
+      // lib/idle-lock.ts) still fires regardless and is the part that matters
+      // most for "walked away with the dashboard open."
+      onTouchStart={recordActivity}
+    >
       <View
         style={{
           flexDirection: "row",

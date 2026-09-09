@@ -16,6 +16,7 @@ import {
   Building2,
   CloudUpload,
   LogOut,
+  Palette,
   Receipt,
   Settings,
   Shield,
@@ -29,6 +30,7 @@ import {
 } from "lucide-react-native";
 import { APP_VERSION } from "@/lib/api/client";
 import { useLayout } from "@/lib/layout";
+import { useLocationScope } from "@/lib/location-scope";
 import { usePriceInquiry } from "@/lib/price-inquiry";
 import { useSession } from "@/lib/session";
 import { useStoreSettings } from "@/lib/store";
@@ -41,16 +43,19 @@ const POS_TABS = [
   { href: "/pos", label: "Sell", icon: ShoppingCart },
   { href: "/pos/delivery", label: "Delivery", icon: Truck },
   { href: "/pos/history", label: "History", icon: Receipt },
+  { href: "/pos/theme", label: "Theme", icon: Palette },
   { href: "/pos/settings", label: "Settings", icon: Settings },
   { href: "/pos/sync", label: "Sync", icon: CloudUpload },
 ] as const;
 
 /**
  * Admin dashboard mode — every domain apps/admin manages, online-only (see
- * app/admin/_layout.tsx). Only ever shown to a role: "admin" cashier; a
- * plain cashier never sees this tile at all. Building2 (not Shield, already
- * used for the role badge above) so this reads as "the office", not a
- * repeat of "you are an admin".
+ * app/admin/_layout.tsx). Shown when either the enrolled login (this
+ * device's own admin/manager account) or the current PIN shift user is
+ * admin/manager — an owner's own tablet keeps the tile no matter which
+ * cashier is on shift. Building2 (not Shield, already used for the role
+ * badge above) so this reads as "the office", not a repeat of "you are an
+ * admin".
  */
 const ADMIN_TAB = {
   href: "/admin",
@@ -83,6 +88,13 @@ export function AccountDrawer({
   const { cashier, lock } = useSession();
   const store = useStoreSettings();
   const { offlineModeEnabled, setOfflineModeEnabled } = useSync();
+  // "Account used to login is admin" (device.ts EnrolledRole, set at
+  // enrollment) — distinct from the PIN-unlocked shift user's own role.
+  // Either grants the admin dashboard, so an admin's own tablet keeps
+  // showing it no matter which cashier is on shift.
+  const { role: enrolledRole } = useLocationScope();
+  const canOpenAdminDashboard =
+    enrolledRole === "admin" || cashier?.role === "admin" || cashier?.role === "manager";
   const { style: priceInquiryStyle, open: openPriceInquiryModal } = usePriceInquiry();
   const { compact } = useLayout();
   const { width } = useWindowDimensions();
@@ -218,7 +230,7 @@ export function AccountDrawer({
                 onPress={() => go(tab.href)}
               />
             ))}
-            {cashier.role === "admin" ? (
+            {canOpenAdminDashboard ? (
               <DrawerTab
                 key={ADMIN_TAB.href}
                 icon={ADMIN_TAB.icon}

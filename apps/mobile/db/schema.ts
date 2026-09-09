@@ -394,6 +394,80 @@ const V20_IDLE_TIMEOUT = `
 ALTER TABLE store_settings ADD COLUMN idle_timeout_minutes INTEGER NOT NULL DEFAULT 5;
 `;
 
+/**
+ * v21: company tax settings + simple/complex discount rules (whole-replace
+ * on pull) and sale_discounts audit rows pushed with the sale.
+ */
+const V21_DISCOUNTS_AND_TAX = `
+CREATE TABLE IF NOT EXISTS tax_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  is_vat_registered INTEGER NOT NULL DEFAULT 0,
+  vat_rate REAL NOT NULL DEFAULT 12,
+  auto_apply_complex_discounts INTEGER NOT NULL DEFAULT 1
+);
+INSERT OR IGNORE INTO tax_settings (id, is_vat_registered, vat_rate, auto_apply_complex_discounts)
+VALUES (1, 0, 12, 1);
+
+CREATE TABLE IF NOT EXISTS discount_rules (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL,
+  value REAL NOT NULL,
+  applies_to TEXT NOT NULL DEFAULT 'total',
+  requires_id_number INTEGER NOT NULL DEFAULT 0,
+  is_vat_exempt INTEGER NOT NULL DEFAULT 0,
+  is_system_protected INTEGER NOT NULL DEFAULT 0,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  scopes_json TEXT NOT NULL DEFAULT '[]'
+);
+
+CREATE TABLE IF NOT EXISTS complex_discount_rules (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  reward_type TEXT NOT NULL,
+  reward_value REAL,
+  reward_free_variant_id TEXT,
+  condition_logic TEXT NOT NULL DEFAULT 'all',
+  is_active INTEGER NOT NULL DEFAULT 1,
+  starts_at TEXT,
+  ends_at TEXT,
+  conditions_json TEXT NOT NULL DEFAULT '[]'
+);
+
+CREATE TABLE IF NOT EXISTS sale_discounts (
+  id TEXT PRIMARY KEY,
+  sale_id TEXT NOT NULL,
+  discount_rule_id TEXT,
+  complex_discount_rule_id TEXT,
+  name TEXT,
+  id_number TEXT,
+  id_holder_name TEXT,
+  discount_amount REAL NOT NULL,
+  vat_removed REAL,
+  is_vat_exempt INTEGER NOT NULL DEFAULT 0,
+  applied_by TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (sale_id) REFERENCES sales (id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS sale_discounts_sale_id_idx ON sale_discounts (sale_id);
+`;
+
+/**
+ * v22: product_variants was missing two columns the server (and
+ * packages/api-client's toProductVariant) already sends — barcode and
+ * is_bundle — so a variant's own barcode never reached the device (scanning
+ * one fell through to the parent product's) and ProductVariant.isBundle had
+ * no local column to read back at all. Additive with defaults, same as
+ * every other step here: a device mid-shift keeps whatever it already has.
+ */
+const V22_VARIANT_BARCODE_AND_BUNDLE = `
+ALTER TABLE product_variants ADD COLUMN barcode TEXT;
+ALTER TABLE product_variants ADD COLUMN is_bundle INTEGER NOT NULL DEFAULT 0;
+
+CREATE INDEX IF NOT EXISTS product_variants_barcode_idx ON product_variants (barcode);
+`;
+
 /** Ordered, append-only. Never edit a step that has shipped. */
 export const MIGRATIONS: Migration[] = [
   { version: 1, sql: V1_INITIAL },
@@ -416,6 +490,8 @@ export const MIGRATIONS: Migration[] = [
   { version: 18, sql: V18_PRODUCT_IS_BUNDLE },
   { version: 19, sql: V19_VARIANTS_AND_ADDONS },
   { version: 20, sql: V20_IDLE_TIMEOUT },
+  { version: 21, sql: V21_DISCOUNTS_AND_TAX },
+  { version: 22, sql: V22_VARIANT_BARCODE_AND_BUNDLE },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.reduce(

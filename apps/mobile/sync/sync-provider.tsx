@@ -45,6 +45,16 @@ interface SyncContextValue extends SyncState {
   setOfflineModeEnabled: (enabled: boolean) => Promise<void>;
   /** True only once the live stock-broadcast socket is actually connected — distinct from "online mode is on" (see components/store-header.tsx's dot). */
   realtimeConnected: boolean;
+  /**
+   * Call right after setup.tsx writes enrollment (company/location/role) to
+   * SecureStore, or after anything else changes which location/company this
+   * device should be connected as. The realtime-connect effect below only
+   * re-reads SecureStore when `dataVersion` changes — without this, a fresh
+   * enrollment (or a branch switch) sits disconnected until the app is
+   * force-closed and reopened, since neither `isConnected` nor
+   * `offlineModeEnabled` change on their own at that moment.
+   */
+  notifyEnrollmentChanged: () => void;
 }
 
 const SyncContext = createContext<SyncContextValue | null>(null);
@@ -121,7 +131,14 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       subscription.remove();
     };
-  }, [isConnected, offlineModeEnabled]);
+    // dataVersion: also re-run right after a fresh enrollment or a branch
+    // switch (see notifyEnrollmentChanged / replaceAll), both of which bump
+    // it — that is what lets realtime connect without an app restart.
+  }, [isConnected, offlineModeEnabled, dataVersion]);
+
+  const notifyEnrollmentChanged = useCallback(() => {
+    setDataVersion((version) => version + 1);
+  }, []);
 
   const refresh = useCallback(async () => {
     const [meta, pendingSales] = await Promise.all([
@@ -296,6 +313,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       offlineModeEnabled,
       setOfflineModeEnabled,
       realtimeConnected,
+      notifyEnrollmentChanged,
     }),
     [
       state,
@@ -309,6 +327,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       offlineModeEnabled,
       setOfflineModeEnabled,
       realtimeConnected,
+      notifyEnrollmentChanged,
     ],
   );
 
