@@ -21,27 +21,44 @@ import { MIN_TAP_TARGET, color, fontSize, radius, space, styles } from "@/theme"
 
 type ButtonVariant = "primary" | "secondary" | "accent" | "danger";
 
-const BUTTON_FILL: Record<ButtonVariant, string> = {
-  primary: color.primary,
-  secondary: color.primaryTint,
-  accent: color.accent,
-  danger: color.danger,
-};
+/**
+ * Functions, not module-level `Record<...>` constants — a plain object built
+ * at import time would read `color.primary` etc. exactly once, before the
+ * Theme menu's pick has necessarily loaded, and then never again: `color` is
+ * a live Proxy (theme.ts) meant to be read fresh on every use, and a
+ * module-level object can't do that. Same bug class theme.ts's own `styles`
+ * had before it stopped using `StyleSheet.create` at the module top level.
+ */
+function buttonFill(variant: ButtonVariant): string {
+  const fills: Record<ButtonVariant, string> = {
+    primary: color.primary,
+    secondary: color.primaryTint,
+    accent: color.accent,
+    danger: color.danger,
+  };
+  return fills[variant];
+}
 
-const BUTTON_TEXT: Record<ButtonVariant, string> = {
-  primary: color.onPrimary,
-  secondary: color.primary,
-  accent: color.ink,
-  danger: color.onPrimary,
-};
+function buttonText(variant: ButtonVariant): string {
+  const texts: Record<ButtonVariant, string> = {
+    primary: color.onPrimary,
+    secondary: color.primary,
+    accent: color.ink,
+    danger: color.onPrimary,
+  };
+  return texts[variant];
+}
 
 /** Secondary is the only variant that carries a border, tinted to match its ink. */
-const BUTTON_BORDER: Record<ButtonVariant, string> = {
-  primary: "transparent",
-  secondary: color.primarySoft,
-  accent: "transparent",
-  danger: "transparent",
-};
+function buttonBorder(variant: ButtonVariant): string {
+  const borders: Record<ButtonVariant, string> = {
+    primary: "transparent",
+    secondary: color.primarySoft,
+    accent: "transparent",
+    danger: "transparent",
+  };
+  return borders[variant];
+}
 
 /**
  * Tap targets are 48dp minimum, 56 for primary actions — cashiers move fast and
@@ -65,7 +82,7 @@ export function Button({
   busy?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
-  const tint = BUTTON_TEXT[variant];
+  const tint = buttonText(variant);
   const iconSize = large ? 20 : 18;
 
   return (
@@ -81,9 +98,9 @@ export function Button({
           borderRadius: radius.sm,
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: BUTTON_FILL[variant],
+          backgroundColor: buttonFill(variant),
           borderWidth: variant === "secondary" ? 1 : 0,
-          borderColor: BUTTON_BORDER[variant],
+          borderColor: buttonBorder(variant),
           opacity: (disabled ?? busy) ? 0.5 : pressed ? 0.82 : 1,
         },
         style,
@@ -210,19 +227,29 @@ export function SectionTitle({
 
 type BadgeTone = "success" | "warning" | "danger" | "neutral";
 
-const BADGE_FILL: Record<BadgeTone, string> = {
-  success: color.successSoft,
-  warning: color.warningSoft,
-  danger: color.dangerSoft,
-  neutral: color.primarySoft,
-};
+// Functions, not module-level constants — see buttonFill's own comment
+// above for why: "neutral" reads color.primary/primarySoft, which the Theme
+// menu can change, and a plain object built at import time would freeze
+// whatever that was on first load.
+function badgeFill(tone: BadgeTone): string {
+  const fills: Record<BadgeTone, string> = {
+    success: color.successSoft,
+    warning: color.warningSoft,
+    danger: color.dangerSoft,
+    neutral: color.primarySoft,
+  };
+  return fills[tone];
+}
 
-const BADGE_INK: Record<BadgeTone, string> = {
-  success: color.successInk,
-  warning: color.warningInk,
-  danger: color.dangerInk,
-  neutral: color.primary,
-};
+function badgeInk(tone: BadgeTone): string {
+  const inks: Record<BadgeTone, string> = {
+    success: color.successInk,
+    warning: color.warningInk,
+    danger: color.dangerInk,
+    neutral: color.primary,
+  };
+  return inks[tone];
+}
 
 /** Colour is never the only signal: every badge carries an icon and a label. */
 const BADGE_ICON: Record<BadgeTone, LucideIcon> = {
@@ -253,12 +280,12 @@ export function Badge({
         paddingHorizontal: space.sm,
         paddingVertical: 3,
         borderRadius: radius.sm,
-        backgroundColor: BADGE_FILL[tone],
+        backgroundColor: badgeFill(tone),
       }}
     >
-      <Icon size={13} color={BADGE_INK[tone]} strokeWidth={2.5} />
+      <Icon size={13} color={badgeInk(tone)} strokeWidth={2.5} />
       <Text
-        style={{ color: BADGE_INK[tone], fontSize: fontSize.caption, fontWeight: "600" }}
+        style={{ color: badgeInk(tone), fontSize: fontSize.caption, fontWeight: "600" }}
       >
         {label}
       </Text>
