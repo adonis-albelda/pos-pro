@@ -60,41 +60,36 @@ function SettingsPageClient() {
 
   return (
     <div className="space-y-6">
-      {tab !== "info" ? (
-        <div className="overflow-hidden rounded-md border border-border bg-surface">
-          <TabNav
-            items={tabs}
-            active={tab}
-            ariaLabel="Company settings"
-            className="mx-0 bg-surface px-2 sm:px-3"
-          />
-        </div>
-      ) : null}
+      <div className="overflow-hidden rounded-md border border-border bg-surface">
+        <TabNav
+          items={tabs}
+          active={tab}
+          ariaLabel="Company settings"
+          className="mx-0 bg-surface px-2 sm:px-3"
+        />
+      </div>
 
       {tab === "info" ? (
-        <div className="space-y-6">
-          <Card className="overflow-hidden p-0">
-            <CardHeader
-              icon={Store}
-              title="Company details"
-              description="Terminals show the name and logo, and pick up changes on their next sync."
-            />
-            <TabNav items={tabs} active={tab} ariaLabel="Company settings" className="mx-0 bg-paper px-2 sm:px-3" />
-            <div className="px-4 py-5 sm:px-6">
-              {settingsQuery.isPending ? (
-                <p className="py-8 text-center text-body text-ink-muted">Loading…</p>
-              ) : settingsQuery.isError ? (
-                <p className="py-8 text-center text-body text-danger">
-                  {settingsQuery.error instanceof Error
-                    ? settingsQuery.error.message
-                    : "Could not load settings."}
-                </p>
-              ) : (
-                <StoreForm settings={settingsQuery.data} />
-              )}
-            </div>
-          </Card>
-        </div>
+        <Card className="overflow-hidden p-0">
+          <CardHeader
+            icon={Store}
+            title="Company details"
+            description="Terminals show the name and logo, and pick up changes on their next sync."
+          />
+          <div className="px-4 py-5 sm:px-6">
+            {settingsQuery.isPending ? (
+              <p className="py-8 text-center text-body text-ink-muted">Loading…</p>
+            ) : settingsQuery.isError ? (
+              <p className="py-8 text-center text-body text-danger">
+                {settingsQuery.error instanceof Error
+                  ? settingsQuery.error.message
+                  : "Could not load settings."}
+              </p>
+            ) : (
+              <StoreForm settings={settingsQuery.data} />
+            )}
+          </div>
+        </Card>
       ) : tab === "tax" ? (
         <TaxSettingsCard />
       ) : tab === "ai" ? (
