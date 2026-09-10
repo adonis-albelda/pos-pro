@@ -172,6 +172,80 @@ export async function replaceComplexDiscountRules(rules: ComplexDiscountRule[]):
   });
 }
 
+/**
+ * The realtime write (sync/realtime.ts) — one rule at a time, unlike
+ * replaceDiscountRules's whole-table drop-and-reinsert from a pull. A
+ * no-op-safe upsert-by-id, same shape as db/products.ts's own upsert. A
+ * rule an admin actually deletes (rather than deactivates) arrives as its
+ * own `.discount-rule.deleted` event instead — see deleteLocalDiscountRule.
+ */
+export async function upsertLocalDiscountRule(rule: DiscountRule): Promise<void> {
+  await getDb().runAsync(
+    `INSERT INTO discount_rules
+       (id, name, type, value, applies_to, requires_id_number, is_vat_exempt,
+        is_system_protected, is_active, scopes_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (id) DO UPDATE SET
+       name = excluded.name,
+       type = excluded.type,
+       value = excluded.value,
+       applies_to = excluded.applies_to,
+       requires_id_number = excluded.requires_id_number,
+       is_vat_exempt = excluded.is_vat_exempt,
+       is_system_protected = excluded.is_system_protected,
+       is_active = excluded.is_active,
+       scopes_json = excluded.scopes_json`,
+    rule.id,
+    rule.name,
+    rule.type,
+    rule.value,
+    rule.appliesTo,
+    rule.requiresIdNumber ? 1 : 0,
+    rule.isVatExempt ? 1 : 0,
+    rule.isSystemProtected ? 1 : 0,
+    rule.isActive ? 1 : 0,
+    JSON.stringify(rule.scopes),
+  );
+}
+
+export async function deleteLocalDiscountRule(id: string): Promise<void> {
+  await getDb().runAsync("DELETE FROM discount_rules WHERE id = ?", id);
+}
+
+/** Realtime counterpart to replaceComplexDiscountRules — see upsertLocalDiscountRule's own comment. */
+export async function upsertLocalComplexDiscountRule(rule: ComplexDiscountRule): Promise<void> {
+  await getDb().runAsync(
+    `INSERT INTO complex_discount_rules
+       (id, name, reward_type, reward_value, reward_free_variant_id, condition_logic,
+        is_active, starts_at, ends_at, conditions_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (id) DO UPDATE SET
+       name = excluded.name,
+       reward_type = excluded.reward_type,
+       reward_value = excluded.reward_value,
+       reward_free_variant_id = excluded.reward_free_variant_id,
+       condition_logic = excluded.condition_logic,
+       is_active = excluded.is_active,
+       starts_at = excluded.starts_at,
+       ends_at = excluded.ends_at,
+       conditions_json = excluded.conditions_json`,
+    rule.id,
+    rule.name,
+    rule.rewardType,
+    rule.rewardValue,
+    rule.rewardFreeVariantId,
+    rule.conditionLogic,
+    rule.isActive ? 1 : 0,
+    rule.startsAt,
+    rule.endsAt,
+    JSON.stringify(rule.conditions),
+  );
+}
+
+export async function deleteLocalComplexDiscountRule(id: string): Promise<void> {
+  await getDb().runAsync("DELETE FROM complex_discount_rules WHERE id = ?", id);
+}
+
 export async function listLocalDiscountRules(): Promise<DiscountRule[]> {
   const rows = await getDb().getAllAsync<DiscountRuleRow>(
     "SELECT * FROM discount_rules WHERE is_active = 1 ORDER BY is_system_protected DESC, name",

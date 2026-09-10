@@ -1,13 +1,13 @@
 import type { TaxSettings } from "@double-a/shared-types";
 import type { ApiClient } from "../http";
 
-interface TaxSettingsAttrs {
+export interface TaxSettingsAttrs {
   is_vat_registered: boolean;
   vat_rate: number;
   auto_apply_complex_discounts: boolean;
 }
 
-function toTaxSettings(data: TaxSettingsAttrs): TaxSettings {
+export function toTaxSettings(data: TaxSettingsAttrs): TaxSettings {
   return {
     isVatRegistered: data.is_vat_registered,
     vatRate: data.vat_rate,

@@ -1,6 +1,24 @@
 import type Echo from "laravel-echo";
 import type { Channel } from "laravel-echo";
-import { toProduct, toProductVariant, type ProductAttrs, type ProductVariantAttrs } from "@double-a/api-client";
+import {
+  toComplexDiscountRule,
+  toDiscountRule,
+  toProduct,
+  toProductVariant,
+  toTaxSettings,
+  type ComplexDiscountRuleAttrs,
+  type DiscountRuleAttrs,
+  type ProductAttrs,
+  type ProductVariantAttrs,
+  type TaxSettingsAttrs,
+} from "@double-a/api-client";
+import {
+  deleteLocalComplexDiscountRule,
+  deleteLocalDiscountRule,
+  saveLocalTaxSettings,
+  upsertLocalComplexDiscountRule,
+  upsertLocalDiscountRule,
+} from "@/db/discounts";
 import { updateProductCatalogFields, updateProductStock } from "@/db/products";
 import { updateVariantCatalogFields, updateVariantStock } from "@/db/product-variants";
 import { apiUrl } from "@/lib/api/client";
@@ -67,6 +85,50 @@ interface VariantUpdatedPayload {
   id: string;
   type: string;
   attributes: ProductVariantAttrs;
+}
+
+/**
+ * Backend contract for discount realtime — not yet emitted by the broadcast
+ * service (out of this repo); this is the shape mobile is built to consume
+ * the moment admin's discount save/delete actions start firing it. All on
+ * the same `company.{companyId}` channel already used for catalogue events,
+ * since discount rules, complex promos, and tax settings are company-scoped,
+ * never location-scoped:
+ *
+ *   - DiscountRuleUpdated → event `.discount-rule.updated`, fired on every
+ *     create/update from admin's discount rule form (a deactivation is just
+ *     an update with is_active: false — CLAUDE.md-style soft delete, same
+ *     as products). Payload a JSON:API resource shaped like
+ *     DiscountRuleAttrs (packages/api-client).
+ *   - DiscountRuleDeleted → event `.discount-rule.deleted`, only for an
+ *     actual row deletion (packages/api-client's deleteDiscountRule).
+ *     Payload `{ id }`.
+ *   - ComplexDiscountRuleUpdated / ComplexDiscountRuleDeleted → identical
+ *     shape, `.complex-discount-rule.updated` / `.complex-discount-rule.deleted`,
+ *     ComplexDiscountRuleAttrs.
+ *   - TaxSettingsUpdated → event `.tax-settings.updated`, fired on every
+ *     admin save (packages/api-client's updateTaxSettings). Payload
+ *     `{ data: TaxSettingsAttrs }` — same envelope as GET /tax-settings,
+ *     not a JSON:API resource (tax_settings has no id, it's a single row).
+ */
+interface DiscountRuleUpdatedPayload {
+  id: string;
+  type: string;
+  attributes: DiscountRuleAttrs;
+}
+
+interface ComplexDiscountRuleUpdatedPayload {
+  id: string;
+  type: string;
+  attributes: ComplexDiscountRuleAttrs;
+}
+
+interface DiscountRuleDeletedPayload {
+  id: string;
+}
+
+interface TaxSettingsUpdatedPayload {
+  data: TaxSettingsAttrs;
 }
 
 let echo: Echo<"reverb"> | null = null;
@@ -162,6 +224,26 @@ export async function connectRealtime(
   catalogChannel.listen(".variant.updated", (payload: VariantUpdatedPayload) => {
     if (__DEV__) console.warn("[realtime] variant.updated", payload);
     void updateVariantCatalogFields(toProductVariant(payload)).then(onStockTick);
+  });
+  catalogChannel.listen(".discount-rule.updated", (payload: DiscountRuleUpdatedPayload) => {
+    if (__DEV__) console.warn("[realtime] discount-rule.updated", payload);
+    void upsertLocalDiscountRule(toDiscountRule(payload)).then(onStockTick);
+  });
+  catalogChannel.listen(".discount-rule.deleted", (payload: DiscountRuleDeletedPayload) => {
+    if (__DEV__) console.warn("[realtime] discount-rule.deleted", payload);
+    void deleteLocalDiscountRule(payload.id).then(onStockTick);
+  });
+  catalogChannel.listen(".complex-discount-rule.updated", (payload: ComplexDiscountRuleUpdatedPayload) => {
+    if (__DEV__) console.warn("[realtime] complex-discount-rule.updated", payload);
+    void upsertLocalComplexDiscountRule(toComplexDiscountRule(payload)).then(onStockTick);
+  });
+  catalogChannel.listen(".complex-discount-rule.deleted", (payload: DiscountRuleDeletedPayload) => {
+    if (__DEV__) console.warn("[realtime] complex-discount-rule.deleted", payload);
+    void deleteLocalComplexDiscountRule(payload.id).then(onStockTick);
+  });
+  catalogChannel.listen(".tax-settings.updated", (payload: TaxSettingsUpdatedPayload) => {
+    if (__DEV__) console.warn("[realtime] tax-settings.updated", payload);
+    void saveLocalTaxSettings(toTaxSettings(payload.data)).then(onStockTick);
   });
   catalogChannel.error((error: unknown) => {
     console.warn("[realtime] catalog channel auth failed", error);

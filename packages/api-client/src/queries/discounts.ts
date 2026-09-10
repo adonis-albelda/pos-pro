@@ -13,13 +13,13 @@ import type {
 } from "@double-a/shared-types";
 import type { ApiClient, JsonApiResource } from "../http";
 
-interface ScopeAttrs {
+export interface ScopeAttrs {
   id: string;
   scope_type: DiscountScopeType;
   scope_id: string;
 }
 
-interface DiscountRuleAttrs {
+export interface DiscountRuleAttrs {
   name: string;
   type: DiscountRuleType;
   value: number;
@@ -33,7 +33,7 @@ interface DiscountRuleAttrs {
   updated_at?: string;
 }
 
-interface ConditionAttrs {
+export interface ConditionAttrs {
   id: string;
   condition_type: ComplexConditionType;
   target_id: string | null;
@@ -41,7 +41,7 @@ interface ConditionAttrs {
   threshold_value: number;
 }
 
-interface ComplexDiscountRuleAttrs {
+export interface ComplexDiscountRuleAttrs {
   name: string;
   reward_type: ComplexRewardType;
   reward_value: number | null;
