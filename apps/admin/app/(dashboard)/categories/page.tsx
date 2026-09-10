@@ -5,7 +5,7 @@ import { FolderTree } from "lucide-react";
 import type { Category } from "@double-a/shared-types";
 import { rollupProductCounts, toCategoryOptions } from "@/lib/category-options";
 import { matchesQuery, paginateItems, parseListQuery } from "@/lib/list-query";
-import { Card, PageHeader } from "@/components/ui";
+import { Card, PageHeader, TableSkeleton } from "@/components/ui";
 import { CategoriesPanel } from "./categories-panel";
 import { useCategories, useCategoryProductCounts } from "@/lib/query/categories";
 
@@ -28,7 +28,7 @@ export default function CategoriesPage() {
       />
 
       {categoriesQuery.isPending || countsQuery.isPending ? (
-        <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>
+        <TableSkeleton columns={["w-48", "w-12", ""]} rows={8} />
       ) : categoriesQuery.isError ? (
         <Card className="px-4 py-8 text-center text-body text-danger">
           {categoriesQuery.error instanceof Error

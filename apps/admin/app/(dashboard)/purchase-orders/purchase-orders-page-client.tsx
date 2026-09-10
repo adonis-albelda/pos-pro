@@ -34,6 +34,7 @@ import {
   Money,
   StatCard,
   Table,
+  TableSkeleton,
   Td,
   Th,
 } from "@/components/ui";
@@ -128,7 +129,7 @@ export function PurchaseOrdersPageClient() {
 
       {isInitialQueryLoad(ordersQuery.isPending, Boolean(ordersQuery.data)) ||
       suppliersQuery.isPending ? (
-        <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>
+        <TableSkeleton columns={["w-24", "w-32", "w-20", "w-16", "w-16", "w-16", "w-16"]} />
       ) : ordersQuery.isError || suppliersQuery.isError ? (
         <Card className="px-4 py-8 text-center text-body text-danger">
           {ordersQuery.error instanceof Error

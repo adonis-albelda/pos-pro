@@ -15,7 +15,7 @@ import { formatMoney } from "@double-a/shared-types";
 import { isInitialQueryLoad } from "@/lib/list-query";
 import { toCategoryOptions } from "@/lib/category-options";
 import { resolveDayWindow } from "@/lib/date-range";
-import { Card, StatCard } from "@/components/ui";
+import { Card, StatCard, StatCardSkeleton, TableSkeleton } from "@/components/ui";
 import { TabNav } from "@/components/tab-nav";
 import { isReason } from "@/lib/inventory-reasons";
 import { useCategories } from "@/lib/query/categories";
@@ -161,7 +161,16 @@ export default function InventoryPage() {
     .find((error) => error instanceof Error);
 
   if (pending) {
-    return <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>;
+    return (
+      <div className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <StatCardSkeleton key={index} />
+          ))}
+        </div>
+        <TableSkeleton columns={["w-40", "w-24", "w-24", "w-16", "w-20", ""]} rows={8} />
+      </div>
+    );
   }
 
   if (isError) {

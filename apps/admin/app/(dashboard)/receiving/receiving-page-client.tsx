@@ -18,7 +18,7 @@ import type { Location } from "@double-a/shared-types";
 import { STORE_TIME_ZONE } from "@double-a/shared-types";
 import { formatStoreDay, storeDayOf } from "@/lib/date-range";
 import { isInitialQueryLoad, matchesQuery, paginateItems, parseListQuery } from "@/lib/list-query";
-import { Badge, ButtonLink, Card, CardHeader, EmptyState, StatCard, Table, Td, Th } from "@/components/ui";
+import { Badge, ButtonLink, Card, CardHeader, EmptyState, StatCard, Table, TableSkeleton, Td, Th } from "@/components/ui";
 import { Pagination, SearchField } from "@/components/record-list";
 import { useLocationFilter } from "@/components/location-filter-provider";
 import { useLocationMutationsLocked } from "@/components/location-mutations-banner";
@@ -142,7 +142,7 @@ export function ReceivingPageClient() {
       </div>
 
       {loading ? (
-        <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>
+        <TableSkeleton columns={["w-12", "w-24", "w-28", "w-24", "w-12", "w-20", "w-16"]} />
       ) : error ? (
         <Card className="px-4 py-8 text-center text-body text-danger">
           {error instanceof Error ? error.message : "Could not load received orders."}

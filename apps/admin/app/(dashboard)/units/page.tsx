@@ -12,6 +12,7 @@ import {
   IconButton,
   Input,
   PageHeader,
+  Skeleton,
 } from "@/components/ui";
 import { useCreateUnit, useDeleteUnit, useUnits, useUpdateUnit } from "@/lib/query/units";
 
@@ -163,7 +164,20 @@ export default function UnitsPage() {
       </Card>
 
       {unitsQuery.isPending ? (
-        <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>
+        <Card className="overflow-hidden py-0">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div
+              key={index}
+              className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 last:border-b-0"
+            >
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-4 w-32" />
+              </div>
+              <Skeleton className="h-4 w-4" />
+            </div>
+          ))}
+        </Card>
       ) : unitsQuery.isError ? (
         <Card className="px-4 py-8 text-center text-body text-danger">
           {errorMessage(unitsQuery.error, "Could not load units.")}

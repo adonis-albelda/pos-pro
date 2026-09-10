@@ -4,7 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { EyeOff, Package, PackageX, TriangleAlert } from "lucide-react";
 import type { ProductSort, ProductStockState } from "@double-a/api-client/queries";
 import { DEFAULT_PAGE_SIZE, isInitialQueryLoad, parseListQuery } from "@/lib/list-query";
-import { Card, StatCard } from "@/components/ui";
+import { Card, StatCard, StatCardSkeleton, TableSkeleton } from "@/components/ui";
 import { ProductsPanel } from "./products-panel";
 import { useProducts, useProductStats, useProductVariantsList } from "@/lib/query/products";
 import { useLocationFilter } from "@/components/location-filter-provider";
@@ -75,7 +75,19 @@ export default function ProductsPage() {
   return (
     <div className="space-y-6">
       {pending ? (
-        <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>
+        <>
+          {trashed ? null : (
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <StatCardSkeleton key={index} />
+              ))}
+            </div>
+          )}
+          <TableSkeleton
+            columns={["w-40", "w-20", "w-24", "w-24", "w-16", "w-16", "w-16", "w-12", "w-12", "w-16", ""]}
+            rows={8}
+          />
+        </>
       ) : isError ? (
         <Card className="px-4 py-8 text-center text-body text-danger">
           {error instanceof Error ? error.message : "Could not load products."}

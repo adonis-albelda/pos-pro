@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { ClipboardList, Plus, Users } from "lucide-react";
 import type { User } from "@double-a/shared-types";
 import { matchesQuery, paginateItems, parseListQuery } from "@/lib/list-query";
-import { Badge, ButtonLink, Card, PageHeader, Table, Td, Th } from "@/components/ui";
+import { Badge, ButtonLink, Card, PageHeader, Table, TableSkeleton, Td, Th } from "@/components/ui";
 import { useUsers } from "@/lib/query/users";
 
 const ROLE_LABEL: Record<string, string> = {
@@ -52,7 +52,7 @@ export default function UsersPage() {
       />
 
       {usersQuery.isPending ? (
-        <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>
+        <TableSkeleton columns={["w-40", "w-48", "w-20", "w-16", "w-28", "w-12"]} />
       ) : usersQuery.isError ? (
         <Card className="px-4 py-8 text-center text-body text-danger">
           {usersQuery.error instanceof Error ? usersQuery.error.message : "Could not load users."}

@@ -5,7 +5,7 @@ import { Wallet } from "lucide-react";
 import type { Expense, ExpenseBill, Location } from "@double-a/shared-types";
 import { matchesQuery, paginateItems, parseListQuery } from "@/lib/list-query";
 import { storeToday } from "@/lib/date-range";
-import { Card, PageHeader } from "@/components/ui";
+import { Card, PageHeader, TableSkeleton } from "@/components/ui";
 import { useLocationFilter } from "@/components/location-filter-provider";
 import { useLocations } from "@/lib/query/locations";
 import { ExpensesPanel } from "./expenses-panel";
@@ -42,7 +42,10 @@ export function ExpensesPageClient() {
       />
 
       {loading ? (
-        <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>
+        <div className="space-y-6">
+          <TableSkeleton columns={["w-20", "w-48", "w-24", "w-24", "w-16", ""]} />
+          <TableSkeleton columns={["w-20", "w-48", "w-20", "w-16", "w-16", ""]} rows={3} />
+        </div>
       ) : error ? (
         <Card className="px-4 py-8 text-center text-body text-danger">
           {error instanceof Error ? error.message : "Could not load expenses."}

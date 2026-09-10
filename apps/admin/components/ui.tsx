@@ -1007,6 +1007,84 @@ export function Skeleton({ className, ...props }: ComponentProps<"div">) {
   );
 }
 
+/** Same markup as one StatCard in its own `loading` state — for a page whose pending gate short-circuits before StatCard ever gets to render itself (so its built-in skeleton never runs). Repeat via CSS grid at the call site to match however many stat cards the loaded page actually shows. */
+export function StatCardSkeleton() {
+  return (
+    <Card className="flex items-start gap-3 px-4 py-4 sm:gap-4 sm:px-5 sm:py-5">
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-border/40" />
+      <div className="min-w-0 flex-1">
+        <Skeleton className="h-3 w-16" />
+        <Skeleton className="mt-1.5 h-6 w-20" />
+      </div>
+    </Card>
+  );
+}
+
+/**
+ * A table's shape, before its data has arrived — one header-width
+ * skeleton block per real column, repeated per skeleton row, so the page
+ * doesn't jump when real rows replace it. Gate this on a query's own
+ * `isPending` (true only before any data has ever loaded) rather than
+ * `isLoading`/`isFetching`, which also fire on a background refetch and
+ * would otherwise replace rows the cashier is already looking at.
+ *
+ * `columns` is a Tailwind width class per column — roughly the real
+ * content's width (a name column wider than a status pill) is what makes
+ * this read as "this specific table," not a generic placeholder. Pass an
+ * empty string for a column with no sensible fixed width (an actions
+ * column, say) to get a narrow default instead.
+ */
+export function TableSkeleton({
+  columns,
+  rows = 6,
+}: {
+  columns: string[];
+  rows?: number;
+}) {
+  const gridStyle = { gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` };
+
+  return (
+    <Card className="overflow-hidden p-0">
+      <div className="grid gap-4 border-b border-border px-4 py-3 sm:px-6" style={gridStyle}>
+        {columns.map((_, index) => (
+          <Skeleton key={index} className="h-3 w-16" />
+        ))}
+      </div>
+      <div className="divide-y divide-border">
+        {Array.from({ length: rows }).map((_, row) => (
+          <div key={row} className="grid items-center gap-4 px-4 py-4 sm:px-6" style={gridStyle}>
+            {columns.map((widthClass, col) => (
+              <Skeleton key={col} className={cx("h-4", widthClass || "w-12")} />
+            ))}
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+/**
+ * Same idea as TableSkeleton for a page whose data renders as stacked cards
+ * rather than table rows (add-on groups, discount rules, suppliers) — a
+ * title-width bar plus a couple of body lines per card, repeated `count`
+ * times.
+ */
+export function CardListSkeleton({ count = 3 }: { count?: number }) {
+  return (
+    <div className="space-y-4">
+      {Array.from({ length: count }).map((_, index) => (
+        <Card key={index}>
+          <CardBody className="space-y-3">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-3 w-full max-w-md" />
+            <Skeleton className="h-3 w-3/4 max-w-sm" />
+          </CardBody>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 export function ErrorNote({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (children === DEMO_RESTRICTED_MESSAGE) {

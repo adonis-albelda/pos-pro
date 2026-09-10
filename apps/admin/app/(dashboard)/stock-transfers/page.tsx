@@ -18,6 +18,7 @@ import {
   Select,
   SuccessNote,
   Table,
+  TableSkeleton,
   Td,
   Th,
 } from "@/components/ui";
@@ -46,7 +47,7 @@ export default function StockTransfersPage() {
       />
 
       {loading ? (
-        <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>
+        <TableSkeleton columns={["w-48", "w-24", "w-16", ""]} />
       ) : error ? (
         <Card className="px-4 py-8 text-center text-body text-danger">
           {error instanceof Error ? error.message : "Could not load transfers."}

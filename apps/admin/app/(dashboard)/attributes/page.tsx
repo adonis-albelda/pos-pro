@@ -7,6 +7,7 @@ import {
   Button,
   Card,
   CardBody,
+  CardListSkeleton,
   Field,
   IconButton,
   Input,
@@ -158,7 +159,7 @@ export default function AttributesPage() {
       </Card>
 
       {attributesQuery.isPending ? (
-        <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>
+        <CardListSkeleton count={3} />
       ) : attributesQuery.isError ? (
         <Card className="px-4 py-8 text-center text-body text-danger">
           {errorMessage(attributesQuery.error, "Could not load choices.")}

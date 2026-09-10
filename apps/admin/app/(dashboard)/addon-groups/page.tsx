@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Layers, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { AddonGroup } from "@double-a/api-client/queries";
-import { Badge, Button, Card, CardBody, Field, IconButton, Input, PageHeader, Select } from "@/components/ui";
+import { Badge, Button, Card, CardBody, CardListSkeleton, Field, IconButton, Input, PageHeader, Select } from "@/components/ui";
 import { useAddonGroups, useCreateAddonGroup, useDeleteAddonGroup, useUpdateAddonGroup } from "@/lib/query/addon-groups";
 import { AddItemForm, AddonGroupItemsList } from "./addon-group-items";
 
@@ -125,7 +125,7 @@ export default function AddonGroupsPage() {
       </Card>
 
       {groupsQuery.isPending ? (
-        <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>
+        <CardListSkeleton count={3} />
       ) : groupsQuery.isError ? (
         <Card className="px-4 py-8 text-center text-body text-danger">
           {errorMessage(groupsQuery.error, "Could not load add-on groups.")}

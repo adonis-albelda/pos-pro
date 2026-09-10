@@ -19,6 +19,7 @@ import {
   Button,
   Card,
   CardBody,
+  CardListSkeleton,
   Field,
   IconButton,
   Input,
@@ -451,7 +452,7 @@ export default function DiscountsPage() {
           <div className="space-y-3 p-3 sm:p-4">
             {creating ? <CreateSimpleForm onDone={() => setCreating(false)} /> : null}
             {simpleQuery.isPending ? (
-              <p className="py-8 text-center text-body text-ink-muted">Loading…</p>
+              <CardListSkeleton count={3} />
             ) : simpleQuery.isError ? (
               <p className="py-8 text-center text-body text-danger">Could not load discounts.</p>
             ) : (
@@ -462,7 +463,7 @@ export default function DiscountsPage() {
           <div className="space-y-3 p-3 sm:p-4">
             {creating ? <CreateComplexForm onDone={() => setCreating(false)} /> : null}
             {complexQuery.isPending ? (
-              <p className="py-8 text-center text-body text-ink-muted">Loading…</p>
+              <CardListSkeleton count={3} />
             ) : complexQuery.isError ? (
               <p className="py-8 text-center text-body text-danger">Could not load promos.</p>
             ) : (complexQuery.data ?? []).length === 0 ? (

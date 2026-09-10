@@ -2,7 +2,8 @@
 
 import { useSearchParams } from "next/navigation";
 import { resolveDayWindow } from "@/lib/date-range";
-import { Card } from "@/components/ui";
+import { isInitialQueryLoad } from "@/lib/list-query";
+import { Card, StatCardSkeleton, TableSkeleton } from "@/components/ui";
 import { FetchingDataOverlay } from "@/components/overlay";
 import { useLocationFilter } from "@/components/location-filter-provider";
 import { useSalesList, useSalesStats } from "@/lib/query/sales";
@@ -35,12 +36,32 @@ export function SalesPageClient() {
 
   const fetching = salesQuery.isFetching || statsQuery.isFetching;
   const error = salesQuery.error ?? statsQuery.error;
+  const pending =
+    isInitialQueryLoad(salesQuery.isPending, Boolean(salesQuery.data)) ||
+    isInitialQueryLoad(statsQuery.isPending, Boolean(statsQuery.data)) ||
+    usersQuery.isPending;
 
   if (error) {
     return (
       <Card className="px-4 py-8 text-center text-body text-danger">
         {error instanceof Error ? error.message : "Could not load sales."}
       </Card>
+    );
+  }
+
+  // First load only — a filter-change refetch keeps SalesPanel mounted and
+  // uses FetchingDataOverlay below instead, so changing a date range doesn't
+  // yank the table out from under whoever is reading it.
+  if (pending) {
+    return (
+      <>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <StatCardSkeleton key={index} />
+          ))}
+        </div>
+        <TableSkeleton columns={["w-32", "w-24", "w-20", "w-20", "w-12", "w-16", "w-16", "w-12"]} />
+      </>
     );
   }
 

@@ -13,6 +13,7 @@ import {
   Field,
   PageHeader,
   Select,
+  Skeleton,
 } from "@/components/ui";
 import { useAccessCatalog, useUpdateUserAccess } from "@/lib/query/access";
 import { useUser, useUsers } from "@/lib/query/users";
@@ -167,7 +168,39 @@ function AccessBody() {
           title="Access"
           description="Roles and permissions per user. Admin can do everything."
         />
-        <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>
+        <div className="grid gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
+          <Card>
+            <CardBody className="space-y-2 p-2">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <div key={index} className="flex flex-col gap-1.5 px-3 py-2">
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-3 w-16" />
+                </div>
+              ))}
+            </CardBody>
+          </Card>
+          <Card>
+            <CardBody className="space-y-5">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div className="space-y-1.5">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-3 w-40" />
+                </div>
+                <Skeleton className="h-9 w-40" />
+              </div>
+              {Array.from({ length: 3 }).map((_, group) => (
+                <div key={group} className="space-y-2">
+                  <Skeleton className="h-3 w-24" />
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {Array.from({ length: 4 }).map((_, item) => (
+                      <Skeleton key={item} className="h-4 w-full max-w-56" />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </CardBody>
+          </Card>
+        </div>
       </div>
     );
   }
@@ -229,7 +262,25 @@ function AccessBody() {
             {!selected ? (
               <p className="text-body text-ink-muted">Pick a user.</p>
             ) : detailQuery.isPending && selected.role !== "admin" ? (
-              <p className="text-body text-ink-muted">Loading permissions…</p>
+              <div className="space-y-5">
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div className="space-y-1.5">
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-3 w-40" />
+                  </div>
+                  <Skeleton className="h-9 w-40" />
+                </div>
+                {Array.from({ length: 3 }).map((_, group) => (
+                  <div key={group} className="space-y-2">
+                    <Skeleton className="h-3 w-24" />
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {Array.from({ length: 4 }).map((_, item) => (
+                        <Skeleton key={item} className="h-4 w-full max-w-56" />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : (
               <>
                 <div className="flex flex-wrap items-end justify-between gap-3">

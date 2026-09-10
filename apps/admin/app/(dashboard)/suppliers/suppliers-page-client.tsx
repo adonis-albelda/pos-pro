@@ -5,7 +5,7 @@ import { CheckCircle2, Users, Wallet } from "lucide-react";
 import type { Supplier } from "@double-a/shared-types";
 import { formatMoney } from "@double-a/shared-types";
 import { matchesQuery, paginateItems, parseListQuery } from "@/lib/list-query";
-import { Card, StatCard } from "@/components/ui";
+import { Card, StatCard, StatCardSkeleton, TableSkeleton } from "@/components/ui";
 import { SuppliersPanel } from "./suppliers-panel";
 import { useSupplierBalances, useSuppliers } from "@/lib/query/suppliers";
 
@@ -25,7 +25,14 @@ export function SuppliersPageClient() {
   return (
     <div className="space-y-6">
       {isPending ? (
-        <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>
+        <>
+          <div className="grid gap-4 sm:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <StatCardSkeleton key={index} />
+            ))}
+          </div>
+          <TableSkeleton columns={["w-40", "w-28", "w-40", "w-16", "w-20", "w-16", ""]} />
+        </>
       ) : error ? (
         <Card className="px-4 py-8 text-center text-body text-danger">
           {error instanceof Error ? error.message : "Could not load suppliers."}

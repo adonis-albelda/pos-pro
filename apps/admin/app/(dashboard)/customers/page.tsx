@@ -9,7 +9,7 @@ import { getBrowserApiClient } from "@/lib/api/browser-client";
 import { queryKeys } from "@/lib/query/keys";
 import { useCustomerBalances, useCustomers } from "@/lib/query/customers";
 import { matchesQuery, paginateItems, parseListQuery } from "@/lib/list-query";
-import { Card, PageHeader } from "@/components/ui";
+import { Card, PageHeader, TableSkeleton } from "@/components/ui";
 import { CustomersPanel } from "./customers-panel";
 
 export default function CustomersPage() {
@@ -41,7 +41,7 @@ export default function CustomersPage() {
       />
 
       {customersQuery.isPending || salesQuery.isPending || balancesQuery.isPending ? (
-        <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>
+        <TableSkeleton columns={["w-40", "w-28", "w-40", "w-12", "w-20", ""]} />
       ) : customersQuery.isError ? (
         <Card className="px-4 py-8 text-center text-body text-danger">
           {customersQuery.error instanceof Error

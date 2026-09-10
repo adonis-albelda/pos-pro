@@ -23,8 +23,10 @@ import {
   Input,
   PageHeader,
   Select,
+  Skeleton,
   SuccessNote,
   Table,
+  TableSkeleton,
   Td,
   Th,
 } from "@/components/ui";
@@ -46,7 +48,17 @@ export default function LocationsPage() {
       />
 
       {locationsQuery.isPending ? (
-        <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>
+        <>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <Card key={index} className="px-4 py-3">
+                <Skeleton className="h-3 w-16" />
+                <Skeleton className="mt-2 h-6 w-10" />
+              </Card>
+            ))}
+          </div>
+          <TableSkeleton columns={["w-40", "w-20", "w-48", "w-16", ""]} />
+        </>
       ) : locationsQuery.isError ? (
         <Card className="px-4 py-8 text-center text-body text-danger">
           {locationsQuery.error instanceof Error

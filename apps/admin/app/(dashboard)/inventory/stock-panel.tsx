@@ -16,6 +16,7 @@ import {
   IconLink,
   Money,
   Select,
+  Skeleton,
   Table,
   Td,
   Th,
@@ -236,7 +237,25 @@ export function StockPanel({
         </div>
 
         {stockQuery.isPending ? (
-          <p className="px-4 py-8 text-center text-body text-ink-muted sm:px-6">Loading…</p>
+          <div className="border-t border-border">
+            <div className="grid grid-cols-6 gap-4 border-b border-border px-4 py-3 sm:px-6">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <Skeleton key={index} className="h-3 w-16" />
+              ))}
+            </div>
+            <div className="divide-y divide-border">
+              {Array.from({ length: 8 }).map((_, row) => (
+                <div key={row} className="grid grid-cols-6 items-center gap-4 px-4 py-3 sm:px-6">
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="h-4 w-20" />
+                  <Skeleton className="h-4 w-12" />
+                  <Skeleton className="h-4 w-12" />
+                  <Skeleton className="h-4 w-16" />
+                  <Skeleton className="h-5 w-16 rounded-full" />
+                </div>
+              ))}
+            </div>
+          </div>
         ) : stockQuery.isError ? (
           <p className="px-4 py-8 text-center text-body text-danger sm:px-6">
             {stockQuery.error instanceof Error
