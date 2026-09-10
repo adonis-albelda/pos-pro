@@ -118,11 +118,9 @@ function SalesPanelHeader({
 /** Reads q/page from the URL — search and pagination stay here, not in the page shell. */
 function SalesTableSection({
   sales,
-  stats,
   users,
 }: {
   sales: SaleWithItems[];
-  stats: SalesPageStats;
   users: User[];
 }) {
   const searchParams = useSearchParams();
@@ -175,29 +173,6 @@ function SalesTableSection({
 
   return (
     <>
-      <div className="grid gap-3 border-b border-border p-4 sm:grid-cols-2 sm:px-6 xl:grid-cols-4">
-        <StatCard
-          icon={Wallet}
-          label="Gross revenue"
-          value={formatMoney(stats.revenue)}
-          hint={`${stats.count} completed sale${stats.count === 1 ? "" : "s"}`}
-        />
-        <StatCard icon={Receipt} label="Cost of goods" value={formatMoney(stats.cost)} tone="neutral" />
-        <StatCard
-          icon={TrendingUp}
-          label="Gross profit"
-          value={formatMoney(stats.grossProfit)}
-          hint={`${stats.marginPercent.toFixed(1)}% margin`}
-          tone={stats.grossProfit < 0 ? "danger" : "success"}
-        />
-        <StatCard
-          icon={Percent}
-          label="Discounts given"
-          value={formatMoney(stats.discount)}
-          tone={stats.discount > 0 ? "warning" : "neutral"}
-        />
-      </div>
-
       {q ? (
         <div className="border-b border-border px-4 py-3 text-caption text-ink-muted sm:px-6">
           {total} match{total === 1 ? "" : "es"}
@@ -348,9 +323,34 @@ export function SalesPanel({
   );
 
   return (
-    <Card>
-      <SalesPanelHeader users={users} devices={devices} fromDay={fromDay} toDay={toDay} />
-      <SalesTableSection sales={sales} stats={stats} users={users} />
-    </Card>
+    <div className="space-y-6">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          icon={Wallet}
+          label="Gross revenue"
+          value={formatMoney(stats.revenue)}
+          hint={`${stats.count} completed sale${stats.count === 1 ? "" : "s"}`}
+        />
+        <StatCard icon={Receipt} label="Cost of goods" value={formatMoney(stats.cost)} tone="neutral" />
+        <StatCard
+          icon={TrendingUp}
+          label="Gross profit"
+          value={formatMoney(stats.grossProfit)}
+          hint={`${stats.marginPercent.toFixed(1)}% margin`}
+          tone={stats.grossProfit < 0 ? "danger" : "success"}
+        />
+        <StatCard
+          icon={Percent}
+          label="Discounts given"
+          value={formatMoney(stats.discount)}
+          tone={stats.discount > 0 ? "warning" : "neutral"}
+        />
+      </div>
+
+      <Card>
+        <SalesPanelHeader users={users} devices={devices} fromDay={fromDay} toDay={toDay} />
+        <SalesTableSection sales={sales} users={users} />
+      </Card>
+    </div>
   );
 }
