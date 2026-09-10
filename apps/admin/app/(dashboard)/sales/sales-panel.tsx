@@ -22,6 +22,7 @@ import {
   Badge,
   ButtonLink,
   Card,
+  CardHeader,
   EmptyState,
   Money,
   StatCard,
@@ -71,47 +72,44 @@ function SalesPanelHeader({
   }
 
   return (
-    <div className="flex flex-col gap-4 border-b border-border px-4 py-4 sm:px-6 lg:flex-row lg:items-end lg:justify-between">
-      <div className="min-w-0 shrink-0">
-        <h1 className="text-heading-md font-semibold text-ink">Sales</h1>
-        <p className="mt-1 max-w-xl text-body text-ink-muted">
-          Every sale synced from a terminal. A sale made offline appears here only after its
-          terminal syncs.
-        </p>
-      </div>
-
-      <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center lg:justify-end">
-        <SearchField
-          placeholder="Search cashier, customer, terminal…"
-          defaultValue={q}
-          preserve={listQuery}
-          className="sm:max-w-xs"
-        />
-        <DateRangePicker
-          fromDay={fromDay}
-          toDay={toDay}
-          onApply={applyWindow}
-          className="sm:max-w-xs"
-        />
-        <SalesFiltersPopover users={users} devices={devices} className="sm:max-w-xs" />
-        {mutationsLocked ? (
-          <ButtonLink
-            href="/sales"
-            icon={Plus}
-            size="sm"
-            className="pointer-events-none opacity-40"
-            aria-disabled
-            title="Pick a specific location to create sales"
-          >
-            New sale
-          </ButtonLink>
-        ) : (
-          <ButtonLink href="/sales/new" icon={Plus} size="sm">
-            New sale
-          </ButtonLink>
-        )}
-      </div>
-    </div>
+    <CardHeader
+      icon={Receipt}
+      title="Sales"
+      description="Every sale synced from a terminal. A sale made offline appears here only after its terminal syncs."
+      action={
+        <div className="flex flex-wrap items-center gap-2">
+          <SearchField
+            placeholder="Search cashier, customer, terminal…"
+            defaultValue={q}
+            preserve={listQuery}
+            className="sm:max-w-xs"
+          />
+          <DateRangePicker
+            fromDay={fromDay}
+            toDay={toDay}
+            onApply={applyWindow}
+            className="sm:max-w-xs"
+          />
+          <SalesFiltersPopover users={users} devices={devices} className="sm:max-w-xs" />
+          {mutationsLocked ? (
+            <ButtonLink
+              href="/sales"
+              icon={Plus}
+              size="sm"
+              className="pointer-events-none opacity-40"
+              aria-disabled
+              title="Pick a specific location to create sales"
+            >
+              New sale
+            </ButtonLink>
+          ) : (
+            <ButtonLink href="/sales/new" icon={Plus} size="sm">
+              New sale
+            </ButtonLink>
+          )}
+        </div>
+      }
+    />
   );
 }
 
