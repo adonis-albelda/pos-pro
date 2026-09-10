@@ -54,14 +54,21 @@ export function SalesPageClient() {
   // yank the table out from under whoever is reading it.
   if (pending) {
     return (
-      <>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <Card>
+        <div className="border-b border-border px-4 py-4 sm:px-6">
+          <h1 className="text-heading-md font-semibold text-ink">Sales</h1>
+          <p className="mt-1 max-w-xl text-body text-ink-muted">
+            Every sale synced from a terminal. A sale made offline appears here only after its
+            terminal syncs.
+          </p>
+        </div>
+        <div className="grid gap-4 border-b border-border p-4 sm:grid-cols-2 sm:px-6 xl:grid-cols-4">
           {Array.from({ length: 4 }).map((_, index) => (
             <StatCardSkeleton key={index} />
           ))}
         </div>
-        <TableSkeleton columns={["w-32", "w-24", "w-20", "w-20", "w-12", "w-16", "w-16", "w-12"]} />
-      </>
+        <TableSkeleton columns={["w-32", "w-24", "w-20", "w-20", "w-12", "w-16", "w-16", "w-12"]} bare />
+      </Card>
     );
   }
 

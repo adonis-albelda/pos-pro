@@ -1052,18 +1052,25 @@ export function ChartCardSkeleton({ bars = 6 }: { bars?: number }) {
  * this read as "this specific table," not a generic placeholder. Pass an
  * empty string for a column with no sensible fixed width (an actions
  * column, say) to get a narrow default instead.
+ *
+ * `bare` skips the wrapping Card — use it when the caller already has its
+ * own Card open (e.g. a title/stats/table all inside one Card, matching
+ * that page's real loaded layout) so this doesn't nest a second border
+ * inside the first.
  */
 export function TableSkeleton({
   columns,
   rows = 6,
+  bare = false,
 }: {
   columns: string[];
   rows?: number;
+  bare?: boolean;
 }) {
   const gridStyle = { gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` };
 
-  return (
-    <Card className="overflow-hidden p-0">
+  const body = (
+    <>
       <div className="grid gap-4 border-b border-border px-4 py-3 sm:px-6" style={gridStyle}>
         {columns.map((_, index) => (
           <Skeleton key={index} className="h-3 w-16" />
@@ -1078,8 +1085,11 @@ export function TableSkeleton({
           </div>
         ))}
       </div>
-    </Card>
+    </>
   );
+
+  if (bare) return body;
+  return <Card className="overflow-hidden p-0">{body}</Card>;
 }
 
 /**

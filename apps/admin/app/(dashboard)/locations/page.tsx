@@ -23,7 +23,8 @@ import {
   Input,
   PageHeader,
   Select,
-  Skeleton,
+  StatCard,
+  StatCardSkeleton,
   SuccessNote,
   Table,
   TableSkeleton,
@@ -49,12 +50,9 @@ export default function LocationsPage() {
 
       {locationsQuery.isPending ? (
         <>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-3">
             {Array.from({ length: 3 }).map((_, index) => (
-              <Card key={index} className="px-4 py-3">
-                <Skeleton className="h-3 w-16" />
-                <Skeleton className="mt-2 h-6 w-10" />
-              </Card>
+              <StatCardSkeleton key={index} />
             ))}
           </div>
           <TableSkeleton columns={["w-40", "w-20", "w-48", "w-16", ""]} />
@@ -121,19 +119,16 @@ function LocationsBody({ locations }: { locations: Location[] }) {
 
   return (
     <>
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Card className="px-4 py-3">
-          <p className="text-caption text-ink-muted">Branches</p>
-          <p className="text-title font-semibold text-ink">{branches}</p>
-        </Card>
-        <Card className="px-4 py-3">
-          <p className="text-caption text-ink-muted">Warehouses</p>
-          <p className="text-title font-semibold text-ink">{warehouses}</p>
-        </Card>
-        <Card className="px-4 py-3">
-          <p className="text-caption text-ink-muted">Inactive</p>
-          <p className="text-title font-semibold text-ink">{inactive}</p>
-        </Card>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard icon={Store} label="Branches" value={String(branches)} hint="Sell on POS" />
+        <StatCard icon={Warehouse} label="Warehouses" value={String(warehouses)} hint="Stock only" />
+        <StatCard
+          icon={EyeOff}
+          label="Inactive"
+          value={String(inactive)}
+          hint="Hidden from enrollment and transfers"
+          tone={inactive > 0 ? "neutral" : "success"}
+        />
       </div>
 
       <Card>

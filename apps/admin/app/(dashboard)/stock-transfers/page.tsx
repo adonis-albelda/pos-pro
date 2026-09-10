@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState, useTransition } from "react";
-import { ArrowLeftRight, Check, Plus, Trash2, X } from "lucide-react";
+import { ArrowLeftRight, CheckCircle2, Clock, Plus, Send, Trash2, X, Check } from "lucide-react";
 import { toast } from "sonner";
 import type { Location, StockTransfer } from "@double-a/shared-types";
 import {
@@ -16,6 +16,8 @@ import {
   Input,
   PageHeader,
   Select,
+  StatCard,
+  StatCardSkeleton,
   SuccessNote,
   Table,
   TableSkeleton,
@@ -47,7 +49,14 @@ export default function StockTransfersPage() {
       />
 
       {loading ? (
-        <TableSkeleton columns={["w-48", "w-24", "w-16", ""]} />
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <StatCardSkeleton key={index} />
+            ))}
+          </div>
+          <TableSkeleton columns={["w-48", "w-24", "w-16", ""]} />
+        </>
       ) : error ? (
         <Card className="px-4 py-8 text-center text-body text-danger">
           {error instanceof Error ? error.message : "Could not load transfers."}
@@ -151,8 +160,37 @@ function TransfersBody({
       .map((row) => ({ productId: row.productId, quantity: Number(row.quantity) })),
   );
 
+  const pendingCount = transfers.filter((t) => t.status === "pending").length;
+  const inTransitCount = transfers.filter((t) => t.status === "in_transit").length;
+  const receivedCount = transfers.filter((t) => t.status === "received").length;
+
   return (
     <div className="space-y-6">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard icon={ArrowLeftRight} label="Total transfers" value={String(transfers.length)} />
+        <StatCard
+          icon={Clock}
+          label="Pending"
+          value={String(pendingCount)}
+          hint="Not sent yet"
+          tone={pendingCount > 0 ? "warning" : "neutral"}
+        />
+        <StatCard
+          icon={Send}
+          label="In transit"
+          value={String(inTransitCount)}
+          hint="On the way, stock not moved yet"
+          tone={inTransitCount > 0 ? "warning" : "neutral"}
+        />
+        <StatCard
+          icon={CheckCircle2}
+          label="Received"
+          value={String(receivedCount)}
+          hint="Stock already moved"
+          tone={receivedCount > 0 ? "success" : "neutral"}
+        />
+      </div>
+
       <Card className="space-y-4 p-4">
         <div>
           <h2 className="text-body font-semibold text-ink">New transfer</h2>
