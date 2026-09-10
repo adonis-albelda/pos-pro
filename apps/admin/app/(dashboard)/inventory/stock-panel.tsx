@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { Route } from "next";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { FilterX, History, Loader2, PackagePlus, Warehouse } from "lucide-react";
+import { ChevronDown, FilterX, History, Loader2, PackagePlus, SlidersHorizontal, Warehouse } from "lucide-react";
 import { listProductsPage } from "@double-a/api-client/queries";
 import { stockLevel } from "@double-a/shared-types";
 import {
@@ -37,6 +37,10 @@ import {
   type StockSort,
   type StockState,
 } from "./view-options";
+
+function cx(...parts: (string | false | null | undefined)[]): string {
+  return parts.filter(Boolean).join(" ");
+}
 
 const STOCK_PAGE_SIZE = 25;
 /** Fetch the next page once the scrolled-past distance from the bottom is under this. */
@@ -134,6 +138,38 @@ export function StockPanel({
     router.push((qs ? `/inventory?${qs}` : "/inventory") as Route);
   }
 
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const filtersRef = useRef<HTMLDivElement>(null);
+  const filtersPanelId = useId();
+
+  useEffect(() => {
+    if (!filtersOpen) return;
+    function onPointerDown(event: MouseEvent) {
+      if (!filtersRef.current?.contains(event.target as Node)) setFiltersOpen(false);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setFiltersOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [filtersOpen]);
+
+  const categoryLabel = category
+    ? (categories.find((option) => option.id === category)?.name ?? "Category")
+    : null;
+  const filterSummary =
+    [
+      state !== "all" ? STOCK_STATE_LABELS[state] : null,
+      categoryLabel,
+      sort !== "name" ? STOCK_SORT_LABELS[sort] : null,
+    ]
+      .filter(Boolean)
+      .join(" · ") || "All stock";
+  const activeFilters = state !== "all" || Boolean(category) || sort !== "name";
   const filtered = state !== "all" || Boolean(category) || Boolean(query);
   const preserve = {
     state: stateFilter,
@@ -157,6 +193,91 @@ export function StockPanel({
             </div>
 
             <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+              <div ref={filtersRef} className="relative min-w-0">
+                <button
+                  type="button"
+                  onClick={() => setFiltersOpen((was) => !was)}
+                  aria-expanded={filtersOpen}
+                  aria-haspopup="dialog"
+                  aria-controls={filtersPanelId}
+                  className={cx(
+                    "flex h-10 min-w-0 cursor-pointer items-center gap-2 rounded-sm border border-border bg-surface px-3 text-left sm:max-w-xs",
+                    "transition-colors hover:border-ink/20 focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:outline-none",
+                    filtersOpen && "border-primary ring-2 ring-primary/20",
+                    activeFilters && !filtersOpen && "border-primary/40 bg-primary/5",
+                  )}
+                >
+                  <SlidersHorizontal size={16} strokeWidth={2} className="shrink-0 text-ink-muted" />
+                  <span className="min-w-0 flex-1 truncate text-body">{filterSummary}</span>
+                  <ChevronDown
+                    size={14}
+                    strokeWidth={2}
+                    className={cx("shrink-0 text-ink-muted transition-transform", filtersOpen && "rotate-180")}
+                    aria-hidden
+                  />
+                </button>
+
+                {filtersOpen ? (
+                  <div
+                    id={filtersPanelId}
+                    role="dialog"
+                    aria-label="Filter stock"
+                    className="absolute top-[calc(100%+6px)] right-0 z-50 w-[min(22rem,calc(100vw-1.5rem))] space-y-4 rounded-md border border-border bg-surface p-4 shadow-lg"
+                  >
+                    <label className="block">
+                      <span className="mb-1 block text-caption font-medium text-ink-muted">Show</span>
+                      <Select value={state} onChange={(event) => setParam("state", event.target.value)}>
+                        {STOCK_STATES.map((option) => (
+                          <option key={option} value={option}>
+                            {STOCK_STATE_LABELS[option]}
+                          </option>
+                        ))}
+                      </Select>
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-1 block text-caption font-medium text-ink-muted">Category</span>
+                      <Combobox
+                        value={category ?? ""}
+                        onChange={(next) => setParam("category", next)}
+                        placeholder="Every category"
+                        options={[
+                          { value: "", label: "Every category" },
+                          ...categories.map((option) => ({ value: option.id, label: indentLabel(option) })),
+                        ]}
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-1 block text-caption font-medium text-ink-muted">Sort by</span>
+                      <Select value={sort} onChange={(event) => setParam("sort", event.target.value)}>
+                        {STOCK_SORTS.map((option) => (
+                          <option key={option} value={option}>
+                            {STOCK_SORT_LABELS[option]}
+                          </option>
+                        ))}
+                      </Select>
+                    </label>
+
+                    {filtered ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        icon={FilterX}
+                        className="w-full"
+                        onClick={() => {
+                          router.push("/inventory");
+                          setFiltersOpen(false);
+                        }}
+                      >
+                        Clear filters
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+
               <RecordToolbar
                 searchPlaceholder=""
                 hideSearch
@@ -173,67 +294,6 @@ export function StockPanel({
           <p className="max-w-xl text-body text-ink-muted">
             Stock changes are recorded as movements, never edited directly.
           </p>
-        </div>
-
-        <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-end sm:px-6">
-          <label className="block min-w-0 flex-1">
-            <span className="mb-1 block text-caption font-medium text-ink-muted">
-              Show
-            </span>
-            <Select
-              value={state}
-              onChange={(event) => setParam("state", event.target.value)}
-            >
-              {STOCK_STATES.map((option) => (
-                <option key={option} value={option}>
-                  {STOCK_STATE_LABELS[option]}
-                </option>
-              ))}
-            </Select>
-          </label>
-
-          <label className="block min-w-0 flex-1">
-            <span className="mb-1 block text-caption font-medium text-ink-muted">
-              Category
-            </span>
-            <Combobox
-              value={category ?? ""}
-              onChange={(next) => setParam("category", next)}
-              placeholder="Every category"
-              options={[
-                { value: "", label: "Every category" },
-                ...categories.map((option) => ({ value: option.id, label: indentLabel(option) })),
-              ]}
-            />
-          </label>
-
-          <label className="block min-w-0 flex-1">
-            <span className="mb-1 block text-caption font-medium text-ink-muted">
-              Sort by
-            </span>
-            <Select
-              value={sort}
-              onChange={(event) => setParam("sort", event.target.value)}
-            >
-              {STOCK_SORTS.map((option) => (
-                <option key={option} value={option}>
-                  {STOCK_SORT_LABELS[option]}
-                </option>
-              ))}
-            </Select>
-          </label>
-
-          {filtered ? (
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              icon={FilterX}
-              onClick={() => router.push("/inventory")}
-            >
-              Clear
-            </Button>
-          ) : null}
         </div>
 
         {stockQuery.isPending ? (

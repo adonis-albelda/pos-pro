@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import type { Route } from "next";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -11,7 +10,6 @@ import {
   FilePenLine,
   PackageOpen,
   Plus,
-  SlidersHorizontal,
   Wallet,
 } from "lucide-react";
 import type { PurchaseOrderStatus, Supplier } from "@double-a/shared-types";
@@ -26,7 +24,6 @@ import { isInitialQueryLoad, matchesQuery, paginateItems, parseListQuery } from 
 import { PO_STATUS_TONE } from "@/lib/purchase-order-status";
 import {
   Badge,
-  Button,
   ButtonLink,
   Card,
   CardHeader,
@@ -38,28 +35,11 @@ import {
   Td,
   Th,
 } from "@/components/ui";
-import { Dialog } from "@/components/overlay";
 import { Pagination, SearchField } from "@/components/record-list";
 import { useLocationMutationsLocked } from "@/components/location-mutations-banner";
-import { PurchaseOrdersFilters } from "./purchase-orders-filters";
+import { PurchaseOrdersFiltersPopover } from "./purchase-orders-filters";
 import { usePurchaseOrders, usePurchaseOrderStats } from "@/lib/query/purchase-orders";
 import { useSuppliers } from "@/lib/query/suppliers";
-
-function FiltersButton({ suppliers, active }: { suppliers: Supplier[]; active: boolean }) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <>
-      <Button type="button" variant="secondary" size="sm" icon={SlidersHorizontal} onClick={() => setOpen(true)}>
-        Filters
-        {active ? <span className="ml-1 inline-block size-1.5 rounded-full bg-primary" /> : null}
-      </Button>
-      <Dialog open={open} onClose={() => setOpen(false)} title="Filter purchase orders">
-        <PurchaseOrdersFilters suppliers={suppliers} onDone={() => setOpen(false)} />
-      </Dialog>
-    </>
-  );
-}
 
 function buildListHref(params: {
   q?: string;
@@ -201,7 +181,7 @@ function PurchaseOrdersBody({
                 preserve={listQuery}
                 className="sm:max-w-xs"
               />
-              <FiltersButton suppliers={suppliers} active={Boolean(supplierId || status)} />
+              <PurchaseOrdersFiltersPopover suppliers={suppliers} />
               {mutationsLocked ? (
                 <ButtonLink
                   href="/purchase-orders"

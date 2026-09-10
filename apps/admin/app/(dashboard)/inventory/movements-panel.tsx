@@ -1,9 +1,9 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useId, useRef, useState } from "react";
 import type { Route } from "next";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FilterX, History, Receipt } from "lucide-react";
+import { ChevronDown, FilterX, History, Receipt, SlidersHorizontal } from "lucide-react";
 import type { InventoryMovement, InventoryReason } from "@double-a/shared-types";
 import {
   Badge,
@@ -27,6 +27,10 @@ import {
   reasonLabel,
 } from "@/lib/inventory-reasons";
 import { RestockSheet } from "./restock-sheet";
+
+function cx(...parts: (string | false | null | undefined)[]): string {
+  return parts.filter(Boolean).join(" ");
+}
 
 const TIME_FORMAT: Intl.DateTimeFormatOptions = {
   hour: "numeric",
@@ -91,6 +95,29 @@ export function MovementsPanel({
   };
   const filtered = Boolean(reason || focusedProduct || fromDay || toDay || query);
 
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const filtersRef = useRef<HTMLDivElement>(null);
+  const filtersPanelId = useId();
+
+  useEffect(() => {
+    if (!filtersOpen) return;
+    function onPointerDown(event: MouseEvent) {
+      if (!filtersRef.current?.contains(event.target as Node)) setFiltersOpen(false);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setFiltersOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [filtersOpen]);
+
+  const filterSummary = [rangeLabel, reason ? reasonLabel(reason) : null].filter(Boolean).join(" · ");
+  const activeFilters = Boolean(reason || fromDay || toDay);
+
   const exportParams = new URLSearchParams();
   if (fromDay) exportParams.set("from", fromDay);
   if (toDay) exportParams.set("to", toDay);
@@ -120,6 +147,74 @@ export function MovementsPanel({
               preserve={filters}
               className="sm:max-w-xs"
             />
+
+            <div ref={filtersRef} className="relative min-w-0">
+              <button
+                type="button"
+                onClick={() => setFiltersOpen((was) => !was)}
+                aria-expanded={filtersOpen}
+                aria-haspopup="dialog"
+                aria-controls={filtersPanelId}
+                className={cx(
+                  "flex h-10 min-w-0 cursor-pointer items-center gap-2 rounded-sm border border-border bg-surface px-3 text-left sm:max-w-xs",
+                  "transition-colors hover:border-ink/20 focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:outline-none",
+                  filtersOpen && "border-primary ring-2 ring-primary/20",
+                  activeFilters && !filtersOpen && "border-primary/40 bg-primary/5",
+                )}
+              >
+                <SlidersHorizontal size={16} strokeWidth={2} className="shrink-0 text-ink-muted" />
+                <span className="min-w-0 flex-1 truncate text-body">{filterSummary}</span>
+                <ChevronDown
+                  size={14}
+                  strokeWidth={2}
+                  className={cx("shrink-0 text-ink-muted transition-transform", filtersOpen && "rotate-180")}
+                  aria-hidden
+                />
+              </button>
+
+              {filtersOpen ? (
+                <div
+                  id={filtersPanelId}
+                  role="dialog"
+                  aria-label="Filter movements"
+                  className="absolute top-[calc(100%+6px)] right-0 z-50 w-[min(26rem,calc(100vw-1.5rem))] space-y-4 rounded-md border border-border bg-surface p-4 shadow-lg"
+                >
+                  <div>
+                    <span className="mb-1 block text-caption font-medium text-ink-muted">Dates</span>
+                    <DateRangePicker fromDay={fromDay} toDay={toDay} onApply={applyWindow} />
+                  </div>
+
+                  <label className="block">
+                    <span className="mb-1 block text-caption font-medium text-ink-muted">Reason</span>
+                    <Select value={reason ?? ""} onChange={(event) => push({ reason: event.target.value })}>
+                      <option value="">Every reason</option>
+                      {REASONS.map((option) => (
+                        <option key={option} value={option}>
+                          {reasonLabel(option)}
+                        </option>
+                      ))}
+                    </Select>
+                  </label>
+
+                  {filtered ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      icon={FilterX}
+                      className="w-full"
+                      onClick={() => {
+                        router.push("/inventory?tab=movements" as Route);
+                        setFiltersOpen(false);
+                      }}
+                    >
+                      Clear filters
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+
             <RecordToolbar
               searchPlaceholder=""
               hideSearch
@@ -135,45 +230,7 @@ export function MovementsPanel({
           </div>
         </div>
 
-        <div className="space-y-2 border-b border-border px-4 py-3 sm:px-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="min-w-0 flex-1">
-              <span className="mb-1 block text-caption font-medium text-ink-muted">
-                Dates
-              </span>
-              <DateRangePicker fromDay={fromDay} toDay={toDay} onApply={applyWindow} />
-            </div>
-
-            <label className="block min-w-0 flex-1">
-              <span className="mb-1 block text-caption font-medium text-ink-muted">
-                Reason
-              </span>
-              <Select
-                value={reason ?? ""}
-                onChange={(event) => push({ reason: event.target.value })}
-              >
-                <option value="">Every reason</option>
-                {REASONS.map((option) => (
-                  <option key={option} value={option}>
-                    {reasonLabel(option)}
-                  </option>
-                ))}
-              </Select>
-            </label>
-
-            {filtered ? (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                icon={FilterX}
-                onClick={() => router.push("/inventory?tab=movements" as Route)}
-              >
-                Clear
-              </Button>
-            ) : null}
-          </div>
-
+        <div className="border-b border-border px-4 py-3 sm:px-6">
           <p className="flex items-center gap-2 text-caption text-ink-muted">
             <History size={13} strokeWidth={2} />
             {focusedProduct
