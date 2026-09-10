@@ -3,10 +3,21 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { useSearchParams } from "next/navigation";
-import { ClipboardList, Plus, Users } from "lucide-react";
+import { ClipboardList, Plus, UserCheck, UserX, Users } from "lucide-react";
 import type { User } from "@double-a/shared-types";
 import { matchesQuery, paginateItems, parseListQuery } from "@/lib/list-query";
-import { Badge, ButtonLink, Card, PageHeader, Table, TableSkeleton, Td, Th } from "@/components/ui";
+import {
+  Badge,
+  ButtonLink,
+  Card,
+  CardHeader,
+  StatCard,
+  Table,
+  TableSkeleton,
+  Td,
+  Th,
+} from "@/components/ui";
+import { Pagination, SearchField } from "@/components/record-list";
 import { useUsers } from "@/lib/query/users";
 
 const ROLE_LABEL: Record<string, string> = {
@@ -38,18 +49,34 @@ export default function UsersPage() {
   });
   const usersQuery = useUsers({ includeInactive: true });
 
+  const users = usersQuery.data ?? [];
+  const activeCount = users.filter((user) => user.isActive).length;
+  const inactiveCount = users.filter((user) => !user.isActive).length;
+
   return (
     <div className="space-y-6">
-      <PageHeader
-        icon={Users}
-        title="Users"
-        description="One directory for every login. Create opens a full form — email/username, password, PIN, role."
-        action={
-          <ButtonLink href={"/users/new" as Route} icon={Plus}>
-            New user
-          </ButtonLink>
-        }
-      />
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard
+          icon={Users}
+          label="Total users"
+          value={String(users.length)}
+          loading={usersQuery.isPending}
+        />
+        <StatCard
+          icon={UserCheck}
+          label="Active"
+          value={String(activeCount)}
+          tone="success"
+          loading={usersQuery.isPending}
+        />
+        <StatCard
+          icon={UserX}
+          label="Inactive"
+          value={String(inactiveCount)}
+          tone={inactiveCount > 0 ? "neutral" : "success"}
+          loading={usersQuery.isPending}
+        />
+      </div>
 
       {usersQuery.isPending ? (
         <TableSkeleton columns={["w-40", "w-48", "w-20", "w-16", "w-28", "w-12"]} />
@@ -58,7 +85,7 @@ export default function UsersPage() {
           {usersQuery.error instanceof Error ? usersQuery.error.message : "Could not load users."}
         </Card>
       ) : (
-        <UsersTable users={usersQuery.data ?? []} q={q} page={page} />
+        <UsersTable users={users} q={q} page={page} />
       )}
     </div>
   );
@@ -68,10 +95,23 @@ function UsersTable({ users, q, page }: { users: User[]; q: string; page: number
   const filtered = users.filter((user) =>
     matchesQuery([user.name, user.email, user.username ?? "", user.role], q),
   );
-  const { pageItems, pageCount } = paginateItems(filtered, page);
+  const { pageItems, page: safePage, pageCount, total, pageSize } = paginateItems(filtered, page);
 
   return (
     <Card className="overflow-hidden p-0">
+      <CardHeader
+        icon={Users}
+        title="Users"
+        description="One directory for every login. Create opens a full form — email/username, password, PIN, role."
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <SearchField placeholder="Search name, email, username…" defaultValue={q} />
+            <ButtonLink href={"/users/new" as Route} icon={Plus}>
+              New user
+            </ButtonLink>
+          </div>
+        }
+      />
       <Table>
         <thead>
           <tr>
@@ -140,31 +180,14 @@ function UsersTable({ users, q, page }: { users: User[]; q: string; page: number
           )}
         </tbody>
       </Table>
-      {pageCount > 1 ? (
-        <div className="flex items-center justify-between border-t border-border px-4 py-2 text-caption text-ink-muted">
-          <span>
-            Page {page} of {pageCount}
-          </span>
-          <div className="flex gap-2">
-            {page > 1 ? (
-              <Link
-                href={`/users?q=${encodeURIComponent(q)}&page=${page - 1}` as Route}
-                className="text-primary"
-              >
-                Prev
-              </Link>
-            ) : null}
-            {page < pageCount ? (
-              <Link
-                href={`/users?q=${encodeURIComponent(q)}&page=${page + 1}` as Route}
-                className="text-primary"
-              >
-                Next
-              </Link>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
+      <Pagination
+        page={safePage}
+        pageCount={pageCount}
+        total={total}
+        pageSize={pageSize}
+        basePath="/users"
+        query={{ q: q || undefined }}
+      />
     </Card>
   );
 }
