@@ -1020,6 +1020,25 @@ export function StatCardSkeleton() {
   );
 }
 
+/** Same shape as ExpenseForecast's two bar-chart cards, before there's data to draw bars from — a title-width bar plus a row of random-height bar placeholders. */
+export function ChartCardSkeleton({ bars = 6 }: { bars?: number }) {
+  return (
+    <Card className="p-4">
+      <Skeleton className="h-4 w-40" />
+      <Skeleton className="mt-1.5 h-3 w-56" />
+      <div className="mt-4 flex h-36 items-end gap-2">
+        {Array.from({ length: bars }).map((_, index) => (
+          <Skeleton
+            key={index}
+            className="flex-1 rounded-b-none"
+            style={{ height: `${30 + ((index * 37) % 60)}%` }}
+          />
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 /**
  * A table's shape, before its data has arrived — one header-width
  * skeleton block per real column, repeated per skeleton row, so the page

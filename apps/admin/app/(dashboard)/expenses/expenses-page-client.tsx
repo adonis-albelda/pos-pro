@@ -5,7 +5,7 @@ import { Wallet } from "lucide-react";
 import type { Expense, ExpenseBill, Location } from "@double-a/shared-types";
 import { matchesQuery, paginateItems, parseListQuery } from "@/lib/list-query";
 import { storeToday } from "@/lib/date-range";
-import { Card, PageHeader, TableSkeleton } from "@/components/ui";
+import { Card, ChartCardSkeleton, PageHeader, TableSkeleton } from "@/components/ui";
 import { useLocationFilter } from "@/components/location-filter-provider";
 import { useLocations } from "@/lib/query/locations";
 import { ExpensesPanel } from "./expenses-panel";
@@ -43,6 +43,10 @@ export function ExpensesPageClient() {
 
       {loading ? (
         <div className="space-y-6">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <ChartCardSkeleton />
+            <ChartCardSkeleton />
+          </div>
           <TableSkeleton columns={["w-20", "w-48", "w-24", "w-24", "w-16", ""]} />
           <TableSkeleton columns={["w-20", "w-48", "w-20", "w-16", "w-16", ""]} rows={3} />
         </div>
