@@ -2,7 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { Percent, Settings, ShieldCheck, Sparkles, Store } from "lucide-react";
-import { Card, CardHeader, PageHeader } from "@/components/ui";
+import { Card, CardHeader } from "@/components/ui";
 import { TabNav } from "@/components/tab-nav";
 import { AdminGate } from "@/components/admin-gate";
 import { StoreForm } from "./store-form";
@@ -60,29 +60,26 @@ function SettingsPageClient() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        icon={Settings}
-        title="Company settings"
-        description="Shop identity on receipts and terminals, plus weekly AI usage."
-      />
-
-      <div className="overflow-hidden rounded-md border border-border bg-surface">
-        <TabNav
-          items={tabs}
-          active={tab}
-          ariaLabel="Company settings"
-          className="mx-0 bg-surface px-2 sm:px-3"
-        />
-      </div>
+      {tab !== "info" ? (
+        <div className="overflow-hidden rounded-md border border-border bg-surface">
+          <TabNav
+            items={tabs}
+            active={tab}
+            ariaLabel="Company settings"
+            className="mx-0 bg-surface px-2 sm:px-3"
+          />
+        </div>
+      ) : null}
 
       {tab === "info" ? (
         <div className="space-y-6">
-          <Card>
+          <Card className="overflow-hidden p-0">
             <CardHeader
               icon={Store}
               title="Company details"
               description="Terminals show the name and logo, and pick up changes on their next sync."
             />
+            <TabNav items={tabs} active={tab} ariaLabel="Company settings" className="mx-0 bg-paper px-2 sm:px-3" />
             <div className="px-4 py-5 sm:px-6">
               {settingsQuery.isPending ? (
                 <p className="py-8 text-center text-body text-ink-muted">Loading…</p>
