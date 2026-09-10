@@ -66,7 +66,14 @@ function SettingsPageClient() {
         description="Shop identity on receipts and terminals, plus weekly AI usage."
       />
 
-      <TabNav items={tabs} active={tab} ariaLabel="Company settings" />
+      <div className="overflow-hidden rounded-md border border-border bg-surface">
+        <TabNav
+          items={tabs}
+          active={tab}
+          ariaLabel="Company settings"
+          className="mx-0 bg-surface px-2 sm:px-3"
+        />
+      </div>
 
       {tab === "info" ? (
         <div className="space-y-6">

@@ -10,7 +10,6 @@ import {
   FolderTree,
   Layers,
   LayoutDashboard,
-  MapPin,
   Package,
   PackageCheck,
   Plus,
@@ -147,7 +146,7 @@ export const NAV_GROUPS: NavGroup[] = [
       {
         href: "/locations" as Route,
         label: "Locations",
-        icon: MapPin,
+        icon: Store,
         blurb: "Branches and warehouses",
         tone: "neutral",
         permissionKey: "inventory.locations.view",

@@ -256,7 +256,9 @@ export default function InventoryPage() {
           />
         </div>
 
-        <TabNav items={tabs} active={tab} />
+        <div className="overflow-hidden rounded-md border border-border bg-surface">
+          <TabNav items={tabs} active={tab} className="mx-0 bg-surface px-2 sm:px-3" />
+        </div>
 
         <MovementsPanel
           movements={movementPage.movements}

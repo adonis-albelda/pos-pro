@@ -4,7 +4,6 @@ import { useActionState, useEffect, useState, useTransition } from "react";
 import {
   Eye,
   EyeOff,
-  MapPin,
   Plus,
   Store,
   Trash2,
@@ -43,7 +42,7 @@ export default function LocationsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        icon={MapPin}
+        icon={Store}
         title="Locations"
         description="Branches sell on the floor. Warehouses hold bulk stock. Disable a location to hide it from POS enrollment and transfers without deleting history."
       />
@@ -146,7 +145,7 @@ function LocationsBody({ locations }: { locations: Location[] }) {
 
         {locations.length === 0 ? (
           <EmptyState
-            icon={MapPin}
+            icon={Store}
             title="No locations yet"
             instruction="Add a branch for selling and a warehouse if you hold stock off the floor."
             action={
