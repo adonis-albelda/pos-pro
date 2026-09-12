@@ -22,7 +22,16 @@ export default async function proxy(request: NextRequest) {
 
   const token = request.cookies.get(SESSION_COOKIE)?.value ?? null;
   const acting = Boolean(request.cookies.get(ACTING_COMPANY_COOKIE)?.value);
-  const host = request.headers.get("host") ?? request.nextUrl.hostname;
+  // A reverse proxy/CDN in front of production (common on most hosts) can
+  // forward a different `Host` than the domain the browser actually shows —
+  // `X-Forwarded-Host` is what those set to preserve it. Reading the raw
+  // `Host` instead meant this could classify a real admin's session as demo
+  // (or the reverse) purely based on how the proxy forwards the request,
+  // sending X-Demo-Database against the wrong database and getting back a
+  // clean 401 for a token that is actually valid — the request never even
+  // reaches the wrong-host branch below, `me()` just fails outright.
+  const host =
+    request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? request.nextUrl.hostname;
   const demoModeCookie = request.cookies.get(DEMO_MODE_COOKIE)?.value === "1";
 
   let user: Awaited<ReturnType<typeof me>> | null = null;
@@ -35,6 +44,20 @@ export default async function proxy(request: NextRequest) {
       });
       user = await me(client);
     } catch (error) {
+      // Silent otherwise — this is the one place that would explain "logged
+      // in fine, but every navigation bounces back to /login": /auth/me
+      // rejecting a token the browser just received. Logged with enough to
+      // tell a demo/host mismatch (wrong X-Demo-Database) apart from a
+      // genuinely invalid/expired token or a real API outage.
+      console.error("[proxy] /auth/me failed", {
+        path,
+        host,
+        demoModeCookie,
+        isApiError: error instanceof ApiError,
+        status: error instanceof ApiError ? error.status : undefined,
+        message: error instanceof Error ? error.message : String(error),
+      });
+
       // A 401/403 genuinely means "not signed in" — user stays null and the
       // redirect logic below runs as normal. Anything else (a network blip,
       // a transient 500 from the API, a timeout) is not something middleware
