@@ -543,6 +543,40 @@ CREATE TABLE IF NOT EXISTS schedule_assignments (
 CREATE INDEX IF NOT EXISTS schedule_assignments_user_id_idx ON schedule_assignments (user_id);
 `;
 
+/**
+ * v26: cashier-picked e-wallet name (GCash/Maya/MariBank/GrabPay/ShopeePay,
+ * or free text for "Other E-Wallet") — only meaningful for payment_method
+ * 'ewallet'. Purely a display detail so the owner can match a sale against
+ * their own bank/wallet records; never read by any business rule.
+ */
+const V26_EWALLET_PROVIDER = `
+ALTER TABLE sales ADD COLUMN ewallet_provider TEXT;
+`;
+
+/**
+ * v27: variant-level photo — ProductVariantResource already resolves this
+ * server-side (a variant's own cover photo, or its parent product's photo
+ * when it has none), so it's always the one photo to show; mobile just
+ * never had a column to land it in.
+ */
+const V27_VARIANT_PHOTO = `
+ALTER TABLE product_variants ADD COLUMN photo_url TEXT;
+`;
+
+/**
+ * v28: v27 only adds the column — every variant already on-device keeps a
+ * null photo_url until it's re-fetched, and an ordinary Sync/Refresh only
+ * asks the server for rows updated since high_water_mark, which adding a
+ * column server-side never bumps. Clearing high_water_mark (not
+ * last_synced_at, which only drives the "X ago" display) makes the very
+ * next pull unfiltered — see sync/pull.ts, `since = ... : meta.highWaterMark`
+ * — so every device backfills variant photos once, automatically, with no
+ * reinstall.
+ */
+const V28_REPULL_FOR_VARIANT_PHOTO = `
+UPDATE sync_meta SET high_water_mark = NULL WHERE id = 1;
+`;
+
 /** Ordered, append-only. Never edit a step that has shipped. */
 export const MIGRATIONS: Migration[] = [
   { version: 1, sql: V1_INITIAL },
@@ -570,6 +604,9 @@ export const MIGRATIONS: Migration[] = [
   { version: 23, sql: V23_LOYALTY },
   { version: 24, sql: V24_PAYMENT_PROOF },
   { version: 25, sql: V25_LOYALTY_SETTINGS_AND_SCHEDULES },
+  { version: 26, sql: V26_EWALLET_PROVIDER },
+  { version: 27, sql: V27_VARIANT_PHOTO },
+  { version: 28, sql: V28_REPULL_FOR_VARIANT_PHOTO },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.reduce(

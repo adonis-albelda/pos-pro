@@ -3,6 +3,7 @@ import { ScrollView, Text, TextInput, View } from "react-native";
 import { useMutation } from "@tanstack/react-query";
 import { Check, ShieldAlert, Store } from "lucide-react-native";
 import { updateStoreSettings } from "@double-a/api-client/queries";
+import { ROLES } from "@double-a/shared-types";
 import { getAdminApiClient } from "@/lib/api/session";
 import { useSession } from "@/lib/session";
 import { useInvalidateSettings, useStoreSettings } from "@/lib/query/settings";
@@ -75,7 +76,7 @@ export default function AdminSettingsScreen() {
   // Manager reaches everything else under /admin (see _layout.tsx) but not
   // this screen — actsAsOwner() on the server rejects the save anyway
   // (StoreSettingPolicy), this just skips the dead-end form entirely.
-  if (cashier?.role === "manager") {
+  if (cashier?.role === ROLES.MANAGER) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: space.xl, gap: space.md }}>
         <ShieldAlert size={32} color={color.inkMuted} strokeWidth={1.75} />

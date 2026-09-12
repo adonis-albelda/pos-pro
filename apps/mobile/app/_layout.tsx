@@ -23,7 +23,7 @@ import { getUpdateStatus } from "@/lib/version-check";
 import { color, space, styles } from "@/theme";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- same asset-require pattern as setup.tsx/account-drawer.tsx; no *.png module declaration in this project
-const LOGO = require("../assets/logo.png");
+const LOGO = require("../assets/logo.webp");
 
 // Held up until migrate() below resolves, so the native launch image hands
 // off straight into this screen's own LOGO — no gap where Expo's default

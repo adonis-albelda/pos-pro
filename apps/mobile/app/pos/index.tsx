@@ -174,6 +174,20 @@ const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: LucideIcon }
   { value: "credit", label: "Credit", icon: HandCoins },
 ];
 
+/**
+ * Which e-wallet the customer actually paid with — display-only, so the
+ * owner can match a sale against their own bank/wallet records. "Other
+ * E-Wallet" reveals a text input instead of setting this label directly.
+ */
+const EWALLET_PROVIDERS = [
+  "GCash",
+  "Maya",
+  "MariBank",
+  "GrabPay",
+  "ShopeePay",
+  "Other E-Wallet",
+] as const;
+
 const FULFILLMENT_OPTIONS: { value: Fulfillment; label: string; icon?: LucideIcon }[] = [
   { value: "pickup", label: "Pickup" },
   { value: "delivery", label: "Delivery", icon: Truck },
@@ -232,6 +246,10 @@ function toVariantTileDisplay(
     name: label ? `${product.name} — ${label}` : product.name,
     sku: variant.sku ?? product.sku,
     barcode: variant.barcode ?? product.barcode,
+    // Server already resolves this fallback (ProductVariantResource), but
+    // a variant pulled before v27 or one this device hasn't re-synced yet
+    // may still carry no photoUrl locally — fall back to the product's own.
+    photoUrl: variant.photoUrl ?? product.photoUrl,
     price: variant.price,
     costPrice: variant.costPrice,
     stockQuantity: variant.stockQuantity,
@@ -356,6 +374,9 @@ export default function SellScreen() {
   // Optional e-wallet proof screenshot — local file uri, cleared whenever
   // the method isn't ewallet or the sale finishes.
   const [paymentProofUri, setPaymentProofUri] = useState<string | null>(null);
+  // Which e-wallet, for matching against bank/wallet records later — same
+  // lifetime as paymentProofUri (ewallet-only, cleared when not applicable).
+  const [ewalletProvider, setEwalletProvider] = useState<string | null>(null);
   // Optional, and empty for most sales. Held on the cart rather than asked for
   // at the end, so a cashier can take a name while the order is still being
   // built and never has a dialog between them and completing the sale.
@@ -1099,6 +1120,7 @@ export default function SellScreen() {
     setFulfillment("pickup");
     setPayment("cash");
     setPaymentProofUri(null);
+    setEwalletProvider(null);
     await refreshDrafts();
   }
 
@@ -1111,6 +1133,7 @@ export default function SellScreen() {
     setOverridden(draft.overridden);
     setPayment(draft.payment);
     setPaymentProofUri(null);
+    setEwalletProvider(null);
     setCustomer(draft.customer);
     setFulfillment(draft.fulfillment);
     void listLocalProductsByIds(draft.lines.map((line) => line.productId)).then(
@@ -1195,6 +1218,7 @@ export default function SellScreen() {
         fulfillment,
         orderDiscounts,
         paymentProofLocalUri: payment === "ewallet" ? paymentProofUri : null,
+        ewalletProvider: payment === "ewallet" ? ewalletProvider : null,
       });
 
       // "confetti" is the one background option that isn't a continuous
@@ -1211,6 +1235,7 @@ export default function SellScreen() {
       setCustomer(NO_CUSTOMER);
       setFulfillment("pickup");
       setPaymentProofUri(null);
+      setEwalletProvider(null);
       // Keep the confirm dialog up — it flips to a success state. Cart stays
       // open underneath so the phone CartShell Modal doesn't unmount this
       // dialog with it. Print / Skip close both; print is opt-in (never auto).
@@ -1628,7 +1653,9 @@ export default function SellScreen() {
               <FlatList
                 style={{ flex: 1 }}
                 data={lines}
-                keyExtractor={(line) => line.productId}
+                // A product with 2+ variants can have one cart line per
+                // variant — productId alone collides across them.
+                keyExtractor={(line) => (line.variantId ? `${line.productId}:${line.variantId}` : line.productId)}
                 keyboardShouldPersistTaps="handled"
                 ItemSeparatorComponent={() => (
                   <View
@@ -1800,6 +1827,7 @@ export default function SellScreen() {
               <PaymentMethodTrigger
                 value={payment}
                 hasProof={Boolean(paymentProofUri)}
+                provider={ewalletProvider}
                 onPress={() => setOpenField("payment")}
               />
               <SelectField
@@ -1817,10 +1845,12 @@ export default function SellScreen() {
               open={openField === "payment"}
               value={payment}
               proofUri={paymentProofUri}
+              provider={ewalletProvider}
               onClose={() => setOpenField(null)}
-              onConfirm={(method, proofUri) => {
+              onConfirm={(method, proofUri, provider) => {
                 setPayment(method);
                 setPaymentProofUri(method === "ewallet" ? proofUri : null);
+                setEwalletProvider(method === "ewallet" ? provider : null);
                 setOpenField(null);
               }}
             />
@@ -1929,6 +1959,9 @@ export default function SellScreen() {
           discount={discount}
           amountDue={total}
           payment={payment}
+          ewalletProvider={payment === "ewallet" ? ewalletProvider : null}
+          fulfillment={fulfillment}
+          customer={customer}
           itemCount={itemCount}
           busy={saving}
           onClose={() => {
@@ -1998,6 +2031,7 @@ export default function SellScreen() {
       <VariantAddonPicker
         open={pickerState !== null}
         productName={pickerState?.product.name ?? ""}
+        productPhotoUrl={pickerState?.product.photoUrl}
         variants={pickerState?.variants ?? []}
         addonGroups={pickerState?.addonGroups ?? []}
         onCancel={() => setPickerState(null)}
@@ -2043,7 +2077,13 @@ function CartRow({
   const stockCap = stockCapFor(line.availableStock, line.allowDecimal);
   const remaining = Math.max(0, stockCap - line.quantity);
   const atMax = line.quantity >= stockCap;
-  const oversell = line.quantity > stockCap;
+  // A line added while its product showed none on hand gets its cap fixed
+  // at BACKORDER_CAP (see commitAddToCart) so the stepper still has room to
+  // count up a backorder — that's the sell-anyway allowance, not real
+  // stock, so "9998 left" (BACKORDER_CAP minus quantity) would tell the
+  // cashier the opposite of what's true.
+  const backordered = line.availableStock === BACKORDER_CAP;
+  const oversell = !backordered && line.quantity > stockCap;
   const bulkMin = product?.bulkMinQuantity ?? null;
   const bulkApplied = !priceLocked && bulkMin !== null && line.quantity >= bulkMin;
   // At one, decrementing drops the line entirely, so the control says so.
@@ -2051,11 +2091,13 @@ function CartRow({
   const showFlags = bulkApplied || oversell;
   const photoUrl = product?.photoUrl ?? null;
   const lineTotal = lineSubtotal(displayUnitPrice, line.quantity);
-  const stockLabel = oversell
-    ? `${stockCap} in stock`
-    : remaining === 0
-      ? "At limit"
-      : `${remaining} left`;
+  const stockLabel = backordered
+    ? "Out of stock"
+    : oversell
+      ? `${stockCap} in stock`
+      : remaining === 0
+        ? "At limit"
+        : `${remaining} left`;
 
   const swipeRef = useRef<SwipeableMethods>(null);
 
@@ -2155,7 +2197,7 @@ function CartRow({
               alignSelf: "flex-start",
               fontSize: fontSize.caption,
               fontWeight: "600",
-              color: oversell || remaining === 0 ? color.warningInk : color.inkMuted,
+              color: backordered || oversell || remaining === 0 ? color.warningInk : color.inkMuted,
             }}
           >
             {stockLabel}
@@ -2262,6 +2304,9 @@ function QuantitySheet({
 
   const allowDecimal = line.allowDecimal;
   const stockCap = stockCapFor(line.availableStock, allowDecimal);
+  // See CartRow — a line added while its product showed none on hand gets
+  // its cap fixed at BACKORDER_CAP as sell-anyway room, not real stock.
+  const backordered = line.availableStock === BACKORDER_CAP;
   const typed = Number(draft);
   const value = allowDecimal
     ? Number(typed.toFixed(QUANTITY_DECIMALS))
@@ -2286,7 +2331,7 @@ function QuantitySheet({
             {line.productName}
           </Text>
           <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
-            Sold by {line.unit} · {formatQuantity(stockCap)} in stock
+            Sold by {line.unit} · {backordered ? "out of stock" : `${formatQuantity(stockCap)} in stock`}
           </Text>
         </View>
         <IconButton icon={X} label="Close" onPress={onClose} />
@@ -2392,6 +2437,10 @@ function DiscountSheet({
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const keyboardHeight = useKeyboardHeight();
+  const { compact, landscape } = useLayout();
+  // Phone or upright tablet: dock at the bottom, same as BottomSheet. Tablet
+  // held sideways: keep the centered dialog box — there's width to spare.
+  const centered = !compact && landscape;
   const [draft, setDraft] = useState("");
   const [pendingRule, setPendingRule] = useState<DiscountRule | null>(null);
   const [idNumber, setIdNumber] = useState("");
@@ -2440,15 +2489,17 @@ function DiscountSheet({
     );
   }
 
-  const dialogWidth = width * 0.8;
   const usableHeight = height - keyboardHeight - insets.top - insets.bottom;
-  const dialogHeight = Math.min(height * 0.8, usableHeight * 0.95);
+  const dialogWidth = centered ? width * 0.8 : width;
+  const dialogHeight = centered
+    ? Math.min(height * 0.8, usableHeight * 0.95)
+    : Math.min(height * 0.85, usableHeight * 0.92);
 
   return (
     <Modal
       visible={open}
       transparent
-      animationType="fade"
+      animationType={centered ? "fade" : "slide"}
       statusBarTranslucent
       onRequestClose={onClose}
     >
@@ -2456,10 +2507,10 @@ function DiscountSheet({
         style={{
           flex: 1,
           backgroundColor: `${color.ink}99`,
-          alignItems: "center",
-          justifyContent: "center",
-          paddingBottom: keyboardHeight,
-          paddingHorizontal: space.sm,
+          alignItems: centered ? "center" : undefined,
+          justifyContent: centered ? "center" : "flex-end",
+          paddingBottom: centered ? keyboardHeight : 0,
+          paddingHorizontal: centered ? space.sm : 0,
         }}
       >
         <Pressable
@@ -2475,8 +2526,12 @@ function DiscountSheet({
             height: dialogHeight,
             maxWidth: 720,
             backgroundColor: color.surface,
-            borderRadius: radius.lg,
+            borderTopLeftRadius: radius.lg,
+            borderTopRightRadius: radius.lg,
+            borderBottomLeftRadius: centered ? radius.lg : 0,
+            borderBottomRightRadius: centered ? radius.lg : 0,
             padding: space.lg,
+            paddingBottom: centered ? space.lg : Math.max(insets.bottom, space.lg),
             gap: space.md,
             shadowColor: "#000",
             shadowOpacity: 0.22,
@@ -2843,14 +2898,17 @@ function DiscountSheet({
 function PaymentMethodTrigger({
   value,
   hasProof,
+  provider,
   onPress,
 }: {
   value: PaymentMethod;
   hasProof: boolean;
+  provider: string | null;
   onPress: () => void;
 }) {
   const selected = PAYMENT_METHODS.find((option) => option.value === value);
   const Icon = selected?.icon;
+  const label = provider ? `${selected?.label ?? value} · ${provider}` : (selected?.label ?? value);
 
   return (
     <Pressable
@@ -2875,7 +2933,7 @@ function PaymentMethodTrigger({
         numberOfLines={1}
         style={{ flex: 1, fontSize: fontSize.body, fontWeight: "600", color: color.ink }}
       >
-        {selected?.label ?? value}
+        {label}
       </Text>
       {hasProof ? <Camera size={14} color={color.primary} strokeWidth={2} /> : null}
       <ChevronRight size={16} color={color.inkMuted} strokeWidth={2} />
@@ -2893,36 +2951,61 @@ function PaymentMethodDialog({
   open,
   value,
   proofUri,
+  provider,
   onClose,
   onConfirm,
 }: {
   open: boolean;
   value: PaymentMethod;
   proofUri: string | null;
+  provider: string | null;
   onClose: () => void;
-  onConfirm: (method: PaymentMethod, proofUri: string | null) => void;
+  onConfirm: (method: PaymentMethod, proofUri: string | null, provider: string | null) => void;
 }) {
-  const [step, setStep] = useState<"method" | "proof">("method");
+  const [step, setStep] = useState<"method" | "provider" | "proof">("method");
   const [draftMethod, setDraftMethod] = useState<PaymentMethod>(value);
   const [draftProofUri, setDraftProofUri] = useState<string | null>(proofUri);
+  const [draftProvider, setDraftProvider] = useState<string | null>(provider);
+  const [showOtherInput, setShowOtherInput] = useState(false);
+  const [otherProvider, setOtherProvider] = useState("");
   const [photoError, setPhotoError] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
+      const isPreset = provider ? (EWALLET_PROVIDERS as readonly string[]).includes(provider) : true;
       setStep("method");
       setDraftMethod(value);
       setDraftProofUri(proofUri);
+      setDraftProvider(provider);
+      setShowOtherInput(Boolean(provider) && !isPreset);
+      setOtherProvider(provider && !isPreset ? provider : "");
       setPhotoError(null);
     }
-  }, [open, value, proofUri]);
+  }, [open, value, proofUri, provider]);
 
   function pickMethod(method: PaymentMethod) {
     setDraftMethod(method);
     if (method === "ewallet") {
-      setStep("proof");
+      setStep("provider");
     } else {
-      onConfirm(method, null);
+      onConfirm(method, null, null);
     }
+  }
+
+  function pickProvider(name: string) {
+    if (name === "Other E-Wallet") {
+      setShowOtherInput(true);
+      return;
+    }
+    setDraftProvider(name);
+    setStep("proof");
+  }
+
+  function confirmOtherProvider() {
+    const trimmed = otherProvider.trim();
+    if (!trimmed) return;
+    setDraftProvider(trimmed);
+    setStep("proof");
   }
 
   async function takePhoto() {
@@ -2957,9 +3040,26 @@ function PaymentMethodDialog({
     if (uri) setDraftProofUri(uri);
   }
 
+  const paymentDialogInsets = useSafeAreaInsets();
+  const paymentDialogLayout = useLayout();
+  // Same phone-drawer / tablet-landscape-modal split as BottomSheet — this
+  // dialog predates that component, so it grows its own scrim/box here.
+  const paymentDialogCentered = !paymentDialogLayout.compact && paymentDialogLayout.landscape;
+
   return (
-    <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: "rgba(27, 31, 29, 0.55)", justifyContent: "center" }}>
+    <Modal
+      visible={open}
+      transparent
+      animationType={paymentDialogCentered ? "fade" : "slide"}
+      onRequestClose={onClose}
+    >
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: "rgba(27, 31, 29, 0.55)",
+          justifyContent: paymentDialogCentered ? "center" : "flex-end",
+        }}
+      >
         <Pressable
           onPress={onClose}
           accessibilityRole="button"
@@ -2969,9 +3069,15 @@ function PaymentMethodDialog({
 
         <View
           style={{
-            marginHorizontal: space.lg,
+            marginHorizontal: paymentDialogCentered ? space.lg : 0,
             padding: space.lg,
-            borderRadius: radius.lg,
+            paddingBottom: paymentDialogCentered
+              ? space.lg
+              : Math.max(paymentDialogInsets.bottom, space.lg),
+            borderTopLeftRadius: radius.lg,
+            borderTopRightRadius: radius.lg,
+            borderBottomLeftRadius: paymentDialogCentered ? radius.lg : 0,
+            borderBottomRightRadius: paymentDialogCentered ? radius.lg : 0,
             backgroundColor: color.surface,
             gap: space.md,
             shadowColor: "#000",
@@ -2982,11 +3088,18 @@ function PaymentMethodDialog({
           }}
         >
           <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
-            {step === "proof" ? (
+            {step === "provider" ? (
               <IconButton icon={ArrowLeft} label="Back" onPress={() => setStep("method")} />
             ) : null}
+            {step === "proof" ? (
+              <IconButton
+                icon={ArrowLeft}
+                label="Back"
+                onPress={() => (draftMethod === "ewallet" ? setStep("provider") : setStep("method"))}
+              />
+            ) : null}
             <Text style={{ flex: 1, fontSize: fontSize.headingMd, fontWeight: "700", color: color.ink }}>
-              {step === "method" ? "Payment method" : "Add proof photo?"}
+              {step === "method" ? "Payment method" : step === "provider" ? "Which e-wallet?" : "Add proof photo?"}
             </Text>
             <IconButton icon={X} label="Close" onPress={onClose} />
           </View>
@@ -3036,6 +3149,67 @@ function PaymentMethodDialog({
                 );
               })}
             </View>
+          ) : step === "provider" ? (
+            <View style={{ gap: space.sm }}>
+              {EWALLET_PROVIDERS.map((name) => {
+                const isSelected = showOtherInput ? name === "Other E-Wallet" : name === draftProvider;
+                return (
+                  <Pressable
+                    key={name}
+                    onPress={() => pickProvider(name)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isSelected }}
+                    style={{
+                      minHeight: 56,
+                      justifyContent: "center",
+                      paddingHorizontal: space.md,
+                      borderRadius: radius.sm,
+                      borderWidth: 1,
+                      borderColor: isSelected ? color.primary : color.border,
+                      backgroundColor: isSelected ? color.primaryTint : color.surface,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: fontSize.bodyLg,
+                        fontWeight: isSelected ? "700" : "500",
+                        color: isSelected ? color.primaryDark : color.ink,
+                      }}
+                    >
+                      {name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+
+              {showOtherInput ? (
+                <View style={{ gap: space.sm }}>
+                  <TextInput
+                    value={otherProvider}
+                    onChangeText={setOtherProvider}
+                    placeholder="Wallet name"
+                    autoFocus
+                    accessibilityLabel="Wallet name"
+                    style={{
+                      minHeight: 56,
+                      borderWidth: 1,
+                      borderColor: color.border,
+                      borderRadius: radius.sm,
+                      paddingHorizontal: space.md,
+                      fontSize: fontSize.bodyLg,
+                      color: color.ink,
+                    }}
+                  />
+                  <Button
+                    label="Continue"
+                    large
+                    icon={CheckCircle2}
+                    disabled={!otherProvider.trim()}
+                    onPress={confirmOtherProvider}
+                  />
+                </View>
+              ) : null}
+            </View>
           ) : (
             <View style={{ gap: space.md }}>
               <Text style={{ fontSize: fontSize.bodyLg, color: color.inkMuted, lineHeight: 22 }}>
@@ -3076,7 +3250,7 @@ function PaymentMethodDialog({
                 label={draftProofUri ? "Done" : "Skip — no photo"}
                 large
                 icon={CheckCircle2}
-                onPress={() => onConfirm("ewallet", draftProofUri)}
+                onPress={() => onConfirm("ewallet", draftProofUri, draftProvider)}
               />
             </View>
           )}
@@ -3567,6 +3741,9 @@ function ConfirmSaleSheet({
   discount,
   amountDue,
   payment,
+  ewalletProvider,
+  fulfillment,
+  customer,
   itemCount,
   busy,
   onClose,
@@ -3580,6 +3757,9 @@ function ConfirmSaleSheet({
   discount: number;
   amountDue: number;
   payment: PaymentMethod;
+  ewalletProvider: string | null;
+  fulfillment: Fulfillment;
+  customer: CustomerDetails;
   itemCount: number;
   busy: boolean;
   onClose: () => void;
@@ -3590,6 +3770,10 @@ function ConfirmSaleSheet({
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const keyboardHeight = useKeyboardHeight();
+  const { compact, landscape } = useLayout();
+  // Phone or upright tablet: dock at the bottom, same as BottomSheet. Tablet
+  // held sideways: keep the centered dialog box.
+  const centered = !compact && landscape;
   const isCash = payment === "cash";
   const [cashDraft, setCashDraft] = useState(() => amountDue.toFixed(2));
 
@@ -3599,23 +3783,24 @@ function ConfirmSaleSheet({
   const cashValid = Number.isFinite(cashOnHand) && cashOnHand >= amountDue;
   const change = cashValid ? roundMoney(cashOnHand - amountDue) : 0;
   const canConfirm = isCash ? cashValid : true;
-  const methodLabel =
-    PAYMENT_METHODS.find((method) => method.value === payment)?.label ?? payment;
+  const selectedMethod = PAYMENT_METHODS.find((method) => method.value === payment);
+  const methodLabel = selectedMethod?.label ?? payment;
+  const methodIcon = selectedMethod?.icon ?? CreditCard;
+  const isDelivery = fulfillment === "delivery";
 
-  // Success: fill most of the screen so title + actions read at till distance.
-  // Confirm: 80% — shrink further when the soft keyboard is up so cash entry
-  // stays on-screen on phones.
-  const dialogWidth = succeeded ? width * 0.92 : width * 0.8;
+  // Fixed 98% of the screen either way — big enough that the confirm step's
+  // whole breakdown (amount due, cash entry, shelf/discount/change) fits with
+  // no scrolling, capped by usableHeight so the soft keyboard never pushes
+  // the confirm button off-screen.
   const usableHeight = height - keyboardHeight - insets.top - insets.bottom;
-  const dialogHeight = succeeded
-    ? Math.min(height * 0.88, usableHeight * 0.96)
-    : Math.min(height * 0.8, usableHeight * 0.95);
+  const dialogWidth = width * 0.98;
+  const dialogHeight = Math.min(height * 0.98, usableHeight * 0.99);
 
   return (
     <Modal
       visible={open}
       transparent
-      animationType="fade"
+      animationType={centered ? "fade" : "slide"}
       statusBarTranslucent
       onRequestClose={busy ? undefined : onClose}
     >
@@ -3623,10 +3808,10 @@ function ConfirmSaleSheet({
         style={{
           flex: 1,
           backgroundColor: `${color.ink}99`,
-          alignItems: "center",
-          justifyContent: "center",
-          paddingBottom: succeeded ? 0 : keyboardHeight,
-          paddingHorizontal: space.sm,
+          alignItems: centered ? "center" : undefined,
+          justifyContent: centered ? "center" : "flex-end",
+          paddingBottom: centered && !succeeded ? keyboardHeight : 0,
+          paddingHorizontal: centered ? space.sm : 0,
         }}
       >
         <Pressable
@@ -3640,10 +3825,16 @@ function ConfirmSaleSheet({
           style={{
             width: dialogWidth,
             height: dialogHeight,
-            maxWidth: succeeded ? 900 : 720,
+            maxWidth: 900,
             backgroundColor: color.surface,
-            borderRadius: radius.lg,
+            borderTopLeftRadius: radius.lg,
+            borderTopRightRadius: radius.lg,
+            borderBottomLeftRadius: centered ? radius.lg : 0,
+            borderBottomRightRadius: centered ? radius.lg : 0,
             padding: succeeded ? space.xl : space.lg,
+            paddingBottom: centered
+              ? (succeeded ? space.xl : space.lg)
+              : Math.max(insets.bottom, succeeded ? space.xl : space.lg),
             gap: space.md,
             shadowColor: "#000",
             shadowOpacity: 0.22,
@@ -3652,183 +3843,207 @@ function ConfirmSaleSheet({
             elevation: 20,
           }}
         >
-          {succeeded ? (
-            <>
-              <View
-                style={{
-                  flex: 1,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: space.xl,
-                  paddingHorizontal: space.lg,
-                }}
-              >
-                <SaleSuccessCheck />
-                <Text
-                  style={{
-                    fontSize: fontSize.display,
-                    fontWeight: "700",
-                    color: color.ink,
-                    textAlign: "center",
-                    lineHeight: fontSize.display + 8,
-                  }}
-                >
-                  Sale created successfully
-                </Text>
-                <Text
-                  style={{
-                    fontSize: fontSize.headingMd,
-                    fontWeight: "600",
-                    color: color.inkMuted,
-                    textAlign: "center",
-                    lineHeight: fontSize.headingMd + 8,
-                    maxWidth: 520,
-                  }}
-                >
-                  Print a receipt for this customer, or skip and start the next sale.
-                </Text>
-              </View>
-              <View style={{ gap: space.sm }}>
-                <Button
-                  label="Print Receipt"
-                  large
-                  icon={Printer}
-                  onPress={onPrintReceipt}
-                />
-                <Button
-                  label="Skip"
-                  large
-                  variant="secondary"
-                  onPress={onSkip}
-                />
-              </View>
-            </>
-          ) : (
-            <>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
-                <View style={[styles.iconWell, { width: 44, height: 44 }]}>
-                  <CheckCircle2 size={24} color={color.primary} strokeWidth={2} />
-                </View>
-                <Text
-                  style={{
-                    flex: 1,
-                    fontSize: fontSize.headingMd,
-                    fontWeight: "700",
-                    color: color.ink,
-                  }}
-                >
-                  Confirm sale
-                </Text>
-                <IconButton icon={X} label="Close" onPress={onClose} disabled={busy} />
-              </View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
+            <View style={[styles.iconWell, { width: 44, height: 44 }]}>
+              <CheckCircle2 size={24} color={succeeded ? color.success : color.primary} strokeWidth={2} />
+            </View>
+            <Text
+              style={{
+                flex: 1,
+                fontSize: fontSize.headingMd,
+                fontWeight: "700",
+                color: color.ink,
+              }}
+            >
+              {succeeded ? "Sale complete" : "Confirm sale"}
+            </Text>
+            <IconButton icon={X} label="Close" onPress={onClose} disabled={busy} />
+          </View>
 
-              <ScrollView
-                keyboardShouldPersistTaps="handled"
-                keyboardDismissMode="interactive"
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={{ gap: space.lg, paddingBottom: space.sm }}
-                style={{ flex: 1 }}
-              >
-                {/* Amount due first — cashier reads this before anything else. */}
-                <View
-                  style={{
-                    alignItems: "center",
-                    gap: space.xs,
-                    paddingVertical: space.md,
-                    paddingHorizontal: space.md,
-                    borderRadius: radius.md,
-                    backgroundColor: color.primaryTint,
-                    borderWidth: 1,
-                    borderColor: color.primarySoft,
-                  }}
-                >
-                  <Text
+          <View style={{ flex: 1, flexDirection: compact ? "column" : "row", gap: space.lg }}>
+            {/* Left column — how this sale is being paid and fulfilled, and
+                who it's for. Stays put across confirm → success; only the
+                right column's content changes once the sale lands. */}
+            <View style={{ flex: 1, gap: space.md }}>
+              <ConfirmDetailBlock
+                icon={methodIcon}
+                label="Payment method"
+                value={ewalletProvider ? `${methodLabel} · ${ewalletProvider}` : methodLabel}
+              />
+              <ConfirmDetailBlock
+                icon={isDelivery ? Truck : Package}
+                label="Fulfillment"
+                value={isDelivery ? "Delivery" : "Pickup"}
+              />
+              <ConfirmDetailBlock
+                icon={UserRound}
+                label="Customer"
+                value={customer.name?.trim() || "Walk-in"}
+                sub={[customer.contact, customer.address].filter(Boolean).join(" · ") || undefined}
+              />
+            </View>
+
+            {/* Right column — the confirm step's own math and cash entry,
+                replaced by the success state once the sale is saved. */}
+            <View style={{ flex: 1, justifyContent: "space-between" }}>
+              {succeeded ? (
+                <>
+                  <View
                     style={{
-                      fontSize: fontSize.bodyLg,
-                      fontWeight: "600",
-                      color: color.primaryDark,
-                      letterSpacing: 0.4,
+                      flex: 1,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: space.lg,
+                      paddingHorizontal: space.lg,
                     }}
                   >
-                    Amount to pay
-                  </Text>
-                  <Text
-                    style={[
-                      styles.numeric,
-                      {
-                        fontSize: fontSize.display,
+                    <SaleSuccessCheck />
+                    <Text
+                      style={{
+                        fontSize: fontSize.headingLg,
                         fontWeight: "700",
-                        color: color.primaryDark,
-                      },
-                    ]}
-                  >
-                    {formatMoney(amountDue)}
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: fontSize.bodyLg,
-                      fontWeight: "600",
-                      color: color.ink,
-                      marginTop: space.xs,
-                    }}
-                  >
-                    {itemCount} item{itemCount === 1 ? "" : "s"} · {methodLabel}
-                  </Text>
-                </View>
-
-                {isCash ? (
-                  <View style={{ gap: space.sm }}>
-                    <Text style={{ fontSize: fontSize.headingSm, fontWeight: "700", color: color.ink }}>
-                      Cash on hand
+                        color: color.ink,
+                        textAlign: "center",
+                        lineHeight: fontSize.headingLg + 8,
+                      }}
+                    >
+                      Sale created successfully
                     </Text>
-                    <TextInput
-                      value={cashDraft}
-                      onChangeText={(next) => setCashDraft(next.replace(/[^0-9.]/g, ""))}
-                      keyboardType="decimal-pad"
-                      autoFocus
-                      selectTextOnFocus
-                      accessibilityLabel="Cash on hand from the customer"
-                      style={[
-                        styles.numeric,
-                        {
-                          minHeight: 72,
-                          borderWidth: 2,
-                          borderColor: cashValid ? color.primary : color.danger,
-                          borderRadius: radius.sm,
-                          backgroundColor: cashValid ? color.primaryTint : color.dangerSoft,
-                          color: cashValid ? color.primaryDark : color.dangerInk,
-                          paddingHorizontal: space.md,
-                          fontSize: fontSize.headingLg,
-                          fontWeight: "700",
-                        },
-                      ]}
+                    <Text
+                      style={{
+                        fontSize: fontSize.bodyLg,
+                        fontWeight: "600",
+                        color: color.inkMuted,
+                        textAlign: "center",
+                        lineHeight: fontSize.bodyLg + 8,
+                      }}
+                    >
+                      Print a receipt for this customer, or skip and start the next sale.
+                    </Text>
+                  </View>
+                  <View style={{ gap: space.sm }}>
+                    <Button
+                      label="Print Receipt"
+                      large
+                      icon={Printer}
+                      onPress={onPrintReceipt}
                     />
-                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space.sm }}>
-                      <Pressable
-                        onPress={() => setCashDraft(amountDue.toFixed(2))}
-                        style={({ pressed }) => ({
-                          minHeight: 52,
-                          paddingHorizontal: space.lg,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          borderRadius: radius.sm,
-                          borderWidth: 1,
-                          borderColor: color.primarySoft,
-                          backgroundColor: pressed ? color.primarySoft : color.primaryTint,
-                        })}
+                    <Button
+                      label="Skip"
+                      large
+                      variant="secondary"
+                      onPress={onSkip}
+                    />
+                  </View>
+                </>
+              ) : (
+                <>
+                  <View style={{ gap: space.md }}>
+                    {/* Amount due first — cashier reads this before anything else. */}
+                    <View
+                      style={{
+                        alignItems: "center",
+                        gap: space.xs,
+                        paddingVertical: space.sm,
+                        paddingHorizontal: space.md,
+                        borderRadius: radius.md,
+                        backgroundColor: color.primaryTint,
+                        borderWidth: 1,
+                        borderColor: color.primarySoft,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: fontSize.headingSm,
+                          fontWeight: "600",
+                          color: color.primaryDark,
+                          letterSpacing: 0.4,
+                        }}
                       >
-                        <Text style={{ fontSize: fontSize.bodyLg, fontWeight: "700", color: color.primary }}>
-                          Exact
+                        Amount to pay
+                      </Text>
+                      <Text
+                        style={[
+                          styles.numeric,
+                          {
+                            fontSize: fontSize.display,
+                            fontWeight: "700",
+                            color: color.primaryDark,
+                          },
+                        ]}
+                      >
+                        {formatMoney(amountDue)}
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: fontSize.headingSm,
+                          fontWeight: "600",
+                          color: color.ink,
+                        }}
+                      >
+                        {itemCount} item{itemCount === 1 ? "" : "s"}
+                      </Text>
+                    </View>
+
+                    {/* Shelf total, discount and (once cash covers it) change all
+                        together in one strip — reading the math in one place
+                        beats hunting for it split across the cash section. */}
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        borderRadius: radius.md,
+                        backgroundColor: color.paper,
+                        borderWidth: 1,
+                        borderColor: color.border,
+                        overflow: "hidden",
+                      }}
+                    >
+                      <SummaryStat label="Shelf total" value={shelfTotal} />
+                      <View style={{ width: 1, backgroundColor: color.border }} />
+                      <SummaryStat
+                        label="Discount"
+                        value={discount}
+                        muted={discount === 0}
+                        prefix={discount > 0 ? "-" : undefined}
+                      />
+                      {isCash && cashValid ? (
+                        <>
+                          <View style={{ width: 1, backgroundColor: color.border }} />
+                          <SummaryStat label="Change" value={change} tone="success" />
+                        </>
+                      ) : null}
+                    </View>
+
+                    {isCash ? (
+                      <View style={{ gap: space.sm }}>
+                        <Text style={{ fontSize: fontSize.headingSm, fontWeight: "700", color: color.ink }}>
+                          Cash on hand
                         </Text>
-                      </Pressable>
-                      {[50, 100, 200, 500, 1000]
-                        .map((bill) => roundMoney(Math.ceil(amountDue / bill) * bill))
-                        .filter((next, index, all) => next > amountDue && all.indexOf(next) === index)
-                        .slice(0, 3)
-                        .map((next) => (
+                        <TextInput
+                          value={cashDraft}
+                          onChangeText={(next) => setCashDraft(next.replace(/[^0-9.]/g, ""))}
+                          keyboardType="decimal-pad"
+                          autoFocus
+                          selectTextOnFocus
+                          accessibilityLabel="Cash on hand from the customer"
+                          style={[
+                            styles.numeric,
+                            {
+                              minHeight: 72,
+                              borderWidth: 2,
+                              borderColor: cashValid ? color.primary : color.danger,
+                              borderRadius: radius.sm,
+                              backgroundColor: cashValid ? color.primaryTint : color.dangerSoft,
+                              color: cashValid ? color.primaryDark : color.dangerInk,
+                              paddingHorizontal: space.md,
+                              fontSize: fontSize.headingLg,
+                              fontWeight: "700",
+                            },
+                          ]}
+                        />
+                        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space.sm }}>
                           <Pressable
-                            key={next}
-                            onPress={() => setCashDraft(next.toFixed(2))}
+                            onPress={() => setCashDraft(amountDue.toFixed(2))}
                             style={({ pressed }) => ({
                               minHeight: 52,
                               paddingHorizontal: space.lg,
@@ -3836,102 +4051,74 @@ function ConfirmSaleSheet({
                               justifyContent: "center",
                               borderRadius: radius.sm,
                               borderWidth: 1,
-                              borderColor: color.border,
-                              backgroundColor: pressed ? color.surfacePressed : color.surface,
+                              borderColor: color.primarySoft,
+                              backgroundColor: pressed ? color.primarySoft : color.primaryTint,
                             })}
                           >
-                            <Text style={{ fontSize: fontSize.bodyLg, fontWeight: "700", color: color.ink }}>
-                              {formatMoney(next)}
+                            <Text style={{ fontSize: fontSize.bodyLg, fontWeight: "700", color: color.primary }}>
+                              Exact
                             </Text>
                           </Pressable>
-                        ))}
-                    </View>
-                    {!cashValid ? (
-                      <Text style={{ fontSize: fontSize.bodyLg, fontWeight: "600", color: color.dangerInk }}>
-                        Cash on hand must cover {formatMoney(amountDue)}.
-                      </Text>
+                          {[50, 100, 200, 500, 1000]
+                            .map((bill) => roundMoney(Math.ceil(amountDue / bill) * bill))
+                            .filter((next, index, all) => next > amountDue && all.indexOf(next) === index)
+                            .slice(0, 3)
+                            .map((next) => (
+                              <Pressable
+                                key={next}
+                                onPress={() => setCashDraft(next.toFixed(2))}
+                                style={({ pressed }) => ({
+                                  minHeight: 52,
+                                  paddingHorizontal: space.lg,
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  borderRadius: radius.sm,
+                                  borderWidth: 1,
+                                  borderColor: color.border,
+                                  backgroundColor: pressed ? color.surfacePressed : color.surface,
+                                })}
+                              >
+                                <Text style={{ fontSize: fontSize.bodyLg, fontWeight: "700", color: color.ink }}>
+                                  {formatMoney(next)}
+                                </Text>
+                              </Pressable>
+                            ))}
+                        </View>
+                        {!cashValid ? (
+                          <Text style={{ fontSize: fontSize.bodyLg, fontWeight: "600", color: color.dangerInk }}>
+                            Cash on hand must cover {formatMoney(amountDue)}.
+                          </Text>
+                        ) : null}
+                      </View>
                     ) : (
-                      <View
+                      <Text
                         style={{
-                          flexDirection: "row",
-                          justifyContent: "space-between",
-                          alignItems: "baseline",
-                          padding: space.md,
-                          borderRadius: radius.sm,
-                          backgroundColor: color.successSoft,
+                          fontSize: fontSize.bodyLg,
+                          fontWeight: "600",
+                          color: color.inkMuted,
+                          textAlign: "center",
                         }}
                       >
-                        <Text
-                          style={{
-                            fontSize: fontSize.headingSm,
-                            fontWeight: "700",
-                            color: color.successInk,
-                          }}
-                        >
-                          Change
-                        </Text>
-                        <Text
-                          style={[
-                            styles.numeric,
-                            {
-                              fontSize: fontSize.headingLg,
-                              fontWeight: "700",
-                              color: color.successInk,
-                            },
-                          ]}
-                        >
-                          {formatMoney(change)}
-                        </Text>
-                      </View>
+                        Customer pays by {methodLabel}. No cash change.
+                      </Text>
                     )}
                   </View>
-                ) : (
-                  <Text
-                    style={{
-                      fontSize: fontSize.bodyLg,
-                      fontWeight: "600",
-                      color: color.inkMuted,
-                      textAlign: "center",
-                    }}
-                  >
-                    Customer pays by {methodLabel}. No cash change.
-                  </Text>
-                )}
 
-                {/* Shelf / discount last — secondary context after the due amount. */}
-                <View
-                  style={{
-                    gap: space.sm,
-                    padding: space.md,
-                    borderRadius: radius.md,
-                    backgroundColor: color.paper,
-                    borderWidth: 1,
-                    borderColor: color.border,
-                  }}
-                >
-                  <ConfirmRow label="Shelf total" value={shelfTotal} />
-                  <ConfirmRow
-                    label="Discount"
-                    value={discount}
-                    muted={discount === 0}
-                    prefix={discount > 0 ? "-" : undefined}
-                  />
-                </View>
-              </ScrollView>
-
-              <View style={{ gap: space.sm }}>
-                <Button
-                  label={busy ? "Saving..." : "Confirm and complete"}
-                  large
-                  icon={CheckCircle2}
-                  busy={busy}
-                  disabled={!canConfirm || busy}
-                  onPress={onConfirm}
-                />
-                <Button label="Back to cart" variant="secondary" disabled={busy} onPress={onClose} />
-              </View>
-            </>
-          )}
+                  <View style={{ gap: space.sm }}>
+                    <Button
+                      label={busy ? "Saving..." : "Confirm and complete"}
+                      large
+                      icon={CheckCircle2}
+                      busy={busy}
+                      disabled={!canConfirm || busy}
+                      onPress={onConfirm}
+                    />
+                    <Button label="Back to cart" variant="secondary" disabled={busy} onPress={onClose} />
+                  </View>
+                </>
+              )}
+            </View>
+          </View>
         </View>
       </View>
     </Modal>
@@ -3978,31 +4165,37 @@ function SaleSuccessCheck() {
   );
 }
 
-function ConfirmRow({
+/** One column of the confirm sheet's shelf-total/discount/change strip. */
+function SummaryStat({
   label,
   value,
   muted,
   prefix,
+  tone,
 }: {
   label: string;
   value: number;
   muted?: boolean;
   prefix?: string;
+  tone?: "success";
 }) {
+  const valueColor = tone === "success" ? color.successInk : muted ? color.inkMuted : color.ink;
   return (
     <View
       style={{
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "baseline",
-        gap: space.sm,
+        flex: 1,
+        alignItems: "center",
+        gap: 2,
+        paddingVertical: space.sm,
+        paddingHorizontal: space.xs,
+        backgroundColor: tone === "success" ? color.successSoft : "transparent",
       }}
     >
       <Text
         style={{
-          fontSize: fontSize.bodyLg,
+          fontSize: fontSize.body,
           fontWeight: "600",
-          color: muted ? color.inkMuted : color.ink,
+          color: tone === "success" ? color.successInk : color.inkMuted,
         }}
       >
         {label}
@@ -4011,15 +4204,60 @@ function ConfirmRow({
         style={[
           styles.numeric,
           {
-            fontSize: fontSize.headingSm,
+            fontSize: fontSize.headingMd,
             fontWeight: "700",
-            color: muted ? color.inkMuted : color.ink,
+            color: valueColor,
           },
         ]}
       >
         {prefix}
         {formatMoney(value)}
       </Text>
+    </View>
+  );
+}
+
+/** One row of the confirm sheet's left column — payment method, fulfillment, or customer. */
+function ConfirmDetailBlock({
+  icon: Icon,
+  label,
+  value,
+  sub,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  sub?: string;
+}) {
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: space.sm,
+        padding: space.md,
+        borderRadius: radius.md,
+        backgroundColor: color.paper,
+        borderWidth: 1,
+        borderColor: color.border,
+      }}
+    >
+      <View style={[styles.iconWell, { width: 40, height: 40 }]}>
+        <Icon size={20} color={color.primary} strokeWidth={2} />
+      </View>
+      <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
+        <Text style={{ fontSize: fontSize.caption, fontWeight: "600", color: color.inkMuted }}>
+          {label}
+        </Text>
+        <Text numberOfLines={1} style={{ fontSize: fontSize.headingSm, fontWeight: "700", color: color.ink }}>
+          {value}
+        </Text>
+        {sub ? (
+          <Text numberOfLines={1} style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
+            {sub}
+          </Text>
+        ) : null}
+      </View>
     </View>
   );
 }

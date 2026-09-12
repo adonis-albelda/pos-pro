@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { ContactRound, Pencil, Plus, Save, Trash2, UserCheck, UserPlus, UserX, UsersRound, X } from "lucide-react";
 import { toast } from "sonner";
 import { ApiError } from "@double-a/api-client";
-import type { Employee, EmployeeStatus } from "@double-a/shared-types";
+import { ROLES, type Employee, type EmployeeStatus } from "@double-a/shared-types";
 import {
   Badge,
   Button,
@@ -198,7 +198,7 @@ export default function EmployeesPage() {
                     Select user…
                   </option>
                   {(usersQuery.data ?? [])
-                    .filter((user) => user.role !== "device" && user.role !== "superadmin")
+                    .filter((user) => user.role !== ROLES.TERMINAL && user.role !== ROLES.SUPERADMIN)
                     .map((user) => (
                       <option key={user.id} value={user.id}>
                         {user.name} ({user.email})

@@ -3,6 +3,7 @@ import { Redirect, Stack, useRouter } from "expo-router";
 import { Image, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ArrowLeft } from "lucide-react-native";
+import { ROLES } from "@double-a/shared-types";
 import { useLocationScope } from "@/lib/location-scope";
 import { useSession } from "@/lib/session";
 import { useStoreSettings } from "@/lib/store";
@@ -13,7 +14,7 @@ import { LoadingState } from "@/components/loading-state";
 import { color, fontSize, space, styles } from "@/theme";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- same asset-require pattern as setup.tsx; no *.png module declaration in this project
-const LOGO = require("../../assets/logo.png");
+const LOGO = require("../../assets/logo.webp");
 
 type SessionCheck = "checking" | "ready" | "error";
 
@@ -39,7 +40,7 @@ export default function AdminLayout() {
   const [check, setCheck] = useState<SessionCheck>("checking");
   const [error, setError] = useState<string | null>(null);
   const canOpenAdminDashboard =
-    enrolledRole === "admin" || cashier?.role === "admin" || cashier?.role === "manager";
+    enrolledRole === ROLES.ADMIN || cashier?.role === ROLES.ADMIN || cashier?.role === ROLES.MANAGER;
 
   // Unlocking a shift only proves the cashier's PIN was good at that moment —
   // it says nothing about whether the terminal's own stored API token is

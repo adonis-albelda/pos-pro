@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
+import type { Route } from "next";
 import { usePathname } from "next/navigation";
 import { Bell, LogOut, Menu, X } from "lucide-react";
 import { storeInitial } from "@double-a/shared-types";
@@ -26,6 +27,7 @@ export function DashboardShell({
   storeLogoUrl,
   userName,
   userEmail,
+  userAvatarUrl,
   initials,
   mode,
   embedded = false,
@@ -35,6 +37,7 @@ export function DashboardShell({
   storeLogoUrl: string | null;
   userName: string | null;
   userEmail: string | null;
+  userAvatarUrl?: string | null;
   initials: string;
   mode: UiMode;
   embedded?: boolean;
@@ -83,6 +86,7 @@ export function DashboardShell({
     <HeaderActions
       userName={userName}
       userEmail={userEmail}
+      userAvatarUrl={userAvatarUrl}
       initials={initials}
       mode={mode}
       embedded={embedded}
@@ -171,15 +175,19 @@ export function DashboardShell({
         <div className="mt-auto shrink-0">
           {/* Mobile drawer: user + UI mode (desktop shows these in the top bar). */}
           <div className="border-t border-border px-4 py-4 sm:px-5 lg:hidden">
-            <div className="flex items-center gap-3">
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-caption font-semibold text-primary">
-                {initials}
+            <Link href={"/profile" as Route} className="flex items-center gap-3 rounded-sm transition-colors hover:bg-border/40">
+              <span className="flex size-9 shrink-0 overflow-hidden rounded-full bg-primary/10 text-caption font-semibold text-primary">
+                {userAvatarUrl ? (
+                  <img src={userAvatarUrl} alt="" className="size-full object-cover" />
+                ) : (
+                  <span className="flex size-full items-center justify-center">{initials}</span>
+                )}
               </span>
               <div className="min-w-0">
                 <p className="truncate text-body font-medium">{userName ?? "Signed in"}</p>
                 <p className="truncate text-caption text-ink-muted">{userEmail}</p>
               </div>
-            </div>
+            </Link>
             <UiModeToggle mode={mode} className="mt-3" />
           </div>
 
@@ -305,12 +313,14 @@ function NotificationsBell() {
 function HeaderActions({
   userName,
   userEmail,
+  userAvatarUrl,
   initials,
   mode,
   embedded,
 }: {
   userName: string | null;
   userEmail: string | null;
+  userAvatarUrl?: string | null;
   initials: string;
   mode: UiMode;
   embedded: boolean;
@@ -320,9 +330,16 @@ function HeaderActions({
       <LocationSwitcher className="shrink-0" />
       <NotificationsBell />
       <UiModeToggle mode={mode} compact />
-      <div className="flex min-w-0 items-center gap-2.5 border-l border-border pl-2.5 sm:pl-3">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-caption font-semibold text-primary">
-          {initials}
+      <Link
+        href={"/profile" as Route}
+        className="flex min-w-0 items-center gap-2.5 border-l border-border pl-2.5 transition-colors hover:bg-border/40 sm:pl-3"
+      >
+        <span className="flex size-8 shrink-0 overflow-hidden rounded-full bg-primary/10 text-caption font-semibold text-primary">
+          {userAvatarUrl ? (
+            <img src={userAvatarUrl} alt="" className="size-full object-cover" />
+          ) : (
+            <span className="flex size-full items-center justify-center">{initials}</span>
+          )}
         </span>
         <div className="min-w-0 max-w-[10rem] xl:max-w-[14rem]">
           <p className="truncate text-caption font-semibold leading-tight text-ink">
@@ -330,7 +347,7 @@ function HeaderActions({
           </p>
           <p className="truncate text-[11px] leading-tight text-ink-muted">{userEmail}</p>
         </div>
-      </div>
+      </Link>
       {!embedded ? (
         <form action={signOut}>
           <IconButton type="submit" icon={LogOut} label="Sign out" tone="danger" />

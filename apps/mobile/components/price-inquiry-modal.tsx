@@ -89,7 +89,7 @@ function DetailBox({
  */
 export function PriceInquiryModal() {
   const { isOpen, close } = usePriceInquiry();
-  const { width, compact, gutter } = useLayout();
+  const { width, compact, landscape, gutter } = useLayout();
   const insets = useSafeAreaInsets();
   const keyboardHeight = useKeyboardHeight();
   const [query, setQuery] = useState("");
@@ -97,12 +97,15 @@ export function PriceInquiryModal() {
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<ProductWithEstimatedStock | null>(null);
 
-  const horizontalPad = Math.max(gutter, space.md);
+  // Phone or upright tablet: dock at the bottom, same as BottomSheet. Tablet
+  // held sideways: keep the centered dialog box — there's width to spare.
+  const centered = !compact && landscape;
+  const horizontalPad = centered ? Math.max(gutter, space.md) : 0;
   const available = Math.max(0, width - horizontalPad * 2);
   // Tablet with room: at least DIALOG_MIN_WIDTH. Low-res / phone: fill available
   // only — never force a min past the screen edge.
   const panelWidth =
-    !compact && available >= DIALOG_MIN_WIDTH
+    centered && available >= DIALOG_MIN_WIDTH
       ? Math.min(DIALOG_MAX_WIDTH, available)
       : available;
 
@@ -140,16 +143,16 @@ export function PriceInquiryModal() {
   if (!isOpen) return null;
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={close}>
+    <Modal visible transparent animationType={centered ? "fade" : "slide"} onRequestClose={close}>
       <View
         style={{
           flex: 1,
           backgroundColor: `${color.ink}99`,
-          alignItems: "center",
-          justifyContent: "center",
+          alignItems: centered ? "center" : undefined,
+          justifyContent: centered ? "center" : "flex-end",
           paddingHorizontal: horizontalPad,
-          paddingTop: Math.max(insets.top, space.md),
-          paddingBottom: Math.max(insets.bottom, space.md) + keyboardHeight,
+          paddingTop: centered ? Math.max(insets.top, space.md) : 0,
+          paddingBottom: centered ? Math.max(insets.bottom, space.md) + keyboardHeight : 0,
         }}
       >
         <Pressable
@@ -163,10 +166,16 @@ export function PriceInquiryModal() {
           style={{
             width: panelWidth,
             maxWidth: DIALOG_MAX_WIDTH,
-            maxHeight: keyboardHeight > 0 ? "88%" : compact ? "92%" : "82%",
+            maxHeight: centered ? (keyboardHeight > 0 ? "88%" : "82%") : "92%",
             backgroundColor: color.surface,
-            borderRadius: radius.lg,
+            borderTopLeftRadius: radius.lg,
+            borderTopRightRadius: radius.lg,
+            borderBottomLeftRadius: centered ? radius.lg : 0,
+            borderBottomRightRadius: centered ? radius.lg : 0,
             padding: compact ? space.md : space.lg,
+            paddingBottom: centered
+              ? (compact ? space.md : space.lg)
+              : Math.max(insets.bottom, space.md) + keyboardHeight,
             gap: space.md,
             shadowColor: "#000",
             shadowOpacity: 0.2,

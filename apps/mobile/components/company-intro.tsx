@@ -12,7 +12,7 @@ import { WaveBackdrop } from "@/components/wave-backdrop";
 import { color, fontSize, space } from "@/theme";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- same asset-require pattern as elsewhere; no *.gif module declaration in this project
-const SPLASH_LOGO = require("../assets/splash-loop.gif");
+const SPLASH_LOGO = require("../assets/splash-loop.webp");
 // Source is 1146x379 — a wide lockup, not a square mark, so it's sized by
 // that ratio instead of forced into a square box like the old static logo.
 const SPLASH_LOGO_WIDTH = 240;

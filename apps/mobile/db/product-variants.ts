@@ -6,6 +6,7 @@ interface ProductVariantRow {
   product_id: string;
   sku: string | null;
   barcode: string | null;
+  photo_url: string | null;
   price: number;
   cost_price: number;
   stock_quantity: number;
@@ -16,7 +17,7 @@ interface ProductVariantRow {
   updated_at: string | null;
 }
 
-const VARIANT_COLUMNS = `id, product_id, sku, barcode, price, cost_price, stock_quantity,
+const VARIANT_COLUMNS = `id, product_id, sku, barcode, photo_url, price, cost_price, stock_quantity,
        is_default, is_active, is_bundle, attribute_values, updated_at`;
 
 function parseAttributeValues(json: string): VariantAttributeValue[] {
@@ -34,6 +35,7 @@ function toProductVariant(row: ProductVariantRow): ProductVariant {
     productId: row.product_id,
     sku: row.sku,
     barcode: row.barcode,
+    photoUrl: row.photo_url,
     price: row.price,
     costPrice: row.cost_price,
     stockQuantity: row.stock_quantity,
@@ -165,12 +167,13 @@ async function insertOrReplaceVariant(
 ): Promise<void> {
   await db.runAsync(
     `INSERT INTO product_variants
-       (id, product_id, sku, barcode, price, cost_price, stock_quantity, is_default, is_active, is_bundle, attribute_values, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       (id, product_id, sku, barcode, photo_url, price, cost_price, stock_quantity, is_default, is_active, is_bundle, attribute_values, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (id) DO UPDATE SET
        product_id = excluded.product_id,
        sku = excluded.sku,
        barcode = excluded.barcode,
+       photo_url = excluded.photo_url,
        price = excluded.price,
        cost_price = excluded.cost_price,
        stock_quantity = excluded.stock_quantity,
@@ -183,6 +186,7 @@ async function insertOrReplaceVariant(
     variant.productId,
     variant.sku,
     variant.barcode,
+    variant.photoUrl,
     variant.price,
     variant.costPrice,
     variant.stockQuantity,
@@ -240,12 +244,13 @@ export async function updateVariantStock(variantId: string, quantity: number): P
 export async function updateVariantCatalogFields(variant: ProductVariant): Promise<void> {
   await getDb().runAsync(
     `UPDATE product_variants SET
-       product_id = ?, sku = ?, barcode = ?, price = ?, cost_price = ?,
+       product_id = ?, sku = ?, barcode = ?, photo_url = ?, price = ?, cost_price = ?,
        is_default = ?, is_active = ?, is_bundle = ?, attribute_values = ?, updated_at = ?
      WHERE id = ?`,
     variant.productId,
     variant.sku,
     variant.barcode,
+    variant.photoUrl,
     variant.price,
     variant.costPrice,
     variant.isDefault ? 1 : 0,

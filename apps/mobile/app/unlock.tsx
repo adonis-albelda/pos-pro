@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   PIN_LENGTH_MAX,
   PIN_LENGTH_MIN,
+  ROLES,
   storeInitial,
   timeAgo,
   type User,
@@ -37,7 +38,7 @@ import { Button, Card, EmptyState, ErrorNote, IconButton } from "@/components/ui
 import { color, fontSize, space, styles } from "@/theme";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- same asset-require pattern as company-intro.tsx; no *.png module declaration in this project
-const PIN_ICON = require("../assets/password-protection.png");
+const PIN_ICON = require("../assets/password-protection.webp");
 
 /**
  * Start of a shift. Cashier list + PIN check hit the live Tally API. Local SQLite
@@ -67,9 +68,9 @@ export default function UnlockScreen() {
       await ensureFreshSession();
       const client = getApiClient();
       const [next, profile] = await Promise.all([listCashiers(client), me(client)]);
-      // A terminal (role "device") only ever hands the shift to a cashier —
+      // A terminal (role "terminal") only ever hands the shift to a cashier —
       // admins sign in to the dashboard, not a shop-floor POS.
-      const onShift = profile.role === "device" ? next.filter((c) => c.role === "cashier") : next;
+      const onShift = profile.role === ROLES.TERMINAL ? next.filter((c) => c.role === ROLES.CASHIER) : next;
       setEnrolled(profile);
       setCashiers(onShift);
       setSelected((prev) =>
@@ -334,7 +335,7 @@ export default function UnlockScreen() {
                 }}
                 accessibilityRole="button"
                 accessibilityState={{ selected: active }}
-                accessibilityLabel={`${cashier.name}, ${cashier.role === "admin" ? "Admin" : "Cashier"}`}
+                accessibilityLabel={`${cashier.name}, ${cashier.role === ROLES.ADMIN ? "Admin" : "Cashier"}`}
                 style={({ pressed }) => [
                   styles.card,
                   {
@@ -365,7 +366,7 @@ export default function UnlockScreen() {
                     backgroundColor: active ? color.primary : color.primarySoft,
                   }}
                 >
-                  {cashier.role === "admin" ? (
+                  {cashier.role === ROLES.ADMIN ? (
                     <Shield
                       size={24}
                       color={active ? color.onPrimary : color.primary}
@@ -400,7 +401,7 @@ export default function UnlockScreen() {
                       textAlign: "center",
                     }}
                   >
-                    {cashier.role === "admin" ? "Admin" : "Cashier"}
+                    {cashier.role === ROLES.ADMIN ? "Admin" : "Cashier"}
                   </Text>
                 </View>
 

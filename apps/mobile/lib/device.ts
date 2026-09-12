@@ -1,11 +1,12 @@
 import * as Crypto from "expo-crypto";
 import * as SecureStore from "expo-secure-store";
+import { ROLES } from "@double-a/shared-types";
 
 const DEVICE_ID_KEY = "double-a.device-id";
 const DEVICE_LABEL_KEY = "double-a.device-label";
 const COMPANY_ID_KEY = "double-a.company-id";
 const LOCATION_ID_KEY = "double-a.location-id";
-/** Enrolled account role: "admin" | "device". Drives location switcher visibility. */
+/** Enrolled account role: "admin" | "terminal". Drives location switcher visibility. */
 const ENROLLED_ROLE_KEY = "double-a.enrolled-role";
 /**
  * Active POS location for stock pull + sale stamp. Device terminals keep this
@@ -17,7 +18,7 @@ const OFFLINE_MODE_KEY = "double-a.offline-mode-enabled";
 /** How this terminal reaches price inquiry — a draggable button, or a menu entry. Default "floating". */
 const PRICE_INQUIRY_STYLE_KEY = "double-a.price-inquiry-style";
 
-export type EnrolledRole = "admin" | "device";
+export type EnrolledRole = "admin" | "terminal";
 
 /**
  * A stable id for this terminal, minted once and kept in SecureStore. It rides
@@ -73,7 +74,7 @@ export async function clearEnrolledLocationId(): Promise<void> {
 
 export async function getEnrolledRole(): Promise<EnrolledRole | null> {
   const raw = await SecureStore.getItemAsync(ENROLLED_ROLE_KEY);
-  return raw === "admin" || raw === "device" ? raw : null;
+  return raw === ROLES.ADMIN || raw === ROLES.TERMINAL ? raw : null;
 }
 
 export async function setEnrolledRole(role: EnrolledRole): Promise<void> {

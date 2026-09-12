@@ -33,6 +33,7 @@ export interface VariantAddonSelection {
 export function VariantAddonPicker({
   open,
   productName,
+  productPhotoUrl,
   variants,
   addonGroups,
   onCancel,
@@ -40,6 +41,8 @@ export function VariantAddonPicker({
 }: {
   open: boolean;
   productName: string;
+  /** Shown for a variant with no photo of its own — same fallback ProductVariantResource already resolves server-side, kept here too for whatever hasn't re-synced since. */
+  productPhotoUrl?: string | null;
   variants: ProductVariant[];
   addonGroups: AddonGroup[];
   onCancel: () => void;
@@ -113,11 +116,12 @@ export function VariantAddonPicker({
         {variants.length > 1 ? (
           <View style={{ gap: space.xs }}>
             <Text style={{ fontSize: fontSize.caption, fontWeight: "700", color: color.inkMuted }}>
-              CHOOSE ONE
+              VARIANTS
             </Text>
             {variants.map((variant) => {
               const selected = variant.id === variantId;
               const label = variantAttributeLabel(variant) || variant.sku || "Default";
+              const photoUrl = variant.photoUrl ?? productPhotoUrl ?? null;
               return (
                 <Pressable
                   key={variant.id}
@@ -145,6 +149,12 @@ export function VariantAddonPicker({
                   ) : (
                     <Circle size={20} color={color.inkMuted} strokeWidth={2} />
                   )}
+                  {photoUrl ? (
+                    <Image
+                      source={{ uri: photoUrl }}
+                      style={{ width: 32, height: 32, borderRadius: radius.sm }}
+                    />
+                  ) : null}
                   <Text
                     style={{
                       flex: 1,

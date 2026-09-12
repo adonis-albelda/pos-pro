@@ -149,6 +149,7 @@ export interface ProductVariantAttrs {
   product_id: string;
   sku: string | null;
   barcode: string | null;
+  photo_url?: string | null;
   price: number;
   cost_price: number;
   is_default: boolean;
@@ -170,6 +171,7 @@ export function toProductVariant(resource: JsonApiResource<ProductVariantAttrs>)
     productId: a.product_id,
     sku: a.sku,
     barcode: a.barcode,
+    photoUrl: a.photo_url ?? null,
     price: Number(a.price),
     costPrice: Number(a.cost_price),
     stockQuantity: Number(a.stock_quantity ?? 0),
@@ -382,7 +384,7 @@ export interface UserAttrs {
   name: string;
   username?: string | null;
   avatar_url?: string | null;
-  email: string;
+  email: string | null;
   role: string;
   company_id: string | null;
   location_id?: string | null;
@@ -560,6 +562,7 @@ export interface SaleAttrs {
   fulfillment: string | null;
   delivery_completed: boolean | null;
   payment_proof_url?: string | null;
+  ewallet_provider?: string | null;
   company_id?: string | null;
   created_at: string | null;
   synced_at: string | null;
@@ -589,6 +592,7 @@ export function toSale(resource: JsonApiResource<SaleAttrs>): Sale {
     companyId: a.company_id,
     locationId: a.location_id ?? null,
     paymentProofUrl: a.payment_proof_url ?? null,
+    ewalletProvider: a.ewallet_provider ?? null,
   };
 }
 

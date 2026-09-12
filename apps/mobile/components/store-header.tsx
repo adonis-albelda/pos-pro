@@ -162,8 +162,7 @@ export function StoreHeader() {
           )}
         </Pressable>
 
-        {/* Time leftmost; sync sits beside it as a flat HeaderStat twin.
-            No vertical rule beside Synced — open into cart/sales on the right. */}
+        {/* Time + sync as HeaderStat twins, then a rule before cart/sales. */}
         <View
           accessibilityLabel={`${dateLabel}, ${timeLabel}. ${look.text}. ${pendingLabel(state.pendingSales)}.`}
           style={{
@@ -171,9 +170,13 @@ export function StoreHeader() {
             alignItems: "center",
             gap: space.md,
             flexShrink: 0,
+            paddingRight: space.sm,
+            borderRightWidth: 1,
+            borderRightColor: "rgba(255,255,255,0.25)",
           }}
         >
           <HeaderStat value={timeLabel} label={dateLabel} />
+          <HeaderStatDivider />
           <SyncStat
             look={look}
             pendingSales={state.pendingSales}

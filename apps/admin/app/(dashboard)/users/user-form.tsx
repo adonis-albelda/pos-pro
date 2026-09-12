@@ -4,19 +4,17 @@ import { useActionState, useEffect, useId, useRef, useState, type FormEvent } fr
 import { toast } from "sonner";
 import {
   Check,
-  HandHelping,
   Info,
   KeyRound,
   Lock,
   Mail,
   Shield,
   Smartphone,
-  Truck,
   UserCog,
   UserRound,
   X,
 } from "lucide-react";
-import { isDemoTeamLimitMessage, type User, type UserRole } from "@double-a/shared-types";
+import { isDemoTeamLimitMessage, ROLES, type User, type UserRole } from "@double-a/shared-types";
 import {
   Button,
   ErrorNote,
@@ -36,30 +34,24 @@ import { useLocations } from "@/lib/query/locations";
 import { saveCashier } from "./actions";
 
 function successMessage(role: UserRole): string {
-  if (role === "admin" || role === "manager") {
+  if (role === ROLES.ADMIN || role === ROLES.MANAGER) {
     return "Saved. Password signs in to this dashboard; the PIN, if set, unlocks a terminal.";
   }
-  if (role === "device") {
+  if (role === ROLES.TERMINAL) {
     return "Saved. Use this password on the POS when connecting the terminal.";
-  }
-  if (role === "driver" || role === "helper") {
-    return "Saved as a staff record — no PIN or dashboard login.";
   }
   return "Saved. Terminals see a new PIN on the next unlock.";
 }
 
 function roleDescription(role: UserRole): string {
-  if (role === "admin") {
+  if (role === ROLES.ADMIN) {
     return "Admins need two secrets: a password for this dashboard, and an optional PIN to unlock a terminal on the shop floor. They are separate — changing one never changes the other.";
   }
-  if (role === "manager") {
+  if (role === ROLES.MANAGER) {
     return "Managers get the same dashboard/POS access as an admin, except company settings and user management — those stay owner-only. Same two secrets as admin: a password, and an optional PIN.";
   }
-  if (role === "device") {
-    return "Terminals enroll once with this Auth email and password. That session stays on the device — cashiers then unlock with their own PIN, not this password.";
-  }
-  if (role === "driver" || role === "helper") {
-    return "A staff record only — no PIN and no dashboard login. Use this to attribute a delivery or a task to a real person without giving them access to anything.";
+  if (role === ROLES.TERMINAL) {
+    return "Terminals sign in once with this email and password on the mobile app's setup screen. That session stays on the device — cashiers then unlock with their own PIN, not this password.";
   }
   return "Cashiers unlock with a PIN against the live server. They have no dashboard login. Disabling sales still lets them unlock, but they cannot complete a sale.";
 }
@@ -107,28 +99,24 @@ export function UserForm({
   const showInlineError = state.error && !isDemoTeamLimitMessage(state.error);
 
   const RoleIcon =
-    role === "admin"
+    role === ROLES.ADMIN
       ? Shield
-      : role === "manager"
+      : role === ROLES.MANAGER
         ? UserCog
-        : role === "device"
+        : role === ROLES.TERMINAL
           ? Smartphone
-          : role === "driver"
-            ? Truck
-            : role === "helper"
-              ? HandHelping
-              : UserRound;
+          : UserRound;
   const branches = locationsQuery.data ?? [];
 
   useEffect(() => {
-    if (role === "device" && !branchId && branches[0]?.id) {
+    if (role === ROLES.TERMINAL && !branchId && branches[0]?.id) {
       setBranchId(branches[0].id);
     }
   }, [role, branchId, branches]);
 
   const branchChanged =
     Boolean(user) &&
-    user?.role === "device" &&
+    user?.role === ROLES.TERMINAL &&
     branchId !== "" &&
     branchId !== (user?.locationId ?? "");
   const fromBranchName =
@@ -220,13 +208,12 @@ export function UserForm({
           <Field label="Name" required>
             <Input icon={UserRound} name="name" defaultValue={user?.name} required />
           </Field>
-          <Field label="Email" required>
+          <Field label="Email" hint="Optional — sign-in by email requires it be verified.">
             <Input
               icon={Mail}
               name="email"
               type="email"
-              defaultValue={user?.email}
-              required
+              defaultValue={user?.email ?? ""}
             />
           </Field>
           <Field
@@ -248,13 +235,11 @@ export function UserForm({
               <option value="cashier">Cashier</option>
               <option value="admin">Admin</option>
               <option value="manager">Manager</option>
-              <option value="driver">Driver</option>
-              <option value="helper">Helper</option>
-              <option value="device">Terminal</option>
+              <option value="terminal">Terminal</option>
             </Select>
           </Field>
 
-          {role === "device" ? (
+          {role === ROLES.TERMINAL ? (
             <Field
               label="Branch"
               hint={
@@ -283,17 +268,17 @@ export function UserForm({
             </Field>
           ) : null}
 
-          {role === "cashier" || role === "admin" || role === "manager" ? (
+          {role === ROLES.CASHIER || role === ROLES.ADMIN || role === ROLES.MANAGER ? (
             <Field
               label={user ? "New PIN" : "PIN"}
               hint={
                 user
                   ? "Leave empty to keep the current PIN."
-                  : role === "admin" || role === "manager"
+                  : role === ROLES.ADMIN || role === ROLES.MANAGER
                     ? "Optional — 4 to 6 digits, for unlocking a terminal."
                     : "4 to 6 digits."
               }
-              required={!user && role === "cashier"}
+              required={!user && role === ROLES.CASHIER}
             >
               <Input
                 icon={KeyRound}
@@ -306,11 +291,11 @@ export function UserForm({
             </Field>
           ) : null}
 
-          {!user && (role === "admin" || role === "manager" || role === "device") ? (
+          {!user && (role === ROLES.ADMIN || role === ROLES.MANAGER || role === ROLES.TERMINAL) ? (
             <Field
               label="Password"
               hint={
-                role === "device"
+                role === ROLES.TERMINAL
                   ? "Enter this on the POS app's setup screen to connect the terminal."
                   : "Dashboard login — not a cashier PIN."
               }
@@ -327,7 +312,7 @@ export function UserForm({
           ) : null}
         </div>
 
-        {role === "cashier" || role === "admin" || role === "manager" ? (
+        {role === ROLES.CASHIER || role === ROLES.ADMIN || role === ROLES.MANAGER ? (
           <Field
             label="Sales"
             hint="Off = can still unlock a terminal, but cannot complete a sale."
@@ -348,7 +333,7 @@ export function UserForm({
           <input type="hidden" name="can_sell" value="true" />
         )}
 
-        {user && (role === "admin" || role === "manager") ? (
+        {user && (role === ROLES.ADMIN || role === ROLES.MANAGER) ? (
           <p className="flex items-start gap-2 text-caption text-ink-muted">
             <Info size={14} className="mt-0.5 shrink-0" />
             <span>

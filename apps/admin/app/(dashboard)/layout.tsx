@@ -1,4 +1,5 @@
 import { getStoreSettings } from "@double-a/api-client/queries";
+import { ROLES } from "@double-a/shared-types";
 import { getAuthedClient, getCurrentUser } from "@/lib/api/session";
 import { ClassicShell } from "@/components/classic-shell";
 import { DashboardShell } from "@/components/dashboard-shell";
@@ -31,7 +32,7 @@ export default async function DashboardLayout({
     .join("");
 
   const content =
-    user?.role === "superadmin" ? (
+    user?.role === ROLES.SUPERADMIN ? (
       <>
         <ImpersonationBanner storeName={store.name} />
         {children}
@@ -66,6 +67,7 @@ export default async function DashboardLayout({
         storeLogoUrl={store.logoUrl}
         userName={user?.name ?? null}
         userEmail={user?.email ?? null}
+        userAvatarUrl={user?.avatarUrl ?? null}
         initials={initials}
         mode={mode}
         embedded={embedded}

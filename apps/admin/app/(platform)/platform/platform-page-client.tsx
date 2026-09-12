@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Building2, Plus } from "lucide-react";
 import { Badge, buttonClass, Card, CardBody, EmptyState, PageHeader } from "@/components/ui";
 import { useCompanyStats } from "@/lib/query/companies";
+import { GlobalFeatureDefaultsButton } from "./global-feature-defaults";
 
 export function PlatformPageClient() {
   const statsQuery = useCompanyStats();
@@ -16,10 +17,13 @@ export function PlatformPageClient() {
         title="Companies"
         description="Create a shop, assign admins, and disable an account to block its API."
         action={
-          <Link href={"/platform/companies/new" as Route} className={buttonClass("primary", "md")}>
-            <Plus size={16} strokeWidth={2} />
-            New company
-          </Link>
+          <div className="flex items-center gap-2">
+            <GlobalFeatureDefaultsButton />
+            <Link href={"/platform/companies/new" as Route} className={buttonClass("primary", "md")}>
+              <Plus size={16} strokeWidth={2} />
+              New company
+            </Link>
+          </div>
         }
       />
 

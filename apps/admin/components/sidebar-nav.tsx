@@ -198,7 +198,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
                 {...rowProps(motion.get(`group:${groupKey}`))}
                 className={rowClass(
                   motion.get(`group:${groupKey}`),
-                  "flex w-full items-center justify-between rounded-sm px-3 pb-0.5 text-[0.6875rem] font-medium tracking-wide text-ink-muted uppercase transition-colors hover:text-ink",
+                  "flex w-full cursor-pointer items-center justify-between rounded-sm px-3 pb-0.5 text-[0.6875rem] font-medium tracking-wide text-ink-muted uppercase transition-colors hover:bg-border/50 hover:text-ink",
                 )}
               >
                 {group.label}

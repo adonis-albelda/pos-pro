@@ -4,7 +4,7 @@ import { useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import type { AiPlanId, CompanyStats, InvoiceNumberMode } from "@double-a/shared-types";
+import { ROLES, type AiPlanId, type CompanyStats, type InvoiceNumberMode } from "@double-a/shared-types";
 import {
   companyStats,
   createCompany as apiCreateCompany,
@@ -113,7 +113,7 @@ async function bootstrapCompanyAdmin(companyId: string, password: string, pin: s
   const opened = await apiOpenCompany(getBrowserApiClient(), companyId);
   const scoped = createScopedClient(opened.token);
   const users = await listUsers(scoped, { includeInactive: true });
-  const admin = users.find((user) => user.role === "admin");
+  const admin = users.find((user) => user.role === ROLES.ADMIN);
   if (!admin) {
     throw new Error("Company was created but its admin user could not be found to finish setup.");
   }

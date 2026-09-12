@@ -6,6 +6,7 @@ import {
   createUser,
   deleteUser,
   getUser,
+  listUserRoles,
   listUsers,
   sendUserEmailVerification,
   updateUser,
@@ -32,6 +33,15 @@ export function useUser(id: string | null) {
     queryKey: queryKeys.users.detail(id ?? ""),
     queryFn: () => getUser(getBrowserApiClient(), id!),
     enabled: Boolean(id),
+  });
+}
+
+/** Live table query, not a hardcoded list — backs the Users page's role dropdowns. */
+export function useUserRoles() {
+  return useQuery({
+    queryKey: queryKeys.users.roles(),
+    queryFn: () => listUserRoles(getBrowserApiClient()),
+    staleTime: 5 * 60_000,
   });
 }
 

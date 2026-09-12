@@ -1,7 +1,7 @@
 import * as SecureStore from "expo-secure-store";
 import { ApiClient, ApiError } from "@double-a/api-client";
 import { logout, me } from "@double-a/api-client/queries";
-import type { User } from "@double-a/shared-types";
+import { ROLES, type User } from "@double-a/shared-types";
 import { resetLocalData } from "@/db";
 import {
   clearEnrolledCompanyId,
@@ -12,7 +12,7 @@ import {
   setEnrolledLocationId,
   setEnrolledRole,
 } from "@/lib/device";
-import { apiUrl, apiHostHeader, createScopedClient, VERSION_HEADERS } from "./client";
+import { apiUrl, clientHeaders, createScopedClient } from "./client";
 
 const SESSION_TOKEN_KEY = "double-a.session-token";
 
@@ -39,7 +39,7 @@ export function getApiClient(): ApiClient {
   return new ApiClient({
     baseUrl: apiUrl(),
     getToken: () => getSessionToken(),
-    extraHeaders: { ...VERSION_HEADERS, ...apiHostHeader() },
+    extraHeaders: clientHeaders(),
   });
 }
 
@@ -51,8 +51,8 @@ export async function isEnrolled(): Promise<boolean> {
  * The admin token an admin-role cashier's PIN unlock mints, held in memory
  * only (never SecureStore) — same "shift ends when the app closes" lifetime
  * as `useSession()`'s `cashier`. This is what `apps/mobile/app/admin/**`
- * screens must call through instead of `getApiClient()`: the device token
- * is role=device forever and 403s on actsAsAdmin()-gated policies (suppliers,
+ * screens must call through instead of `getApiClient()`: the terminal token
+ * is role=terminal forever and 403s on actsAsAdmin()-gated policies (suppliers,
  * expenses, purchase orders, some reports) no matter who unlocked it.
  */
 let adminToken: string | null = null;
@@ -83,7 +83,7 @@ export function getAdminApiClient(): ApiClient {
 }
 
 async function bindEnrolledCompany(profile: User): Promise<void> {
-  if (profile.role !== "admin" && profile.role !== "device") {
+  if (profile.role !== ROLES.ADMIN && profile.role !== ROLES.TERMINAL) {
     throw new Error("This terminal is not set up yet. Finish setup before syncing.");
   }
   if (!profile.companyIsActive) {
@@ -99,7 +99,7 @@ async function bindEnrolledCompany(profile: User): Promise<void> {
   }
   await setEnrolledCompanyId(profile.companyId);
 
-  if (profile.role === "admin" || profile.role === "device") {
+  if (profile.role === ROLES.ADMIN || profile.role === ROLES.TERMINAL) {
     await setEnrolledRole(profile.role);
   }
 
@@ -111,7 +111,7 @@ async function bindEnrolledCompany(profile: User): Promise<void> {
 /**
  * Called at the start of a sync/unlock. Sanctum tokens are opaque and
  * non-refreshable (unlike the old Supabase JWT, which was refreshed here
- * before it expired) — a device/terminal token is minted non-expiring at
+ * before it expired) — a terminal token is minted non-expiring at
  * enrollment, so there is nothing to refresh. This just confirms the
  * session is still accepted server-side (a revoked or expired token 401s)
  * and re-binds the enrolled company, same as before.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Boxes,
@@ -1025,6 +1025,7 @@ function VariantDetailPanel({
   const [sku, setSku] = useState(variant.sku ?? "");
   const [barcode, setBarcode] = useState(variant.barcode ?? "");
   const [price, setPrice] = useState(String(variant.price));
+  const [costPrice, setCostPrice] = useState(String(variant.costPrice));
   const [pricingStrategy, setPricingStrategy] = useState(variant.pricingStrategy);
   const [unitId, setUnitId] = useState(variant.unitId ?? "");
   const [reorderPoint, setReorderPoint] = useState(String(variant.reorderPoint));
@@ -1038,6 +1039,7 @@ function VariantDetailPanel({
   const [bundleRows, setBundleRows] = useState<BundleRow[]>(() => bundleRowsFromProduct(product));
 
   const parsedPrice = Number(price);
+  const parsedCostPrice = Number(costPrice);
   const parsedReorderPoint = Number(reorderPoint);
   const parsedReplenishQuantity = Number(replenishQuantity);
   const parsedMarginValue = marginValue.trim() === "" ? null : Number(marginValue);
@@ -1046,6 +1048,7 @@ function VariantDetailPanel({
     sku.trim() !== (variant.sku ?? "") ||
     barcode.trim() !== (variant.barcode ?? "") ||
     parsedPrice !== variant.price ||
+    parsedCostPrice !== variant.costPrice ||
     pricingStrategy !== variant.pricingStrategy ||
     (unitId || null) !== variant.unitId ||
     parsedReorderPoint !== variant.reorderPoint ||
@@ -1072,6 +1075,10 @@ function VariantDetailPanel({
       toast.error("Shelf price must be zero or more.");
       return;
     }
+    if (!Number.isFinite(parsedCostPrice) || parsedCostPrice < 0) {
+      toast.error("Cost price must be zero or more.");
+      return;
+    }
     if (!Number.isInteger(parsedReorderPoint) || parsedReorderPoint < 0) {
       toast.error("Reorder point must be a whole number, zero or more.");
       return;
@@ -1091,6 +1098,7 @@ function VariantDetailPanel({
         sku: sku.trim() || null,
         barcode: barcode.trim() || null,
         price: parsedPrice,
+        costPrice: parsedCostPrice,
         pricingStrategy,
         unitId: unitId || null,
         reorderPoint: parsedReorderPoint,
@@ -1237,10 +1245,17 @@ function VariantDetailPanel({
               </Field>
             </div>
             <div className={HALF_CELL}>
-              <Field label="Cost price (calculated)" hint="Resolved from linked suppliers below.">
-                <div className="flex min-h-11 w-full items-center rounded-sm border border-border bg-canvas px-3">
-                  <Money value={variant.costPrice} className="text-ink-muted" />
-                </div>
+              <Field
+                label="Cost price"
+                hint="Overwritten by the pricing strategy below whenever a linked supplier's price changes."
+              >
+                <MoneyInput
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={costPrice}
+                  onChange={(event) => setCostPrice(event.target.value)}
+                />
               </Field>
             </div>
           </div>
@@ -1288,7 +1303,7 @@ function VariantDetailPanel({
 
           <div className="border-t border-border pt-4">
             <VariantStockPlanningFields
-              costPrice={variant.costPrice}
+              costPrice={Number.isFinite(parsedCostPrice) ? parsedCostPrice : variant.costPrice}
               reorderPoint={reorderPoint}
               onReorderPointChange={setReorderPoint}
               replenishQuantity={replenishQuantity}
@@ -1433,10 +1448,64 @@ function GeneratingVariantsDialog({ open }: { open: boolean }) {
   );
 }
 
-function GenerateVariantsForm({ productId, attributes }: { productId: string; attributes: CompanyAttribute[] }) {
+/** Cartesian product of a list of id arrays — [] for any empty input array yields no combinations. */
+function cartesianProductIds(lists: string[][]): string[][] {
+  return lists.reduce<string[][]>(
+    (acc, list) => acc.flatMap((combo) => list.map((id) => [...combo, id])),
+    [[]],
+  );
+}
+
+function GenerateVariantsForm({
+  productId,
+  attributes,
+  existingVariants,
+}: {
+  productId: string;
+  attributes: CompanyAttribute[];
+  /** Already-created variants for this product — used to grey out a value that would only ever recreate an existing combination. */
+  existingVariants: ProductVariant[];
+}) {
   const generate = useGenerateProductVariants(productId);
   const [selected, setSelected] = useState<Record<string, string[]>>({});
   const [expanded, setExpanded] = useState(false);
+
+  // Same dedupe key GenerateProductVariantsAction uses server-side (sorted
+  // value ids, comma-joined) — mirrored here so the picker can grey out a
+  // combination before the admin wastes a click generating a no-op.
+  const existingKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const variant of existingVariants) {
+      if (variant.attributeValues.length === 0) continue;
+      const ids = variant.attributeValues.map((value) => value.companyAttributeValueId).sort();
+      keys.add(ids.join(","));
+    }
+    return keys;
+  }, [existingVariants]);
+
+  /**
+   * A value is "already used" when, combined with whatever's currently
+   * checked on every OTHER attached attribute, every resulting combination
+   * already exists as a variant. Recomputed as picks change, not just once —
+   * the same value can still be new for a combination the admin hasn't
+   * fully specified yet (an attribute with nothing checked contributes all
+   * of its values as candidates, so nothing is falsely greyed out before
+   * the admin has picked anything on that attribute).
+   */
+  function isValueAlreadyUsed(attributeId: string, valueId: string): boolean {
+    if (existingKeys.size === 0) return false;
+
+    const otherValueLists = attributes
+      .filter((attribute) => attribute.id !== attributeId)
+      .map((attribute) => {
+        const picked = selected[attribute.id] ?? [];
+        return picked.length > 0 ? picked : attribute.values.map((v) => v.id);
+      });
+
+    const otherCombos = cartesianProductIds(otherValueLists);
+
+    return otherCombos.every((combo) => existingKeys.has([valueId, ...combo].sort().join(",")));
+  }
 
   function toggleValue(attributeId: string, valueId: string) {
     setSelected((prev) => {
@@ -1498,22 +1567,29 @@ function GenerateVariantsForm({ productId, attributes }: { productId: string; at
               <div className="flex flex-wrap gap-2">
                 {attribute.values.map((value) => {
                   const active = (selected[attribute.id] ?? []).includes(value.id);
+                  const alreadyUsed = !active && isValueAlreadyUsed(attribute.id, value.id);
                   return (
                     <label
                       key={value.id}
-                      className={`flex cursor-pointer items-center gap-2 rounded-sm border px-3 py-1.5 text-body font-medium transition-colors ${
-                        active
-                          ? "border-primary bg-primary/5 text-ink"
-                          : "border-border bg-surface text-ink hover:bg-canvas"
+                      title={alreadyUsed ? "Every combination with this value already exists as a variant." : undefined}
+                      className={`flex items-center gap-2 rounded-sm border px-3 py-1.5 text-body font-medium transition-colors ${
+                        alreadyUsed
+                          ? "cursor-not-allowed border-border bg-canvas text-ink-muted"
+                          : "cursor-pointer " +
+                            (active
+                              ? "border-primary bg-primary/5 text-ink"
+                              : "border-border bg-surface text-ink hover:bg-canvas")
                       }`}
                     >
                       <input
                         type="checkbox"
                         checked={active}
+                        disabled={alreadyUsed}
                         onChange={() => toggleValue(attribute.id, value.id)}
-                        className="size-4 accent-primary"
+                        className="size-4 accent-primary disabled:cursor-not-allowed"
                       />
                       {value.value}
+                      {alreadyUsed ? <span className="text-caption">(already added)</span> : null}
                     </label>
                   );
                 })}
@@ -1801,7 +1877,11 @@ export function ProductAttributesAndVariantsSection({
               <p className="text-body font-medium text-ink">Combinations</p>
             </div>
 
-            <GenerateVariantsForm productId={product.id} attributes={attached} />
+            <GenerateVariantsForm
+              productId={product.id}
+              attributes={attached}
+              existingVariants={variantsQuery.data ?? []}
+            />
 
             {allVariants.length > 0 ? (
               <div className="space-y-2">

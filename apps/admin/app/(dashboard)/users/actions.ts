@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { isValidPin } from "@double-a/shared-types";
+import { isValidPin, ROLES } from "@double-a/shared-types";
 import { ApiError } from "@double-a/api-client";
 import { createUser, setUserPin, updateUser, uploadUserAvatar } from "@double-a/api-client/queries";
 import type { FormState } from "@/lib/form-state";
@@ -9,19 +9,19 @@ import { getAuthedClient } from "@/lib/api/session";
 
 /** Roles that unlock a terminal with a PIN. Admin/manager optionally. */
 function canUnlockWithPin(role: string): boolean {
-  return role === "cashier" || role === "admin" || role === "manager";
+  return role === ROLES.CASHIER || role === ROLES.ADMIN || role === ROLES.MANAGER;
 }
 
-/** Roles that get a real dashboard/terminal password. Driver/helper are staff records only — never sign in. */
+/** Roles that get a real dashboard/terminal password. */
 function hasPassword(role: string): boolean {
-  return role === "admin" || role === "manager" || role === "inventory_clerk" || role === "device";
+  return role === ROLES.ADMIN || role === ROLES.MANAGER || role === ROLES.INVENTORY_CLERK || role === ROLES.TERMINAL;
 }
 
 /** Every role this form can actually create/edit — anything else silently falling back to "cashier" was a real bug. */
 function isCreatableRole(
   role: string,
-): role is "cashier" | "admin" | "manager" | "inventory_clerk" | "driver" | "helper" | "device" {
-  return ["cashier", "admin", "manager", "inventory_clerk", "driver", "helper", "device"].includes(role);
+): role is "cashier" | "admin" | "manager" | "inventory_clerk" | "terminal" {
+  return ["cashier", "admin", "manager", "inventory_clerk", "terminal"].includes(role);
 }
 
 function errorMessage(error: unknown): string {
@@ -76,24 +76,24 @@ export async function saveCashier(
     }
   }
 
-  if (!id && role === "superadmin") {
+  if (!id && role === ROLES.SUPERADMIN) {
     return { error: "A shop cannot create a platform superadmin.", ok: false };
   }
 
   if (pin && !isValidPin(pin)) {
     return { error: "The PIN must be 4 to 6 digits.", ok: false };
   }
-  if (role === "cashier" && !id && !pin) {
+  if (role === ROLES.CASHIER && !id && !pin) {
     return { error: "Set a PIN so this cashier can unlock a terminal.", ok: false };
   }
 
-  if (!id && (role === "admin" || role === "manager" || role === "inventory_clerk") && !password) {
+  if (!id && (role === ROLES.ADMIN || role === ROLES.MANAGER || role === ROLES.INVENTORY_CLERK) && !password) {
     return { error: "Set a password so this person can sign in to the dashboard.", ok: false };
   }
-  if (!id && role === "device" && !password) {
+  if (!id && role === ROLES.TERMINAL && !password) {
     return { error: "Set a password so this terminal can sign in on the POS app.", ok: false };
   }
-  if (role === "device" && !locationId) {
+  if (role === ROLES.TERMINAL && !locationId) {
     return { error: "Pick which branch this terminal sells from.", ok: false };
   }
   if (!id && password && password.length < 8) {
@@ -115,8 +115,8 @@ export async function saveCashier(
       await updateUser(client, id, {
         name,
         email,
-        canSell: role === "device" ? true : canSell,
-        ...(role === "device" ? { locationId } : {}),
+        canSell: role === ROLES.TERMINAL ? true : canSell,
+        ...(role === ROLES.TERMINAL ? { locationId } : {}),
       });
       if (canUnlockWithPin(role) && pin) {
         await setUserPin(client, id, pin);
@@ -131,7 +131,7 @@ export async function saveCashier(
         role: isCreatableRole(role) ? role : "cashier",
         password: hasPassword(role) ? password : undefined,
         canSell,
-        locationId: role === "device" ? locationId : undefined,
+        locationId: role === ROLES.TERMINAL ? locationId : undefined,
       });
       if (canUnlockWithPin(role) && pin) {
         await setUserPin(client, created.id, pin);

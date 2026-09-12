@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { KeyRound, Lock, Mail, ShieldCheck, UserRound } from "lucide-react";
-import type { InvoiceNumberMode, User, AiPlanId, AiSubscriptionPlan } from "@double-a/shared-types";
+import { ROLES, type InvoiceNumberMode, type User, type AiPlanId, type AiSubscriptionPlan } from "@double-a/shared-types";
 import {
   Badge,
   Button,
@@ -239,14 +239,14 @@ export function CompanyUsers({
                     {user.isDemo ? <Badge tone="warning">Demo</Badge> : null}
                   </div>
                 </Td>
-                <Td>{user.email}</Td>
+                <Td>{user.email ?? "—"}</Td>
                 <Td className="capitalize">{user.role}</Td>
                 <Td>
                   <div className="space-y-3 py-2">
-                    {user.role === "admin" || user.role === "device" ? (
+                    {user.role === ROLES.ADMIN || user.role === ROLES.TERMINAL ? (
                       <ResetPasswordForm user={user} companyId={companyId} />
                     ) : null}
-                    {user.role === "cashier" || user.role === "admin" ? (
+                    {user.role === ROLES.CASHIER || user.role === ROLES.ADMIN ? (
                       <ResetPinForm user={user} companyId={companyId} />
                     ) : null}
                   </div>

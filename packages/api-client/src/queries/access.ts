@@ -2,7 +2,7 @@ import type { User } from "@double-a/shared-types";
 import { type ApiClient, type JsonApiResource } from "../http";
 import { type UserAttrs, toUser } from "../mappers";
 
-export type AccessRoleName = "admin" | "manager" | "cashier" | "inventory_clerk";
+export type AccessRoleName = "admin" | "manager" | "cashier" | "inventory_clerk" | "terminal";
 
 export interface AccessPermission {
   name: string;
@@ -17,7 +17,8 @@ export interface AccessRole {
 export interface AccessCatalog {
   permissions: AccessPermission[];
   roles: AccessRole[];
-  roleDefaults: Record<AccessRoleName, string[]>;
+  /** Keyed by whatever roles the server's roles-table query returned — not every AccessRoleName is guaranteed present. */
+  roleDefaults: Partial<Record<AccessRoleName, string[]>>;
 }
 
 interface AccessCatalogResponse {
@@ -28,18 +29,18 @@ interface AccessCatalogResponse {
   };
 }
 
-/** Permission catalog + role templates for the Access page. Owner-only. */
+/**
+ * Permission catalog + role templates for the Access page. Owner-only.
+ * Roles and their default permission sets come straight from the server's
+ * live Spatie roles-table query — no hardcoded role list here, so a newly
+ * seeded role shows up without a frontend change.
+ */
 export async function listAccessCatalog(client: ApiClient): Promise<AccessCatalog> {
   const body = await client.get<AccessCatalogResponse>("/permissions");
-  const defaults = body.data.role_defaults ?? {};
   return {
     permissions: body.data.permissions ?? [],
     roles: (body.data.roles ?? []) as AccessRole[],
-    roleDefaults: {
-      admin: defaults.admin ?? [],
-      manager: defaults.manager ?? [],
-      cashier: defaults.cashier ?? [],
-    },
+    roleDefaults: (body.data.role_defaults ?? {}) as Partial<Record<AccessRoleName, string[]>>,
   };
 }
 

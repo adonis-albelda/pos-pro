@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { ApiClient, ApiError, assertApiUrl } from "@double-a/api-client";
 import { me } from "@double-a/api-client/queries";
+import { ROLES } from "@double-a/shared-types";
 import { ACTING_COMPANY_COOKIE, DEMO_MODE_COOKIE, SESSION_COOKIE } from "@/lib/api/cookie-names";
 import { demoDatabaseHeaders } from "@/lib/demo-host";
 
@@ -59,7 +60,7 @@ export default async function proxy(request: NextRequest) {
   }
 
   if (user && !isPublic) {
-    const home = user.role === "superadmin" && !acting ? "/platform" : "/";
+    const home = user.role === ROLES.SUPERADMIN && !acting ? "/platform" : "/";
 
     // Takes priority over mustChangePassword: without a confirmed MFA
     // secret this account can never produce a valid mfa_code on its next
@@ -93,14 +94,14 @@ export default async function proxy(request: NextRequest) {
       return NextResponse.redirect(url);
     }
 
-    if (user.role === "superadmin" && !acting && !isPlatform && !isChangePassword) {
+    if (user.role === ROLES.SUPERADMIN && !acting && !isPlatform && !isChangePassword) {
       const url = request.nextUrl.clone();
       url.pathname = "/platform";
       url.search = "";
       return NextResponse.redirect(url);
     }
 
-    if (user.role === "admin" && isPlatform) {
+    if (user.role === ROLES.ADMIN && isPlatform) {
       const url = request.nextUrl.clone();
       url.pathname = "/";
       url.search = "";
@@ -110,7 +111,7 @@ export default async function proxy(request: NextRequest) {
 
   if (user && path === "/login") {
     const url = request.nextUrl.clone();
-    url.pathname = user.role === "superadmin" && !acting ? "/platform" : "/";
+    url.pathname = user.role === ROLES.SUPERADMIN && !acting ? "/platform" : "/";
     url.search = "";
     return NextResponse.redirect(url);
   }

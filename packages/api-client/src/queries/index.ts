@@ -1,4 +1,5 @@
 export * from "./activity";
+export * from "./company";
 export * from "./app-version";
 export * from "./products";
 export * from "./product-variant-list";

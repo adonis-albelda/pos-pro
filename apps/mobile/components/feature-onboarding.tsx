@@ -15,12 +15,15 @@ import { WaveBackdrop } from "@/components/wave-backdrop";
 import { markFeatureOnboardingSeen } from "@/lib/onboarding";
 import { color, fontSize, space } from "@/theme";
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports -- asset-require pattern; no *.png module declaration
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- asset-require pattern; no image module declaration
+const LOGO = require("../assets/logo.webp");
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- asset-require pattern; no image module declaration
 const ILLUSTRATIONS = [
-  require("../assets/onboarding/sell-faster.png"),
-  require("../assets/onboarding/know-inventory.png"),
-  require("../assets/onboarding/manage-business.png"),
-  require("../assets/onboarding/understand-numbers.png"),
+  require("../assets/onboarding/sell-faster.webp"),
+  require("../assets/onboarding/know-inventory.webp"),
+  require("../assets/onboarding/manage-business.webp"),
+  require("../assets/onboarding/understand-numbers.webp"),
 ] as const;
 
 type Step = {
@@ -58,9 +61,9 @@ const STEPS: Step[] = [
 ];
 
 /**
- * First-install feature steppers. Shown once after the company splash, before
- * setup/unlock. Next / Back move between slides; last step finishes and
- * marks the flag so cold starts skip this forever after.
+ * First-install feature steppers. Shown once right after terminal sign-in,
+ * before catalog download / business type. Next / Back move between slides;
+ * last step finishes and marks the flag so later enrolls skip this.
  */
 export function FeatureOnboarding({ onDone }: { onDone: () => void }) {
   const insets = useSafeAreaInsets();
@@ -130,9 +133,9 @@ export function FeatureOnboarding({ onDone }: { onDone: () => void }) {
     }
   }
 
-  const cardMaxWidth = Math.min(420, width - space.xl * 2);
-  // Tall portrait art — cap so card + buttons still fit short phones.
-  const artHeight = Math.min(220, Math.round(height * 0.28));
+  const cardMaxWidth = Math.min(520, width - space.xl * 2);
+  // Shorter art — logo + greeting sit above the card (same as setup).
+  const artHeight = Math.min(160, Math.round(height * 0.2));
 
   return (
     <View
@@ -148,26 +151,70 @@ export function FeatureOnboarding({ onDone }: { onDone: () => void }) {
     >
       <WaveBackdrop />
 
-      <Animated.View
+      <View
         style={{
           width: "100%",
           maxWidth: cardMaxWidth,
-          backgroundColor: color.surface,
-          borderRadius: 24,
-          borderWidth: 1,
-          borderColor: color.borderSoft,
-          paddingTop: space.xl,
-          paddingBottom: space.lg,
-          paddingHorizontal: space.lg,
-          shadowColor: "#000",
-          shadowOpacity: 0.14,
-          shadowRadius: 24,
-          shadowOffset: { width: 0, height: 10 },
-          elevation: 10,
-          opacity,
-          transform: [{ translateX }],
+          alignItems: "center",
+          gap: space.xl,
         }}
       >
+        {/* Same circular logo badge + greeting as setup sign-in. */}
+        <View style={{ alignItems: "center", gap: space.md }}>
+          <View
+            style={{
+              width: 100,
+              height: 100,
+              borderRadius: 50,
+              backgroundColor: color.surface,
+              alignItems: "center",
+              justifyContent: "center",
+              shadowColor: color.primaryDark,
+              shadowOpacity: 0.3,
+              shadowRadius: 14,
+              shadowOffset: { width: 0, height: 6 },
+              elevation: 6,
+            }}
+          >
+            <Image source={LOGO} style={{ width: 68, height: 68 }} resizeMode="contain" />
+          </View>
+
+          <View style={{ alignItems: "center", gap: space.xs }}>
+            <Text
+              style={{
+                fontSize: fontSize.headingMd,
+                fontWeight: "700",
+                color: color.ink,
+                letterSpacing: -0.5,
+              }}
+            >
+              Welcome to POSPro!
+            </Text>
+            <Text style={{ fontSize: fontSize.body, color: color.inkMuted, textAlign: "center" }}>
+              Set up this terminal to start selling.
+            </Text>
+          </View>
+        </View>
+
+        <Animated.View
+          style={{
+            width: "100%",
+            backgroundColor: color.surface,
+            borderRadius: 24,
+            borderWidth: 1,
+            borderColor: color.borderSoft,
+            paddingTop: space.xl,
+            paddingBottom: space.lg,
+            paddingHorizontal: space.lg,
+            shadowColor: "#000",
+            shadowOpacity: 0.14,
+            shadowRadius: 24,
+            shadowOffset: { width: 0, height: 10 },
+            elevation: 10,
+            opacity,
+            transform: [{ translateX }],
+          }}
+        >
         <Image
           source={step.image}
           style={{
@@ -288,6 +335,7 @@ export function FeatureOnboarding({ onDone }: { onDone: () => void }) {
           </Pressable>
         ) : null}
       </Animated.View>
+      </View>
     </View>
   );
 }

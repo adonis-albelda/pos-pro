@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { Route } from "next";
 import { useRouter } from "next/navigation";
-import { Camera, Copy, Eye, EyeOff, Monitor, RotateCcw, Trash2 } from "lucide-react";
+import { Camera, Copy, Eye, EyeOff, GitMerge, Monitor, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ApiError } from "@double-a/api-client";
 import type { Product } from "@double-a/shared-types";
@@ -16,6 +16,7 @@ import {
   useRestoreProduct,
   useSetProductActive,
 } from "@/lib/query/products";
+import { MoveIntoProductDialog } from "./move-into-product-dialog";
 import { ProductRowActionsMenu } from "./product-row-actions-menu";
 
 const SUPPLIER_LINK_CLASS =
@@ -78,6 +79,7 @@ export function ProductsTable({
   const router = useRouter();
   const [hiding, setHiding] = useState<Product | null>(null);
   const [deleting, setDeleting] = useState<Product | null>(null);
+  const [moving, setMoving] = useState<Product | null>(null);
   const setActive = useSetProductActive();
   const cloneProduct = useCloneProduct();
   const deleteProduct = useDeleteProduct();
@@ -251,6 +253,12 @@ export function ProductsTable({
                                 onSelect: () => clone(product),
                               },
                               {
+                                id: "move-into",
+                                label: "Move into product…",
+                                icon: GitMerge,
+                                onSelect: () => setMoving(product),
+                              },
+                              {
                                 id: "delete",
                                 label: "Delete product",
                                 icon: Trash2,
@@ -294,6 +302,21 @@ export function ProductsTable({
             : ""
         }
         confirmLabel="Delete product"
+      />
+
+      <MoveIntoProductDialog
+        open={moving !== null}
+        onClose={() => setMoving(null)}
+        source={
+          moving
+            ? {
+                productId: moving.id,
+                productName: moving.name,
+                stockQuantity: moving.stockQuantity,
+                price: moving.price,
+              }
+            : null
+        }
       />
     </>
   );

@@ -1,7 +1,14 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { me } from "@double-a/api-client/queries";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  deleteMyAvatar,
+  me,
+  updateMe,
+  uploadMyAvatar,
+  type UpdateMeInput,
+} from "@double-a/api-client/queries";
+import type { MultipartFile } from "@double-a/api-client";
 import { getBrowserApiClient, hasBrowserSession } from "@/lib/api/browser-client";
 import { queryKeys } from "./keys";
 
@@ -20,5 +27,36 @@ export function useCurrentUser() {
     enabled: hasBrowserSession(),
     staleTime: 60_000,
     retry: false,
+  });
+}
+
+/** Self-service name/email/username edit — /profile page, not the owner-only Users page. */
+export function useUpdateMe() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: UpdateMeInput) => updateMe(getBrowserApiClient(), input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.session.me() });
+    },
+  });
+}
+
+export function useUploadMyAvatar() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (avatar: MultipartFile) => uploadMyAvatar(getBrowserApiClient(), avatar),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.session.me() });
+    },
+  });
+}
+
+export function useDeleteMyAvatar() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => deleteMyAvatar(getBrowserApiClient()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.session.me() });
+    },
   });
 }

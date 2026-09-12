@@ -11,7 +11,8 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { color, space } from "@/theme";
+import { color, space, radius } from "@/theme";
+import { useLayout } from "@/lib/layout";
 
 /** Live keyboard height — Modals on Android ignore activity adjustResize. */
 export function useKeyboardHeight() {
@@ -57,6 +58,10 @@ export function BottomSheet({
 }) {
   const insets = useSafeAreaInsets();
   const keyboardHeight = useKeyboardHeight();
+  const { compact, landscape } = useLayout();
+  // Tablet held sideways has room to spare — dock only cramps a phone or a
+  // tablet stood upright. Landscape phones stay docked too (compact wins).
+  const centered = !compact && landscape;
 
   if (!open) return null;
 
@@ -74,7 +79,7 @@ export function BottomSheet({
   );
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible transparent animationType={centered ? "fade" : "slide"} onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: `${color.ink}99` }}>
         <Pressable
           onPress={onClose}
@@ -87,29 +92,33 @@ export function BottomSheet({
           pointerEvents="box-none"
           style={{
             flex: 1,
-            justifyContent: "flex-end",
-            // Push the docked sheet above the soft keyboard.
-            paddingBottom: keyboardHeight,
+            justifyContent: centered ? "center" : "flex-end",
+            alignItems: centered ? "center" : undefined,
+            // Push the sheet/dialog above the soft keyboard either way.
+            paddingBottom: centered ? 0 : keyboardHeight,
+            paddingHorizontal: centered ? space.lg : 0,
           }}
         >
           <View
             style={{
               backgroundColor: color.surface,
-              borderTopLeftRadius: 24,
-              borderTopRightRadius: 24,
+              borderTopLeftRadius: centered ? radius.lg : 24,
+              borderTopRightRadius: centered ? radius.lg : 24,
+              borderBottomLeftRadius: centered ? radius.lg : 0,
+              borderBottomRightRadius: centered ? radius.lg : 0,
               padding: space.lg,
-              paddingBottom: Math.max(insets.bottom, space.lg),
+              paddingBottom: centered ? space.lg : Math.max(insets.bottom, space.lg),
               width: "100%",
               maxWidth,
               alignSelf: "center",
               // Leave room for the field + actions when the keyboard is up.
-              maxHeight: keyboardHeight > 0 ? "88%" : "92%",
+              maxHeight: centered ? "88%" : keyboardHeight > 0 ? "88%" : "92%",
               // Floats up from the scrim now, same treatment as setup/unlock's cards.
               shadowColor: "#000",
-              shadowOpacity: 0.18,
-              shadowRadius: 24,
-              shadowOffset: { width: 0, height: -10 },
-              elevation: 16,
+              shadowOpacity: centered ? 0.22 : 0.18,
+              shadowRadius: centered ? 28 : 24,
+              shadowOffset: { width: 0, height: centered ? 12 : -10 },
+              elevation: centered ? 20 : 16,
             }}
           >
             {body}

@@ -2,7 +2,7 @@ import { ActivityIndicator, Image, Text, View } from "react-native";
 import { color, fontSize, space } from "@/theme";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- same asset-require pattern as setup.tsx; no *.png module declaration in this project
-const LOGO = require("../assets/logo.png");
+const LOGO = require("../assets/logo.webp");
 
 /**
  * The one full-screen loading state, everywhere a screen is waiting on its

@@ -44,6 +44,7 @@ interface SaleRow {
   location_id: string | null;
   payment_proof_local_uri: string | null;
   payment_proof_url: string | null;
+  ewallet_provider: string | null;
 }
 
 interface SaleItemRow {
@@ -94,6 +95,7 @@ function toLocalSale(row: SaleRow): LocalSale {
     syncedAt: row.synced_at,
     paymentProofLocalUri: row.payment_proof_local_uri,
     paymentProofUrl: row.payment_proof_url,
+    ewalletProvider: row.ewallet_provider,
   };
 }
 
@@ -132,6 +134,8 @@ export interface CompleteSaleInput {
   orderDiscounts?: Omit<SaleDiscount, "saleId">[];
   /** Local file path for an optional e-wallet proof photo — never required. */
   paymentProofLocalUri?: string | null;
+  /** Cashier-picked e-wallet name (or free text for "Other E-Wallet") — never required. */
+  ewalletProvider?: string | null;
 }
 
 export async function completeSale(
@@ -197,8 +201,8 @@ export async function completeSale(
          (id, user_id, total_amount, discount_amount, payment_method, status, device_id, created_at,
           customer_id, customer_name, customer_address, customer_contact,
           is_paid, fulfillment, delivery_completed, flags_pending, sync_status, company_id, location_id,
-          payment_proof_local_uri)
-       VALUES (?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'pending', ?, ?, ?)`,
+          payment_proof_local_uri, ewallet_provider)
+       VALUES (?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'pending', ?, ?, ?, ?)`,
       saleId,
       input.userId,
       total,
@@ -216,6 +220,7 @@ export async function completeSale(
       companyId,
       locationId,
       input.paymentProofLocalUri ?? null,
+      input.ewalletProvider ?? null,
     );
 
     for (const item of items) {
@@ -265,6 +270,7 @@ export async function completeSale(
     discounts: orderDiscounts,
     paymentProofLocalUri: input.paymentProofLocalUri ?? null,
     paymentProofUrl: null,
+    ewalletProvider: input.ewalletProvider ?? null,
   };
 }
 

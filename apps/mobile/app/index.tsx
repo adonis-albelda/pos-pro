@@ -2,11 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import { Redirect } from "expo-router";
 import { CompanyIntro } from "@/components/company-intro";
-import { FeatureOnboarding } from "@/components/feature-onboarding";
 import { LoadingState } from "@/components/loading-state";
 import { WaveBackdrop } from "@/components/wave-backdrop";
 import { getSyncMeta } from "@/db/meta";
-import { hasSeenFeatureOnboarding } from "@/lib/onboarding";
 import { useSession } from "@/lib/session";
 import { isEnrolled } from "@/lib/api/session";
 
@@ -17,41 +15,26 @@ type Destination =
 
 type Boot =
   | { state: "intro" }
-  | { state: "onboarding" }
   | { state: "checking" }
   | Destination;
 
-type OnboardingGate = "unknown" | "needed" | "seen";
-
 /**
- * Cold start: company intro → (first install only) feature steppers →
- * enroll / unlock / POS.
+ * Cold start: company intro → enroll / unlock / POS.
  *
- * The enrollment check runs *during* the splash hold, not after it — local
- * SQLite/SecureStore reads finish well inside COMPANY_INTRO_HOLD_MS, so by
- * the time the splash's own timer ends there's almost always already a
- * destination ready and the redirect fires immediately. That's what keeps
- * this from flashing a blank "checking" screen between splash and the next
- * route; the old version only started the check once the splash was gone.
- *
- * Feature steppers sit after the splash and only when AsyncStorage says this
- * install has never finished them — returning cashiers never see them again.
+ * Feature steppers live inside setup, right after a successful sign-in —
+ * not on this gate. The enrollment check runs *during* the splash hold so
+ * the redirect fires as soon as the intro timer ends (no blank flash).
  */
 export default function Index() {
   const { cashier } = useSession();
   const [boot, setBoot] = useState<Boot>({ state: "intro" });
   const destination = useRef<Destination | null>(null);
   const introDone = useRef(false);
-  const onboardingGate = useRef<OnboardingGate>("unknown");
 
   function advance() {
     if (!introDone.current) return;
-    if (onboardingGate.current === "unknown" || destination.current === null) {
+    if (destination.current === null) {
       setBoot({ state: "checking" });
-      return;
-    }
-    if (onboardingGate.current === "needed") {
-      setBoot({ state: "onboarding" });
       return;
     }
     setBoot(destination.current);
@@ -59,12 +42,7 @@ export default function Index() {
 
   useEffect(() => {
     async function check() {
-      const [enrolled, meta, seenOnboarding] = await Promise.all([
-        isEnrolled(),
-        getSyncMeta(),
-        hasSeenFeatureOnboarding(),
-      ]);
-      onboardingGate.current = seenOnboarding ? "seen" : "needed";
+      const [enrolled, meta] = await Promise.all([isEnrolled(), getSyncMeta()]);
       destination.current =
         !enrolled || !meta.firstPullDone
           ? { state: "needs-setup" }
@@ -82,17 +60,8 @@ export default function Index() {
     advance();
   }
 
-  function handleOnboardingDone() {
-    onboardingGate.current = "seen";
-    setBoot(destination.current ?? { state: "checking" });
-  }
-
   if (boot.state === "intro") {
     return <CompanyIntro onDone={handleIntroDone} />;
-  }
-
-  if (boot.state === "onboarding") {
-    return <FeatureOnboarding onDone={handleOnboardingDone} />;
   }
 
   if (boot.state === "checking") {

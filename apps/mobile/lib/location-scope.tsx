@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { listLocations } from "@double-a/api-client/queries";
-import type { Location } from "@double-a/shared-types";
+import { ROLES, type Location } from "@double-a/shared-types";
 import { getApiClient } from "@/lib/api/session";
 import {
   getActiveLocationId,
@@ -47,7 +47,7 @@ export function LocationScopeProvider({ children }: { children: ReactNode }) {
     setRole(nextRole);
     setLocationIdState(nextLocationId);
 
-    if (nextRole === "admin") {
+    if (nextRole === ROLES.ADMIN) {
       try {
         const rows = await listLocations(getApiClient(), {
           type: "branch",
@@ -80,7 +80,7 @@ export function LocationScopeProvider({ children }: { children: ReactNode }) {
       role,
       locationId,
       locations,
-      canSwitch: role === "admin",
+      canSwitch: role === ROLES.ADMIN,
       ready,
       error,
       refresh,

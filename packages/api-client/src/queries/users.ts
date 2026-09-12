@@ -1,4 +1,4 @@
-import type { User, UserRole } from "@double-a/shared-types";
+import { ROLES, type User, type UserRole } from "@double-a/shared-types";
 import { ApiError, type ApiClient, type JsonApiResource } from "../http";
 import { type UserAttrs, toUser } from "../mappers";
 import { appendMultipartFile, type MultipartFile } from "../multipart";
@@ -13,34 +13,32 @@ import { appendMultipartFile, type MultipartFile } from "../multipart";
 
 export interface CreateUserInput {
   name: string;
-  email: string;
+  /** Nullable — one of email/username must be set; username-only accounts sign in without email verification. */
+  email?: string | null;
   username?: string | null;
   /**
    * "superadmin" cannot be created through this endpoint — platform
    * superadmin creation lives on its own flow, not here.
    */
-  role: Extract<
-    UserRole,
-    "cashier" | "admin" | "manager" | "inventory_clerk" | "driver" | "helper" | "device"
-  >;
+  role: Extract<UserRole, "cashier" | "admin" | "manager" | "inventory_clerk" | "terminal">;
   /**
-   * Required for role "admin"/"manager"/"inventory_clerk"/"device" server-side;
-   * optional for cashier/driver/helper (random password generated if omitted).
+   * Required for role "admin"/"manager"/"inventory_clerk"/"terminal" server-side;
+   * optional for cashier (random password generated if omitted).
    */
   password?: string | null;
   pin?: string | null;
   canSell?: boolean;
   isActive?: boolean;
-  /** Required for role "device" — branch the terminal sells from. */
+  /** Required for role "terminal" — branch the terminal sells from. */
   locationId?: string | null;
 }
 
 function toCreatePayload(input: CreateUserInput): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     name: input.name,
-    email: input.email,
     role: input.role,
   };
+  if (input.email !== undefined) payload.email = input.email;
   if (input.username !== undefined) payload.username = input.username;
   if (input.password !== undefined) payload.password = input.password;
   if (input.pin !== undefined) payload.pin = input.pin;
@@ -52,15 +50,12 @@ function toCreatePayload(input: CreateUserInput): Record<string, unknown> {
 
 export interface UpdateUserInput {
   name?: string;
-  email?: string;
+  email?: string | null;
   username?: string | null;
-  role?: Extract<
-    UserRole,
-    "cashier" | "admin" | "manager" | "inventory_clerk" | "driver" | "helper" | "device"
-  >;
+  role?: Extract<UserRole, "cashier" | "admin" | "manager" | "inventory_clerk" | "terminal">;
   canSell?: boolean;
   isActive?: boolean;
-  /** Device/terminal only — rebind which branch the POS sells from. */
+  /** Terminal only — rebind which branch the POS sells from. */
   locationId?: string | null;
 }
 
@@ -96,7 +91,7 @@ export async function listUsers(
 /** Who can unlock a terminal. Same filter the old client-side listCashiers used. */
 export async function listCashiers(client: ApiClient): Promise<User[]> {
   const users = await listUsers(client);
-  return users.filter((user) => user.role === "cashier" || user.role === "admin");
+  return users.filter((user) => user.role === ROLES.CASHIER || user.role === ROLES.ADMIN);
 }
 
 export async function getUser(client: ApiClient, id: string): Promise<User | null> {
@@ -170,4 +165,18 @@ export async function countUsers(client: ApiClient): Promise<number> {
 export async function sendUserEmailVerification(client: ApiClient, id: string): Promise<string> {
   const { message } = await client.post<{ message: string }>(`/users/${id}/email/verification-notification`);
   return message;
+}
+
+export interface UserRoleOption {
+  name: Extract<UserRole, "cashier" | "admin" | "manager" | "inventory_clerk" | "terminal">;
+  label: string;
+}
+
+/**
+ * Roles a shop owner may assign — read live off the Spatie roles table
+ * (RolesAndPermissionsSeeder populates it), not a hardcoded frontend list.
+ */
+export async function listUserRoles(client: ApiClient): Promise<UserRoleOption[]> {
+  const { data } = await client.get<{ data: UserRoleOption[] }>("/users/roles");
+  return data;
 }

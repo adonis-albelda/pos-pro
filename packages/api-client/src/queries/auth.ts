@@ -1,6 +1,7 @@
 import type { User } from "@double-a/shared-types";
 import type { ApiClient, JsonApiOne } from "../http";
 import { type UserAttrs, toUser } from "../mappers";
+import { appendMultipartFile, type MultipartFile } from "../multipart";
 import type { AuthTokenMeta } from "./pos";
 
 /**
@@ -14,6 +15,7 @@ import type { AuthTokenMeta } from "./pos";
  */
 
 export interface LoginInput {
+  /** Email address, or a username — LoginController only resolves the username path for an admin/terminal account. */
   email: string;
   password: string;
   /** Label for the issued Sanctum token — shows up in `listTokens`. */
@@ -61,6 +63,39 @@ export async function login(client: ApiClient, input: LoginInput): Promise<Login
 /** The user behind the current bearer token. */
 export async function me(client: ApiClient): Promise<User> {
   const { data } = await client.get<JsonApiOne<UserAttrs>>("/auth/me");
+  return toUser(data);
+}
+
+export interface UpdateMeInput {
+  name?: string;
+  /** Nullable — clearing it is allowed as long as username stays set. */
+  email?: string | null;
+  /** Nullable — clearing it is allowed as long as email stays set. Cannot look like an email address. */
+  username?: string | null;
+}
+
+/**
+ * Self-service name/email/username edit — gated by the auth:me:update token
+ * ability, not UserPolicy::update, so any signed-in role may call this on
+ * itself. Changing email resets verification server-side; role/password/
+ * can_sell/is_active/location_id stay on the owner-only updateUser() call.
+ */
+export async function updateMe(client: ApiClient, input: UpdateMeInput): Promise<User> {
+  const { data } = await client.patch<JsonApiOne<UserAttrs>>("/auth/me", input);
+  return toUser(data);
+}
+
+/** Self-service avatar upload — same S3 flow as uploadUserAvatar(), scoped to the caller's own account. */
+export async function uploadMyAvatar(client: ApiClient, avatar: MultipartFile): Promise<User> {
+  const formData = new FormData();
+  await appendMultipartFile(formData, "avatar", avatar);
+  const { data } = await client.postMultipart<JsonApiOne<UserAttrs>>("/auth/me/avatar", formData);
+  return toUser(data);
+}
+
+/** Self-service avatar removal. */
+export async function deleteMyAvatar(client: ApiClient): Promise<User> {
+  const { data } = await client.delete<JsonApiOne<UserAttrs>>("/auth/me/avatar");
   return toUser(data);
 }
 
@@ -181,6 +216,26 @@ export async function forgotPassword(client: ApiClient, email: string): Promise<
   await client.post<{ message: string }>("/auth/password/forgot", { email }, { idempotent: true });
 }
 
+export interface RegisterInput {
+  email: string;
+  password: string;
+  businessName: string;
+}
+
+/**
+ * "New to POSPro?" self-signup — always provisions a demo account (see
+ * RegisterDemoAccountAction). The account cannot sign in until its email is
+ * verified; no token comes back here, unlike login(). Idempotency-Key keeps
+ * a doubled tap from provisioning two companies.
+ */
+export async function registerDemoAccount(client: ApiClient, input: RegisterInput): Promise<void> {
+  await client.post<{ message: string }>(
+    "/auth/register",
+    { email: input.email, password: input.password, business_name: input.businessName },
+    { idempotent: true },
+  );
+}
+
 export interface ResetPasswordInput {
   token: string;
   email: string;
@@ -208,6 +263,9 @@ export interface VerifyEmailInput {
 export interface VerifyEmailResult {
   message: string;
   alreadyVerified: boolean;
+  /** Null for an account with no company yet — should not happen for a demo signup, but the link is unauthenticated so stay defensive. */
+  businessName: string | null;
+  email: string | null;
 }
 
 /**
@@ -217,15 +275,19 @@ export interface VerifyEmailResult {
  * replays them onto the real signed API route.
  */
 export async function verifyEmail(client: ApiClient, input: VerifyEmailInput): Promise<VerifyEmailResult> {
-  const body = await client.get<{ message: string; already_verified?: boolean }>(
-    `/auth/email/verify/${input.id}/${input.hash}`,
-    {
-      expires: input.expires,
-      signature: input.signature,
-    },
-  );
+  const body = await client.get<{
+    message: string;
+    already_verified?: boolean;
+    business_name?: string | null;
+    email?: string | null;
+  }>(`/auth/email/verify/${input.id}/${input.hash}`, {
+    expires: input.expires,
+    signature: input.signature,
+  });
   return {
     message: body.message,
     alreadyVerified: body.already_verified === true,
+    businessName: body.business_name ?? null,
+    email: body.email ?? null,
   };
 }

@@ -21,9 +21,10 @@ import {
   deleteTerminal,
   listTerminals,
   setUserPin,
+  uploadUserAvatar,
   type UpsertTerminalInput,
 } from "@double-a/api-client/queries";
-import type { Terminal, User, UserRole } from "@double-a/shared-types";
+import { ROLES, type Terminal, type User, type UserRole } from "@double-a/shared-types";
 import { matchesQuery, paginateItems, parseListQuery } from "@/lib/list-query";
 import {
   Badge,
@@ -32,6 +33,7 @@ import {
   CardHeader,
   EmptyState,
   Field,
+  FileInput,
   IconButton,
   Input,
   Select,
@@ -45,36 +47,17 @@ import { ConfirmDialog, Sheet } from "@/components/overlay";
 import { PasswordInput } from "@/components/password-input";
 import { Pagination, SearchField } from "@/components/record-list";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
+import { isImageFile, NOT_AN_IMAGE_MESSAGE } from "@/lib/is-image-file";
 import { useCurrentUser } from "@/lib/query/session";
 import { useLocations } from "@/lib/query/locations";
-import { useCreateUser, useDeleteUser, useUpdateUser, useUser, useUsers } from "@/lib/query/users";
-
-const ROLE_LABEL: Record<string, string> = {
-  admin: "Admin",
-  manager: "Manager",
-  cashier: "Cashier",
-  inventory_clerk: "Inventory Clerk",
-  driver: "Driver",
-  helper: "Helper",
-  device: "Terminal (legacy)",
-};
-
-const CREATE_ROLES: { value: Extract<UserRole, "admin" | "manager" | "cashier" | "inventory_clerk">; label: string }[] = [
-  { value: "admin", label: "Admin" },
-  { value: "manager", label: "Manager" },
-  { value: "cashier", label: "Cashier" },
-  { value: "inventory_clerk", label: "Inventory Clerk" },
-];
-
-const EDIT_ROLES: { value: Extract<UserRole, "admin" | "manager" | "cashier" | "inventory_clerk" | "device" | "driver" | "helper">; label: string }[] = [
-  { value: "admin", label: "Admin" },
-  { value: "manager", label: "Manager" },
-  { value: "cashier", label: "Cashier" },
-  { value: "inventory_clerk", label: "Inventory Clerk" },
-  { value: "device", label: "Terminal (legacy device user)" },
-  { value: "driver", label: "Driver" },
-  { value: "helper", label: "Helper" },
-];
+import {
+  useCreateUser,
+  useDeleteUser,
+  useUpdateUser,
+  useUser,
+  useUserRoles,
+  useUsers,
+} from "@/lib/query/users";
 
 function errorMessage(error: unknown): string {
   if (error instanceof ApiError) {
@@ -104,6 +87,10 @@ export default function UsersPage() {
   });
   const { data: currentUser } = useCurrentUser();
   const usersQuery = useUsers({ includeInactive: true });
+  const rolesQuery = useUserRoles();
+  const roleLabel: Record<string, string> = Object.fromEntries(
+    (rolesQuery.data ?? []).map((role) => [role.name, role.label]),
+  );
   const deleteUser = useDeleteUser();
 
   const [creating, setCreating] = useState(false);
@@ -212,14 +199,14 @@ export default function UsersPage() {
                     </Td>
                     <Td>
                       <div className="min-w-0">
-                        <p className="truncate text-body text-ink">{user.email}</p>
+                        <p className="truncate text-body text-ink">{user.email ?? "—"}</p>
                         {user.username ? (
                           <p className="truncate text-caption text-ink-muted">@{user.username}</p>
                         ) : null}
                       </div>
                     </Td>
                     <Td>
-                      <Badge tone="neutral">{ROLE_LABEL[user.role] ?? user.role}</Badge>
+                      <Badge tone="neutral">{roleLabel[user.role] ?? user.role}</Badge>
                     </Td>
                     <Td>
                       <Badge tone={user.isActive ? "success" : "danger"}>
@@ -277,25 +264,71 @@ export default function UsersPage() {
 
 function CreateUserSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const createUser = useCreateUser();
+  const rolesQuery = useUserRoles();
+  const roles = rolesQuery.data ?? [];
+  const locationsQuery = useLocations({ type: "branch" });
+  const branches = locationsQuery.data ?? [];
+  const [role, setRole] = useState<UserRole>("cashier");
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+    };
+  }, [avatarPreview]);
+
+  function onAvatarChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0];
+    if (file && !isImageFile(file)) {
+      toast.error(NOT_AN_IMAGE_MESSAGE);
+      event.currentTarget.value = "";
+      return;
+    }
+    setAvatarFile(file ?? null);
+    setAvatarPreview(file ? URL.createObjectURL(file) : null);
+  }
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const name = String(form.get("name") ?? "").trim();
-    const email = String(form.get("email") ?? "").trim();
+    const email = String(form.get("email") ?? "").trim() || null;
     const username = String(form.get("username") ?? "").trim() || null;
-    const role = String(form.get("role") ?? "cashier") as (typeof CREATE_ROLES)[number]["value"];
+    const role = String(form.get("role") ?? "cashier") as Extract<
+      UserRole,
+      "cashier" | "admin" | "manager" | "inventory_clerk" | "terminal"
+    >;
     const password = String(form.get("password") ?? "");
     const pin = String(form.get("pin") ?? "").trim() || null;
     const isActive = form.get("is_active") === "on";
+    const locationId = String(form.get("location_id") ?? "").trim() || null;
+    const code = String(form.get("code") ?? "").trim();
+    const deviceIdentifier = String(form.get("device_identifier") ?? "").trim() || null;
 
-    if (!name || !email) {
-      toast.error("Name and email are required.");
+    if (!name) {
+      toast.error("Name is required.");
       return;
     }
-    if ((role === "admin" || role === "manager" || role === "inventory_clerk") && password.length < 8) {
+    if (!email && !username) {
+      toast.error("Set an email or a username — an account needs at least one.");
+      return;
+    }
+    if (username?.includes("@")) {
+      toast.error("Username cannot look like an email address.");
+      return;
+    }
+    if ((role === ROLES.ADMIN || role === ROLES.MANAGER || role === ROLES.INVENTORY_CLERK || role === ROLES.TERMINAL) && password.length < 8) {
       toast.error("Password must be at least 8 characters.");
+      return;
+    }
+    if (role === ROLES.TERMINAL && !locationId) {
+      toast.error("Pick which branch this terminal sells from.");
+      return;
+    }
+    if (role === ROLES.TERMINAL && !code) {
+      toast.error("Give this terminal a code.");
       return;
     }
 
@@ -308,14 +341,31 @@ function CreateUserSheet({ open, onClose }: { open: boolean; onClose: () => void
         role,
         password: password || null,
         isActive,
-        canSell: role === "cashier" || role === "admin" || role === "manager",
+        canSell: role === ROLES.CASHIER || role === ROLES.ADMIN || role === ROLES.MANAGER,
         pin: null,
+        locationId: role === ROLES.TERMINAL ? locationId : undefined,
       });
       if (pin) {
         await setUserPin(getBrowserApiClient(), user.id, pin);
       }
+      if (avatarFile) {
+        await uploadUserAvatar(getBrowserApiClient(), user.id, avatarFile);
+      }
+      if (role === ROLES.TERMINAL) {
+        await createTerminal(getBrowserApiClient(), {
+          userId: user.id,
+          name,
+          code,
+          deviceIdentifier,
+          locationId,
+          status: "active",
+        });
+      }
       toast.success("User created.");
       (event.target as HTMLFormElement).reset();
+      setRole("cashier");
+      setAvatarFile(null);
+      setAvatarPreview(null);
       onClose();
     } catch (error) {
       toast.error(errorMessage(error));
@@ -343,30 +393,80 @@ function CreateUserSheet({ open, onClose }: { open: boolean; onClose: () => void
       }
     >
       <form id="new-user-form" onSubmit={onSubmit} className="space-y-4">
+        <div className="flex items-center gap-3">
+          <span className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-paper">
+            {avatarPreview ? (
+              <img src={avatarPreview} alt="" className="size-full object-cover" />
+            ) : (
+              <UserPlus size={20} strokeWidth={2} className="text-ink-muted" />
+            )}
+          </span>
+          <div className="min-w-0 flex-1">
+            <Field label="Photo" hint="PNG, JPEG or WebP, under 1 MB." required={false}>
+              <FileInput name="avatar" accept="image/png,image/jpeg,image/webp" onChange={onAvatarChange} />
+            </Field>
+          </div>
+        </div>
         <Field label="Full name" required>
           <Input name="name" required autoComplete="name" />
         </Field>
-        <Field label="Email" required>
-          <Input name="email" type="email" required autoComplete="email" />
+        <Field label="Email" hint="Optional — sign-in by email requires it be verified.">
+          <Input name="email" type="email" autoComplete="email" />
         </Field>
-        <Field label="Username" hint="Optional login alias (letters, numbers, dash, underscore).">
+        <Field label="Username" hint="Set one of email/username. Cannot look like an email address.">
           <Input name="username" autoComplete="username" />
         </Field>
         <Field label="Role" required>
-          <Select name="role" defaultValue="cashier">
-            {CREATE_ROLES.map((role) => (
-              <option key={role.value} value={role.value}>
-                {role.label}
+          <Select
+            name="role"
+            value={role}
+            onChange={(event) => setRole(event.target.value as UserRole)}
+          >
+            {roles.map((r) => (
+              <option key={r.name} value={r.name}>
+                {r.label}
               </option>
             ))}
           </Select>
         </Field>
-        <Field label="Password" hint="Required for Admin, Manager, Inventory Clerk.">
+        {role === ROLES.TERMINAL ? (
+          <>
+            <Field label="Code" hint="Short till code, e.g. TILL-01." required>
+              <Input name="code" required placeholder="TILL-01" />
+            </Field>
+            <Field label="Device identifier" hint="Optional hardware id.">
+              <Input name="device_identifier" placeholder="Optional hardware id" />
+            </Field>
+            <Field label="Branch" hint="Stock for this terminal comes from this branch only." required>
+              <Select name="location_id" defaultValue={branches[0]?.id ?? ""}>
+                {branches.length === 0 ? (
+                  <option value="">No branches yet — add one under Locations</option>
+                ) : (
+                  branches.map((branch) => (
+                    <option key={branch.id} value={branch.id}>
+                      {branch.name}
+                    </option>
+                  ))
+                )}
+              </Select>
+            </Field>
+          </>
+        ) : null}
+        <Field
+          label="Password"
+          hint={
+            role === ROLES.TERMINAL
+              ? "Enter this on the POS app's setup screen to connect the terminal."
+              : "Required for Admin, Manager, Inventory Clerk."
+          }
+        >
           <PasswordInput name="password" autoComplete="new-password" />
         </Field>
-        <Field label="PIN" hint="Optional 4–6 digits for terminal unlock.">
-          <Input name="pin" inputMode="numeric" pattern="[0-9]{4,6}" maxLength={6} />
-        </Field>
+        {role !== ROLES.TERMINAL ? (
+          <Field label="PIN" hint="Optional 4–6 digits for terminal unlock.">
+            <Input name="pin" inputMode="numeric" pattern="[0-9]{4,6}" maxLength={6} />
+          </Field>
+        ) : null}
         <label className="flex items-center gap-2 text-body text-ink">
           <input type="checkbox" name="is_active" defaultChecked className="size-4 accent-primary" />
           Active
@@ -379,10 +479,37 @@ function CreateUserSheet({ open, onClose }: { open: boolean; onClose: () => void
 function EditUserSheet({ userId, onClose }: { userId: string | null; onClose: () => void }) {
   const userQuery = useUser(userId);
   const updateUser = useUpdateUser();
+  const rolesQuery = useUserRoles();
+  const roles = rolesQuery.data ?? [];
   const locationsQuery = useLocations({ includeInactive: false });
   const [pending, setPending] = useState(false);
   const [terminals, setTerminals] = useState<Terminal[]>([]);
   const [terminalsLoading, setTerminalsLoading] = useState(true);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+
+  useEffect(() => {
+    // A new user was picked — drop the previous one's unsent preview/file.
+    setAvatarFile(null);
+    setAvatarPreview(null);
+  }, [userId]);
+
+  useEffect(() => {
+    return () => {
+      if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+    };
+  }, [avatarPreview]);
+
+  function onAvatarChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0];
+    if (file && !isImageFile(file)) {
+      toast.error(NOT_AN_IMAGE_MESSAGE);
+      event.currentTarget.value = "";
+      return;
+    }
+    setAvatarFile(file ?? null);
+    setAvatarPreview(file ? URL.createObjectURL(file) : null);
+  }
 
   useEffect(() => {
     if (!userId) return;
@@ -410,7 +537,10 @@ function EditUserSheet({ userId, onClose }: { userId: string | null; onClose: ()
     const name = String(form.get("name") ?? "").trim();
     const email = String(form.get("email") ?? "").trim();
     const username = String(form.get("username") ?? "").trim() || null;
-    const role = String(form.get("role") ?? userQuery.data.role) as (typeof EDIT_ROLES)[number]["value"];
+    const role = String(form.get("role") ?? userQuery.data.role) as Extract<
+      UserRole,
+      "cashier" | "admin" | "manager" | "inventory_clerk" | "terminal"
+    >;
     const pin = String(form.get("pin") ?? "").trim();
     const isActive = form.get("is_active") === "on";
 
@@ -418,6 +548,7 @@ function EditUserSheet({ userId, onClose }: { userId: string | null; onClose: ()
     try {
       await updateUser.mutateAsync({ id: userId, patch: { name, email, username, role, isActive } });
       if (pin) await setUserPin(getBrowserApiClient(), userId, pin);
+      if (avatarFile) await uploadUserAvatar(getBrowserApiClient(), userId, avatarFile);
       toast.success("User saved.");
       onClose();
     } catch (error) {
@@ -494,19 +625,35 @@ function EditUserSheet({ userId, onClose }: { userId: string | null; onClose: ()
       ) : (
         <div className="space-y-6">
           <form id="edit-user-form" onSubmit={onSubmit} className="space-y-4">
+            <div className="flex items-center gap-3">
+              <span className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-paper">
+                {avatarPreview ?? user.avatarUrl ? (
+                  <img src={avatarPreview ?? user.avatarUrl ?? ""} alt="" className="size-full object-cover" />
+                ) : (
+                  <span className="text-body-lg font-semibold text-ink-muted">
+                    {user.name.slice(0, 1).toUpperCase()}
+                  </span>
+                )}
+              </span>
+              <div className="min-w-0 flex-1">
+                <Field label="Photo" hint="PNG, JPEG or WebP, under 1 MB." required={false}>
+                  <FileInput name="avatar" accept="image/png,image/jpeg,image/webp" onChange={onAvatarChange} />
+                </Field>
+              </div>
+            </div>
             <Field label="Full name" required>
               <Input name="name" defaultValue={user.name} required />
             </Field>
-            <Field label="Email" required>
-              <Input name="email" type="email" defaultValue={user.email} required />
+            <Field label="Email" hint="Optional — sign-in by email requires it be verified.">
+              <Input name="email" type="email" defaultValue={user.email ?? ""} />
             </Field>
-            <Field label="Username">
+            <Field label="Username" hint="Cannot look like an email address.">
               <Input name="username" defaultValue={user.username ?? ""} />
             </Field>
             <Field label="Role" required>
               <Select name="role" defaultValue={user.role}>
-                {EDIT_ROLES.map((role) => (
-                  <option key={role.value} value={role.value}>
+                {roles.map((role) => (
+                  <option key={role.name} value={role.name}>
                     {role.label}
                   </option>
                 ))}

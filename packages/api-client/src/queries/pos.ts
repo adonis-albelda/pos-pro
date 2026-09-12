@@ -239,6 +239,7 @@ function toPushSalePayload(sale: SaleWithItems): Record<string, unknown> {
     total_amount: sale.totalAmount,
     discount_amount: sale.discountAmount,
     payment_method: sale.paymentMethod,
+    ewallet_provider: sale.ewalletProvider ?? undefined,
     status: sale.status,
     device_id: sale.deviceId,
     customer_name: sale.customerName,

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { Route } from "next";
 import { useRouter } from "next/navigation";
-import { Camera, Copy, Eye, EyeOff, Monitor, RotateCcw, Trash2 } from "lucide-react";
+import { Camera, Copy, Eye, EyeOff, GitMerge, Monitor, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ApiError } from "@double-a/api-client";
 import type { ProductVariantListRow } from "@double-a/api-client/queries";
@@ -16,6 +16,7 @@ import {
   useRestoreProduct,
   useSetProductActive,
 } from "@/lib/query/products";
+import { MoveIntoProductDialog } from "./move-into-product-dialog";
 import { ProductRowActionsMenu } from "./product-row-actions-menu";
 
 /** "Red / L" — blank for a product's only/default variant, which has no combination of its own. */
@@ -75,6 +76,7 @@ export function ProductVariantsTable({
   const router = useRouter();
   const [hiding, setHiding] = useState<ProductVariantListRow | null>(null);
   const [deleting, setDeleting] = useState<ProductVariantListRow | null>(null);
+  const [moving, setMoving] = useState<ProductVariantListRow | null>(null);
   const setActive = useSetProductActive();
   const cloneProduct = useCloneProduct();
   const deleteProduct = useDeleteProduct();
@@ -247,6 +249,12 @@ export function ProductVariantsTable({
                                 onSelect: () => clone(variant),
                               },
                               {
+                                id: "move-into",
+                                label: "Move into product…",
+                                icon: GitMerge,
+                                onSelect: () => setMoving(variant),
+                              },
+                              {
                                 id: "delete",
                                 label: "Delete product",
                                 icon: Trash2,
@@ -290,6 +298,22 @@ export function ProductVariantsTable({
             : ""
         }
         confirmLabel="Delete product"
+      />
+
+      <MoveIntoProductDialog
+        open={moving !== null}
+        onClose={() => setMoving(null)}
+        source={
+          moving
+            ? {
+                productId: moving.productId,
+                productName: moving.productName,
+                variantId: moving.id,
+                stockQuantity: moving.stockQuantity,
+                price: moving.price,
+              }
+            : null
+        }
       />
     </>
   );

@@ -340,6 +340,7 @@ export async function updateProductVariant(
     sku: string | null;
     barcode: string | null;
     price: number;
+    costPrice: number;
     pricingStrategy: PricingStrategy;
     unitId: string | null;
     reorderPoint: number;
@@ -354,6 +355,7 @@ export async function updateProductVariant(
   if (patch.sku !== undefined) payload.sku = patch.sku;
   if (patch.barcode !== undefined) payload.barcode = patch.barcode;
   if (patch.price !== undefined) payload.price = patch.price;
+  if (patch.costPrice !== undefined) payload.cost_price = patch.costPrice;
   if (patch.pricingStrategy !== undefined) payload.pricing_strategy = patch.pricingStrategy;
   if (patch.unitId !== undefined) payload.unit_id = patch.unitId;
   if (patch.reorderPoint !== undefined) payload.reorder_point = patch.reorderPoint;

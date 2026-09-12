@@ -342,6 +342,7 @@ export const NAV_SECTIONS: NavSection[] = [
             icon: CalendarClock,
             blurb: "Schedules, clock-in/out, POS access",
             tone: "accent",
+            featureKey: "attendance",
             permissionKey: "people.attendance.view",
           },
           {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
+import { ROLES } from "@double-a/shared-types";
 import { resolveDayWindow } from "@/lib/date-range";
 import { isInitialQueryLoad } from "@/lib/list-query";
 import { Card, StatCardSkeleton, TableSkeleton } from "@/components/ui";
@@ -89,7 +90,7 @@ export function SalesPageClient() {
             count: 0,
           }
         }
-        users={usersQuery.data ?? []}
+        users={(usersQuery.data ?? []).filter((user) => user.role !== ROLES.TERMINAL)}
         fromDay={dayWindow.fromDay}
         toDay={dayWindow.toDay}
       />

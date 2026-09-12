@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePathname, useRouter } from "expo-router";
+import { ROLES } from "@double-a/shared-types";
 import {
   Building2,
   CalendarClock,
@@ -70,7 +71,7 @@ const DRAWER_MAX_WIDTH = 360;
 const ANIM_MS = 220;
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- same asset-require pattern as setup.tsx/company-intro.tsx; no *.png module declaration in this project
-const LOGO = require("../assets/logo.png");
+const LOGO = require("../assets/logo.webp");
 
 /**
  * Account panel opened from the store logo. Nav tabs, shift identity, and
@@ -95,7 +96,7 @@ export function AccountDrawer({
   // showing it no matter which cashier is on shift.
   const { role: enrolledRole } = useLocationScope();
   const canOpenAdminDashboard =
-    enrolledRole === "admin" || cashier?.role === "admin" || cashier?.role === "manager";
+    enrolledRole === ROLES.ADMIN || cashier?.role === ROLES.ADMIN || cashier?.role === ROLES.MANAGER;
   const { style: priceInquiryStyle, open: openPriceInquiryModal } = usePriceInquiry();
   const { compact } = useLayout();
   const { width } = useWindowDimensions();
@@ -319,13 +320,13 @@ export function AccountDrawer({
                   {cashier.name}
                 </Text>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: space.xs }}>
-                  {cashier.role === "admin" ? (
+                  {cashier.role === ROLES.ADMIN ? (
                     <Shield size={14} color={color.primary} strokeWidth={2} />
                   ) : (
                     <UserRound size={14} color={color.primary} strokeWidth={2} />
                   )}
                   <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
-                    {cashier.role === "admin" ? "Admin" : "Cashier"}
+                    {cashier.role === ROLES.ADMIN ? "Admin" : "Cashier"}
                   </Text>
                 </View>
                 {cashier.email ? (
@@ -380,7 +381,7 @@ export function AccountDrawer({
             Version {APP_VERSION}
           </Text>
           <Text style={{ fontSize: fontSize.caption, color: color.inkMuted, textAlign: "center" }}>
-            Copyright © 2026 PROPos - All Rights Reserved.
+            Copyright © 2026 POSPro - All Rights Reserved.
           </Text>
           </ScrollView>
         </Animated.View>

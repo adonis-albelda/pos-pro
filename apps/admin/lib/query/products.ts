@@ -17,6 +17,7 @@ import {
   listProductLabelsPage,
   listProductsPage,
   listProductVariantsPage,
+  moveProductInto,
   restoreProduct,
   setBundleItems,
   setProductActive,
@@ -173,6 +174,28 @@ export function useCloneProduct() {
     mutationFn: (id: string) => cloneProduct(getBrowserApiClient(), id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
+    },
+  });
+}
+
+export function useMoveProductInto() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      sourceProductId,
+      ...input
+    }: {
+      sourceProductId: string;
+      targetProductId: string;
+      variantId?: string | null;
+      attributeValueIds?: string[];
+      mergeIntoVariantId?: string | null;
+      mergeStock?: boolean;
+      price?: number | null;
+    }) => moveProductInto(getBrowserApiClient(), sourceProductId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.attributes.all });
     },
   });
 }

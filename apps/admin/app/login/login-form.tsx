@@ -5,6 +5,7 @@ import { useMutation } from "@tanstack/react-query";
 import { KeyRound, LogIn, Lock, Mail, ShieldCheck } from "lucide-react";
 import { ApiError } from "@double-a/api-client";
 import { login } from "@double-a/api-client/queries";
+import { ROLES } from "@double-a/shared-types";
 import { Button, ErrorNote, Field, Input } from "@/components/ui";
 import { PasswordInput } from "@/components/password-input";
 import { getBrowserBareClient, startBrowserSession } from "@/lib/api/browser-client";
@@ -27,11 +28,11 @@ export function LoginForm({ next }: { next: string }) {
       return login(getBrowserBareClient(), { ...input, deviceName: "admin-web" });
     },
     onSuccess: ({ user, token, expiresAt }) => {
-      if (user.role !== "admin" && user.role !== "superadmin") {
+      if (user.role !== ROLES.ADMIN && user.role !== ROLES.SUPERADMIN) {
         setError("This account is not an active admin. Ask an owner to grant access.");
         return;
       }
-      if (user.role === "admin" && user.companyIsActive === false) {
+      if (user.role === ROLES.ADMIN && user.companyIsActive === false) {
         setError("This shop account is disabled. Contact the platform operator.");
         return;
       }
@@ -43,7 +44,7 @@ export function LoginForm({ next }: { next: string }) {
           ? "/enroll-mfa"
           : user.mustChangePassword
             ? "/change-password"
-            : user.role === "superadmin"
+            : user.role === ROLES.SUPERADMIN
               ? next.startsWith("/platform")
                 ? next
                 : "/platform"

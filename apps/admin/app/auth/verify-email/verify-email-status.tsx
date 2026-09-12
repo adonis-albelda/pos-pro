@@ -1,13 +1,38 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
-import { CheckCircle2, Loader2, TriangleAlert } from "lucide-react";
+import { CheckCircle2, Loader2, Smartphone, TriangleAlert } from "lucide-react";
 import { ApiError } from "@double-a/api-client";
-import { verifyEmail } from "@double-a/api-client/queries";
+import { verifyEmail, type VerifyEmailResult } from "@double-a/api-client/queries";
 import { getBrowserBareClient } from "@/lib/api/browser-client";
 
 type Status = "verifying" | "success" | "already" | "error";
+
+/** Same wording either way — a fresh verify and a re-clicked link both end with the account ready to use. */
+function VerifiedPanel({ result }: { result: VerifyEmailResult }) {
+  return (
+    <div className="flex flex-col items-center gap-3 py-4 text-center">
+      <CheckCircle2 size={32} strokeWidth={2} className="text-success" />
+      <h2 className="text-heading-lg font-bold text-ink">Email verified successfully</h2>
+      {result.businessName ? (
+        <div className="w-full rounded-sm border border-border/60 bg-paper px-4 py-3">
+          <p className="text-caption text-ink-muted">Business</p>
+          <p className="text-body font-semibold text-ink">{result.businessName}</p>
+          {result.email ? <p className="text-caption text-ink-muted">{result.email}</p> : null}
+        </div>
+      ) : null}
+      <div className="mt-1 flex w-full flex-col items-center gap-2 rounded-sm bg-primary-soft px-4 py-3">
+        <Smartphone size={22} strokeWidth={2} className="text-primary" />
+        <p className="text-body font-medium text-ink">
+          Please check the POSPro mobile app to continue using it.
+        </p>
+        <p className="text-caption text-ink-muted">
+          The app was waiting on this — it signs you in on its own now that your email is verified.
+        </p>
+      </div>
+    </div>
+  );
+}
 
 export function VerifyEmailStatus({
   id,
@@ -21,6 +46,7 @@ export function VerifyEmailStatus({
   signature?: string;
 }) {
   const [status, setStatus] = useState<Status>("verifying");
+  const [result, setResult] = useState<VerifyEmailResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -32,9 +58,10 @@ export function VerifyEmailStatus({
 
     let cancelled = false;
     void verifyEmail(getBrowserBareClient(), { id, hash, expires, signature })
-      .then((result) => {
+      .then((verified) => {
         if (cancelled) return;
-        setStatus(result.alreadyVerified ? "already" : "success");
+        setResult(verified);
+        setStatus(verified.alreadyVerified ? "already" : "success");
       })
       .catch((caught: unknown) => {
         if (cancelled) return;
@@ -60,38 +87,8 @@ export function VerifyEmailStatus({
     );
   }
 
-  if (status === "success") {
-    return (
-      <div className="flex flex-col items-center gap-3 py-4 text-center">
-        <CheckCircle2 size={32} strokeWidth={2} className="text-success" />
-        <h2 className="text-heading-lg font-bold text-ink">Email verified</h2>
-        <p className="text-body text-ink-muted">Your account is ready. You can sign in now.</p>
-        <Link
-          href="/login"
-          className="mt-2 inline-flex h-10 items-center justify-center rounded-sm bg-primary px-4 text-body font-medium text-white transition-colors hover:bg-primary/90"
-        >
-          Go to sign in
-        </Link>
-      </div>
-    );
-  }
-
-  if (status === "already") {
-    return (
-      <div className="flex flex-col items-center gap-3 py-4 text-center">
-        <CheckCircle2 size={32} strokeWidth={2} className="text-primary" />
-        <h2 className="text-heading-lg font-bold text-ink">Email already verified</h2>
-        <p className="text-body text-ink-muted">
-          This link was already used. Your account is ready — sign in normally.
-        </p>
-        <Link
-          href="/login"
-          className="mt-2 inline-flex h-10 items-center justify-center rounded-sm bg-primary px-4 text-body font-medium text-white transition-colors hover:bg-primary/90"
-        >
-          Go to sign in
-        </Link>
-      </div>
-    );
+  if (status === "success" || status === "already") {
+    return result ? <VerifiedPanel result={result} /> : null;
   }
 
   return (

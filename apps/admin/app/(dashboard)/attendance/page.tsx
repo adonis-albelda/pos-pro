@@ -22,6 +22,7 @@ import {
   DAY_OF_WEEK_LABELS,
   formatMinutes,
   formatScheduleTime,
+  ROLES,
   type AttendanceRecord,
   type AttendanceStatus,
   type ScheduleAssignment,
@@ -481,7 +482,7 @@ function DayRow({
       <tr>
         <Td colSpan={4}>
           <form
-            className="flex flex-wrap items-end gap-2 py-1"
+            className="flex flex-col gap-3 py-1"
             onSubmit={(event) => {
               event.preventDefault();
               const form = new FormData(event.currentTarget);
@@ -507,28 +508,32 @@ function DayRow({
               }
             }}
           >
-            <Field label="Schedule">
-              <Select name="work_schedule_id" defaultValue={assignment?.workScheduleId ?? ""}>
-                <option value="">Rest day</option>
-                {schedules.map((schedule) => (
-                  <option key={schedule.id} value={schedule.id}>
-                    {schedule.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Effective from" required>
-              <Input type="date" name="effective_from" defaultValue={assignment?.effectiveFrom ?? ""} required />
-            </Field>
-            <Field label="Effective to" hint="Leave blank for open-ended">
-              <Input type="date" name="effective_to" defaultValue={assignment?.effectiveTo ?? ""} />
-            </Field>
-            <Button type="submit" size="sm" loading={create.isPending || update.isPending}>
-              Save
-            </Button>
-            <Button type="button" variant="secondary" size="sm" onClick={() => setEditing(false)}>
-              Cancel
-            </Button>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Field label="Schedule">
+                <Select name="work_schedule_id" defaultValue={assignment?.workScheduleId ?? ""}>
+                  <option value="">Rest day</option>
+                  {schedules.map((schedule) => (
+                    <option key={schedule.id} value={schedule.id}>
+                      {schedule.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Effective from" required>
+                <Input type="date" name="effective_from" defaultValue={assignment?.effectiveFrom ?? ""} required />
+              </Field>
+              <Field label="Effective to" hint="Leave blank for open-ended">
+                <Input type="date" name="effective_to" defaultValue={assignment?.effectiveTo ?? ""} />
+              </Field>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="secondary" size="sm" onClick={() => setEditing(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" size="sm" loading={create.isPending || update.isPending}>
+                Save
+              </Button>
+            </div>
           </form>
         </Td>
       </tr>
@@ -569,7 +574,7 @@ function AssignmentsTab() {
   const [userId, setUserId] = useState<string>("");
   const assignmentsQuery = useScheduleAssignments(userId || undefined);
 
-  const assignableUsers = (usersQuery.data ?? []).filter((user) => user.role !== "device");
+  const assignableUsers = (usersQuery.data ?? []).filter((user) => user.role !== ROLES.TERMINAL);
   const byDay = new Map((assignmentsQuery.data ?? []).map((assignment) => [assignment.dayOfWeek, assignment]));
 
   return (
@@ -622,12 +627,31 @@ function AssignmentsTab() {
 
 function HistoryTab() {
   const usersQuery = useUsers();
+  const locationsQuery = useLocations({ includeInactive: false });
   const [userId, setUserId] = useState("");
   const [from, setFrom] = useState(() => new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10));
   const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10));
   const historyQuery = useAttendance({ from, to, userId: userId || undefined });
+  const materialize = useMaterializeAttendance();
+  const [manualUserId, setManualUserId] = useState("");
+  const [manualDate, setManualDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [creating, setCreating] = useState<AttendanceRecord | null>(null);
 
   const userNameById = useMemo(() => new Map((usersQuery.data ?? []).map((u) => [u.id, u.name])), [usersQuery.data]);
+
+  function addManualRecord() {
+    if (!manualUserId) {
+      toast.error("Pick an employee first.");
+      return;
+    }
+    materialize.mutate(
+      { userId: manualUserId, date: manualDate },
+      {
+        onSuccess: (record) => setCreating(record),
+        onError: (error) => toast.error(errorMessage(error, "Could not create this record.")),
+      },
+    );
+  }
 
   return (
     <div className="space-y-4 p-3 sm:p-4">
@@ -649,6 +673,27 @@ function HistoryTab() {
           <Input type="date" value={to} onChange={(event) => setTo(event.currentTarget.value)} />
         </Field>
       </div>
+
+      <div className="flex flex-wrap items-end gap-3 border-t border-border pt-4">
+        <Field label="Employee" hint="Add a manual clock in/out record for any employee and date.">
+          <Select value={manualUserId} onChange={(event) => setManualUserId(event.currentTarget.value)}>
+            <option value="">Pick an employee…</option>
+            {(usersQuery.data ?? []).map((user) => (
+              <option key={user.id} value={user.id}>
+                {user.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Date">
+          <Input type="date" value={manualDate} onChange={(event) => setManualDate(event.currentTarget.value)} />
+        </Field>
+        <Button type="button" icon={Plus} loading={materialize.isPending} onClick={addManualRecord}>
+          Add manual record
+        </Button>
+      </div>
+
+      <CorrectionSheet record={creating} onClose={() => setCreating(null)} locations={locationsQuery.data ?? []} />
 
       {historyQuery.isPending ? (
         <CardListSkeleton count={4} />

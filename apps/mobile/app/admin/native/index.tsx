@@ -14,7 +14,6 @@ import {
   Settings,
   ShoppingBag,
   Truck,
-  Users,
   UserRound,
   Wallet,
   Warehouse,
@@ -59,8 +58,6 @@ const TILES: Tile[] = [
   // Finance
   { href: "/admin/expenses", label: "Expenses", icon: Wallet, featureKey: "expenses" },
   { href: "/admin/reports", label: "Reports", icon: ShoppingBag },
-  // People
-  { href: "/admin/users", label: "Users", icon: Users },
   // Settings
   { href: "/admin/settings", label: "Settings", icon: Settings },
   { href: "/admin/receipt", label: "Receipt layout", icon: Printer },

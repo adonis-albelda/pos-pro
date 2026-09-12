@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Shield } from "lucide-react";
 import { toast } from "sonner";
-import type { User } from "@double-a/shared-types";
+import { ROLES, type User } from "@double-a/shared-types";
 import type { AccessRoleName } from "@double-a/api-client/queries";
 import { AdminGate } from "@/components/admin-gate";
 import {
@@ -68,10 +68,11 @@ function AccessBody() {
   const staff = useMemo(
     () =>
       (usersQuery.data ?? []).filter((user) =>
-        user.role === "admin" ||
-        user.role === "manager" ||
-        user.role === "cashier" ||
-        user.role === "inventory_clerk",
+        user.role === ROLES.ADMIN ||
+        user.role === ROLES.MANAGER ||
+        user.role === ROLES.CASHIER ||
+        user.role === ROLES.INVENTORY_CLERK ||
+        user.role === ROLES.TERMINAL,
       ),
     [usersQuery.data],
   );
@@ -94,7 +95,7 @@ function AccessBody() {
   const activeChecked = useMemo(() => {
     if (checked && draftForId === selected?.id) return checked;
     if (!selected) return new Set<string>();
-    if (selected.role === "admin") {
+    if (selected.role === ROLES.ADMIN) {
       return new Set(catalogQuery.data?.permissions.map((p) => p.name) ?? []);
     }
     return new Set(detailPermissions ?? []);
@@ -104,7 +105,7 @@ function AccessBody() {
     setSelectedId(user.id);
     setDraftForId(user.id);
     setRole(user.role as AccessRoleName);
-    if (user.role === "admin") {
+    if (user.role === ROLES.ADMIN) {
       setChecked(new Set(catalogQuery.data?.permissions.map((p) => p.name) ?? []));
     } else {
       // Non-admin perms come from GET /users/{id} (detailQuery) — list no
@@ -122,7 +123,7 @@ function AccessBody() {
   }
 
   function togglePermission(name: string) {
-    if (!selected || activeRole === "admin") return;
+    if (!selected || activeRole === ROLES.ADMIN || activeRole === ROLES.TERMINAL) return;
     setDraftForId(selected.id);
     setRole(activeRole);
     setChecked((prev) => {
@@ -261,7 +262,7 @@ function AccessBody() {
           <CardBody className="space-y-5">
             {!selected ? (
               <p className="text-body text-ink-muted">Pick a user.</p>
-            ) : detailQuery.isPending && selected.role !== "admin" ? (
+            ) : detailQuery.isPending && selected.role !== ROLES.ADMIN ? (
               <div className="space-y-5">
                 <div className="flex flex-wrap items-end justify-between gap-3">
                   <div className="space-y-1.5">
@@ -303,9 +304,13 @@ function AccessBody() {
                   </Field>
                 </div>
 
-                {activeRole === "admin" ? (
+                {activeRole === ROLES.ADMIN ? (
                   <p className="rounded-sm border border-border bg-canvas px-3 py-2 text-caption text-ink-muted">
                     Admin can do everything. Permission checkboxes are locked.
+                  </p>
+                ) : activeRole === ROLES.TERMINAL ? (
+                  <p className="rounded-sm border border-border bg-canvas px-3 py-2 text-caption text-ink-muted">
+                    Terminals have no dashboard permissions of their own — nothing to grant here.
                   </p>
                 ) : null}
 
@@ -318,7 +323,7 @@ function AccessBody() {
                       <div className="grid gap-1.5 sm:grid-cols-2">
                         {perms.map((perm) => {
                           const on = activeChecked.has(perm.name);
-                          const locked = activeRole === "admin";
+                          const locked = activeRole === ROLES.ADMIN || activeRole === ROLES.TERMINAL;
                           return (
                             <label
                               key={perm.name}

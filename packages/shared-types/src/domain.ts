@@ -10,20 +10,33 @@ import { roundMoney } from "./money";
 
 /**
  * manager is a near-admin dashboard/POS login (see User::actsAsAdmin() and
- * the stricter User::actsAsOwner(), Laravel). driver/helper are staff
- * records only — they can never sign in to the dashboard or unlock a POS
- * terminal (LoginController rejects them outright; they're absent from the
- * PIN-unlock role whitelist).
+ * the stricter User::actsAsOwner(), Laravel). terminal is the only role
+ * besides admin that may sign in on the mobile app (email/password, from
+ * the POS setup screen) — admin creates it up front, it's bound to a branch,
+ * and it's registered as a real Spatie role (PermissionCatalog::ROLE_TERMINAL),
+ * not just a bare string.
  */
 export type UserRole =
   | "cashier"
   | "admin"
   | "manager"
   | "inventory_clerk"
-  | "driver"
-  | "helper"
-  | "device"
+  | "terminal"
   | "superadmin";
+
+/**
+ * Single source of truth for role string literals — both apps compare
+ * against these instead of retyping "admin"/"terminal"/etc. Renaming or
+ * adding a role means editing this object, not grepping the codebase.
+ */
+export const ROLES = {
+  CASHIER: "cashier",
+  ADMIN: "admin",
+  MANAGER: "manager",
+  INVENTORY_CLERK: "inventory_clerk",
+  TERMINAL: "terminal",
+  SUPERADMIN: "superadmin",
+} as const satisfies Record<string, UserRole>;
 export type PaymentMethod = "cash" | "ewallet" | "card" | "other" | "credit";
 export type SaleStatus = "completed" | "voided" | "refunded";
 /** How the customer takes the goods. Default pickup — delivery is opt-in. */
@@ -328,7 +341,8 @@ export interface User {
   name: string;
   username?: string | null;
   avatarUrl?: string | null;
-  email: string;
+  /** Nullable — an account may sign in by username/password alone. Email/password login requires this to be verified. */
+  email: string | null;
   role: UserRole;
   isActive: boolean;
   /** Floor staff may unlock when false, but cannot complete a sale. */
@@ -662,6 +676,8 @@ export interface ProductVariant {
   productId: string;
   sku: string | null;
   barcode: string | null;
+  /** This variant's own cover photo, or the parent product's — ProductVariantResource already resolves the fallback server-side, so this is always the one photo to show. */
+  photoUrl: string | null;
   price: number;
   costPrice: number;
   stockQuantity: number;
@@ -953,6 +969,13 @@ export interface Sale {
    * taken.
    */
   paymentProofUrl?: string | null;
+  /**
+   * Cashier-picked e-wallet name (GCash/Maya/MariBank/GrabPay/ShopeePay, or
+   * free text for "Other E-Wallet") — only meaningful when paymentMethod is
+   * "ewallet". Purely so the owner can match a sale against their own
+   * bank/wallet records; never required, never read by any business rule.
+   */
+  ewalletProvider?: string | null;
 }
 
 /** The customer columns of a sale, as `CustomerDetails`. */
@@ -1255,3 +1278,31 @@ export interface CartLine {
   /** Optional — used by complex promo category_quantity conditions. */
   categoryId?: string | null;
 }
+
+/**
+ * One-time onboarding survey — "what kind of business is this?" (mobile
+ * setup, after a fresh signup). Purely informational, mirrors
+ * BusinessTypeCatalog (Laravel) — key is what round-trips to
+ * companies.business_type, emoji+label are display only.
+ */
+export interface BusinessTypeOption {
+  key: string;
+  emoji: string;
+  label: string;
+}
+
+export const BUSINESS_TYPES: BusinessTypeOption[] = [
+  { key: "retail_store", emoji: "🛒", label: "Retail Store" },
+  { key: "hardware_construction", emoji: "🔨", label: "Hardware / Construction Supply" },
+  { key: "grocery_convenience", emoji: "🛒", label: "Grocery / Convenience Store" },
+  { key: "clothing_apparel", emoji: "👕", label: "Clothing / Apparel" },
+  { key: "electronics_mobile", emoji: "📱", label: "Electronics / Mobile Accessories" },
+  { key: "restaurant_food_beverage", emoji: "🍔", label: "Restaurant / Food & Beverage" },
+  { key: "cafe_coffee_shop", emoji: "☕", label: "Café / Coffee Shop" },
+  { key: "salon_barbershop", emoji: "💇", label: "Salon / Barbershop" },
+  { key: "laundry", emoji: "🧺", label: "Laundry" },
+  { key: "auto_parts_automotive", emoji: "🚗", label: "Auto Parts / Automotive" },
+  { key: "pharmacy_drugstore", emoji: "💊", label: "Pharmacy / Drugstore" },
+  { key: "wholesale_distribution", emoji: "📦", label: "Wholesale / Distribution" },
+  { key: "other", emoji: "🏪", label: "Other" },
+];

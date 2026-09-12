@@ -1,4 +1,4 @@
-import type { User } from "@double-a/shared-types";
+import { ROLES, type User } from "@double-a/shared-types";
 
 /**
  * Shop dashboard writer: a company admin, a manager (near-admin — see
@@ -6,7 +6,7 @@ import type { User } from "@double-a/shared-types";
  */
 export function isShopAdmin(user: User | null | undefined): user is User {
   return Boolean(
-    user && (user.role === "admin" || user.role === "manager" || user.role === "superadmin"),
+    user && (user.role === ROLES.ADMIN || user.role === ROLES.MANAGER || user.role === ROLES.SUPERADMIN),
   );
 }
 
@@ -16,12 +16,12 @@ export function isShopAdmin(user: User | null | undefined): user is User {
  * explicitly excluded from: company settings and user management.
  */
 export function isShopOwner(user: User | null | undefined): user is User {
-  return Boolean(user && (user.role === "admin" || user.role === "superadmin"));
+  return Boolean(user && (user.role === ROLES.ADMIN || user.role === ROLES.SUPERADMIN));
 }
 
 /** Platform console only — company_id is always null (CLAUDE.md §15). */
 export function isSuperadmin(user: User | null | undefined): user is User {
-  return Boolean(user && user.role === "superadmin");
+  return Boolean(user && user.role === ROLES.SUPERADMIN);
 }
 
 /**
@@ -35,7 +35,7 @@ export function canPermission(
   permissionKey: string,
 ): boolean {
   if (!user) return true;
-  if (user.role === "admin" || user.role === "superadmin") return true;
+  if (user.role === ROLES.ADMIN || user.role === ROLES.SUPERADMIN) return true;
   if (user.permissions === undefined) return true;
   return user.permissions.includes(permissionKey);
 }

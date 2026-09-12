@@ -727,6 +727,41 @@ export async function cloneProduct(client: ApiClient, id: string): Promise<Produ
   return toProduct(data);
 }
 
+/**
+ * Catalog cleanup: reparent this product's sellable variant under a canonical
+ * parent (as an attributed variant), or fold suppliers+stock into an existing
+ * target variant. Soft-deletes the emptied source product. See MoveProductIntoAction.
+ */
+export async function moveProductInto(
+  client: ApiClient,
+  sourceProductId: string,
+  input: {
+    targetProductId: string;
+    variantId?: string | null;
+    attributeValueIds?: string[];
+    mergeIntoVariantId?: string | null;
+    /** When merging: add source stock onto target (default true). */
+    mergeStock?: boolean;
+    /** Shelf price to set on the resulting variant. */
+    price?: number | null;
+  },
+): Promise<{ id: string; productId: string }> {
+  const { data } = await client.post<{
+    data: JsonApiResource<{ product_id?: string }>;
+  }>(`/products/${sourceProductId}/move-into`, {
+    target_product_id: input.targetProductId,
+    variant_id: input.variantId ?? undefined,
+    attribute_value_ids: input.attributeValueIds,
+    merge_into_variant_id: input.mergeIntoVariantId ?? undefined,
+    merge_stock: input.mergeStock,
+    price: input.price ?? undefined,
+  });
+  return {
+    id: data.id,
+    productId: String(data.attributes.product_id ?? input.targetProductId),
+  };
+}
+
 /** Soft delete — stock and sales history stay, terminals stop seeing it on their next sync. */
 export async function deleteProduct(client: ApiClient, id: string): Promise<void> {
   await client.delete(`/products/${id}`);

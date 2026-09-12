@@ -1,17 +1,22 @@
 import { useEffect, useState } from "react";
-import { Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import type { User } from "@double-a/shared-types";
+import { BUSINESS_TYPES, ROLES, type User } from "@double-a/shared-types";
 import { ApiError } from "@double-a/api-client";
-import { login } from "@double-a/api-client/queries";
+import {
+  forgotPassword,
+  login,
+  registerDemoAccount,
+  updateCompanyBusinessType,
+} from "@double-a/api-client/queries";
 import { getSyncMeta, markFirstPullSkipped } from "@/db/meta";
 import { countLocalProducts } from "@/db/products";
-import { getDeviceId, getDeviceLabel, setDeviceLabel, getEnrolledCompanyId, setEnrolledCompanyId, setEnrolledLocationId, getEnrolledLocationId, setEnrolledRole } from "@/lib/device";
+import { getDeviceId, setDeviceLabel, getEnrolledCompanyId, setEnrolledCompanyId, setEnrolledLocationId, getEnrolledLocationId, setEnrolledRole } from "@/lib/device";
 import { resetLocalData } from "@/db";
 import { useLayout } from "@/lib/layout";
 import { createBareClient } from "@/lib/api/client";
-import { isEnrolled, setSessionToken, unenrollTerminal } from "@/lib/api/session";
+import { getApiClient, isEnrolled, setSessionToken, unenrollTerminal } from "@/lib/api/session";
 import { registerDevicePushToken } from "@/lib/push";
 import { runFirstPull } from "@/sync";
 import { useSync } from "@/sync/sync-provider";
@@ -20,23 +25,46 @@ import {
   EyeOff,
   Mail,
   Lock,
-  Monitor,
   CloudDownload,
   CheckCircle2,
   LogIn,
   RefreshCw,
   Play,
+  Send,
+  Store,
+  UserPlus,
   UserX,
   ShieldCheck,
 } from "lucide-react-native";
 import { Button, ErrorNote } from "@/components/ui";
+import { useKeyboardHeight } from "@/components/bottom-sheet";
+import { FeatureOnboarding } from "@/components/feature-onboarding";
 import { WaveBackdrop } from "@/components/wave-backdrop";
+import { hasSeenFeatureOnboarding } from "@/lib/onboarding";
 import { color, fontSize, space } from "@/theme";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- same asset-require pattern as company-intro.tsx; no *.png module declaration in this project
-const LOGO = require("../assets/logo.png");
+const LOGO = require("../assets/logo.webp");
 
-type Step = "sign-in" | "first-pull" | "done";
+/**
+ * How often the "check your email" screen retries login while waiting for
+ * the owner to click the verification link. LoginController rejects an
+ * unverified email with the same generic "invalid credentials" 422 as a
+ * wrong password (see LoginController — it nulls the user before the
+ * Hash::check when email_verified_at is null), so there is no dedicated
+ * "is this verified yet?" endpoint to poll instead — retrying the same
+ * login call IS the check, and it starts succeeding the moment
+ * VerifyEmailController marks the account verified.
+ *
+ * A freshly registered account is a demo account, and AppServiceProvider's
+ * auth-login rate limiter caps those at 10/min — every attempt below stays
+ * a demo login (same email, unverified), so this interval must clear that
+ * bar with margin (~8.5/min) rather than trip a 429 mid-wait.
+ */
+const VERIFY_POLL_INTERVAL_MS = 7000;
+
+type SetupFlowStep = "first-pull" | "business-type" | "done";
+type Step = "sign-in" | "feature-onboarding" | SetupFlowStep;
 
 /**
  * One-time terminal setup — enrollment always requires connectivity.
@@ -57,23 +85,37 @@ export default function SetupScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const layout = useLayout();
+  const keyboardHeight = useKeyboardHeight();
   const { notifyEnrollmentChanged } = useSync();
 
   const [step, setStep] = useState<Step>("sign-in");
+  const [afterOnboardingStep, setAfterOnboardingStep] = useState<SetupFlowStep>("first-pull");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [account, setAccount] = useState<User | null>(null);
-  const [label, setLabel] = useState("");
-  const [deviceId, setDeviceId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pulled, setPulled] = useState<number | null>(null);
   const [headerHeight, setHeaderHeight] = useState(0);
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotBusy, setForgotBusy] = useState(false);
+  const [forgotSent, setForgotSent] = useState(false);
+  const [forgotError, setForgotError] = useState<string | null>(null);
+  const [registerOpen, setRegisterOpen] = useState(false);
+  const [registerEmail, setRegisterEmail] = useState("");
+  const [registerPassword, setRegisterPassword] = useState("");
+  const [registerBusinessName, setRegisterBusinessName] = useState("");
+  const [registerBusy, setRegisterBusy] = useState(false);
+  const [registerSent, setRegisterSent] = useState(false);
+  const [registerError, setRegisterError] = useState<string | null>(null);
+  const [businessTypeBusy, setBusinessTypeBusy] = useState(false);
 
   useEffect(() => {
     async function prime() {
-      setDeviceId(await getDeviceId());
-      setLabel((await getDeviceLabel()) ?? "");
+      // Mints and persists this terminal's stable id on first run — nothing
+      // here displays it, but sales/tokens need it minted before use.
+      void getDeviceId();
 
       const [enrolled, meta] = await Promise.all([isEnrolled(), getSyncMeta()]);
       if (enrolled && !meta.firstPullDone) setStep("first-pull");
@@ -82,6 +124,89 @@ export default function SetupScreen() {
 
     void prime();
   }, []);
+
+  /**
+   * Everything that happens once a login() call comes back with a token —
+   * shared by the manual sign-in form and the "check your email" screen's
+   * background poll, since both end at the same place (an enrolled device,
+   * headed to onboarding/business-type/first-pull).
+   */
+  async function completeSignIn(signedIn: Awaited<ReturnType<typeof login>>): Promise<boolean> {
+    const profile = signedIn.user;
+
+    if (profile.role !== ROLES.ADMIN && profile.role !== ROLES.TERMINAL) {
+      setError(
+        "Cashiers do not sign in here — they unlock with a PIN once setup is done. Use an admin or Terminal account.",
+      );
+      return false;
+    }
+
+    if (!profile.companyIsActive) {
+      setError("This shop account is disabled. Contact the office.");
+      return false;
+    }
+
+    if (!profile.companyId) {
+      setError("This login is not linked to a company.");
+      return false;
+    }
+
+    if (profile.role === ROLES.TERMINAL && !profile.locationId) {
+      setError("This terminal account is not bound to a branch. Ask admin to re-enroll it.");
+      return false;
+    }
+
+    // Terminal accounts are created in web admin only
+    // (Users page) — mobile setup never mints one. An admin logging in
+    // here just persists their own login token directly, same as a
+    // pre-existing Terminal account's.
+    const sessionToken = signedIn.token;
+
+    const storedCompany = await getEnrolledCompanyId();
+    const storedLocation = await getEnrolledLocationId();
+    if (
+      (storedCompany && storedCompany !== profile.companyId) ||
+      (profile.locationId && storedLocation && storedLocation !== profile.locationId)
+    ) {
+      await resetLocalData();
+    }
+    await setEnrolledCompanyId(profile.companyId);
+    if (profile.role === ROLES.ADMIN || profile.role === ROLES.TERMINAL) {
+      await setEnrolledRole(profile.role);
+    }
+    if (profile.locationId) {
+      await setEnrolledLocationId(profile.locationId);
+    }
+    await setSessionToken(sessionToken);
+    void registerDevicePushToken();
+
+    setAccount(profile);
+    await setDeviceLabel(profile.name);
+    setPassword("");
+
+    // An admin isn't necessarily standing this tablet up as a selling
+    // terminal right now — do not force the offline catalog download.
+    // A real Terminal account is: it needs products on-device before a
+    // cashier can sell, and may not reach the Sync tab first. Either way
+    // the deferred pull (next visit to the Sync tab) still comes down as
+    // a full pull, since no watermark gets set here.
+    const nextStep: SetupFlowStep =
+      profile.role === ROLES.ADMIN ? "business-type" : "first-pull";
+    if (profile.role === ROLES.ADMIN) {
+      await markFirstPullSkipped();
+    }
+
+    // First-install feature tour — right after sign-in, before catalog /
+    // business-type. Returning installs that already finished skip it.
+    const seenOnboarding = await hasSeenFeatureOnboarding();
+    if (!seenOnboarding) {
+      setAfterOnboardingStep(nextStep);
+      setStep("feature-onboarding");
+    } else {
+      setStep(nextStep);
+    }
+    return true;
+  }
 
   async function connectTerminal() {
     if (!email.trim() || !password) {
@@ -93,7 +218,10 @@ export default function SetupScreen() {
     setError(null);
 
     try {
-      const deviceName = label.trim() || "Terminal";
+      // Audit-only label for the Sanctum token — the real, per-terminal
+      // label shown elsewhere (pos/settings.tsx) is set below from the
+      // signed-in account's own name once the response comes back.
+      const deviceName = "Mobile Terminal";
 
       let signedIn;
       try {
@@ -110,71 +238,7 @@ export default function SetupScreen() {
         throw cause;
       }
 
-      const profile = signedIn.user;
-
-      if (profile.role !== "admin" && profile.role !== "device") {
-        setError(
-          "Cashiers do not sign in here — they unlock with a PIN once setup is done. Use an admin or Terminal account.",
-        );
-        return;
-      }
-
-      if (!profile.companyIsActive) {
-        setError("This shop account is disabled. Contact the office.");
-        return;
-      }
-
-      if (!profile.companyId) {
-        setError("This login is not linked to a company.");
-        return;
-      }
-
-      if (profile.role === "device" && !profile.locationId) {
-        setError("This terminal account is not bound to a branch. Ask admin to re-enroll it.");
-        return;
-      }
-
-      // Terminal (device-role) accounts are created in web admin only
-      // (Users page) — mobile setup never mints one. An admin logging in
-      // here just persists their own login token directly, same as a
-      // pre-existing Terminal account's.
-      const sessionToken = signedIn.token;
-
-      const storedCompany = await getEnrolledCompanyId();
-      const storedLocation = await getEnrolledLocationId();
-      if (
-        (storedCompany && storedCompany !== profile.companyId) ||
-        (profile.locationId && storedLocation && storedLocation !== profile.locationId)
-      ) {
-        await resetLocalData();
-      }
-      await setEnrolledCompanyId(profile.companyId);
-      if (profile.role === "admin" || profile.role === "device") {
-        await setEnrolledRole(profile.role);
-      }
-      if (profile.locationId) {
-        await setEnrolledLocationId(profile.locationId);
-      }
-      await setSessionToken(sessionToken);
-      void registerDevicePushToken();
-
-      setAccount(profile);
-      await setDeviceLabel(deviceName);
-      setPassword("");
-
-      // An admin isn't necessarily standing this tablet up as a selling
-      // terminal right now — do not force the offline catalog download.
-      // A real Terminal account is: it needs products on-device before a
-      // cashier can sell, and may not reach the Sync tab first. Either way
-      // the deferred pull (next visit to the Sync tab) still comes down as
-      // a full pull, since no watermark gets set here.
-      if (profile.role === "admin") {
-        await markFirstPullSkipped();
-        setStep("done");
-        notifyEnrollmentChanged();
-      } else {
-        setStep("first-pull");
-      }
+      await completeSignIn(signedIn);
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -186,6 +250,111 @@ export default function SetupScreen() {
     }
   }
 
+  async function sendResetLink() {
+    if (!forgotEmail.trim()) {
+      setForgotError("Enter the admin account's email.");
+      return;
+    }
+
+    setForgotBusy(true);
+    setForgotError(null);
+    try {
+      await forgotPassword(createBareClient(), forgotEmail.trim());
+      setForgotSent(true);
+    } catch (cause) {
+      setForgotError(
+        cause instanceof Error
+          ? cause.message
+          : "Could not reach the server — check the connection and try again",
+      );
+    } finally {
+      setForgotBusy(false);
+    }
+  }
+
+  function closeForgotPassword() {
+    setForgotOpen(false);
+    setForgotSent(false);
+    setForgotError(null);
+    setForgotEmail("");
+  }
+
+  async function submitRegistration() {
+    if (!registerEmail.trim() || !registerPassword || !registerBusinessName.trim()) {
+      setRegisterError("Fill in email, password, and business name.");
+      return;
+    }
+    if (registerPassword.length < 8) {
+      setRegisterError("Password must be at least 8 characters.");
+      return;
+    }
+
+    setRegisterBusy(true);
+    setRegisterError(null);
+    try {
+      await registerDemoAccount(createBareClient(), {
+        email: registerEmail.trim(),
+        password: registerPassword,
+        businessName: registerBusinessName.trim(),
+      });
+      setRegisterSent(true);
+    } catch (cause) {
+      setRegisterError(
+        cause instanceof Error
+          ? cause.message
+          : "Could not reach the server — check the connection and try again",
+      );
+    } finally {
+      setRegisterBusy(false);
+    }
+  }
+
+  function closeRegistration() {
+    setRegisterOpen(false);
+    setRegisterSent(false);
+    setRegisterError(null);
+    setRegisterEmail("");
+    setRegisterPassword("");
+    setRegisterBusinessName("");
+  }
+
+  // Stay on the "check your email" screen and keep retrying login in the
+  // background — the account's own email/password, not a token from
+  // registerDemoAccount (register never returns one). Login itself starts
+  // succeeding the instant the owner clicks the verification link, so this
+  // retry loop doubles as the "is it verified yet?" check (see
+  // VERIFY_POLL_INTERVAL_MS above).
+  useEffect(() => {
+    if (!registerSent) return;
+    let cancelled = false;
+    const emailToVerify = registerEmail.trim();
+    const passwordToVerify = registerPassword;
+
+    const timer = setInterval(() => {
+      void (async () => {
+        try {
+          const signedIn = await login(createBareClient(), {
+            email: emailToVerify,
+            password: passwordToVerify,
+            deviceName: "Mobile Terminal",
+          });
+          if (cancelled) return;
+          clearInterval(timer);
+          await completeSignIn(signedIn);
+        } catch {
+          // Not verified yet — same 422 as a wrong password either way
+          // (LoginController can't tell them apart), or a dropped
+          // connection. Either way, just try again next tick.
+        }
+      })();
+    }, VERIFY_POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [registerSent, registerEmail, registerPassword]);
+
   async function firstPull() {
     setBusy(true);
     setError(null);
@@ -193,8 +362,7 @@ export default function SetupScreen() {
     try {
       await runFirstPull();
       setPulled(await countLocalProducts());
-      setStep("done");
-      notifyEnrollmentChanged();
+      setStep("business-type");
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -204,6 +372,24 @@ export default function SetupScreen() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function submitBusinessType(key: string) {
+    setBusinessTypeBusy(true);
+    try {
+      await updateCompanyBusinessType(getApiClient(), key);
+    } catch {
+      // Best-effort — a survey answer is not worth blocking setup over.
+    } finally {
+      setBusinessTypeBusy(false);
+      setStep("done");
+      notifyEnrollmentChanged();
+    }
+  }
+
+  function skipBusinessType() {
+    setStep("done");
+    notifyEnrollmentChanged();
   }
 
   async function switchAccount() {
@@ -225,7 +411,7 @@ export default function SetupScreen() {
     }
   }
 
-  const stepIndex = ["sign-in", "first-pull", "done"].indexOf(step);
+  const stepIndex = ["sign-in", "first-pull", "business-type", "done"].indexOf(step);
 
   const stepMeta = {
     "sign-in": {
@@ -233,10 +419,20 @@ export default function SetupScreen() {
       subtitle: "Sign in to connect this device",
       Icon: ShieldCheck,
     },
+    "feature-onboarding": {
+      title: "Welcome",
+      subtitle: "A quick look at what POSPro can do",
+      Icon: ShieldCheck,
+    },
     "first-pull": {
       title: "Download Catalog",
       subtitle: "Get products ready for offline use",
       Icon: CloudDownload,
+    },
+    "business-type": {
+      title: "One Last Thing",
+      subtitle: "What kind of business is this?",
+      Icon: Store,
     },
     done: {
       title: "Ready to Sell",
@@ -245,6 +441,31 @@ export default function SetupScreen() {
     },
   }[step];
 
+  if (step === "feature-onboarding") {
+    return (
+      <FeatureOnboarding
+        onDone={() => {
+          setStep(afterOnboardingStep);
+        }}
+      />
+    );
+  }
+
+  const cardHeading =
+    step === "sign-in" && registerOpen
+      ? {
+          title: "Register Your Business",
+          subtitle: "Name your shop and create an admin account",
+          Icon: Store,
+        }
+      : step === "sign-in" && forgotOpen
+        ? {
+            title: "Reset Password",
+            subtitle: "We'll email a link to your admin account",
+            Icon: Mail,
+          }
+        : stepMeta;
+
   return (
     <View style={{ flex: 1, backgroundColor: "transparent" }}>
       <WaveBackdrop />
@@ -252,21 +473,28 @@ export default function SetupScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={{
           flexGrow: 1,
-          justifyContent: "center",
+          // Once the keyboard is up, centering fights it — the bottom half
+          // of a tall form (register/sign-in, three stacked fields) can
+          // land underneath. Top-align instead so the field being typed
+          // into is always the thing sitting right below the header, and
+          // pad the bottom by the keyboard's own height so there's still
+          // room to scroll the last field/button above it.
+          justifyContent: keyboardHeight > 0 ? "flex-start" : "center",
           paddingHorizontal: layout.gutter,
-          // Must stay equal top/bottom — that symmetry is what makes the sole
-          // flow child (the card) land at the screen's true vertical middle.
-          // The leftover space this centering creates above the card is what
-          // gives the absolutely-positioned header (below) room to render.
+          // Must stay equal top/bottom when no keyboard — that symmetry is
+          // what makes the sole flow child (the card) land at the screen's
+          // true vertical middle. The leftover space this centering creates
+          // above the card is what gives the absolutely-positioned header
+          // (below) room to render.
           paddingTop: insets.top + space.xl,
-          paddingBottom: insets.bottom + space.xl,
+          paddingBottom: Math.max(insets.bottom, space.xl) + keyboardHeight,
         }}
         keyboardShouldPersistTaps="handled"
       >
         <View
           style={{
             width: "100%",
-            maxWidth: 380,
+            maxWidth: 480,
             alignSelf: "center",
             gap: space.xl,
             // justifyContent:"center" above centers this whole (header+card)
@@ -356,7 +584,7 @@ export default function SetupScreen() {
                   justifyContent: "center",
                 }}
               >
-                <stepMeta.Icon
+                <cardHeading.Icon
                   size={18}
                   color={step === "done" ? color.success : color.primary}
                   strokeWidth={2}
@@ -364,18 +592,18 @@ export default function SetupScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: fontSize.bodyLg, fontWeight: "700", color: color.ink }}>
-                  {stepMeta.title}
+                  {cardHeading.title}
                 </Text>
                 <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
-                  {stepMeta.subtitle}
+                  {cardHeading.subtitle}
                 </Text>
               </View>
             </View>
 
-            {step === "sign-in" ? (
+            {step === "sign-in" && !forgotOpen && !registerOpen ? (
               <>
                 <FilledInput
-                  label="Email Address"
+                  label="Email/Username"
                   icon={<Mail size={16} color={color.inkMuted} strokeWidth={2} />}
                   value={email}
                   onChangeText={setEmail}
@@ -393,13 +621,6 @@ export default function SetupScreen() {
                   autoComplete="password"
                   placeholder="••••••••"
                 />
-                <FilledInput
-                  label="Device Name"
-                  icon={<Monitor size={16} color={color.inkMuted} strokeWidth={2} />}
-                  value={label}
-                  onChangeText={setLabel}
-                  placeholder="Counter 1"
-                />
                 {error ? <ErrorNote>{error}</ErrorNote> : null}
                 <Button
                   label={busy ? "Signing in..." : "Sign In"}
@@ -409,7 +630,145 @@ export default function SetupScreen() {
                   style={{ borderRadius: 14 }}
                   icon={LogIn}
                 />
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: space.md,
+                  }}
+                >
+                  <TextLink label="Forgot password?" onPress={() => setForgotOpen(true)} disabled={busy} />
+                  <TextLink label="New to POSPro?" onPress={() => setRegisterOpen(true)} disabled={busy} />
+                </View>
                 <InfoLine text="One-time setup, admin or terminal account only — needs an internet connection." />
+              </>
+            ) : null}
+
+            {step === "sign-in" && registerOpen ? (
+              <>
+                {registerSent ? (
+                  <>
+                    <View
+                      style={{
+                        backgroundColor: color.successSoft,
+                        borderRadius: 12,
+                        paddingHorizontal: space.md,
+                        paddingVertical: space.md,
+                        alignItems: "center",
+                        gap: space.xs,
+                      }}
+                    >
+                      <CheckCircle2 size={22} color={color.success} strokeWidth={2} />
+                      <Text style={{ fontSize: fontSize.body, fontWeight: "600", color: color.ink, textAlign: "center" }}>
+                        Check your email to verify your account.
+                      </Text>
+                      <Text style={{ fontSize: fontSize.caption, color: color.inkMuted, textAlign: "center" }}>
+                        Sent to {registerEmail.trim()}
+                      </Text>
+                    </View>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: space.sm,
+                      }}
+                    >
+                      <ActivityIndicator color={color.primary} />
+                      <Text style={{ fontSize: fontSize.body, color: color.inkMuted }}>
+                        Waiting for verification — stay on this screen
+                      </Text>
+                    </View>
+                    {error ? <ErrorNote>{error}</ErrorNote> : null}
+                  </>
+                ) : (
+                  <>
+                    <FilledInput
+                      label="Email Address"
+                      icon={<Mail size={16} color={color.inkMuted} strokeWidth={2} />}
+                      value={registerEmail}
+                      onChangeText={setRegisterEmail}
+                      autoCapitalize="none"
+                      keyboardType="email-address"
+                      autoComplete="email"
+                      placeholder="jane@example.com"
+                    />
+                    <FilledInput
+                      label="Password"
+                      icon={<Lock size={16} color={color.inkMuted} strokeWidth={2} />}
+                      value={registerPassword}
+                      onChangeText={setRegisterPassword}
+                      secureTextEntry
+                      autoComplete="new-password"
+                      placeholder="At least 8 characters"
+                    />
+                    <FilledInput
+                      label="Business Name"
+                      icon={<Store size={16} color={color.inkMuted} strokeWidth={2} />}
+                      value={registerBusinessName}
+                      onChangeText={setRegisterBusinessName}
+                      placeholder="Jane's Sari-Sari Store"
+                    />
+                    {registerError ? <ErrorNote>{registerError}</ErrorNote> : null}
+                    <Button
+                      label={registerBusy ? "Creating account..." : "Create Account"}
+                      large
+                      busy={registerBusy}
+                      onPress={() => void submitRegistration()}
+                      style={{ borderRadius: 14 }}
+                      icon={UserPlus}
+                    />
+                    <InfoLine text="Creates a free demo shop — full features, sample data, expires after a couple weeks." />
+                  </>
+                )}
+                <TextLink label="Back to sign in" onPress={closeRegistration} disabled={registerBusy} />
+              </>
+            ) : null}
+
+            {step === "sign-in" && forgotOpen ? (
+              <>
+                {forgotSent ? (
+                  <View
+                    style={{
+                      backgroundColor: color.successSoft,
+                      borderRadius: 12,
+                      paddingHorizontal: space.md,
+                      paddingVertical: space.md,
+                      alignItems: "center",
+                      gap: space.xs,
+                    }}
+                  >
+                    <CheckCircle2 size={22} color={color.success} strokeWidth={2} />
+                    <Text style={{ fontSize: fontSize.body, fontWeight: "600", color: color.ink, textAlign: "center" }}>
+                      If that's an admin account, a reset link is on its way.
+                    </Text>
+                  </View>
+                ) : (
+                  <>
+                    <FilledInput
+                      label="Admin Email Address"
+                      icon={<Mail size={16} color={color.inkMuted} strokeWidth={2} />}
+                      value={forgotEmail}
+                      onChangeText={setForgotEmail}
+                      autoCapitalize="none"
+                      keyboardType="email-address"
+                      autoComplete="email"
+                      placeholder="admin@yourshop.com"
+                    />
+                    {forgotError ? <ErrorNote>{forgotError}</ErrorNote> : null}
+                    <Button
+                      label={forgotBusy ? "Sending..." : "Send Reset Link"}
+                      large
+                      busy={forgotBusy}
+                      onPress={() => void sendResetLink()}
+                      style={{ borderRadius: 14 }}
+                      icon={Send}
+                    />
+                    <InfoLine text="Password resets are for admin accounts only." />
+                  </>
+                )}
+                <TextLink label="Back to sign in" onPress={closeForgotPassword} disabled={forgotBusy} />
               </>
             ) : null}
 
@@ -444,6 +803,40 @@ export default function SetupScreen() {
                 />
                 <TextLink label="Use a different account" onPress={() => void switchAccount()} disabled={busy} icon={<UserX size={14} color={color.primary} strokeWidth={2} />} />
                 <InfoLine text="Downloads once — terminal works fully offline after this." />
+              </>
+            ) : null}
+
+            {step === "business-type" ? (
+              <>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space.sm }}>
+                  {BUSINESS_TYPES.map((option) => (
+                    <Pressable
+                      key={option.key}
+                      disabled={businessTypeBusy}
+                      onPress={() => void submitBusinessType(option.key)}
+                      style={{
+                        flexBasis: "48%",
+                        flexGrow: 1,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: space.xs,
+                        borderRadius: 12,
+                        borderWidth: 1.5,
+                        borderColor: color.primarySoft,
+                        backgroundColor: color.surface,
+                        paddingVertical: space.sm,
+                        paddingHorizontal: space.sm,
+                        opacity: businessTypeBusy ? 0.6 : 1,
+                      }}
+                    >
+                      <Text style={{ fontSize: fontSize.bodyLg }}>{option.emoji}</Text>
+                      <Text style={{ fontSize: fontSize.caption, fontWeight: "600", color: color.ink, flexShrink: 1 }}>
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <TextLink label="Skip" onPress={skipBusinessType} disabled={businessTypeBusy} />
               </>
             ) : null}
 
@@ -498,9 +891,6 @@ export default function SetupScreen() {
           gap: space.xs,
         }}
       >
-        <Text style={{ textAlign: "center", fontSize: fontSize.caption, color: color.sageLight }}>
-          Device ID: {deviceId.slice(0, 8).toUpperCase()}
-        </Text>
         <Text
           style={{
             textAlign: "center",
@@ -509,7 +899,7 @@ export default function SetupScreen() {
             opacity: 0.8,
           }}
         >
-          Copyright © 2026 PROPos - All Rights Reserved.
+          Copyright © 2026 POSPro - All Rights Reserved.
         </Text>
       </View>
     </View>
@@ -517,10 +907,10 @@ export default function SetupScreen() {
 }
 
 /** Sits on the green wave — white/accent scheme, not the ink-scale one used on paper. */
-function ProgressDots({ index }: { index: number }) {
+function ProgressDots({ index, count = 4 }: { index: number; count?: number }) {
   return (
     <View style={{ flexDirection: "row", gap: space.sm, alignItems: "center" }}>
-      {[0, 1, 2].map((i) => (
+      {Array.from({ length: count }, (_, i) => i).map((i) => (
         <View
           key={i}
           style={{
