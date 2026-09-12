@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { Route } from "next";
 import { Plus, Save, Trash2 } from "lucide-react";
 import { formatMoney, roundMoney } from "@double-a/shared-types";
-import type { Supplier } from "@double-a/shared-types";
+import type { Location, Supplier } from "@double-a/shared-types";
 import type { ProductVariantListRow } from "@double-a/api-client/queries";
 import {
   Button,
@@ -19,6 +19,7 @@ import {
   Td,
   Th,
 } from "@/components/ui";
+import { RichTextEditor } from "@/components/rich-text-editor";
 import {
   MatchProductCombobox,
   variantListLabel,
@@ -34,23 +35,21 @@ interface ItemRow {
   unitCost: string;
 }
 
-interface TermRow {
-  key: string;
-  dueDate: string;
-  amount: string;
-}
-
 function newKey(): string {
   return Math.random().toString(36).slice(2);
 }
 
 export function CreatePurchaseOrderForm({
   suppliers,
+  locations,
   defaultSupplierId,
+  defaultLocationId,
   defaultOrderDate,
 }: {
   suppliers: Supplier[];
+  locations: Location[];
   defaultSupplierId?: string;
+  defaultLocationId?: string;
   defaultOrderDate: string;
 }) {
   const router = useRouter();
@@ -59,6 +58,7 @@ export function CreatePurchaseOrderForm({
   const [error, setError] = useState<string | null>(null);
 
   const [supplierId, setSupplierId] = useState(defaultSupplierId ?? suppliers[0]?.id ?? "");
+  const [locationId, setLocationId] = useState(defaultLocationId ?? locations[0]?.id ?? "");
   const [orderDate, setOrderDate] = useState(defaultOrderDate);
   const [expectedDate, setExpectedDate] = useState("");
   const [referenceNo, setReferenceNo] = useState("");
@@ -67,7 +67,6 @@ export function CreatePurchaseOrderForm({
   const [items, setItems] = useState<ItemRow[]>([
     { key: newKey(), productId: "", variantId: "", quantityOrdered: "1", unitCost: "" },
   ]);
-  const [terms, setTerms] = useState<TermRow[]>([]);
   const [pickedVariants, setPickedVariants] = useState<Map<string, ProductVariantListRow>>(
     () => new Map(),
   );
@@ -79,10 +78,6 @@ export function CreatePurchaseOrderForm({
       return sum + qty * cost;
     }, 0),
   );
-  const termsTotal = roundMoney(
-    terms.reduce((sum, term) => sum + (Number(term.amount) || 0), 0),
-  );
-  const termsMismatch = terms.length > 0 && Math.abs(termsTotal - total) > 0.01;
 
   function updateItem(key: string, patch: Partial<ItemRow>) {
     setItems((previous) =>
@@ -122,34 +117,6 @@ export function CreatePurchaseOrderForm({
     );
   }
 
-  function addTerm() {
-    setTerms((previous) => [...previous, { key: newKey(), dueDate: "", amount: "" }]);
-  }
-
-  function removeTerm(key: string) {
-    setTerms((previous) => previous.filter((term) => term.key !== key));
-  }
-
-  function updateTerm(key: string, patch: Partial<TermRow>) {
-    setTerms((previous) =>
-      previous.map((term) => (term.key === key ? { ...term, ...patch } : term)),
-    );
-  }
-
-  /** Convenience only — every row stays freely editable afterwards. */
-  function splitEvenly(count: number) {
-    if (count <= 0 || total <= 0) return;
-    const base = Math.floor((total / count) * 100) / 100;
-    let remaining = total;
-    const rows: TermRow[] = [];
-    for (let index = 0; index < count; index += 1) {
-      const amount = index === count - 1 ? roundMoney(remaining) : base;
-      remaining = roundMoney(remaining - amount);
-      rows.push({ key: newKey(), dueDate: "", amount: String(amount) });
-    }
-    setTerms(rows);
-  }
-
   function submit() {
     setError(null);
 
@@ -177,23 +144,15 @@ export function CreatePurchaseOrderForm({
       return;
     }
 
-    const cleanTerms = terms
-      .filter((term) => Number(term.amount) > 0)
-      .map((term, index) => ({
-        termNumber: index + 1,
-        dueDate: term.dueDate || null,
-        amount: roundMoney(Number(term.amount)),
-      }));
-
     startTransition(async () => {
       const result = await createPurchaseOrderAction({
         supplierId,
+        locationId: locationId || null,
         orderDate,
         expectedDate: expectedDate || null,
         referenceNo: referenceNo.trim() || null,
         notes: notes.trim() || null,
         items: cleanItems,
-        terms: cleanTerms,
       });
 
       if (!result.ok) {
@@ -216,6 +175,14 @@ export function CreatePurchaseOrderForm({
               onChange={setSupplierId}
               options={suppliers.map((supplier) => ({ value: supplier.id, label: supplier.name }))}
               placeholder="Search suppliers…"
+            />
+          </Field>
+          <Field label="Location" hint="Which branch this order is for." required={false}>
+            <Combobox
+              value={locationId}
+              onChange={setLocationId}
+              options={locations.map((location) => ({ value: location.id, label: location.name }))}
+              placeholder="Search branches…"
             />
           </Field>
           <Field label="Order date" required>
@@ -242,11 +209,7 @@ export function CreatePurchaseOrderForm({
         </div>
         <div className="mt-4">
           <Field label="Notes" required={false}>
-            <Input
-              value={notes}
-              onChange={(event) => setNotes(event.target.value)}
-              placeholder="Optional"
-            />
+            <RichTextEditor value={notes} onChange={setNotes} placeholder="Optional" />
           </Field>
         </div>
       </div>
@@ -331,95 +294,6 @@ export function CreatePurchaseOrderForm({
           <p className="text-body-lg font-semibold">
             Total <span className="num">{formatMoney(total)}</span>
           </p>
-        </div>
-      </div>
-
-      <div className="rounded-md border border-border bg-surface">
-        <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <div>
-            <h2 className="text-heading-sm font-semibold">Payment terms</h2>
-            <p className="mt-1 text-caption text-ink-muted">
-              Optional. Split this order into installments so the balance owed tracks per due
-              date.
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button type="button" variant="secondary" size="sm" onClick={() => splitEvenly(2)}>
-              Split in 2
-            </Button>
-            <Button type="button" variant="secondary" size="sm" onClick={() => splitEvenly(3)}>
-              Split in 3
-            </Button>
-          </div>
-        </div>
-
-        {terms.length === 0 ? (
-          <p className="px-4 py-6 text-body text-ink-muted sm:px-6">
-            No installments — the full amount is due whenever you mark it paid.
-          </p>
-        ) : (
-          <Table>
-            <thead>
-              <tr>
-                <Th>Term</Th>
-                <Th>Due date</Th>
-                <Th numeric>Amount</Th>
-                <Th />
-              </tr>
-            </thead>
-            <tbody>
-              {terms.map((term, index) => (
-                <tr key={term.key}>
-                  <Td className="text-ink-muted">#{index + 1}</Td>
-                  <Td>
-                    <Input
-                      type="date"
-                      value={term.dueDate}
-                      onChange={(event) => updateTerm(term.key, { dueDate: event.target.value })}
-                    />
-                  </Td>
-                  <Td numeric>
-                    <MoneyInput
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      className="text-right"
-                      value={term.amount}
-                      onChange={(event) => updateTerm(term.key, { amount: event.target.value })}
-                    />
-                  </Td>
-                  <Td>
-                    <div className="flex justify-end">
-                      <IconButton
-                        icon={Trash2}
-                        label="Remove term"
-                        tone="danger"
-                        onClick={() => removeTerm(term.key)}
-                      />
-                    </div>
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-        )}
-
-        <div className="flex flex-col gap-2 border-t border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <Button type="button" variant="secondary" size="sm" icon={Plus} onClick={addTerm}>
-            Add term
-          </Button>
-          {terms.length > 0 ? (
-            <p
-              className={
-                termsMismatch
-                  ? "text-caption text-warning-ink"
-                  : "text-caption text-ink-muted"
-              }
-            >
-              Terms total {formatMoney(termsTotal)}
-              {termsMismatch ? ` — order total is ${formatMoney(total)}` : ""}
-            </p>
-          ) : null}
         </div>
       </div>
 

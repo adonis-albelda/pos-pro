@@ -98,6 +98,31 @@ export interface InventoryValuationSummaryRow {
   potentialProfit: number;
 }
 
+export interface CategoryReportRow {
+  category: string;
+  quantity_sold: number;
+  revenue: number;
+}
+
+export interface PaymentMethodReportRow {
+  payment_method: string;
+  sales_count: number;
+  revenue: number;
+}
+
+export interface LocationReportRow {
+  location_id: string | null;
+  location_name: string;
+  sales_count: number;
+  revenue: number;
+}
+
+export interface RefundsVoidsReportRow {
+  refund_amount: number;
+  refund_count: number;
+  void_count: number;
+}
+
 export interface DeadStockReportRow {
   product_id: string;
   product_name: string;
@@ -138,6 +163,32 @@ export async function reportDiscounts(client: ApiClient, range: DateRange): Prom
   return data;
 }
 
+/** Paginated discounts for the reports table — omit `page` on reportDiscounts for full CSV export. */
+export async function reportDiscountsPage(
+  client: ApiClient,
+  range: DateRange,
+  options: { page?: number; pageSize?: number } = {},
+): Promise<{ rows: DiscountReportRow[]; total: number; page: number; pageSize: number; lastPage: number }> {
+  const page = options.page ?? 1;
+  const pageSize = options.pageSize ?? 15;
+  const { data, meta } = await client.get<{
+    data: DiscountReportRow[];
+    meta?: { total: number; page: number; per_page: number; last_page: number };
+  }>("/reports/discounts", {
+    from: range.from,
+    to: range.to,
+    page,
+    per_page: pageSize,
+  });
+  return {
+    rows: data,
+    total: meta?.total ?? data.length,
+    page: meta?.page ?? page,
+    pageSize: meta?.per_page ?? pageSize,
+    lastPage: meta?.last_page ?? 1,
+  };
+}
+
 export async function reportByCashier(client: ApiClient, range: DateRange): Promise<CashierReportRow[]> {
   const { data } = await client.get<DataEnvelope<CashierReportRow[]>>("/reports/by-cashier", {
     from: range.from,
@@ -148,6 +199,41 @@ export async function reportByCashier(client: ApiClient, range: DateRange): Prom
 
 export async function reportByDevice(client: ApiClient, range: DateRange): Promise<DeviceReportRow[]> {
   const { data } = await client.get<DataEnvelope<DeviceReportRow[]>>("/reports/by-device", {
+    from: range.from,
+    to: range.to,
+  });
+  return data;
+}
+
+export async function reportByCategory(client: ApiClient, range: DateRange): Promise<CategoryReportRow[]> {
+  const { data } = await client.get<DataEnvelope<CategoryReportRow[]>>("/reports/by-category", {
+    from: range.from,
+    to: range.to,
+  });
+  return data;
+}
+
+export async function reportByPaymentMethod(
+  client: ApiClient,
+  range: DateRange,
+): Promise<PaymentMethodReportRow[]> {
+  const { data } = await client.get<DataEnvelope<PaymentMethodReportRow[]>>("/reports/by-payment-method", {
+    from: range.from,
+    to: range.to,
+  });
+  return data;
+}
+
+export async function reportByLocation(client: ApiClient, range: DateRange): Promise<LocationReportRow[]> {
+  const { data } = await client.get<DataEnvelope<LocationReportRow[]>>("/reports/by-location", {
+    from: range.from,
+    to: range.to,
+  });
+  return data;
+}
+
+export async function reportRefundsVoids(client: ApiClient, range: DateRange): Promise<RefundsVoidsReportRow> {
+  const { data } = await client.get<DataEnvelope<RefundsVoidsReportRow>>("/reports/refunds-voids", {
     from: range.from,
     to: range.to,
   });

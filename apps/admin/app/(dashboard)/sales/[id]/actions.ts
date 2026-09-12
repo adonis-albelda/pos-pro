@@ -1,12 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { listProductsPage, patchSaleFlags, replaceSaleItem, voidSale } from "@double-a/api-client/queries";
+import { listProductsPage, patchSaleFlags, refundSaleItem, replaceSaleItem, voidSale } from "@double-a/api-client/queries";
 import type { Product } from "@double-a/shared-types";
 import { getAuthedClient } from "@/lib/api/session";
 
 /**
- * Voiding is the only reversal — a sale is never deleted. Laravel's
+ * Voiding is the only full-sale reversal — a sale is never deleted. Laravel's
  * SaleObserver restores stock as the sale flips to voided.
  */
 export async function voidSaleAction(formData: FormData): Promise<void> {
@@ -40,6 +40,19 @@ export async function replaceSaleItemAction(
   quantity?: number,
 ): Promise<void> {
   await replaceSaleItem(getAuthedClient(), saleId, saleItemId, { productId, quantity });
+
+  revalidatePath(`/sales/${saleId}`);
+  revalidatePath("/sales");
+  revalidatePath("/inventory");
+  revalidatePath("/");
+}
+
+/**
+ * Refunds one line. Original charge stays on the record; stock comes back;
+ * total drops that line. See RefundSaleItemAction (Laravel).
+ */
+export async function refundSaleItemAction(saleId: string, saleItemId: string): Promise<void> {
+  await refundSaleItem(getAuthedClient(), saleId, saleItemId);
 
   revalidatePath(`/sales/${saleId}`);
   revalidatePath("/sales");

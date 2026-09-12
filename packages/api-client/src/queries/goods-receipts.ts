@@ -162,6 +162,9 @@ export interface GoodsReceipt {
   deliveryDate: string | null;
   salesmanName: string | null;
   paymentTerms: "cod" | "installment";
+  /** Days before each unpaid installment due date to start reminders. */
+  remindDaysBefore: number;
+  remindersEnabled: boolean;
   createdAt: string | null;
   items: GoodsReceiptItem[];
   payments: GoodsReceiptPayment[];
@@ -211,6 +214,8 @@ interface GoodsReceiptAttrs {
   delivery_date?: string | null;
   salesman_name?: string | null;
   payment_terms?: "cod" | "installment";
+  remind_days_before?: number;
+  reminders_enabled?: boolean;
   created_at?: string | null;
   items: GoodsReceiptItemAttrs[];
   payments?: GoodsReceiptPaymentAttrs[];
@@ -246,6 +251,8 @@ function toGoodsReceipt(resource: JsonApiResource<GoodsReceiptAttrs>): GoodsRece
     deliveryDate: attrs.delivery_date ?? null,
     salesmanName: attrs.salesman_name ?? null,
     paymentTerms: attrs.payment_terms ?? "cod",
+    remindDaysBefore: Number(attrs.remind_days_before ?? 3),
+    remindersEnabled: Boolean(attrs.reminders_enabled ?? false),
     createdAt: attrs.created_at ?? attrs.received_at,
     items: attrs.items.map((item) => ({
       id: item.id,
@@ -363,6 +370,8 @@ export interface UpdateGoodsReceiptInput {
   salesmanName?: string | null;
   paymentTerms?: "cod" | "installment";
   referenceNo?: string | null;
+  remindDaysBefore?: number;
+  remindersEnabled?: boolean;
 }
 
 export async function updateGoodsReceipt(
@@ -375,6 +384,8 @@ export async function updateGoodsReceipt(
   if (input.salesmanName !== undefined) payload.salesman_name = input.salesmanName;
   if (input.paymentTerms !== undefined) payload.payment_terms = input.paymentTerms;
   if (input.referenceNo !== undefined) payload.reference_no = input.referenceNo;
+  if (input.remindDaysBefore !== undefined) payload.remind_days_before = input.remindDaysBefore;
+  if (input.remindersEnabled !== undefined) payload.reminders_enabled = input.remindersEnabled;
 
   const { data } = await client.patch<{ data: JsonApiResource<GoodsReceiptAttrs> }>(
     `/goods-receipts/${id}`,

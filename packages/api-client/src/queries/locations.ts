@@ -66,18 +66,35 @@ export async function deleteLocation(client: ApiClient, id: string): Promise<voi
 export interface StockTransferInput {
   fromLocationId: string;
   toLocationId: string;
-  items: Array<{ productId: string; quantity: number }>;
+  notes?: string | null;
+  items: Array<{ productId: string; variantId?: string | null; quantity: number }>;
   status?: "pending" | "in_transit";
   receiveNow?: boolean;
 }
 
+export interface StockTransfersFilter {
+  status?: StockTransferStatus;
+  fromLocationId?: string;
+  toLocationId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}
+
 export async function listStockTransfers(
   client: ApiClient,
-  options: { status?: StockTransferStatus; page?: number; pageSize?: number } = {},
+  options: StockTransfersFilter = {},
 ): Promise<{ transfers: StockTransfer[]; total: number; lastPage: number }> {
   const pageSize = options.pageSize ?? 50;
   const page = await client.get<JsonApiPage<StockTransferAttrs>>("/stock-transfers", {
     status: options.status,
+    from_location_id: options.fromLocationId,
+    to_location_id: options.toLocationId,
+    date_from: options.dateFrom,
+    date_to: options.dateTo,
+    search: options.search,
     page: options.page ?? 1,
     per_page: pageSize,
   });
@@ -89,6 +106,18 @@ export async function listStockTransfers(
   };
 }
 
+export async function getStockTransfer(client: ApiClient, id: string): Promise<StockTransfer | null> {
+  try {
+    const { data } = await client.get<{ data: JsonApiResource<StockTransferAttrs> }>(
+      `/stock-transfers/${id}`,
+    );
+    return toStockTransfer(data);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+}
+
 export async function createStockTransfer(
   client: ApiClient,
   input: StockTransferInput,
@@ -98,10 +127,12 @@ export async function createStockTransfer(
     {
       from_location_id: input.fromLocationId,
       to_location_id: input.toLocationId,
+      notes: input.notes ?? null,
       status: input.status ?? "pending",
       receive_now: input.receiveNow ?? false,
       items: input.items.map((item) => ({
         product_id: item.productId,
+        variant_id: item.variantId ?? null,
         quantity: item.quantity,
       })),
     },
@@ -110,14 +141,50 @@ export async function createStockTransfer(
   return toStockTransfer(data);
 }
 
+export async function updateStockTransfer(
+  client: ApiClient,
+  id: string,
+  patch: { status?: StockTransferStatus; notes?: string | null },
+): Promise<StockTransfer> {
+  const payload: Record<string, unknown> = {};
+  if (patch.status !== undefined) payload.status = patch.status;
+  if (patch.notes !== undefined) payload.notes = patch.notes;
+  const { data } = await client.patch<{ data: JsonApiResource<StockTransferAttrs> }>(
+    `/stock-transfers/${id}`,
+    payload,
+  );
+  return toStockTransfer(data);
+}
+
+/** @deprecated Use `updateStockTransfer(client, id, { status })` — kept for existing call sites. */
 export async function updateStockTransferStatus(
   client: ApiClient,
   id: string,
   status: StockTransferStatus,
 ): Promise<StockTransfer> {
-  const { data } = await client.patch<{ data: JsonApiResource<StockTransferAttrs> }>(
-    `/stock-transfers/${id}`,
-    { status },
+  return updateStockTransfer(client, id, { status });
+}
+
+/**
+ * Receives some or all of what's still remaining, per item. Omit `items` to
+ * receive everything remaining (the original all-at-once behavior).
+ */
+export async function receiveStockTransfer(
+  client: ApiClient,
+  id: string,
+  items?: Array<{ itemId: string; quantityReceived: number }>,
+): Promise<StockTransfer> {
+  const { data } = await client.post<{ data: JsonApiResource<StockTransferAttrs> }>(
+    `/stock-transfers/${id}/receive`,
+    items
+      ? {
+          items: items.map((line) => ({
+            item_id: line.itemId,
+            quantity_received: line.quantityReceived,
+          })),
+        }
+      : {},
+    { idempotent: true },
   );
   return toStockTransfer(data);
 }

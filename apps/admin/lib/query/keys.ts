@@ -125,9 +125,14 @@ export const queryKeys = {
     profit: (range?: Record<string, unknown>) => ["reports", "profit", range] as const,
     topProducts: (range?: Record<string, unknown>, limit?: number) =>
       ["reports", "top-products", range, limit] as const,
-    discounts: (range?: Record<string, unknown>) => ["reports", "discounts", range] as const,
+    discounts: (range?: Record<string, unknown>, page?: number) =>
+      ["reports", "discounts", range, page] as const,
     byCashier: (range?: Record<string, unknown>) => ["reports", "by-cashier", range] as const,
     byDevice: (range?: Record<string, unknown>) => ["reports", "by-device", range] as const,
+    byCategory: (range?: Record<string, unknown>) => ["reports", "by-category", range] as const,
+    byPaymentMethod: (range?: Record<string, unknown>) => ["reports", "by-payment-method", range] as const,
+    byLocation: (range?: Record<string, unknown>) => ["reports", "by-location", range] as const,
+    refundsVoids: (range?: Record<string, unknown>) => ["reports", "refunds-voids", range] as const,
     inventoryValuation: () => ["reports", "inventory-valuation"] as const,
     deadStock: (days?: number) => ["reports", "dead-stock", days] as const,
   },
@@ -177,6 +182,37 @@ export const queryKeys = {
   complexDiscountRules: {
     all: ["complex-discount-rules"] as const,
     list: () => ["complex-discount-rules", "list"] as const,
+  },
+  loyaltyProgram: {
+    all: ["loyalty-program"] as const,
+    detail: () => ["loyalty-program", "detail"] as const,
+  },
+  loyaltyRewards: {
+    all: ["loyalty-rewards"] as const,
+    list: () => ["loyalty-rewards", "list"] as const,
+  },
+  loyaltyLedger: {
+    all: ["loyalty-points-ledger"] as const,
+    list: (filter: { customerId?: string; type?: string; page?: number }) =>
+      ["loyalty-points-ledger", "list", filter] as const,
+  },
+  workSchedules: {
+    all: ["work-schedules"] as const,
+    list: () => ["work-schedules", "list"] as const,
+  },
+  scheduleAssignments: {
+    all: ["schedule-assignments"] as const,
+    list: (userId?: string) => ["schedule-assignments", "list", userId] as const,
+  },
+  attendanceSettings: {
+    all: ["attendance-settings"] as const,
+    detail: () => ["attendance-settings", "detail"] as const,
+  },
+  attendance: {
+    all: ["attendance"] as const,
+    list: (filter: Record<string, unknown>) => ["attendance", "list", filter] as const,
+    detail: (id: string) => ["attendance", "detail", id] as const,
+    today: (userId: string) => ["attendance", "today", userId] as const,
   },
   mfaStatus: {
     all: ["mfa-status"] as const,

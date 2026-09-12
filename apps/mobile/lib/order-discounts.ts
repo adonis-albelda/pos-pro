@@ -9,11 +9,14 @@ import {
   blocksComplexPromo,
   cartTotal,
   computeSimpleDiscount,
+  eligibleRewards,
   evaluateComplexDiscount,
+  lineSubtotal,
   type CartLine,
   type ComplexDiscountRule,
   type DiscountCartSnapshot,
   type DiscountRule,
+  type LoyaltyReward,
   type SaleDiscount,
   type TaxSettings,
 } from "@double-a/shared-types";
@@ -44,6 +47,49 @@ export function buildCartSnapshot(lines: CartLine[]): DiscountCartSnapshot {
   };
 }
 
+/** Whether this cart line sits inside a simple rule's scope. */
+export function lineMatchesDiscountRule(line: CartLine, rule: DiscountRule): boolean {
+  if (!rule.isActive) return false;
+  if (rule.appliesTo === "total") return true;
+
+  if (rule.appliesTo === "specific_products") {
+    return rule.scopes.some((scope) => {
+      if (scope.scopeType === "product") return scope.scopeId === line.productId;
+      if (scope.scopeType === "variant") return scope.scopeId === line.variantId;
+      return false;
+    });
+  }
+
+  if (rule.appliesTo === "specific_categories") {
+    if (!line.categoryId) return false;
+    return rule.scopes.some(
+      (scope) => scope.scopeType === "category" && scope.scopeId === line.categoryId,
+    );
+  }
+
+  return false;
+}
+
+/** Peso base a simple rule should compute against for this cart. */
+export function applicableAmountForRule(rule: DiscountRule, lines: CartLine[]): number {
+  const matching = lines.filter((line) => lineMatchesDiscountRule(line, rule));
+  return matching.reduce((sum, line) => sum + lineSubtotal(line.unitPrice, line.quantity), 0);
+}
+
+/**
+ * Active simple rules that touch at least one line in the cart — catalog
+ * discounts the cashier can pick by hand. `total` rules always qualify when
+ * the cart is non-empty; scoped rules need a matching product/category/variant.
+ */
+export function qualifyingSimpleRules(rules: DiscountRule[], lines: CartLine[]): DiscountRule[] {
+  if (lines.length === 0) return [];
+  return rules.filter((rule) => {
+    if (!rule.isActive) return false;
+    if (rule.appliesTo === "total") return true;
+    return lines.some((line) => lineMatchesDiscountRule(line, rule));
+  });
+}
+
 export function applySimpleRuleToCart(options: {
   rule: DiscountRule;
   lines: CartLine[];
@@ -53,7 +99,7 @@ export function applySimpleRuleToCart(options: {
   appliedBy?: string | null;
 }): AppliedOrderDiscount {
   const { rule, lines, tax, idNumber, idHolderName, appliedBy } = options;
-  const applicable = cartTotal(lines);
+  const applicable = applicableAmountForRule(rule, lines);
   const result = computeSimpleDiscount(rule, applicable, tax);
 
   return {
@@ -68,6 +114,45 @@ export function applySimpleRuleToCart(options: {
     isVatExempt: rule.isVatExempt,
     appliedBy: appliedBy ?? null,
     createdAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Loyalty rewards the cashier can pick right now: the customer's points
+ * balance clears the threshold (spec section 4) AND the reward's linked
+ * Simple Discount would itself qualify for this cart (spec section 13 point
+ * 5 — a reward never bypasses the discount's own scope rules). Loyalty only
+ * decides the first half; qualifyingSimpleRules still decides the second.
+ */
+export function eligibleLoyaltyRewards(options: {
+  rewards: LoyaltyReward[];
+  discountRules: DiscountRule[];
+  pointsBalance: number;
+  lines: CartLine[];
+}): { reward: LoyaltyReward; rule: DiscountRule }[] {
+  const { rewards, discountRules, pointsBalance, lines } = options;
+  const rulesById = new Map(discountRules.map((rule) => [rule.id, rule]));
+  const qualifying = new Set(qualifyingSimpleRules(discountRules, lines).map((rule) => rule.id));
+
+  return eligibleRewards(rewards, pointsBalance)
+    .map((reward) => ({ reward, rule: rulesById.get(reward.simpleDiscountId) }))
+    .filter((entry): entry is { reward: LoyaltyReward; rule: DiscountRule } =>
+      Boolean(entry.rule) && entry.rule!.isActive && qualifying.has(entry.rule!.id),
+    );
+}
+
+/** Same math as applySimpleRuleToCart, tagged as a loyalty redemption so it can carry a points deduction on push. */
+export function applyLoyaltyRewardToCart(options: {
+  reward: LoyaltyReward;
+  rule: DiscountRule;
+  lines: CartLine[];
+  tax: TaxSettings;
+  appliedBy?: string | null;
+}): AppliedOrderDiscount {
+  const { reward, appliedBy, ...rest } = options;
+  return {
+    ...applySimpleRuleToCart({ ...rest, appliedBy }),
+    loyaltyRewardId: reward.id,
   };
 }
 

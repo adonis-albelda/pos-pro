@@ -2,6 +2,7 @@ import type {
   AddonGroup,
   AddonGroupItemChoice,
   BundleItem,
+  CashMovement,
   Category,
   Company,
   CompanyStats,
@@ -248,6 +249,7 @@ export interface CustomerAttrs {
   name: string;
   address: string | null;
   contact: string | null;
+  loyalty_points_balance?: number;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -259,6 +261,7 @@ export function toCustomer(resource: JsonApiResource<CustomerAttrs>): Customer {
     name: a.name,
     address: a.address,
     contact: a.contact,
+    loyaltyPointsBalance: a.loyalty_points_balance ?? 0,
     updatedAt: a.updated_at ?? "",
   };
 }
@@ -311,9 +314,11 @@ export interface ExpenseAttrs {
   category: string | null;
   expense_date: string;
   note: string | null;
+  receipt_url?: string | null;
   created_by: string | null;
   expense_bill_id?: string | null;
   location_id: string | null;
+  payment_method?: string | null;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -327,9 +332,11 @@ export function toExpense(resource: JsonApiResource<ExpenseAttrs>): Expense {
     category: a.category,
     expenseDate: a.expense_date,
     note: a.note,
+    receiptUrl: a.receipt_url ?? null,
     createdBy: a.created_by,
     expenseBillId: a.expense_bill_id ?? null,
     locationId: a.location_id,
+    paymentMethod: (a.payment_method as Expense["paymentMethod"]) ?? null,
     createdAt: a.created_at ?? "",
     updatedAt: a.updated_at ?? "",
   };
@@ -499,6 +506,7 @@ export interface SaleItemJson {
   unit_cost: number;
   replaced_by_product_id?: string | null;
   replaced_by_product_name?: string | null;
+  refunded_at?: string | null;
   addons?: {
     id: string;
     addon_group_item_id: string | null;
@@ -522,6 +530,7 @@ export function toSaleItem(json: SaleItemJson, saleId: string): SaleItem {
     subtotal: Number(json.subtotal),
     replacedByProductId: json.replaced_by_product_id ?? null,
     replacedByProductName: json.replaced_by_product_name ?? null,
+    refundedAt: json.refunded_at ?? null,
     addons: (json.addons ?? []).map(
       (addon): SaleItemAddon => ({
         id: addon.id,
@@ -550,6 +559,7 @@ export interface SaleAttrs {
   is_paid: boolean | null;
   fulfillment: string | null;
   delivery_completed: boolean | null;
+  payment_proof_url?: string | null;
   company_id?: string | null;
   created_at: string | null;
   synced_at: string | null;
@@ -578,6 +588,7 @@ export function toSale(resource: JsonApiResource<SaleAttrs>): Sale {
     deliveryCompleted: a.delivery_completed ?? false,
     companyId: a.company_id,
     locationId: a.location_id ?? null,
+    paymentProofUrl: a.payment_proof_url ?? null,
   };
 }
 
@@ -686,6 +697,7 @@ export function toPurchaseOrderPayment(
 
 export interface PurchaseOrderAttrs {
   supplier_id: string;
+  location_id: string | null;
   status: string;
   order_date: string;
   expected_date: string | null;
@@ -704,6 +716,7 @@ export function toPurchaseOrder(resource: JsonApiResource<PurchaseOrderAttrs>): 
   return {
     id: resource.id,
     supplierId: a.supplier_id,
+    locationId: a.location_id,
     status: a.status as PurchaseOrderStatus,
     orderDate: a.order_date,
     expectedDate: a.expected_date,
@@ -836,7 +849,9 @@ export interface StockTransferAttrs {
   from_location_name: string | null;
   to_location_name: string | null;
   status: string;
+  notes: string | null;
   created_by: string | null;
+  created_by_name: string | null;
   received_at: string | null;
   created_at: string | null;
   updated_at: string | null;
@@ -844,7 +859,17 @@ export interface StockTransferAttrs {
     id: string;
     product_id: string;
     product_name: string | null;
+    variant_id: string | null;
+    sku: string | null;
     quantity: number;
+    quantity_received: number;
+    quantity_remaining: number;
+  }>;
+  receipts?: Array<{
+    id: string;
+    received_by: string | null;
+    received_at: string | null;
+    items: Array<{ stock_transfer_item_id: string; quantity_received: number }>;
   }>;
 }
 
@@ -858,7 +883,9 @@ export function toStockTransfer(resource: JsonApiResource<StockTransferAttrs>): 
     fromLocationName: a.from_location_name,
     toLocationName: a.to_location_name,
     status: a.status as StockTransferStatus,
+    notes: a.notes,
     createdBy: a.created_by,
+    createdByName: a.created_by_name,
     receivedAt: a.received_at,
     createdAt: a.created_at ?? "",
     updatedAt: a.updated_at ?? "",
@@ -866,7 +893,46 @@ export function toStockTransfer(resource: JsonApiResource<StockTransferAttrs>): 
       id: item.id,
       productId: item.product_id,
       productName: item.product_name,
+      variantId: item.variant_id,
+      sku: item.sku,
       quantity: Number(item.quantity),
+      quantityReceived: Number(item.quantity_received),
+      quantityRemaining: Number(item.quantity_remaining),
     })),
+    receipts: (a.receipts ?? []).map((receipt) => ({
+      id: receipt.id,
+      receivedBy: receipt.received_by,
+      receivedAt: receipt.received_at,
+      items: receipt.items.map((line) => ({
+        stockTransferItemId: line.stock_transfer_item_id,
+        quantityReceived: Number(line.quantity_received),
+      })),
+    })),
+  };
+}
+
+export interface CashMovementAttrs {
+  type: string;
+  location_id: string;
+  terminal_id: string | null;
+  amount: number;
+  reason: string;
+  created_by: string | null;
+  created_by_name: string | null;
+  created_at: string | null;
+}
+
+export function toCashMovement(resource: JsonApiResource<CashMovementAttrs>): CashMovement {
+  const a = resource.attributes;
+  return {
+    id: resource.id,
+    type: a.type as CashMovement["type"],
+    locationId: a.location_id,
+    terminalId: a.terminal_id,
+    amount: Number(a.amount),
+    reason: a.reason,
+    createdBy: a.created_by,
+    createdByName: a.created_by_name,
+    createdAt: a.created_at ?? "",
   };
 }

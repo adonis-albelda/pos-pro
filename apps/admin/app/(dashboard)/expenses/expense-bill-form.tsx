@@ -1,7 +1,7 @@
 "use client";
 
-import { useActionState, useEffect, useState, useTransition } from "react";
-import { CalendarClock, Check, Trash2 } from "lucide-react";
+import { useActionState, useEffect, useId, useState, useTransition } from "react";
+import { CalendarClock, Check, Trash2, X } from "lucide-react";
 import {
   EXPENSE_BILL_FREQUENCIES,
   EXPENSE_BILL_REMIND_DAYS_MAX,
@@ -10,7 +10,7 @@ import {
   EXPENSE_NOTE_MAX,
   type ExpenseBill,
 } from "@double-a/shared-types";
-import { ConfirmDialog } from "@/components/overlay";
+import { ConfirmDialog, SheetFooter, useSheetChrome } from "@/components/overlay";
 import { Button, ErrorNote, Field, Input, MoneyInput, Select, SuccessNote } from "@/components/ui";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
 import { useInvalidateExpenseBills } from "@/lib/query/expense-bills";
@@ -32,6 +32,8 @@ export function ExpenseBillForm({
   defaultDueDate: string;
   onDone?: () => void;
 }) {
+  const formId = useId();
+  const inSheet = useSheetChrome() !== null;
   const [state, action, pending] = useActionState(saveExpenseBill, EMPTY_FORM_STATE);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, startDelete] = useTransition();
@@ -57,9 +59,38 @@ export function ExpenseBillForm({
     });
   }
 
+  const actions = (
+    <div className="flex flex-wrap items-center justify-end gap-2">
+      {bill ? (
+        <Button
+          type="button"
+          variant="secondary"
+          icon={Trash2}
+          className="mr-auto text-danger"
+          onClick={() => setConfirmDelete(true)}
+        >
+          Delete bill
+        </Button>
+      ) : null}
+      {onDone ? (
+        <Button type="button" variant="secondary" icon={X} onClick={onDone}>
+          Cancel
+        </Button>
+      ) : null}
+      <Button
+        type="submit"
+        form={inSheet ? formId : undefined}
+        loading={pending}
+        icon={bill ? Check : CalendarClock}
+      >
+        {pending ? "Saving..." : bill ? "Save changes" : "Add bill"}
+      </Button>
+    </div>
+  );
+
   return (
     <>
-      <form action={action} className="space-y-4">
+      <form id={formId} action={action} className="space-y-4">
         {bill ? <input type="hidden" name="id" value={bill.id} /> : null}
 
         <Field label="Description" required>
@@ -162,47 +193,21 @@ export function ExpenseBillForm({
         {state.error ? <ErrorNote>{state.error}</ErrorNote> : null}
         {state.ok ? <SuccessNote>Saved.</SuccessNote> : null}
 
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
-          <Button
-            type="submit"
-            loading={pending}
-            icon={bill ? Check : CalendarClock}
-            className="w-full sm:w-auto"
-          >
-            {pending ? "Saving..." : bill ? "Save changes" : "Add bill"}
-          </Button>
-          {onDone ? (
-            <Button type="button" variant="secondary" onClick={onDone} className="w-full sm:w-auto">
-              Cancel
-            </Button>
-          ) : null}
-        </div>
+        {!inSheet ? actions : null}
       </form>
+      {inSheet ? <SheetFooter>{actions}</SheetFooter> : null}
 
       {bill ? (
-        <>
-          <div className="mt-6 border-t border-hairline pt-4">
-            <Button
-              type="button"
-              variant="secondary"
-              icon={Trash2}
-              className="w-full text-danger sm:w-auto"
-              onClick={() => setConfirmDelete(true)}
-            >
-              Delete bill
-            </Button>
-          </div>
-          <ConfirmDialog
-            open={confirmDelete}
-            onClose={() => setConfirmDelete(false)}
-            title="Delete this bill?"
-            description="Ledger expenses already logged stay. Only the schedule is removed."
-            confirmLabel={deleting ? "Deleting…" : "Delete"}
-            confirmationText={bill.description}
-            onConfirm={confirmRemove}
-            pending={deleting}
-          />
-        </>
+        <ConfirmDialog
+          open={confirmDelete}
+          onClose={() => setConfirmDelete(false)}
+          title="Delete this bill?"
+          description="Ledger expenses already logged stay. Only the schedule is removed."
+          confirmLabel={deleting ? "Deleting…" : "Delete"}
+          confirmationText={bill.description}
+          onConfirm={confirmRemove}
+          pending={deleting}
+        />
       ) : null}
     </>
   );

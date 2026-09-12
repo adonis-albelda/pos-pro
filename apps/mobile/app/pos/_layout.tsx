@@ -1,9 +1,10 @@
-import { Redirect, Stack } from "expo-router";
+import { Redirect, Stack, usePathname } from "expo-router";
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useSession } from "@/lib/session";
 import { useStoreSettings } from "@/lib/store";
 import { useIdleLock } from "@/lib/idle-lock";
+import { useLayout } from "@/lib/layout";
 import { CartSummaryProvider } from "@/lib/cart-summary";
 import { FlyToCartProvider } from "@/lib/fly-to-cart";
 import { PriceInquiryProvider } from "@/lib/price-inquiry";
@@ -17,6 +18,12 @@ export default function PosLayout() {
   const insets = useSafeAreaInsets();
   const { idleTimeoutMinutes } = useStoreSettings();
   const recordActivity = useIdleLock(idleTimeoutMinutes);
+  const { compact } = useLayout();
+  const pathname = usePathname();
+
+  // Tablet Sell owns StoreHeader inside its left column so the cart can sit
+  // full-height beside header+grid. Other tabs (and phone) keep the chrome here.
+  const sellOwnsHeader = !compact && pathname === "/pos";
 
   if (!cashier) return <Redirect href="/unlock" />;
 
@@ -31,7 +38,7 @@ export default function PosLayout() {
             style={[styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]}
             onTouchStart={recordActivity}
           >
-            <StoreHeader />
+            {sellOwnsHeader ? null : <StoreHeader />}
             <View style={{ flex: 1, minHeight: 0 }}>
               <Stack
                 screenOptions={{

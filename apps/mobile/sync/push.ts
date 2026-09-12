@@ -3,7 +3,7 @@ import {
   type LocalSaleWithItems,
   type PushResult,
 } from "@double-a/shared-types";
-import { patchSaleFlags, pushCustomers, pushSales } from "@double-a/api-client/queries";
+import { attachSalePaymentProof, patchSaleFlags, pushCustomers, pushSales } from "@double-a/api-client/queries";
 import {
   listPendingCustomers,
   markCustomersSynced,
@@ -11,7 +11,9 @@ import {
 import {
   listFlagPendingSales,
   listPendingSales,
+  listSalesAwaitingPaymentProofUpload,
   markFlagsSynced,
+  markPaymentProofUploaded,
   markSalesSynced,
 } from "@/db/sales";
 import { getEnrolledCompanyId } from "@/lib/device";
@@ -106,6 +108,25 @@ export async function push(): Promise<PushResult> {
     });
   }
   await markFlagsSynced(flagPending.map((sale) => sale.id));
+
+  // Optional and never load-bearing — a failed photo upload must not fail
+  // the sync that just successfully sent real sales. One at a time, best
+  // effort; a sale that fails here simply stays queued for the next sync.
+  const awaitingProof = await listSalesAwaitingPaymentProofUpload();
+  for (const sale of awaitingProof) {
+    try {
+      const updated = await attachSalePaymentProof(client, sale.id, {
+        uri: sale.localUri,
+        name: "payment-proof.jpg",
+        type: "image/jpeg",
+      });
+      if (updated.paymentProofUrl) {
+        await markPaymentProofUploaded(sale.id, updated.paymentProofUrl);
+      }
+    } catch (error: unknown) {
+      console.warn("Payment proof upload failed — will retry next sync:", error);
+    }
+  }
 
   if (rejected.length > 0 && salesPushed === 0 && pending.length > 0) {
     throw new Error(

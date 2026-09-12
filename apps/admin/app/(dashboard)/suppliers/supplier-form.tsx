@@ -1,7 +1,7 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
-import { Check, Search, Truck } from "lucide-react";
+import { useActionState, useEffect, useId, useMemo, useState } from "react";
+import { Check, Search, Truck, X } from "lucide-react";
 import {
   SUPPLIER_ADDRESS_MAX,
   SUPPLIER_CONTACT_PERSON_MAX,
@@ -12,6 +12,7 @@ import {
   SUPPLIER_TIN_MAX,
 } from "@double-a/shared-types";
 import type { Product, Supplier } from "@double-a/shared-types";
+import { SheetFooter, useSheetChrome } from "@/components/overlay";
 import { Button, ErrorNote, Field, Input, SuccessNote, Textarea } from "@/components/ui";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
 import { useInvalidateSuppliers } from "@/lib/query/suppliers";
@@ -29,6 +30,8 @@ export function SupplierForm({
   linkedProductIds?: string[];
   onDone?: () => void;
 }) {
+  const formId = useId();
+  const inSheet = useSheetChrome() !== null;
   const [state, action, pending] = useActionState(saveSupplier, EMPTY_FORM_STATE);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(
@@ -73,8 +76,27 @@ export function SupplierForm({
     setSelected((previous) => new Set([...previous].filter((id) => !visibleIds.has(id))));
   }
 
+  const actions = (
+    <div className="flex justify-end gap-2">
+      {onDone ? (
+        <Button type="button" variant="secondary" icon={X} onClick={onDone}>
+          Cancel
+        </Button>
+      ) : null}
+      <Button
+        type="submit"
+        form={inSheet ? formId : undefined}
+        loading={pending}
+        icon={supplier ? Check : Truck}
+      >
+        {pending ? "Saving..." : supplier ? "Save changes" : "Add supplier"}
+      </Button>
+    </div>
+  );
+
   return (
-    <form action={action} className="space-y-4">
+    <>
+    <form id={formId} action={action} className="space-y-4">
       {supplier ? <input type="hidden" name="id" value={supplier.id} /> : null}
       <input type="hidden" name="product_ids" value={Array.from(selected).join(",")} />
 
@@ -229,21 +251,9 @@ export function SupplierForm({
       {state.error ? <ErrorNote>{state.error}</ErrorNote> : null}
       {state.ok ? <SuccessNote>Saved.</SuccessNote> : null}
 
-      <div className="flex flex-col-reverse gap-2 sm:flex-row">
-        <Button
-          type="submit"
-          loading={pending}
-          icon={supplier ? Check : Truck}
-          className="w-full sm:w-auto"
-        >
-          {pending ? "Saving..." : supplier ? "Save changes" : "Add supplier"}
-        </Button>
-        {onDone ? (
-          <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={onDone}>
-            Cancel
-          </Button>
-        ) : null}
-      </div>
+      {!inSheet ? actions : null}
     </form>
+    {inSheet ? <SheetFooter>{actions}</SheetFooter> : null}
+    </>
   );
 }

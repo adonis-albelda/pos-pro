@@ -132,7 +132,7 @@ these quickly, under variable lighting; err large.
     a flat list already has a chip per category and a second route to the same names reads as a
     duplicate. `Browse`, not "All categories": two chips opening with the same word are read as
     one thing twice. The chips come from the local
-    `categories` table, pulled whole from Supabase on every pull, and filtering matches on
+    `categories` table, pulled whole from the Tally API on every pull, and filtering matches on
     category ids. Never build the strip from the `category` path text on a product: that text
     is a snapshot kept for receipts and reports and survives the category being deleted, so a
     strip built from it shows shelves the office retired months ago. Only top-level names get a chip —

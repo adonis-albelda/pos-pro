@@ -89,6 +89,7 @@ export async function getPurchaseOrder(
  */
 export interface PurchaseOrderInput {
   supplierId: string;
+  locationId?: string | null;
   orderDate?: string | null;
   expectedDate?: string | null;
   referenceNo?: string | null;
@@ -97,6 +98,7 @@ export interface PurchaseOrderInput {
 
 function toCreatePayload(input: PurchaseOrderInput): Record<string, unknown> {
   const payload: Record<string, unknown> = { supplier_id: input.supplierId };
+  if (input.locationId !== undefined) payload.location_id = input.locationId;
   if (input.orderDate !== undefined) payload.order_date = input.orderDate;
   if (input.expectedDate !== undefined) payload.expected_date = input.expectedDate;
   if (input.referenceNo !== undefined) payload.reference_no = input.referenceNo;
@@ -128,6 +130,7 @@ export async function createPurchaseOrder(
 /** `status` folded into the same PATCH as header edits — see `setPurchaseOrderStatus`. */
 export interface PurchaseOrderPatch {
   status?: PurchaseOrderStatus;
+  locationId?: string | null;
   orderDate?: string;
   expectedDate?: string | null;
   referenceNo?: string | null;
@@ -137,6 +140,7 @@ export interface PurchaseOrderPatch {
 function toUpdatePayload(patch: PurchaseOrderPatch): Record<string, unknown> {
   const payload: Record<string, unknown> = {};
   if (patch.status !== undefined) payload.status = patch.status;
+  if (patch.locationId !== undefined) payload.location_id = patch.locationId;
   if (patch.orderDate !== undefined) payload.order_date = patch.orderDate;
   if (patch.expectedDate !== undefined) payload.expected_date = patch.expectedDate;
   if (patch.referenceNo !== undefined) payload.reference_no = patch.referenceNo;

@@ -1,7 +1,17 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { countUsers, getUser, listUsers, sendUserEmailVerification, updateUser } from "@double-a/api-client/queries";
+import {
+  countUsers,
+  createUser,
+  deleteUser,
+  getUser,
+  listUsers,
+  sendUserEmailVerification,
+  updateUser,
+  type CreateUserInput,
+  type UpdateUserInput,
+} from "@double-a/api-client/queries";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 import { queryKeys } from "./keys";
 
@@ -58,5 +68,38 @@ export function useToggleUserCanSell() {
 export function useResendUserEmailVerification() {
   return useMutation({
     mutationFn: (id: string) => sendUserEmailVerification(getBrowserApiClient(), id),
+  });
+}
+
+export function useCreateUser() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateUserInput) => createUser(getBrowserApiClient(), input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
+    },
+  });
+}
+
+export function useUpdateUser() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: UpdateUserInput }) =>
+      updateUser(getBrowserApiClient(), id, patch),
+    onSuccess: (_, { id }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.users.detail(id) });
+    },
+  });
+}
+
+/** Soft delete — User uses SoftDeletes server-side; deleted_at excludes it from every later listUsers() read. */
+export function useDeleteUser() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteUser(getBrowserApiClient(), id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
+    },
   });
 }

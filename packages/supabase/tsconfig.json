@@ -1,4 +1,0 @@
-{
-  "extends": "@double-a/config-typescript/library.json",
-  "include": ["src/**/*.ts"]
-}

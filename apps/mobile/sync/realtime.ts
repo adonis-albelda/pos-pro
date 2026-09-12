@@ -3,14 +3,22 @@ import type { Channel } from "laravel-echo";
 import {
   toComplexDiscountRule,
   toDiscountRule,
+  toLoyaltyProgram,
+  toLoyaltyReward,
   toProduct,
   toProductVariant,
+  toScheduleAssignment,
   toTaxSettings,
+  toWorkSchedule,
   type ComplexDiscountRuleAttrs,
   type DiscountRuleAttrs,
+  type LoyaltyRewardAttrs,
+  type LoyaltySettingsAttrs,
   type ProductAttrs,
   type ProductVariantAttrs,
+  type ScheduleAssignmentAttrs,
   type TaxSettingsAttrs,
+  type WorkScheduleAttrs,
 } from "@double-a/api-client";
 import {
   deleteLocalComplexDiscountRule,
@@ -19,8 +27,15 @@ import {
   upsertLocalComplexDiscountRule,
   upsertLocalDiscountRule,
 } from "@/db/discounts";
+import { deleteLocalLoyaltyReward, saveLocalLoyaltyProgram, upsertLocalLoyaltyReward } from "@/db/loyalty";
 import { updateProductCatalogFields, updateProductStock } from "@/db/products";
 import { updateVariantCatalogFields, updateVariantStock } from "@/db/product-variants";
+import {
+  deleteLocalScheduleAssignment,
+  deleteLocalWorkSchedule,
+  upsertLocalScheduleAssignment,
+  upsertLocalWorkSchedule,
+} from "@/db/schedules";
 import { apiUrl } from "@/lib/api/client";
 import { getSessionToken } from "@/lib/api/session";
 
@@ -88,11 +103,10 @@ interface VariantUpdatedPayload {
 }
 
 /**
- * Backend contract for discount realtime — not yet emitted by the broadcast
- * service (out of this repo); this is the shape mobile is built to consume
- * the moment admin's discount save/delete actions start firing it. All on
- * the same `company.{companyId}` channel already used for catalogue events,
- * since discount rules, complex promos, and tax settings are company-scoped,
+ * Discount/tax realtime — fired by Laravel's Store/Update/Destroy discount
+ * controllers and UpdateTaxSettingsController. All on the same
+ * `company.{companyId}` channel already used for catalogue events, since
+ * discount rules, complex promos, and tax settings are company-scoped,
  * never location-scoped:
  *
  *   - DiscountRuleUpdated → event `.discount-rule.updated`, fired on every
@@ -129,6 +143,60 @@ interface DiscountRuleDeletedPayload {
 
 interface TaxSettingsUpdatedPayload {
   data: TaxSettingsAttrs;
+}
+
+/**
+ * Loyalty realtime — fired by Store/Update/DestroyLoyaltyRewardController
+ * and UpdateLoyaltySettingsController. Same `company.{companyId}` channel —
+ * loyalty is company-scoped, same as discounts.
+ *
+ *   - LoyaltyRewardUpdated → `.loyalty-reward.updated`, JSON:API resource
+ *     shaped like LoyaltyRewardAttrs.
+ *   - LoyaltyRewardDeleted → `.loyalty-reward.deleted`, payload `{ id }`.
+ *   - LoyaltySettingsUpdated → `.loyalty-settings.updated`, payload
+ *     `{ data: LoyaltySettingsAttrs }` — same envelope as GET
+ *     /loyalty-settings, not a JSON:API resource (a single row on companies).
+ */
+interface LoyaltyRewardUpdatedPayload {
+  id: string;
+  type: string;
+  attributes: LoyaltyRewardAttrs;
+}
+
+interface LoyaltyRewardDeletedPayload {
+  id: string;
+}
+
+interface LoyaltySettingsUpdatedPayload {
+  data: LoyaltySettingsAttrs;
+}
+
+/**
+ * Work schedule / assignment realtime — fired by Store/Update/Destroy
+ * controllers for both resources. Same `company.{companyId}` channel —
+ * schedules are company-scoped, no location dimension.
+ *
+ *   - WorkScheduleUpdated / WorkScheduleDeleted → `.work-schedule.updated` /
+ *     `.work-schedule.deleted`, JSON:API resource shaped like
+ *     WorkScheduleAttrs / `{ id }`.
+ *   - ScheduleAssignmentUpdated / ScheduleAssignmentDeleted →
+ *     `.schedule-assignment.updated` / `.schedule-assignment.deleted`,
+ *     ScheduleAssignmentAttrs / `{ id }`.
+ */
+interface WorkScheduleUpdatedPayload {
+  id: string;
+  type: string;
+  attributes: WorkScheduleAttrs;
+}
+
+interface ScheduleAssignmentUpdatedPayload {
+  id: string;
+  type: string;
+  attributes: ScheduleAssignmentAttrs;
+}
+
+interface ScheduleDeletedPayload {
+  id: string;
 }
 
 let echo: Echo<"reverb"> | null = null;
@@ -244,6 +312,34 @@ export async function connectRealtime(
   catalogChannel.listen(".tax-settings.updated", (payload: TaxSettingsUpdatedPayload) => {
     if (__DEV__) console.warn("[realtime] tax-settings.updated", payload);
     void saveLocalTaxSettings(toTaxSettings(payload.data)).then(onStockTick);
+  });
+  catalogChannel.listen(".loyalty-reward.updated", (payload: LoyaltyRewardUpdatedPayload) => {
+    if (__DEV__) console.warn("[realtime] loyalty-reward.updated", payload);
+    void upsertLocalLoyaltyReward(toLoyaltyReward(payload)).then(onStockTick);
+  });
+  catalogChannel.listen(".loyalty-reward.deleted", (payload: LoyaltyRewardDeletedPayload) => {
+    if (__DEV__) console.warn("[realtime] loyalty-reward.deleted", payload);
+    void deleteLocalLoyaltyReward(payload.id).then(onStockTick);
+  });
+  catalogChannel.listen(".loyalty-settings.updated", (payload: LoyaltySettingsUpdatedPayload) => {
+    if (__DEV__) console.warn("[realtime] loyalty-settings.updated", payload);
+    void saveLocalLoyaltyProgram(toLoyaltyProgram(payload.data)).then(onStockTick);
+  });
+  catalogChannel.listen(".work-schedule.updated", (payload: WorkScheduleUpdatedPayload) => {
+    if (__DEV__) console.warn("[realtime] work-schedule.updated", payload);
+    void upsertLocalWorkSchedule(toWorkSchedule(payload)).then(onStockTick);
+  });
+  catalogChannel.listen(".work-schedule.deleted", (payload: ScheduleDeletedPayload) => {
+    if (__DEV__) console.warn("[realtime] work-schedule.deleted", payload);
+    void deleteLocalWorkSchedule(payload.id).then(onStockTick);
+  });
+  catalogChannel.listen(".schedule-assignment.updated", (payload: ScheduleAssignmentUpdatedPayload) => {
+    if (__DEV__) console.warn("[realtime] schedule-assignment.updated", payload);
+    void upsertLocalScheduleAssignment(toScheduleAssignment(payload)).then(onStockTick);
+  });
+  catalogChannel.listen(".schedule-assignment.deleted", (payload: ScheduleDeletedPayload) => {
+    if (__DEV__) console.warn("[realtime] schedule-assignment.deleted", payload);
+    void deleteLocalScheduleAssignment(payload.id).then(onStockTick);
   });
   catalogChannel.error((error: unknown) => {
     console.warn("[realtime] catalog channel auth failed", error);

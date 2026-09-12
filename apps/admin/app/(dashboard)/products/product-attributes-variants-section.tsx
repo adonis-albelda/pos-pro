@@ -45,7 +45,7 @@ import {
   Td,
   Th,
 } from "@/components/ui";
-import { ConfirmDialog, Dialog, Sheet } from "@/components/overlay";
+import { ConfirmDialog, Dialog, Sheet, SheetFooter } from "@/components/overlay";
 import { BarcodeScanCamera, canUseBarcodeScanner } from "@/components/barcode-scan-camera";
 import { VariantPhotoGallery } from "./variant-photo-gallery";
 import {
@@ -629,14 +629,16 @@ function VariantStockAdjustForm({
       <Field label="Note" required={false}>
         <Input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Optional" />
       </Field>
-      <div className="sticky bottom-0 -mx-5 -mb-5 flex shrink-0 items-center justify-end gap-2 border-t border-border bg-surface px-5 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
-        <Button type="button" variant="secondary" icon={X} onClick={onDone}>
-          Cancel
-        </Button>
-        <Button type="button" icon={Check} onClick={reviewSubmit}>
-          Save
-        </Button>
-      </div>
+      <SheetFooter>
+        <div className="flex items-center justify-end gap-2">
+          <Button type="button" variant="secondary" icon={X} onClick={onDone}>
+            Cancel
+          </Button>
+          <Button type="button" icon={Check} onClick={reviewSubmit}>
+            Save
+          </Button>
+        </div>
+      </SheetFooter>
 
       <ConfirmDialog
         open={confirmSubmit}
@@ -1320,25 +1322,27 @@ function VariantDetailPanel({
             </div>
           ) : null}
 
-          <div className="sticky bottom-0 -mx-5 -mb-5 flex shrink-0 items-center justify-end gap-2 border-t border-border bg-surface px-5 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
-            <Button
-              type="button"
-              variant="danger"
-              icon={Trash2}
-              onClick={() => setConfirmDelete(true)}
-            >
-              Delete variant
-            </Button>
-            <Button
-              type="button"
-              icon={Check}
-              loading={update.isPending}
-              disabled={!isDirty}
-              onClick={onUpdate}
-            >
-              Update
-            </Button>
-          </div>
+          <SheetFooter>
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="danger"
+                icon={Trash2}
+                onClick={() => setConfirmDelete(true)}
+              >
+                Delete variant
+              </Button>
+              <Button
+                type="button"
+                icon={Check}
+                loading={update.isPending}
+                disabled={!isDirty}
+                onClick={onUpdate}
+              >
+                Update
+              </Button>
+            </div>
+          </SheetFooter>
       </div>
 
       <ConfirmDialog

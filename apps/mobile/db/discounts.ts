@@ -46,6 +46,7 @@ interface SaleDiscountRow {
   sale_id: string;
   discount_rule_id: string | null;
   complex_discount_rule_id: string | null;
+  loyalty_reward_id: string | null;
   name: string | null;
   id_number: string | null;
   id_holder_name: string | null;
@@ -110,6 +111,7 @@ export function toSaleDiscount(row: SaleDiscountRow): SaleDiscount {
     saleId: row.sale_id,
     discountRuleId: row.discount_rule_id,
     complexDiscountRuleId: row.complex_discount_rule_id,
+    loyaltyRewardId: row.loyalty_reward_id,
     name: row.name,
     idNumber: row.id_number,
     idHolderName: row.id_holder_name,
@@ -290,13 +292,14 @@ export async function insertSaleDiscounts(discounts: SaleDiscount[]): Promise<vo
   for (const d of discounts) {
     await db.runAsync(
       `INSERT INTO sale_discounts
-         (id, sale_id, discount_rule_id, complex_discount_rule_id, name, id_number, id_holder_name,
+         (id, sale_id, discount_rule_id, complex_discount_rule_id, loyalty_reward_id, name, id_number, id_holder_name,
           discount_amount, vat_removed, is_vat_exempt, applied_by, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       d.id,
       d.saleId,
       d.discountRuleId,
       d.complexDiscountRuleId,
+      d.loyaltyRewardId ?? null,
       d.name ?? null,
       d.idNumber,
       d.idHolderName,

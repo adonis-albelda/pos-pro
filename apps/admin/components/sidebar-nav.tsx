@@ -3,9 +3,14 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
-import { LoaderCircle } from "lucide-react";
+import { ChevronRight, LoaderCircle } from "lucide-react";
 import { canPermission } from "@/lib/authz";
-import { filterNavGroupsByFeatures, filterNavGroupsByPermissions, NAV_GROUPS } from "@/lib/nav";
+import {
+  filterNavSectionsByFeatures,
+  filterNavSectionsByPermissions,
+  NAV_SECTIONS,
+  type NavItem,
+} from "@/lib/nav";
 import { useNavFeatureEnabled } from "@/lib/query/nav-features";
 import { useCurrentUser } from "@/lib/query/session";
 
@@ -22,18 +27,48 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const { isEnabled } = useNavFeatureEnabled();
   const { data: user } = useCurrentUser();
-  const groups = filterNavGroupsByPermissions(
-    filterNavGroupsByFeatures(NAV_GROUPS, isEnabled),
+  const sections = filterNavSectionsByPermissions(
+    filterNavSectionsByFeatures(NAV_SECTIONS, isEnabled),
     (key) => canPermission(user, key),
   );
 
   const navRef = useRef<HTMLElement>(null);
   const [motion, setMotion] = useState<ReadonlyMap<string, RowMotion>>(() => new Map());
 
-  const itemKeys = groups.flatMap((group) => [
-    ...(group.label ? [`group:${group.label}`] : []),
-    ...group.items.map((item) => `item:${item.href}`),
-  ]);
+  function isItemActive(href: string): boolean {
+    return href === "/" ? pathname === "/" : pathname.startsWith(href);
+  }
+
+  // Collapsed on first load — only the group holding the current page opens
+  // automatically, so landing on a page still shows where it lives. Keyed by
+  // "section:group" since two different sections could reuse a group label.
+  const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(() => {
+    const keys: string[] = [];
+    for (const section of sections) {
+      for (const group of section.groups) {
+        if (group.label && group.items.some((item) => isItemActive(item.href))) {
+          keys.push(`${section.label}:${group.label}`);
+        }
+      }
+    }
+    return new Set(keys);
+  });
+
+  function toggleGroup(key: string) {
+    setOpenGroups((previous) => {
+      const next = new Set(previous);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  const itemKeys = sections.flatMap((section) =>
+    section.groups.flatMap((group) => [
+      ...(group.label ? [`group:${section.label}:${group.label}`] : []),
+      ...group.items.map((item) => `item:${item.href}`),
+    ]),
+  );
   const itemKeysSig = itemKeys.join("|");
 
   useLayoutEffect(() => {
@@ -104,60 +139,97 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
     return () => observer.disconnect();
   }, [itemKeysSig]);
 
+  function renderItem({ href, label, icon: Icon }: NavItem) {
+    const active = isItemActive(href);
+    const id = `item:${href}`;
+    const row = motion.get(id);
+
+    return (
+      <Link
+        key={href}
+        href={href}
+        data-nav-id={id}
+        aria-current={active ? "page" : undefined}
+        onClick={onNavigate}
+        {...rowProps(row)}
+        className={rowClass(
+          row,
+          [
+            "flex min-h-10 items-center gap-3 rounded-sm px-3 py-1.5 text-body transition-colors lg:min-h-0",
+            active
+              ? "bg-primary/10 font-medium text-primary ring-1 ring-primary/15"
+              : "text-ink hover:bg-border/50",
+          ].join(" "),
+        )}
+      >
+        <Icon size={17} strokeWidth={2} className={active ? "text-primary" : "text-ink-muted"} />
+        {label}
+        <NavPending active={active} />
+      </Link>
+    );
+  }
+
   return (
     <nav
       ref={navRef}
       className="flex-1 space-y-4 overflow-y-auto overscroll-contain px-3 py-3 lg:py-1"
     >
-      {groups.map((group) => (
-        <div key={group.label ?? "top"} className="space-y-1">
-          {group.label ? (
-            <p
-              data-nav-id={`group:${group.label}`}
-              {...rowProps(motion.get(`group:${group.label}`))}
-              className={rowClass(
-                motion.get(`group:${group.label}`),
-                "px-3 pb-0.5 text-[0.6875rem] font-medium tracking-wide text-ink-muted/80 uppercase",
-              )}
-            >
-              {group.label}
-            </p>
-          ) : null}
-          {group.items.map(({ href, label, icon: Icon }) => {
-            const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
-            const id = `item:${href}`;
-            const row = motion.get(id);
-
+      {sections.map((section) => {
+        const body = section.groups.map((group) => {
+          if (!group.label) {
+            // Bare group — no sub-heading, nothing to collapse.
             return (
-              <Link
-                key={href}
-                href={href}
-                data-nav-id={id}
-                aria-current={active ? "page" : undefined}
-                onClick={onNavigate}
-                {...rowProps(row)}
+              <div key="bare" className="space-y-1">
+                {group.items.map(renderItem)}
+              </div>
+            );
+          }
+
+          const groupKey = `${section.label}:${group.label}`;
+          const isOpen = openGroups.has(groupKey);
+
+          return (
+            <div key={group.label} className="space-y-1">
+              <button
+                type="button"
+                data-nav-id={`group:${groupKey}`}
+                aria-expanded={isOpen}
+                onClick={() => toggleGroup(groupKey)}
+                {...rowProps(motion.get(`group:${groupKey}`))}
                 className={rowClass(
-                  row,
-                  [
-                    "flex min-h-10 items-center gap-3 rounded-sm px-3 py-1.5 text-body transition-colors lg:min-h-0",
-                    active
-                      ? "bg-primary font-medium text-white"
-                      : "text-ink hover:bg-border/50",
-                  ].join(" "),
+                  motion.get(`group:${groupKey}`),
+                  "flex w-full items-center justify-between rounded-sm px-3 pb-0.5 text-[0.6875rem] font-medium tracking-wide text-ink-muted uppercase transition-colors hover:text-ink",
                 )}
               >
-                <Icon
-                  size={17}
-                  strokeWidth={2}
-                  className={active ? "text-white" : "text-ink-muted"}
+                {group.label}
+                <ChevronRight
+                  size={13}
+                  strokeWidth={2.5}
+                  className={`transition-transform duration-200 ${isOpen ? "rotate-90" : ""}`}
                 />
-                {label}
-                <NavPending active={active} />
-              </Link>
-            );
-          })}
-        </div>
-      ))}
+              </button>
+              <div
+                className={`grid transition-[grid-template-rows] duration-200 ease-in-out motion-reduce:transition-none ${
+                  isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                }`}
+              >
+                <div className="space-y-1 overflow-hidden">{group.items.map(renderItem)}</div>
+              </div>
+            </div>
+          );
+        });
+
+        return (
+          <div key={section.label ?? "top"} className="space-y-1">
+            {section.label ? (
+              <p className="px-3 pb-0.5 text-[0.6875rem] font-medium tracking-wide text-ink-muted/60 uppercase">
+                {section.label}
+              </p>
+            ) : null}
+            <div className="space-y-3">{body}</div>
+          </div>
+        );
+      })}
     </nav>
   );
 }
@@ -190,10 +262,7 @@ function NavPending({ active }: { active: boolean }) {
       size={14}
       strokeWidth={2.5}
       aria-label="Loading"
-      className={[
-        "ml-auto animate-spin",
-        active ? "text-white" : "text-primary",
-      ].join(" ")}
+      className={["ml-auto animate-spin", active ? "text-primary" : "text-primary"].join(" ")}
     />
   );
 }

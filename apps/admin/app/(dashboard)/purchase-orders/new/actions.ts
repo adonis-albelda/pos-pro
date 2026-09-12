@@ -2,12 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { roundMoney } from "@double-a/shared-types";
-import { addPurchaseOrderItem, addPurchaseOrderPayment, createPurchaseOrder } from "@double-a/api-client/queries";
+import { addPurchaseOrderItem, createPurchaseOrder } from "@double-a/api-client/queries";
 import { getAuthedClient, getCurrentUser } from "@/lib/api/session";
 import { isShopAdmin } from "@/lib/authz";
 
 export interface CreatePurchaseOrderInput {
   supplierId: string;
+  locationId: string | null;
   orderDate: string;
   expectedDate: string | null;
   referenceNo: string | null;
@@ -18,7 +19,6 @@ export interface CreatePurchaseOrderInput {
     quantityOrdered: number;
     unitCost: number;
   }[];
-  terms: { termNumber: number; dueDate: string | null; amount: number }[];
 }
 
 export type CreatePurchaseOrderResult =
@@ -27,16 +27,21 @@ export type CreatePurchaseOrderResult =
 
 /**
  * Called directly from the client builder (not bound to a <form action>), so
- * it takes a plain object rather than FormData — the item and term rows are
- * already structured on that side.
+ * it takes a plain object rather than FormData — the item rows are already
+ * structured on that side.
  *
- * GAP: the old `createPurchaseOrder` inserted header + items + terms in one
- * call (see queries/purchase-orders.ts). `StorePurchaseOrderController` only
- * accepts header fields — items/terms are separate nested POSTs afterward,
- * not transactional. If a later item/term fails, the header (and whatever
- * lines already landed) still exists and is editable from its detail page —
- * this returns the created id either way so the caller can navigate there
- * and finish by hand.
+ * GAP: the old `createPurchaseOrder` inserted header + items in one call (see
+ * queries/purchase-orders.ts). `StorePurchaseOrderController` only accepts
+ * header fields — items are separate nested POSTs afterward, not
+ * transactional. If a later item fails, the header (and whatever lines
+ * already landed) still exists and is editable from its detail page — this
+ * returns the created id either way so the caller can navigate there and
+ * finish by hand.
+ *
+ * Payment-terms (installment schedule) input was removed from this form —
+ * nothing here called it before submitting either. `addPurchaseOrderPayment`
+ * (queries/purchase-orders.ts) still exists on the API client if a future
+ * detail-page UI wires it up.
  */
 export async function createPurchaseOrderAction(
   input: CreatePurchaseOrderInput,
@@ -59,6 +64,7 @@ export async function createPurchaseOrderAction(
   try {
     const order = await createPurchaseOrder(client, {
       supplierId: input.supplierId,
+      locationId: input.locationId,
       orderDate: input.orderDate,
       expectedDate: input.expectedDate,
       referenceNo: input.referenceNo,
@@ -71,14 +77,6 @@ export async function createPurchaseOrderAction(
         productName: item.productName,
         quantityOrdered: Math.max(1, Math.round(item.quantityOrdered)),
         unitCost: roundMoney(item.unitCost),
-      });
-    }
-
-    for (const term of input.terms) {
-      await addPurchaseOrderPayment(client, order.id, {
-        termNumber: term.termNumber,
-        dueDate: term.dueDate,
-        amount: roundMoney(term.amount),
       });
     }
 

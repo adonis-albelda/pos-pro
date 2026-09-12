@@ -220,9 +220,11 @@ export default function SaleDetailPage() {
                 );
                 const belowCost = item.unitPrice < item.unitCost;
                 const replaced = item.replacedByProductId !== null;
+                const refunded = item.refundedAt !== null;
+                const inactive = replaced || refunded;
 
                 return (
-                  <tr key={item.id} className={replaced ? "opacity-60" : undefined}>
+                  <tr key={item.id} className={inactive ? "opacity-60" : undefined}>
                     <Td>
                       <span className="font-medium">{item.productName}</span>
                       {belowCost ? (
@@ -234,6 +236,11 @@ export default function SaleDetailPage() {
                       {replaced ? (
                         <span className="mt-0.5 block text-caption text-warning-ink">
                           Replaced by {item.replacedByProductName ?? "another product"}
+                        </span>
+                      ) : null}
+                      {refunded ? (
+                        <span className="mt-0.5 block text-caption text-warning-ink">
+                          Refunded
                         </span>
                       ) : null}
                     </Td>
@@ -261,7 +268,7 @@ export default function SaleDetailPage() {
                       </span>
                     </Td>
                     {sale.status === "completed" ? (
-                      <Td>{replaced ? null : <ReplaceItem saleId={id} item={item} />}</Td>
+                      <Td>{inactive ? null : <ReplaceItem saleId={id} item={item} />}</Td>
                     ) : null}
                   </tr>
                 );

@@ -61,6 +61,8 @@ import { DashboardBarChart } from "../dashboard-bar-chart";
 import { DeadStockDays } from "./dead-stock-days";
 import { DEAD_STOCK_DEFAULT_DAYS, DEAD_STOCK_WINDOWS } from "./dead-stock-windows";
 
+const REPORTS_PAGE_SIZE = 15;
+
 /** Mirrors the loaded layout's shape (stat row, paired table cards, chart card) so nothing jumps once data lands. */
 function ReportsSkeleton() {
   return (
@@ -153,6 +155,7 @@ export function ReportsPageClient() {
   const deadStockDays = DEAD_STOCK_WINDOWS.includes(Number(searchParams.get("days")))
     ? Number(searchParams.get("days"))
     : DEAD_STOCK_DEFAULT_DAYS;
+  const [discountsPage, setDiscountsPage] = useState(1);
 
   function applyWindow(window: DayWindowValue) {
     const next = new URLSearchParams(searchParams.toString());
@@ -161,12 +164,13 @@ export function ReportsPageClient() {
     if (window.toDay) next.set("to", window.toDay);
     else next.delete("to");
     next.delete("preset");
+    setDiscountsPage(1);
     router.push(`/reports?${next.toString()}` as Route);
   }
 
   const profitQuery = useReportProfit(range);
   const topProductsQuery = useReportTopProducts(range, 20);
-  const discountsQuery = useReportDiscounts(range);
+  const discountsQuery = useReportDiscounts(range, discountsPage, REPORTS_PAGE_SIZE);
   const cashiersQuery = useReportByCashier(range);
   const devicesQuery = useReportByDevice(range);
   const valuationQuery = useReportInventoryValuationSummary();
@@ -174,40 +178,9 @@ export function ReportsPageClient() {
   const reorderQuery = useBelowReorder();
   const expensesQuery = useExpensesTotal({ fromDay, toDay });
 
-  const isPending =
-    profitQuery.isPending ||
-    topProductsQuery.isPending ||
-    discountsQuery.isPending ||
-    cashiersQuery.isPending ||
-    devicesQuery.isPending ||
-    valuationQuery.isPending ||
-    deadStockQuery.isPending ||
-    reorderQuery.isPending ||
-    expensesQuery.isPending;
-
-  // Apply re-triggers these same queries under a new range/key — surface the
-  // skeleton for that refetch too, not just the very first load.
-  const isFetching =
-    profitQuery.isFetching ||
-    topProductsQuery.isFetching ||
-    discountsQuery.isFetching ||
-    cashiersQuery.isFetching ||
-    devicesQuery.isFetching ||
-    valuationQuery.isFetching ||
-    deadStockQuery.isFetching ||
-    reorderQuery.isFetching ||
-    expensesQuery.isFetching;
-
-  const error =
-    profitQuery.error ??
-    topProductsQuery.error ??
-    discountsQuery.error ??
-    cashiersQuery.error ??
-    devicesQuery.error ??
-    valuationQuery.error ??
-    deadStockQuery.error ??
-    reorderQuery.error ??
-    expensesQuery.error;
+  // First paint only waits on profit — other sections stream in with their own
+  // skeletons. Never blank the whole page on a background refetch.
+  const bootPending = profitQuery.isPending && !profitQuery.data;
 
   const rangeQuery = `from=${fromDay}&to=${toDay}`;
 
@@ -238,24 +211,39 @@ export function ReportsPageClient() {
         </p>
       </header>
 
-      {isPending || isFetching ? (
+      {bootPending ? (
         <ReportsSkeleton />
-      ) : error ? (
+      ) : profitQuery.isError && !profitQuery.data ? (
         <Card className="px-4 py-8 text-center text-body text-danger">
-          {error instanceof Error ? error.message : "Could not load reports."}
+          {profitQuery.error instanceof Error
+            ? profitQuery.error.message
+            : "Could not load reports."}
         </Card>
       ) : (
         <ReportsBody
           key={rangeQuery}
           profitRows={profitQuery.data ?? []}
+          profitPending={profitQuery.isPending}
           topProducts={topProductsQuery.data ?? []}
-          discounts={discountsQuery.data ?? []}
+          topProductsPending={topProductsQuery.isPending}
+          discounts={discountsQuery.data?.rows ?? []}
+          discountsTotal={discountsQuery.data?.total ?? 0}
+          discountsPage={discountsQuery.data?.page ?? discountsPage}
+          discountsPageCount={discountsQuery.data?.lastPage ?? 1}
+          discountsPending={discountsQuery.isPending}
+          onDiscountsPageChange={setDiscountsPage}
           cashiers={cashiersQuery.data ?? []}
+          cashiersPending={cashiersQuery.isPending}
           devices={devicesQuery.data ?? []}
+          devicesPending={devicesQuery.isPending}
           valuation={valuationQuery.data ?? []}
+          valuationPending={valuationQuery.isPending}
           deadStock={deadStockQuery.data ?? []}
+          deadStockPending={deadStockQuery.isPending}
           reorder={reorderQuery.data ?? []}
+          reorderPending={reorderQuery.isPending}
           expensesTotal={expensesQuery.data ?? 0}
+          expensesPending={expensesQuery.isPending}
           deadStockDays={deadStockDays}
           label={label}
           rangeQuery={rangeQuery}
@@ -265,7 +253,15 @@ export function ReportsPageClient() {
   );
 }
 
-const REPORTS_PAGE_SIZE = 15;
+function TableCardSkeleton({ rows = 5 }: { rows?: number }) {
+  return (
+    <div className="space-y-3 px-4 py-5 sm:px-6">
+      {Array.from({ length: rows }).map((_, index) => (
+        <Skeleton key={index} className="h-5 w-full" />
+      ))}
+    </div>
+  );
+}
 
 /** Local, non-URL pagination footer — several independent tables share this one page. */
 function TablePagination({
@@ -328,27 +324,53 @@ function TablePagination({
 
 function ReportsBody({
   profitRows,
+  profitPending,
   topProducts,
+  topProductsPending,
   discounts,
+  discountsTotal,
+  discountsPage,
+  discountsPageCount,
+  discountsPending,
+  onDiscountsPageChange,
   cashiers,
+  cashiersPending,
   devices,
+  devicesPending,
   valuation,
+  valuationPending,
   deadStock,
+  deadStockPending,
   reorder,
+  reorderPending,
   expensesTotal,
+  expensesPending,
   deadStockDays,
   label,
   rangeQuery,
 }: {
   profitRows: NonNullable<ReturnType<typeof useReportProfit>["data"]>;
+  profitPending: boolean;
   topProducts: NonNullable<ReturnType<typeof useReportTopProducts>["data"]>;
-  discounts: NonNullable<ReturnType<typeof useReportDiscounts>["data"]>;
+  topProductsPending: boolean;
+  discounts: NonNullable<ReturnType<typeof useReportDiscounts>["data"]>["rows"];
+  discountsTotal: number;
+  discountsPage: number;
+  discountsPageCount: number;
+  discountsPending: boolean;
+  onDiscountsPageChange: (page: number) => void;
   cashiers: NonNullable<ReturnType<typeof useReportByCashier>["data"]>;
+  cashiersPending: boolean;
   devices: NonNullable<ReturnType<typeof useReportByDevice>["data"]>;
+  devicesPending: boolean;
   valuation: NonNullable<ReturnType<typeof useReportInventoryValuationSummary>["data"]>;
+  valuationPending: boolean;
   deadStock: NonNullable<ReturnType<typeof useReportDeadStock>["data"]>;
+  deadStockPending: boolean;
   reorder: NonNullable<ReturnType<typeof useBelowReorder>["data"]>;
+  reorderPending: boolean;
   expensesTotal: number;
+  expensesPending: boolean;
   deadStockDays: number;
   label: string;
   rangeQuery: string;
@@ -371,7 +393,6 @@ function ReportsBody({
 
   const [profitPage, setProfitPage] = useState(1);
   const [topProductsPage, setTopProductsPage] = useState(1);
-  const [discountsPage, setDiscountsPage] = useState(1);
   const [cashiersPage, setCashiersPage] = useState(1);
   const [devicesPage, setDevicesPage] = useState(1);
   const [deadStockPage, setDeadStockPage] = useState(1);
@@ -379,7 +400,6 @@ function ReportsBody({
 
   const profitPaged = paginateItems(profitRows, profitPage, REPORTS_PAGE_SIZE);
   const topProductsPaged = paginateItems(topProducts, topProductsPage, REPORTS_PAGE_SIZE);
-  const discountsPaged = paginateItems(discounts, discountsPage, REPORTS_PAGE_SIZE);
   const cashiersPaged = paginateItems(cashiers, cashiersPage, REPORTS_PAGE_SIZE);
   const devicesPaged = paginateItems(devices, devicesPage, REPORTS_PAGE_SIZE);
   const deadStockPaged = paginateItems(deadStock, deadStockPage, REPORTS_PAGE_SIZE);
@@ -427,7 +447,7 @@ function ReportsBody({
         <StatCard
           icon={Wallet}
           label="Expenses"
-          value={formatMoney(expensesTotal)}
+          value={expensesPending ? "…" : formatMoney(expensesTotal)}
           hint="Operating outlays in this range"
           tone={expensesTotal > 0 ? "warning" : "neutral"}
         />
@@ -459,7 +479,9 @@ function ReportsBody({
             title="Day by day"
             description={`Completed sales, ${label}.`}
           />
-          {profitRows.length === 0 ? (
+          {profitPending ? (
+            <TableCardSkeleton />
+          ) : profitRows.length === 0 ? (
             <EmptyState
               icon={Receipt}
               title="No sales in this range"
@@ -520,7 +542,9 @@ function ReportsBody({
             title="Top products by profit"
             description="What actually earns, not just what sells."
           />
-          {topProducts.length === 0 ? (
+          {topProductsPending ? (
+            <TableCardSkeleton />
+          ) : topProducts.length === 0 ? (
             <EmptyState
               icon={Package}
               title="Nothing sold in this range"
@@ -583,7 +607,9 @@ function ReportsBody({
             </ButtonLink>
           }
         />
-        {discounts.length === 0 ? (
+        {discountsPending && discounts.length === 0 ? (
+          <TableCardSkeleton rows={6} />
+        ) : discountsTotal === 0 ? (
           <EmptyState
             icon={HandCoins}
             title="Nothing was discounted"
@@ -605,7 +631,7 @@ function ReportsBody({
               </tr>
             </thead>
             <tbody>
-              {discountsPaged.pageItems.map((row, index) => (
+              {discounts.map((row, index) => (
                 <tr key={`${row.sale_id}-${index}`}>
                   <Td className="num whitespace-nowrap text-ink-muted">
                     {new Date(row.sold_at).toLocaleString("en-PH", {
@@ -644,11 +670,11 @@ function ReportsBody({
           </Table>
         )}
         <TablePagination
-          page={discountsPaged.page}
-          pageCount={discountsPaged.pageCount}
-          total={discountsPaged.total}
+          page={discountsPage}
+          pageCount={discountsPageCount}
+          total={discountsTotal}
           pageSize={REPORTS_PAGE_SIZE}
-          onPageChange={setDiscountsPage}
+          onPageChange={onDiscountsPageChange}
         />
       </Card>
 
@@ -658,7 +684,9 @@ function ReportsBody({
       <div className="grid gap-6 xl:grid-cols-2">
         <Card>
           <CardHeader icon={UserRound} title="Per cashier" />
-          {cashiers.length === 0 ? (
+          {cashiersPending ? (
+            <TableCardSkeleton />
+          ) : cashiers.length === 0 ? (
             <EmptyState
               icon={UserRound}
               title="No sales in this range"
@@ -701,7 +729,9 @@ function ReportsBody({
 
         <Card>
           <CardHeader icon={Smartphone} title="Per terminal" />
-          {devices.length === 0 ? (
+          {devicesPending ? (
+            <TableCardSkeleton />
+          ) : devices.length === 0 ? (
             <EmptyState
               icon={Smartphone}
               title="No sales in this range"
@@ -784,7 +814,13 @@ function ReportsBody({
             }
           />
           <div className="px-4 py-5 sm:px-6">
-            {valuation.length === 0 ? (
+            {valuationPending ? (
+              <div className="space-y-3">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <Skeleton key={index} className="h-8 w-full" />
+                ))}
+              </div>
+            ) : valuation.length === 0 ? (
               <EmptyState
                 icon={Warehouse}
                 title="Nothing on the shelves"
@@ -809,7 +845,9 @@ function ReportsBody({
             description="On the shelf, tying up money, not moving."
             action={<DeadStockDays days={deadStockDays} />}
           />
-          {deadStock.length === 0 ? (
+          {deadStockPending ? (
+            <TableCardSkeleton />
+          ) : deadStock.length === 0 ? (
             <EmptyState
               icon={Snowflake}
               title="Everything is moving"
@@ -877,7 +915,9 @@ function ReportsBody({
             </ButtonLink>
           }
         />
-        {reorder.length === 0 ? (
+        {reorderPending ? (
+          <TableCardSkeleton />
+        ) : reorder.length === 0 ? (
           <EmptyState
             icon={PackageSearch}
             title="Nothing needs reordering"

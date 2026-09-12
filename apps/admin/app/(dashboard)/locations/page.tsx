@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState, useTransition } from "react";
+import { useActionState, useEffect, useId, useState, useTransition } from "react";
 import {
   Eye,
   EyeOff,
@@ -8,6 +8,7 @@ import {
   Store,
   Trash2,
   Warehouse,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { Location } from "@double-a/shared-types";
@@ -31,7 +32,7 @@ import {
   Th,
 } from "@/components/ui";
 import { useLocationMutationsLocked } from "@/components/location-mutations-banner";
-import { ConfirmDialog, Sheet } from "@/components/overlay";
+import { ConfirmDialog, Sheet, SheetFooter, useSheetChrome } from "@/components/overlay";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
 import { useInvalidateLocations, useLocations } from "@/lib/query/locations";
 import { removeLocation, saveLocation, setLocationActive } from "./actions";
@@ -268,14 +269,33 @@ function LocationsBody({ locations }: { locations: Location[] }) {
 }
 
 function AddLocationForm({ onDone }: { onDone: () => void }) {
+  const formId = useId();
+  const inSheet = useSheetChrome() !== null;
   const [state, action, pending] = useActionState(saveLocation, EMPTY_FORM_STATE);
 
   useEffect(() => {
     if (state.ok) onDone();
   }, [state.ok, onDone]);
 
+  const actions = (
+    <div className="flex justify-end gap-2">
+      <Button type="button" variant="secondary" icon={X} onClick={onDone} disabled={pending}>
+        Cancel
+      </Button>
+      <Button
+        type="submit"
+        form={inSheet ? formId : undefined}
+        loading={pending}
+        icon={Plus}
+      >
+        Add location
+      </Button>
+    </div>
+  );
+
   return (
-    <form action={action} className="space-y-4">
+    <>
+    <form id={formId} action={action} className="space-y-4">
       {state.error ? <ErrorNote>{state.error}</ErrorNote> : null}
       {state.ok ? <SuccessNote>Location saved.</SuccessNote> : null}
       <Field label="Name" required>
@@ -290,14 +310,9 @@ function AddLocationForm({ onDone }: { onDone: () => void }) {
       <Field label="Address" required={false}>
         <Input name="address" placeholder="Optional" />
       </Field>
-      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <Button type="button" variant="secondary" onClick={onDone} disabled={pending}>
-          Cancel
-        </Button>
-        <Button type="submit" loading={pending} icon={Plus}>
-          Add location
-        </Button>
-      </div>
+      {!inSheet ? actions : null}
     </form>
+    {inSheet ? <SheetFooter>{actions}</SheetFooter> : null}
+    </>
   );
 }

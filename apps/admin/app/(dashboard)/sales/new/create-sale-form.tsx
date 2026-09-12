@@ -76,7 +76,7 @@ import { createSaleAction } from "./actions";
 
 const PAYMENT_METHODS = [
   { value: "cash", label: "Cash" },
-  { value: "gcash", label: "GCash" },
+  { value: "ewallet", label: "E-Wallet" },
   { value: "card", label: "Card" },
 ] as const;
 
@@ -1042,34 +1042,39 @@ export function CreateSaleForm() {
 
             {error ? <ErrorNote>{error}</ErrorNote> : null}
 
-            <Button
-              type="button"
-              variant="secondary"
-              icon={Save}
-              className="w-full"
-              onClick={saveDraft}
-            >
-              Save as draft
-            </Button>
+            {!expandOpen ? (
+              <>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  icon={Save}
+                  className="w-full"
+                  onClick={saveDraft}
+                >
+                  Save as draft
+                </Button>
 
-            <div className="flex flex-col-reverse gap-2 sm:flex-row">
-              <Button
-                type="button"
-                variant="secondary"
-                className="w-full sm:flex-1"
-                onClick={() => router.push("/sales")}
-              >
-                Cancel
-              </Button>
-              <Button
-                icon={CheckCircle2}
-                loading={pending}
-                onClick={requestSubmit}
-                className="w-full sm:flex-1"
-              >
-                {pending ? "Creating..." : "Create sale"}
-              </Button>
-            </div>
+                <div className="flex flex-col-reverse gap-2 sm:flex-row">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    icon={X}
+                    className="w-full sm:flex-1"
+                    onClick={() => router.push("/sales")}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    icon={CheckCircle2}
+                    loading={pending}
+                    onClick={requestSubmit}
+                    className="w-full sm:flex-1"
+                  >
+                    {pending ? "Creating..." : "Create sale"}
+                  </Button>
+                </div>
+              </>
+            ) : null}
           </div>
         </Card>
       </div>
@@ -1293,6 +1298,24 @@ export function CreateSaleForm() {
         onClose={() => setExpandOpen(false)}
         title="New sale — full view"
         className="w-full max-w-none"
+        footer={
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="secondary" icon={Save} onClick={saveDraft}>
+              Save as draft
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              icon={X}
+              onClick={() => router.push("/sales")}
+            >
+              Cancel
+            </Button>
+            <Button icon={CheckCircle2} loading={pending} onClick={requestSubmit}>
+              {pending ? "Creating..." : "Create sale"}
+            </Button>
+          </div>
+        }
       >
         {content}
       </Sheet>

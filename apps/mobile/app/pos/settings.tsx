@@ -247,6 +247,7 @@ export default function SettingsScreen() {
               subtotal: 123.45,
               replacedByProductId: null,
               replacedByProductName: null,
+              refundedAt: null,
               addons: [],
             },
           ],

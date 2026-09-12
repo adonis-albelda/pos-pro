@@ -42,6 +42,8 @@ interface SaleRow {
   synced_at: string | null;
   company_id: string | null;
   location_id: string | null;
+  payment_proof_local_uri: string | null;
+  payment_proof_url: string | null;
 }
 
 interface SaleItemRow {
@@ -90,6 +92,8 @@ function toLocalSale(row: SaleRow): LocalSale {
     locationId: row.location_id,
     syncStatus: row.sync_status as LocalSale["syncStatus"],
     syncedAt: row.synced_at,
+    paymentProofLocalUri: row.payment_proof_local_uri,
+    paymentProofUrl: row.payment_proof_url,
   };
 }
 
@@ -109,6 +113,7 @@ function toLocalSaleItem(row: SaleItemRow): SaleItem {
     // POS terminal's own local copy of a sale.
     replacedByProductId: null,
     replacedByProductName: null,
+    refundedAt: null,
     addons: parseLocalAddons(row.addons),
   };
 }
@@ -125,6 +130,8 @@ export interface CompleteSaleInput {
    * counter line discounts already baked into unitPrice vs listPrice.
    */
   orderDiscounts?: Omit<SaleDiscount, "saleId">[];
+  /** Local file path for an optional e-wallet proof photo — never required. */
+  paymentProofLocalUri?: string | null;
 }
 
 export async function completeSale(
@@ -171,6 +178,7 @@ export async function completeSale(
     subtotal: lineSubtotal(line.unitPrice, line.quantity),
     replacedByProductId: null,
     replacedByProductName: null,
+    refundedAt: null,
     addons: (line.addons ?? []).map((addon) => ({
       id: Crypto.randomUUID(),
       addonGroupItemId: addon.addonGroupItemId,
@@ -188,8 +196,9 @@ export async function completeSale(
       `INSERT INTO sales
          (id, user_id, total_amount, discount_amount, payment_method, status, device_id, created_at,
           customer_id, customer_name, customer_address, customer_contact,
-          is_paid, fulfillment, delivery_completed, flags_pending, sync_status, company_id, location_id)
-       VALUES (?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'pending', ?, ?)`,
+          is_paid, fulfillment, delivery_completed, flags_pending, sync_status, company_id, location_id,
+          payment_proof_local_uri)
+       VALUES (?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'pending', ?, ?, ?)`,
       saleId,
       input.userId,
       total,
@@ -206,6 +215,7 @@ export async function completeSale(
       deliveryCompleted ? 1 : 0,
       companyId,
       locationId,
+      input.paymentProofLocalUri ?? null,
     );
 
     for (const item of items) {
@@ -253,6 +263,8 @@ export async function completeSale(
     syncedAt: null,
     items,
     discounts: orderDiscounts,
+    paymentProofLocalUri: input.paymentProofLocalUri ?? null,
+    paymentProofUrl: null,
   };
 }
 
@@ -280,6 +292,31 @@ export async function updateLocalSaleFlags(
     isPaid ? 1 : 0,
     deliveryCompleted ? 1 : 0,
     flagsPending,
+    saleId,
+  );
+}
+
+/**
+ * Sales that have a local proof photo still waiting on its best-effort
+ * upload — either never attempted, or attempted before this sale itself had
+ * synced (no server id to attach it to yet).
+ */
+export async function listSalesAwaitingPaymentProofUpload(): Promise<
+  { id: string; localUri: string }[]
+> {
+  const rows = await getDb().getAllAsync<{ id: string; payment_proof_local_uri: string }>(
+    `SELECT id, payment_proof_local_uri FROM sales
+      WHERE payment_proof_local_uri IS NOT NULL
+        AND payment_proof_url IS NULL
+        AND sync_status = 'synced'`,
+  );
+  return rows.map((row) => ({ id: row.id, localUri: row.payment_proof_local_uri }));
+}
+
+export async function markPaymentProofUploaded(saleId: string, url: string): Promise<void> {
+  await getDb().runAsync(
+    "UPDATE sales SET payment_proof_url = ?, payment_proof_local_uri = NULL WHERE id = ?",
+    url,
     saleId,
   );
 }
@@ -445,6 +482,13 @@ export interface LocalDaySummary {
   revenue: number;
   itemsSold: number;
   pendingCount: number;
+  /** Sum of `sales.discount_amount` on completed sales today. */
+  discountTotal: number;
+  /** Completed sales today with any discount (counter or order-level). */
+  discountedSalesCount: number;
+  /** Refunded + voided sales today (admin status; rare on a POS local copy). */
+  refundCount: number;
+  refundTotal: number;
 }
 
 export async function summariseToday(): Promise<LocalDaySummary> {
@@ -460,12 +504,21 @@ export async function summariseToday(): Promise<LocalDaySummary> {
     sales_count: number;
     revenue: number | null;
     pending_count: number;
+    discount_total: number | null;
+    discounted_sales_count: number;
+    refund_count: number;
+    refund_total: number | null;
   }>(
-    `SELECT COUNT(*) AS sales_count,
-            SUM(total_amount) AS revenue,
-            SUM(CASE WHEN sync_status = 'pending' THEN 1 ELSE 0 END) AS pending_count
+    `SELECT
+        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS sales_count,
+        SUM(CASE WHEN status = 'completed' THEN total_amount ELSE 0 END) AS revenue,
+        SUM(CASE WHEN status = 'completed' AND sync_status = 'pending' THEN 1 ELSE 0 END) AS pending_count,
+        SUM(CASE WHEN status = 'completed' THEN discount_amount ELSE 0 END) AS discount_total,
+        SUM(CASE WHEN status = 'completed' AND discount_amount > 0 THEN 1 ELSE 0 END) AS discounted_sales_count,
+        SUM(CASE WHEN status IN ('refunded', 'voided') THEN 1 ELSE 0 END) AS refund_count,
+        SUM(CASE WHEN status IN ('refunded', 'voided') THEN total_amount ELSE 0 END) AS refund_total
        FROM sales
-      WHERE created_at >= ? AND status = 'completed'`,
+      WHERE created_at >= ?`,
     startOfDay,
   );
 
@@ -482,5 +535,9 @@ export async function summariseToday(): Promise<LocalDaySummary> {
     revenue: roundMoney(totals?.revenue ?? 0),
     itemsSold: items?.items_sold ?? 0,
     pendingCount: totals?.pending_count ?? 0,
+    discountTotal: roundMoney(totals?.discount_total ?? 0),
+    discountedSalesCount: totals?.discounted_sales_count ?? 0,
+    refundCount: totals?.refund_count ?? 0,
+    refundTotal: roundMoney(totals?.refund_total ?? 0),
   };
 }

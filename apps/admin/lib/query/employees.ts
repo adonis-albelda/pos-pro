@@ -5,6 +5,7 @@ import {
   createEmployee,
   deleteEmployee,
   listEmployees,
+  listTerminals,
   updateEmployee,
   type UpsertEmployeeInput,
 } from "@double-a/api-client/queries";
@@ -15,6 +16,13 @@ export function useEmployees() {
   return useQuery({
     queryKey: queryKeys.employees.list(),
     queryFn: () => listEmployees(getBrowserApiClient()),
+  });
+}
+
+export function useTerminals() {
+  return useQuery({
+    queryKey: ["terminals", "list"] as const,
+    queryFn: () => listTerminals(getBrowserApiClient()),
   });
 }
 

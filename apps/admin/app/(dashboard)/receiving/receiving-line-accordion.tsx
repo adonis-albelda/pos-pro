@@ -1,11 +1,16 @@
 "use client";
 
+import { useState } from "react";
+import type { Route } from "next";
+import { useRouter } from "next/navigation";
 import {
   CheckCircle2,
   ChevronDown,
   CircleAlert,
+  PackagePlus,
   Pencil,
   RotateCcw,
+  Search,
   Trash2,
   WandSparkles,
   X,
@@ -47,6 +52,57 @@ import {
 
 const HALF_ROW = "grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-4 max-sm:grid-cols-1";
 const HALF_CELL = "min-w-0 w-full";
+
+function NewProductChoice({
+  productName,
+  disabled,
+  onCreate,
+  onExisting,
+}: {
+  productName: string;
+  disabled: boolean;
+  onCreate: () => void;
+  onExisting: () => void;
+}) {
+  return (
+    <div className="flex w-full flex-col items-center justify-center gap-5 px-4 py-10 text-center sm:px-8 sm:py-12">
+      <span className="flex size-12 items-center justify-center rounded-full border border-dashed border-border text-ink-muted">
+        <PackagePlus size={22} strokeWidth={1.75} />
+      </span>
+      <div className="max-w-md space-y-2">
+        <p className="text-body-lg font-medium text-ink">This product looks new</p>
+        <p className="text-body text-ink-muted">
+          {productName.trim()
+            ? `“${productName.trim()}” isn’t in your catalogue yet. Create it first, then come back here to finish matching — or confirm it already exists.`
+            : "This line isn’t linked to a catalogue product yet. Create it first, then come back here to finish matching — or confirm it already exists."}
+        </p>
+      </div>
+      <div className="flex w-full max-w-md flex-col gap-2 sm:flex-row sm:justify-center">
+        <Button
+          type="button"
+          icon={PackagePlus}
+          onClick={onCreate}
+          disabled={disabled}
+          className="w-full whitespace-nowrap sm:w-auto"
+          style={{ height: "auto", paddingTop: "0.625rem", paddingBottom: "0.625rem" }}
+        >
+          Yes, I&apos;ll create the product
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          icon={Search}
+          onClick={onExisting}
+          disabled={disabled}
+          className="w-full whitespace-nowrap sm:w-auto"
+          style={{ height: "auto", paddingTop: "0.625rem", paddingBottom: "0.625rem" }}
+        >
+          No, it&apos;s existing already
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 function ReadOnlyMoneyField({ label, value }: { label: string; value: number }) {
   return (
@@ -199,6 +255,8 @@ export function ReceivingLineAccordion({
   onResolve: () => void;
   onToggleExcluded: () => void;
 }) {
+  const router = useRouter();
+  const [matchAsExisting, setMatchAsExisting] = useState(false);
   const flagged = lineIsFlagged(row);
   const resolved = lineIsResolved(row);
   const displayName = headerDisplayName(row);
@@ -220,6 +278,7 @@ export function ReceivingLineAccordion({
   const nextStock = row.productId ? stockAfterReceive(currentStock, qty) : null;
   const inputsDisabled = !hasSupplier || row.excluded;
   const isNewProduct = !row.productId;
+  const showNewProductGate = isNewProduct && !matchAsExisting && !row.excluded;
 
   const categoryValue = categoryComboboxValue(row, categoryOptions);
   const pendingHint = row.categoryHint.trim();
@@ -348,6 +407,15 @@ export function ReceivingLineAccordion({
 
       {expanded ? (
         <div className="space-y-4 border-t border-border px-4 py-4">
+          {showNewProductGate ? (
+            <NewProductChoice
+              productName={row.name}
+              disabled={!hasSupplier}
+              onCreate={() => router.push("/products/new" as Route)}
+              onExisting={() => setMatchAsExisting(true)}
+            />
+          ) : (
+            <>
           <div
             className={`space-y-4 ${inputsDisabled ? "pointer-events-none opacity-50" : ""}`}
             aria-disabled={inputsDisabled}
@@ -481,9 +549,9 @@ export function ReceivingLineAccordion({
               <div className="rounded-md border border-dashed border-primary/50 bg-primary/5 px-3 py-3 sm:px-4">
                 <p className="text-caption font-medium text-ink">Match product</p>
                 <p className="mt-1 text-caption leading-relaxed text-ink-muted">
-                  Link this line to a product you already sell. Stock and prices apply to that
-                  item — use this when the receipt item is not new. Leave empty only if you are
-                  adding a brand-new product.
+                  {matchAsExisting
+                    ? "Pick the catalogue product this receipt line already belongs to. Stock and prices apply to that item."
+                    : "Link this line to a product you already sell. Stock and prices apply to that item — use this when the receipt item is not new. Leave empty only if you are adding a brand-new product."}
                 </p>
                 <div className="mt-3 w-full">
                   <MatchProductCombobox
@@ -654,8 +722,8 @@ export function ReceivingLineAccordion({
               </div>
             </div>
 
-            <div className={isNewProduct ? HALF_ROW : "w-full"}>
-              <div className={isNewProduct ? HALF_CELL : "w-full"}>
+            <div className={isNewProduct && !matchAsExisting ? HALF_ROW : "w-full"}>
+              <div className={isNewProduct && !matchAsExisting ? HALF_CELL : "w-full"}>
                 <Field
                   label="Category"
                   hint={
@@ -678,7 +746,7 @@ export function ReceivingLineAccordion({
                   />
                 </Field>
               </div>
-              {isNewProduct ? (
+              {isNewProduct && !matchAsExisting ? (
                 <div className={HALF_CELL}>
                   <Field
                     label="Shop visibility"
@@ -731,6 +799,8 @@ export function ReceivingLineAccordion({
               </Button>
             ) : null}
           </div>
+            </>
+          )}
         </div>
       ) : null}
     </div>

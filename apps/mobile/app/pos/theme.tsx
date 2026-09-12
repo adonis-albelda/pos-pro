@@ -5,7 +5,9 @@ import {
   Grid3x3,
   Image as ImageIcon,
   Layers,
+  List,
   Palette,
+  Rows3,
   Sparkles,
   SquareStack,
   Type,
@@ -16,12 +18,14 @@ import {
   resolvePrimaryPalette,
   setBackgroundEffect,
   setCardDisplayStyle,
+  setProductLayout,
   setProductViewMode,
   setRadiusStyle,
   setThemeColorId,
   useThemePreferences,
   type BackgroundEffect,
   type CardDisplayStyle,
+  type ProductLayoutMode,
   type ProductViewMode,
   type RadiusStyle,
   type ThemeColorId,
@@ -75,6 +79,26 @@ const CARD_DISPLAY_OPTIONS: {
     label: "Image dominant",
     description: "The photo fills the card; only the name overlays it.",
     icon: ImageIcon,
+  },
+];
+
+const PRODUCT_LAYOUT_OPTIONS: {
+  id: ProductLayoutMode;
+  label: string;
+  description: string;
+  icon: typeof Grid3x3;
+}[] = [
+  {
+    id: "grid",
+    label: "Grid",
+    description: "Several products side by side — column count follows screen width.",
+    icon: Grid3x3,
+  },
+  {
+    id: "row",
+    label: "Row",
+    description: "One product per line, full width.",
+    icon: Rows3,
   },
 ];
 
@@ -146,6 +170,25 @@ export default function ThemeScreen() {
               />
             ))}
           </View>
+        </Card>
+
+        <Card style={[{ gap: space.md }, styles.floatShadow, { borderRadius: radius.sm }]}>
+          <SectionTitle
+            icon={List}
+            title="Product layout"
+            hint="How many products sit across each row on the sell screen."
+          />
+          {PRODUCT_LAYOUT_OPTIONS.map((option) => (
+            <ViewModeOption
+              key={option.id}
+              id={option.id}
+              label={option.label}
+              description={option.description}
+              icon={option.icon}
+              active={prefs.productLayout === option.id}
+              onPress={() => void applyChange(() => setProductLayout(option.id))}
+            />
+          ))}
         </Card>
 
         <Card style={[{ gap: space.md }, styles.floatShadow, { borderRadius: radius.sm }]}>
@@ -331,7 +374,7 @@ function ViewModeOption({
   active,
   onPress,
 }: {
-  id: ProductViewMode | CardDisplayStyle;
+  id: ProductViewMode | CardDisplayStyle | ProductLayoutMode;
   label: string;
   description: string;
   icon: typeof Grid3x3;

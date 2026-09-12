@@ -1,23 +1,23 @@
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Animated, Image, Pressable, Text, View } from "react-native";
+import { Animated, Image, Pressable, Text, View } from "react-native";
 import { usePathname, useRouter } from "expo-router";
-import { ChevronRight, Menu, ShoppingCart } from "lucide-react-native";
+import { Menu, ShoppingCart } from "lucide-react-native";
 import { formatMoney, storeInitial } from "@double-a/shared-types";
 import { AccountDrawer } from "@/components/account-drawer";
 import { LocationSwitcher } from "@/components/location-switcher";
+import { summariseToday, type LocalDaySummary } from "@/db/sales";
 import { useCartSummary } from "@/lib/cart-summary";
 import { useFlyToCart } from "@/lib/fly-to-cart";
 import { useStoreSettings } from "@/lib/store";
 import { useLayout } from "@/lib/layout";
 import { useSync } from "@/sync/sync-provider";
-import { pendingLabel, syncLook, useMinuteTick } from "@/sync/status";
+import { pendingLabel, syncLook, useMinuteTick, type SyncLook } from "@/sync/status";
 import { color, fontSize, radius, space } from "@/theme";
 
 /**
- * One chrome row on every POS screen: logo (opens drawer with tabs), a cart
- * chip in place of the shop name, sync chip. Sync chip taps through to Sync
- * — does not sync itself; the cart chip taps through to the cart itself
- * (see lib/cart-summary.tsx — only the Sell screen ever populates it).
+ * One chrome row on every POS screen: logo (opens drawer with tabs), time +
+ * sync chip inline on the left, then cart chip (phone Sell) or today's sales
+ * (tablet). Sync chip taps through to Sync — does not sync itself.
  */
 export function StoreHeader() {
   const store = useStoreSettings();
@@ -27,13 +27,12 @@ export function StoreHeader() {
   const pathname = usePathname();
   const { compact } = useLayout();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [daySummary, setDaySummary] = useState<LocalDaySummary | null>(null);
   const onSellScreen = pathname === "/pos";
 
-  // Where a "flying" product lands (lib/fly-to-cart.tsx) — only on phone.
-  // On tablet the cart is always visible as its own right-side panel
-  // (CartShell, in app/pos/index.tsx), which registers itself as the
-  // landing spot instead — this chip is a smaller, secondary summary there,
-  // not where a cashier is actually looking when something gets added.
+  // Where a "flying" product lands (lib/fly-to-cart.tsx) — phone only.
+  // Tablet cart panel (CartShell) registers itself as the landing spot;
+  // the header chip is hidden there, so it never needs measuring.
   const { setTarget } = useFlyToCart();
   const cartChipRef = useRef<View>(null);
   function measureCartChip() {
@@ -48,9 +47,36 @@ export function StoreHeader() {
 
   useMinuteTick();
   const look = syncLook(state);
-  const StatusIcon = look.icon;
 
   const logoSize = compact ? 32 : 36;
+
+  // Tablet: today's terminal totals in the space the cart chip used to hold.
+  // Re-read when pendingSales moves (sale just completed calls refresh()) or
+  // dataVersion bumps (pull / sync / live stock).
+  useEffect(() => {
+    if (compact) {
+      setDaySummary(null);
+      return;
+    }
+    let cancelled = false;
+    void summariseToday().then((summary) => {
+      if (!cancelled) setDaySummary(summary);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [compact, state.dataVersion, state.pendingSales]);
+
+  const now = new Date();
+  const dateLabel = now.toLocaleDateString("en-PH", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+  const timeLabel = now.toLocaleTimeString("en-PH", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
 
   // Pops the cart chip every time a tap on a tile adds to it — the only
   // feedback a cashier gets that the add actually registered, now that the
@@ -136,11 +162,28 @@ export function StoreHeader() {
           )}
         </Pressable>
 
-        {/* Store name dropped from the header (item 7) — the cart chip takes
-            its place while the Sell screen is open, since that is the only
-            screen the cart applies to; other tabs just leave this flexed
-            space empty next to the logo. */}
-        {onSellScreen ? (
+        {/* Time leftmost; sync sits beside it as a flat HeaderStat twin.
+            No vertical rule beside Synced — open into cart/sales on the right. */}
+        <View
+          accessibilityLabel={`${dateLabel}, ${timeLabel}. ${look.text}. ${pendingLabel(state.pendingSales)}.`}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: space.md,
+            flexShrink: 0,
+          }}
+        >
+          <HeaderStat value={timeLabel} label={dateLabel} />
+          <SyncStat
+            look={look}
+            pendingSales={state.pendingSales}
+            onPress={() => router.replace("/pos/sync")}
+          />
+        </View>
+
+        {/* Phone Sell: cart chip. Tablet: today's sales (CartShell already shows
+            the cart — this chip was redundant). Other phone tabs: spacer. */}
+        {onSellScreen && compact ? (
           <Pressable
             ref={cartChipRef}
             onLayout={measureCartChip}
@@ -177,7 +220,7 @@ export function StoreHeader() {
               <Text
                 numberOfLines={1}
                 style={{
-                  fontSize: compact ? fontSize.body : fontSize.bodyLg,
+                  fontSize: fontSize.body,
                   fontWeight: "700",
                   color: color.onPrimary,
                 }}
@@ -186,84 +229,125 @@ export function StoreHeader() {
               </Text>
             </Animated.View>
           </Pressable>
+        ) : !compact ? (
+          <View
+            accessibilityLabel={`Today ${daySummary?.salesCount ?? 0} sales, ${formatMoney(daySummary?.revenue ?? 0)}. Discounts ${formatMoney(daySummary?.discountTotal ?? 0)} on ${daySummary?.discountedSalesCount ?? 0} sales. Refunds ${formatMoney(daySummary?.refundTotal ?? 0)}, ${daySummary?.refundCount ?? 0}.`}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: space.sm,
+              paddingHorizontal: space.sm,
+              paddingVertical: 4,
+            }}
+          >
+            <HeaderStat
+              value={formatMoney(daySummary?.revenue ?? 0)}
+              label={`${daySummary?.salesCount ?? 0} sale${(daySummary?.salesCount ?? 0) === 1 ? "" : "s"}`}
+            />
+            <HeaderStatDivider />
+            <HeaderStat
+              value={formatMoney(daySummary?.discountTotal ?? 0)}
+              label={`${daySummary?.discountedSalesCount ?? 0} discount${(daySummary?.discountedSalesCount ?? 0) === 1 ? "" : "s"}`}
+            />
+            <HeaderStatDivider />
+            <HeaderStat
+              value={formatMoney(daySummary?.refundTotal ?? 0)}
+              label={`${daySummary?.refundCount ?? 0} refund${(daySummary?.refundCount ?? 0) === 1 ? "" : "s"}`}
+            />
+          </View>
         ) : (
           <View style={{ flex: 1, minWidth: 0 }} />
         )}
 
-        {/* Phone: too crowded next to the cart chip + sync chip — moved into
-            the account drawer instead. Tablet keeps it here. */}
+        {/* Phone: too crowded next to the cart chip — moved into the account
+            drawer instead. Tablet keeps it here. */}
         {compact ? null : <LocationSwitcher />}
-
-        <Pressable
-          onPress={() => router.replace("/pos/sync")}
-          accessibilityRole="button"
-          accessibilityLabel={`${look.text}. ${pendingLabel(state.pendingSales)}. Opens sync.`}
-          style={({ pressed }) => ({
-            minHeight: 40,
-            maxWidth: compact ? 120 : 220,
-            flexDirection: "row",
-            alignItems: "center",
-            gap: space.xs,
-            paddingLeft: space.sm,
-            paddingRight: compact ? space.sm : space.xs,
-            borderRadius: radius.sm,
-            backgroundColor: look.fill,
-            opacity: pressed ? 0.85 : 1,
-            flexShrink: 0,
-          })}
-        >
-          {look.busy ? (
-            <ActivityIndicator size="small" color={look.ink} />
-          ) : (
-            <StatusIcon size={16} color={look.ink} strokeWidth={2} />
-          )}
-
-          {/* Live-connection dot: green while the stock-broadcast socket is
-              actually connected, amber if online mode is on but it isn't
-              (reconnecting, or really offline despite the toggle), gray
-              once offline mode is deliberately on. */}
-          <View
-            accessibilityLabel={
-              state.offlineModeEnabled
-                ? "Offline mode on"
-                : state.realtimeConnected
-                  ? "Live"
-                  : "Reconnecting"
-            }
-            style={{
-              width: 7,
-              height: 7,
-              borderRadius: 4,
-              backgroundColor: state.offlineModeEnabled
-                ? color.inkMuted
-                : state.realtimeConnected
-                  ? color.success
-                  : color.warning,
-            }}
-          />
-
-          <View style={{ flexShrink: 1, minWidth: 0 }}>
-            <Text
-              numberOfLines={1}
-              style={{ fontSize: fontSize.caption, fontWeight: "700", color: look.ink }}
-            >
-              {compact ? look.shortText : look.text}
-            </Text>
-            {compact ? null : (
-              <Text
-                numberOfLines={1}
-                style={{ fontSize: fontSize.caption, color: color.inkMuted }}
-              >
-                {pendingLabel(state.pendingSales)}
-              </Text>
-            )}
-          </View>
-
-          {compact ? null : <ChevronRight size={16} color={look.ink} strokeWidth={2} />}
-        </Pressable>
       </View>
 
       <AccountDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
     </>
+  );
+}
+
+function SyncStat({
+  look,
+  pendingSales,
+  onPress,
+}: {
+  look: SyncLook;
+  pendingSales: number;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${look.text}. ${pendingLabel(pendingSales)}. Opens sync.`}
+      style={({ pressed }) => ({
+        minWidth: 0,
+        flexShrink: 1,
+        opacity: pressed ? 0.7 : 1,
+      })}
+    >
+      <Text
+        numberOfLines={1}
+        style={{
+          fontSize: fontSize.body,
+          fontWeight: "700",
+          color: color.onPrimary,
+        }}
+      >
+          {look.shortText}
+      </Text>
+      <Text
+        numberOfLines={1}
+        style={{
+          fontSize: fontSize.caption,
+          color: "rgba(255,255,255,0.75)",
+        }}
+      >
+        Synced
+      </Text>
+    </Pressable>
+  );
+}
+
+function HeaderStatDivider() {
+  return (
+    <View
+      style={{
+        width: 1,
+        alignSelf: "stretch",
+        backgroundColor: "rgba(255,255,255,0.25)",
+      }}
+    />
+  );
+}
+
+function HeaderStat({ value, label }: { value: string; label: string }) {
+  return (
+    <View style={{ minWidth: 0, flexShrink: 1 }}>
+      <Text
+        numberOfLines={1}
+        style={{
+          fontSize: fontSize.body,
+          fontWeight: "700",
+          color: color.onPrimary,
+        }}
+      >
+        {value}
+      </Text>
+      <Text
+        numberOfLines={1}
+        style={{
+          fontSize: fontSize.caption,
+          color: "rgba(255,255,255,0.75)",
+        }}
+      >
+        {label}
+      </Text>
+    </View>
   );
 }

@@ -151,7 +151,10 @@ export default function UnlockScreen() {
         return;
       }
 
-      router.replace("/pos");
+      // The attendance screen itself decides whether there's anything to
+      // gate on (enforcement off, rest day, already clocked in all skip
+      // straight through to /pos) — see app/attendance.tsx.
+      router.replace("/attendance");
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Could not reach the server.";
@@ -294,14 +297,18 @@ export default function UnlockScreen() {
             icon={Users}
             title={
               loadError
-                ? "Cannot reach the server"
+                ? /set up again|not set up|sign-in is no longer/i.test(loadError)
+                  ? "Terminal needs setup again"
+                  : /network request failed|failed to fetch|could not reach/i.test(loadError)
+                    ? "Cannot reach the server"
+                    : "Could not load cashiers"
                 : loadingList
                   ? "Loading cashiers..."
                   : "No cashiers yet"
             }
             instruction={
               loadError
-                ? "Check the connection, then press Refresh."
+                ? loadError
                 : "Add a cashier with a PIN in the admin dashboard, or set a PIN on this shop's admin, then press Refresh."
             }
           />
@@ -413,31 +420,6 @@ export default function UnlockScreen() {
           })}
         </View>
       )}
-
-      {/* Bottom of the wave — was empty. A short, genuinely useful note instead of dead space. */}
-      <View style={{ gap: space.xs, marginTop: space["3xl"], paddingBottom: space.md }}>
-        <Text
-          style={{
-            fontSize: fontSize.body,
-            fontWeight: "600",
-            color: color.onPrimary,
-            textAlign: "center",
-          }}
-        >
-          Why does unlocking need a connection?
-        </Text>
-        <Text
-          style={{
-            fontSize: fontSize.caption,
-            color: color.sageLight,
-            textAlign: "center",
-            lineHeight: 18,
-          }}
-        >
-          Your PIN is checked live against the shop's account, every time — never stored on
-          this tablet. Once you're in, selling works fully offline until you tap Sync.
-        </Text>
-      </View>
     </ScrollView>
 
     {/*

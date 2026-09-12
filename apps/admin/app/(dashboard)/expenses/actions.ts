@@ -12,6 +12,7 @@ import {
   createExpense,
   deleteExpense,
   updateExpense,
+  type ExpenseInput,
 } from "@double-a/api-client/queries";
 import type { FormState } from "@/lib/form-state";
 import { getAuthedClient, getCurrentUser } from "@/lib/api/session";
@@ -37,6 +38,7 @@ export async function saveExpense(
   const noteRaw = text(formData, "note");
   const expenseDate = text(formData, "expense_date");
   const locationId = text(formData, "location_id");
+  const paymentMethodRaw = text(formData, "payment_method");
   const amount = Number(formData.get("amount") ?? 0);
 
   if (!description) {
@@ -63,15 +65,18 @@ export async function saveExpense(
     expenseDate,
     note: noteRaw ? noteRaw.slice(0, EXPENSE_NOTE_MAX) : null,
     locationId: locationId || null,
+    paymentMethod: (paymentMethodRaw || null) as ExpenseInput["paymentMethod"],
   };
 
+  let savedId = id;
   try {
     const client = getAuthedClient();
     // created_by is stamped server-side from the authenticated user, not sent here.
     if (id) {
       await updateExpense(client, id, row);
     } else {
-      await createExpense(client, row);
+      const created = await createExpense(client, row);
+      savedId = created.id;
     }
   } catch (error) {
     if (error instanceof ApiError && error.isForbidden) {
@@ -82,7 +87,7 @@ export async function saveExpense(
   }
 
   revalidateExpenseViews();
-  return { error: null, ok: true };
+  return { error: null, ok: true, id: savedId };
 }
 
 export async function removeExpense(formData: FormData): Promise<void> {

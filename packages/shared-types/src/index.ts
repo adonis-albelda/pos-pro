@@ -1,5 +1,7 @@
 export * from "./auth";
 export * from "./discounts";
+export * from "./loyalty";
+export * from "./attendance";
 export * from "./document-scan";
 export * from "./domain";
 export * from "./money";

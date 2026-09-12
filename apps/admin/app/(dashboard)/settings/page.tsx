@@ -2,7 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { Percent, Settings, ShieldCheck, Sparkles, Store } from "lucide-react";
-import { Card, CardHeader } from "@/components/ui";
+import { PageHeader } from "@/components/ui";
 import { TabNav } from "@/components/tab-nav";
 import { AdminGate } from "@/components/admin-gate";
 import { StoreForm } from "./store-form";
@@ -58,8 +58,17 @@ function SettingsPageClient() {
     href: buildHref(entry.key),
   }));
 
+  // Title stays put across tabs — only the panel below TabNav swaps.
+  const companyName = settingsQuery.data?.name?.trim() || "Company settings";
+
   return (
     <div className="space-y-6">
+      <PageHeader
+        icon={Store}
+        title={companyName}
+        description="Terminals show the name and logo, and pick up changes on their next sync."
+      />
+
       <div className="overflow-hidden rounded-md border border-border bg-surface">
         <TabNav
           items={tabs}
@@ -67,17 +76,10 @@ function SettingsPageClient() {
           ariaLabel="Company settings"
           className="mx-0 bg-surface px-2 sm:px-3"
         />
-      </div>
 
-      {tab === "info" ? (
-        <Card className="overflow-hidden p-0">
-          <CardHeader
-            icon={Store}
-            title="Company details"
-            description="Terminals show the name and logo, and pick up changes on their next sync."
-          />
-          <div className="px-4 py-5 sm:px-6">
-            {settingsQuery.isPending ? (
+        <div className="px-4 py-5 sm:px-6">
+          {tab === "info" ? (
+            settingsQuery.isPending ? (
               <p className="py-8 text-center text-body text-ink-muted">Loading…</p>
             ) : settingsQuery.isError ? (
               <p className="py-8 text-center text-body text-danger">
@@ -87,28 +89,26 @@ function SettingsPageClient() {
               </p>
             ) : (
               <StoreForm settings={settingsQuery.data} />
-            )}
-          </div>
-        </Card>
-      ) : tab === "tax" ? (
-        <TaxSettingsCard />
-      ) : tab === "ai" ? (
-        <>
-          {aiQuery.isPending ? (
-            <Card className="px-4 py-8 text-center text-body text-ink-muted">Loading…</Card>
-          ) : aiQuery.isError ? (
-            <Card className="px-4 py-8 text-center text-body text-danger">
-              {aiQuery.error instanceof Error
-                ? aiQuery.error.message
-                : "Could not load AI settings."}
-            </Card>
-          ) : aiQuery.data ? (
-            <AiSettingsCard settings={aiQuery.data} />
-          ) : null}
-        </>
-      ) : (
-        <SecuritySettingsCard />
-      )}
+            )
+          ) : tab === "tax" ? (
+            <TaxSettingsCard embedded />
+          ) : tab === "ai" ? (
+            aiQuery.isPending ? (
+              <p className="py-8 text-center text-body text-ink-muted">Loading…</p>
+            ) : aiQuery.isError ? (
+              <p className="py-8 text-center text-body text-danger">
+                {aiQuery.error instanceof Error
+                  ? aiQuery.error.message
+                  : "Could not load AI settings."}
+              </p>
+            ) : aiQuery.data ? (
+              <AiSettingsCard settings={aiQuery.data} embedded />
+            ) : null
+          ) : (
+            <SecuritySettingsCard embedded />
+          )}
+        </div>
+      </div>
     </div>
   );
 }

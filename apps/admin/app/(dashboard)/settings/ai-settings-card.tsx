@@ -77,12 +77,25 @@ function AiToggle({
   );
 }
 
-export function AiSettingsCard({ settings }: { settings: CompanyAiSettings }) {
+export function AiSettingsCard({
+  settings,
+  embedded = false,
+}: {
+  settings: CompanyAiSettings;
+  embedded?: boolean;
+}) {
   const mutation = useUpdateCompanyAiSettings();
   const [error, setError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   if (!settings.platformAvailable) {
+    if (embedded) {
+      return (
+        <p className="py-8 text-center text-body text-ink-muted">
+          AI is not enabled for your company. Contact your platform admin if you need access.
+        </p>
+      );
+    }
     return (
       <Card>
         <CardHeader
@@ -123,83 +136,100 @@ export function AiSettingsCard({ settings }: { settings: CompanyAiSettings }) {
     applyEnabled(false);
   }
 
+  const actions = (
+    <div className="flex items-center gap-3">
+      {settings.bypassesLimits ? (
+        <Badge tone="warning">Unlimited (platform admin)</Badge>
+      ) : (
+        <Badge tone={settings.enabled ? "success" : "warning"}>
+          {settings.enabled ? "Paid overage on" : "Free tier only"}
+        </Badge>
+      )}
+      <AiToggle
+        enabled={settings.enabled}
+        disabled={mutation.isPending || settings.bypassesLimits}
+        onChange={onToggle}
+      />
+    </div>
+  );
+
+  const body = (
+    <div className={embedded ? "space-y-4" : "space-y-4 px-4 py-5 sm:px-6"}>
+      {embedded ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-body text-ink-muted">
+            {settings.aiPlan.name} app plan. Weekly AI limits reset every Monday.
+          </p>
+          {actions}
+        </div>
+      ) : null}
+      <p className="text-body text-ink-muted">
+        Free photo and vector searches included with your {settings.aiPlan.name} app plan work as
+        soon as AI is enabled for your company. Turn on paid overage here only when you want
+        photo reads beyond the weekly free allowance at {PESO_SIGN}
+        {photo.unitOverageChargePeso ?? 3} per request.
+      </p>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <UsageMeter
+          label="Photo to text"
+          used={photo.used}
+          limit={photo.weeklyLimit}
+          hint={`${photo.weeklyLimit} free per week, then ${PESO_SIGN}${photo.unitOverageChargePeso ?? 3} each`}
+        />
+        <UsageMeter
+          label="Vector search"
+          used={vector.used}
+          limit={vector.weeklyLimit}
+          hint={`${vector.weeklyLimit} free per week`}
+        />
+      </div>
+
+      <div className="grid gap-3 rounded-sm border border-border bg-surface px-4 py-3 sm:grid-cols-3">
+        <div>
+          <p className="text-caption text-ink-muted">Photo remaining (free)</p>
+          <p className="mt-0.5 text-heading-sm font-semibold tabular-nums">{photo.remaining}</p>
+        </div>
+        <div>
+          <p className="text-caption text-ink-muted">Vector remaining</p>
+          <p className="mt-0.5 text-heading-sm font-semibold tabular-nums">
+            {vector.remaining}
+          </p>
+        </div>
+        <div>
+          <p className="text-caption text-ink-muted">Overage this week</p>
+          <p className="mt-0.5 text-heading-sm font-semibold tabular-nums text-ink">
+            {formatMoney(photo.overageChargePeso ?? 0)}
+          </p>
+          {(photo.overageCount ?? 0) > 0 ? (
+            <p className="text-caption text-ink-muted">
+              {photo.overageCount} paid request{(photo.overageCount ?? 0) === 1 ? "" : "s"}
+            </p>
+          ) : null}
+        </div>
+      </div>
+
+      <p className="text-caption text-ink-muted">Weekly reset: {resetLabel}</p>
+
+      {error ? <ErrorNote>{error}</ErrorNote> : null}
+    </div>
+  );
+
   return (
     <>
-      <Card>
-        <CardHeader
-          icon={Sparkles}
-          title="AI Usage"
-          description={`${settings.aiPlan.name} app plan. Weekly AI limits reset every Monday.`}
-          action={
-            <div className="flex items-center gap-3">
-              {settings.bypassesLimits ? (
-                <Badge tone="warning">Unlimited (platform admin)</Badge>
-              ) : (
-                <Badge tone={settings.enabled ? "success" : "warning"}>
-                  {settings.enabled ? "Paid overage on" : "Free tier only"}
-                </Badge>
-              )}
-              <AiToggle
-                enabled={settings.enabled}
-                disabled={mutation.isPending || settings.bypassesLimits}
-                onChange={onToggle}
-              />
-            </div>
-          }
-        />
-
-        <div className="space-y-4 px-4 py-5 sm:px-6">
-          <p className="text-body text-ink-muted">
-            Free photo and vector searches included with your {settings.aiPlan.name} app plan work as
-            soon as AI is enabled for your company. Turn on paid overage here only when you want
-            photo reads beyond the weekly free allowance at {PESO_SIGN}
-            {photo.unitOverageChargePeso ?? 3} per request.
-          </p>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <UsageMeter
-              label="Photo to text"
-              used={photo.used}
-              limit={photo.weeklyLimit}
-              hint={`${photo.weeklyLimit} free per week, then ${PESO_SIGN}${photo.unitOverageChargePeso ?? 3} each`}
-            />
-            <UsageMeter
-              label="Vector search"
-              used={vector.used}
-              limit={vector.weeklyLimit}
-              hint={`${vector.weeklyLimit} free per week`}
-            />
-          </div>
-
-          <div className="grid gap-3 rounded-sm border border-border bg-surface px-4 py-3 sm:grid-cols-3">
-            <div>
-              <p className="text-caption text-ink-muted">Photo remaining (free)</p>
-              <p className="mt-0.5 text-heading-sm font-semibold tabular-nums">{photo.remaining}</p>
-            </div>
-            <div>
-              <p className="text-caption text-ink-muted">Vector remaining</p>
-              <p className="mt-0.5 text-heading-sm font-semibold tabular-nums">
-                {vector.remaining}
-              </p>
-            </div>
-            <div>
-              <p className="text-caption text-ink-muted">Overage this week</p>
-              <p className="mt-0.5 text-heading-sm font-semibold tabular-nums text-ink">
-                {formatMoney(photo.overageChargePeso ?? 0)}
-              </p>
-              {(photo.overageCount ?? 0) > 0 ? (
-                <p className="text-caption text-ink-muted">
-                  {photo.overageCount} paid request{(photo.overageCount ?? 0) === 1 ? "" : "s"}
-                </p>
-              ) : null}
-            </div>
-          </div>
-
-          <p className="text-caption text-ink-muted">Weekly reset: {resetLabel}</p>
-
-          {error ? <ErrorNote>{error}</ErrorNote> : null}
-        </div>
-      </Card>
+      {embedded ? (
+        body
+      ) : (
+        <Card>
+          <CardHeader
+            icon={Sparkles}
+            title="AI Usage"
+            description={`${settings.aiPlan.name} app plan. Weekly AI limits reset every Monday.`}
+            action={actions}
+          />
+          {body}
+        </Card>
+      )}
 
       <Dialog
         open={confirmOpen}

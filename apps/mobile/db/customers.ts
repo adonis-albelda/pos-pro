@@ -6,6 +6,7 @@ interface CustomerRow {
   name: string;
   address: string | null;
   contact: string | null;
+  loyalty_points_balance: number;
   updated_at: string | null;
   sync_status: string;
 }
@@ -20,6 +21,7 @@ function toLocal(row: CustomerRow): LocalCustomer {
     name: row.name,
     address: row.address,
     contact: row.contact,
+    loyaltyPointsBalance: row.loyalty_points_balance,
     updatedAt: row.updated_at ?? "",
     syncStatus: row.sync_status as SyncStatus,
   };
@@ -100,6 +102,7 @@ export async function upsertLocalCustomer(input: {
     name: input.name,
     address: input.address,
     contact: input.contact,
+    loyaltyPointsBalance: 0,
     updatedAt,
     syncStatus: syncStatus as SyncStatus,
   };
@@ -150,18 +153,20 @@ export async function replaceSyncedCustomers(customers: Customer[]): Promise<voi
       if (local?.sync_status === "pending") continue;
 
       await db.runAsync(
-        `INSERT INTO customers (id, name, address, contact, updated_at, sync_status)
-         VALUES (?, ?, ?, ?, ?, 'synced')
+        `INSERT INTO customers (id, name, address, contact, loyalty_points_balance, updated_at, sync_status)
+         VALUES (?, ?, ?, ?, ?, ?, 'synced')
          ON CONFLICT(id) DO UPDATE SET
            name = excluded.name,
            address = excluded.address,
            contact = excluded.contact,
+           loyalty_points_balance = excluded.loyalty_points_balance,
            updated_at = excluded.updated_at,
            sync_status = 'synced'`,
         customer.id,
         customer.name,
         customer.address,
         customer.contact,
+        customer.loyaltyPointsBalance,
         customer.updatedAt,
       );
     }

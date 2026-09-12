@@ -65,8 +65,17 @@ export function PdfPreviewButton({
         title="Purchase order PDF"
         description="Check it over, then download or send it to the supplier."
         className="max-w-4xl"
+        footer={
+          blobUrl ? (
+            <div className="flex justify-end">
+              <ButtonLink href={blobUrl} download={filename} icon={Download} size="sm">
+                Download PDF
+              </ButtonLink>
+            </div>
+          ) : undefined
+        }
       >
-        <div className="flex h-full flex-col gap-3">
+        <div className="flex h-full min-h-[50vh] flex-col gap-3">
           {loading ? (
             <div className="flex flex-1 items-center justify-center text-body text-ink-muted">
               Building the PDF…
@@ -74,18 +83,11 @@ export function PdfPreviewButton({
           ) : error ? (
             <ErrorNote>{error}</ErrorNote>
           ) : blobUrl ? (
-            <>
-              <iframe
-                src={blobUrl}
-                title="Purchase order PDF preview"
-                className="min-h-0 flex-1 rounded-sm border border-border"
-              />
-              <div className="flex justify-end">
-                <ButtonLink href={blobUrl} download={filename} icon={Download} size="sm">
-                  Download PDF
-                </ButtonLink>
-              </div>
-            </>
+            <iframe
+              src={blobUrl}
+              title="Purchase order PDF preview"
+              className="min-h-[50vh] flex-1 rounded-sm border border-border"
+            />
           ) : null}
         </div>
       </Sheet>

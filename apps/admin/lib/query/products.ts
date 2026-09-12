@@ -138,6 +138,7 @@ export function useBelowReorder() {
   return useQuery({
     queryKey: queryKeys.products.belowReorder(),
     queryFn: () => listBelowReorder(getBrowserApiClient()),
+    staleTime: 60_000,
   });
 }
 

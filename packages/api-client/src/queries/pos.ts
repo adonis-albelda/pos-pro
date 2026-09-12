@@ -4,13 +4,17 @@ import type {
   ComplexDiscountRule,
   Customer,
   DiscountRule,
+  LoyaltyProgram,
+  LoyaltyReward,
   Product,
   ProductVariant,
   ReceiptLayout,
   SaleWithItems,
+  ScheduleAssignment,
   StoreSettings,
   TaxSettings,
   User,
+  WorkSchedule,
 } from "@double-a/shared-types";
 import type { ApiClient, DataEnvelope, JsonApiOne } from "../http";
 import {
@@ -31,7 +35,19 @@ import {
   toStoreSettings,
   toUser,
 } from "../mappers";
+import {
+  toScheduleAssignment,
+  toWorkSchedule,
+  type ScheduleAssignmentAttrs,
+  type WorkScheduleAttrs,
+} from "./attendance";
 import { toComplexDiscountRule, toDiscountRule } from "./discounts";
+import {
+  toLoyaltyProgram,
+  toLoyaltyReward,
+  type LoyaltyRewardAttrs,
+  type LoyaltySettingsAttrs,
+} from "./loyalty";
 
 /**
  * POS-specific primitives: device enrollment, cashier PIN, and the two raw
@@ -191,6 +207,29 @@ export async function pushCustomers(client: ApiClient, customers: PushCustomerIn
  * caller's own company context — sending a client value would either be
  * silently dropped or (worse) trusted, and CLAUDE.md §15 says shop writes
  * must never cross `company_id`.
+ *
+ * BACKEND CONTRACT, not yet implemented (Laravel repo, not checked out
+ * here): a `discounts[]` entry carrying `loyalty_reward_id` is a redemption,
+ * not a plain rule pick. `PushSalesAction` must, for each such entry:
+ *   1. re-validate server-side (reward active, its linked discount_rules
+ *      row active, customer attached, customer's current
+ *      loyalty_points_balance >= reward.points_required) — never trust the
+ *      device's own eligibility check, which only ever saw a possibly-stale
+ *      synced balance;
+ *   2. insert one `loyalty_points_ledger` row, `type = 'redemption'`,
+ *      `points = -reward.points_required`, `sale_id = sale.id`,
+ *      `loyalty_reward_id`. The partial unique index on
+ *      `(sale_id, loyalty_reward_id) where type = 'redemption'`
+ *      (see the loyalty_program migration) makes a retried push of the same
+ *      sale a no-op instead of a double deduction — insert with
+ *      `ON CONFLICT DO NOTHING`, don't pre-check-then-insert.
+ * Separately, on every completed sale with a `customer_id` and an active
+ * loyalty_programs row, insert a `type = 'purchase'` ledger row for points
+ * earned at `program.points_per_currency` — that side effect has no
+ * per-entry idempotency key here since it isn't tied to a `loyalty_reward_id`;
+ * guard it the same way normal sale-insert idempotency already works (skip
+ * entirely if `sale.id` already existed before this push, same as the rest
+ * of `PushSalesAction`).
  */
 function toPushSalePayload(sale: SaleWithItems): Record<string, unknown> {
   return {
@@ -235,6 +274,7 @@ function toPushSalePayload(sale: SaleWithItems): Record<string, unknown> {
           id: d.id,
           discount_rule_id: d.discountRuleId,
           complex_discount_rule_id: d.complexDiscountRuleId,
+          loyalty_reward_id: d.loyaltyRewardId ?? undefined,
           id_number: d.idNumber,
           id_holder_name: d.idHolderName,
           discount_amount: d.discountAmount,
@@ -293,6 +333,13 @@ export interface PullSyncResult {
   /** Active complex promo rules — whole-replace each pull. */
   complexDiscountRules: ComplexDiscountRule[];
   taxSettings: TaxSettings;
+  /** Active loyalty rewards — whole-replace each pull, same as discountRules. */
+  loyaltyRewards: LoyaltyReward[];
+  loyaltyProgram: LoyaltyProgram;
+  /** Active work schedules — whole-replace each pull, same as discountRules. */
+  workSchedules: WorkSchedule[];
+  /** Every schedule assignment company-wide — whole-replace each pull. */
+  scheduleAssignments: ScheduleAssignment[];
 }
 
 interface PullSyncResponse {
@@ -318,6 +365,10 @@ interface PullSyncResponse {
     vat_rate: number;
     auto_apply_complex_discounts: boolean;
   };
+  loyalty_rewards?: { type: string; id: string; attributes: LoyaltyRewardAttrs }[];
+  loyalty_settings?: LoyaltySettingsAttrs;
+  work_schedules?: { type: string; id: string; attributes: WorkScheduleAttrs }[];
+  schedule_assignments?: { type: string; id: string; attributes: ScheduleAssignmentAttrs }[];
 }
 
 type WireResource<A> = { type: string; id: string; attributes: A };
@@ -412,5 +463,19 @@ export async function pullSync(
       vatRate: data.tax_settings?.vat_rate ?? 12,
       autoApplyComplexDiscounts: data.tax_settings?.auto_apply_complex_discounts ?? true,
     },
+    loyaltyRewards: mapResourceList(data.loyalty_rewards, "loyalty_rewards", toLoyaltyReward),
+    loyaltyProgram: toLoyaltyProgram(
+      data.loyalty_settings ?? {
+        loyalty_enabled: false,
+        loyalty_points_per_currency: 1,
+        loyalty_program_name: null,
+      },
+    ),
+    workSchedules: mapResourceList(data.work_schedules, "work_schedules", toWorkSchedule),
+    scheduleAssignments: mapResourceList(
+      data.schedule_assignments,
+      "schedule_assignments",
+      toScheduleAssignment,
+    ),
   };
 }

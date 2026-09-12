@@ -124,7 +124,7 @@ function extractPasswordError(cause: unknown): string {
   return cause instanceof Error ? cause.message : "Could not reach the server.";
 }
 
-export function SecuritySettingsCard() {
+export function SecuritySettingsCard({ embedded = false }: { embedded?: boolean }) {
   const settingsQuery = useSecuritySettings();
   const updateSettings = useUpdateSecuritySettings();
   const statusQuery = useMfaStatus();
@@ -149,7 +149,7 @@ export function SecuritySettingsCard() {
   const status = statusQuery.data;
 
   return (
-    <div className="space-y-6">
+    <div className={embedded ? "space-y-4" : "space-y-6"}>
       <Card>
         <CardHeader
           icon={ShieldCheck}

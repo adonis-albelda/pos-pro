@@ -6,16 +6,20 @@ import { storeToday } from "@/lib/date-range";
 import { Card, EmptyState, PageHeader } from "@/components/ui";
 import { CreatePurchaseOrderForm } from "./create-po-form";
 import { useSuppliers } from "@/lib/query/suppliers";
+import { useLocations } from "@/lib/query/locations";
+import { useLocationFilter } from "@/components/location-filter-provider";
 
 export function NewPurchaseOrderPageClient() {
   const searchParams = useSearchParams();
   const supplier = searchParams.get("supplier") ?? undefined;
+  const { locationId: currentLocationFilter } = useLocationFilter();
 
   // Suppliers only — product catalogue loads on demand in the line picker
   // (paginated search), not a full listProducts walk that can hang for minutes.
   const suppliersQuery = useSuppliers();
+  const locationsQuery = useLocations({ type: "branch" });
 
-  if (suppliersQuery.isPending) {
+  if (suppliersQuery.isPending || locationsQuery.isPending) {
     return (
       <div className="space-y-6">
         <PageHeader icon={ClipboardList} title="New purchase order" />
@@ -24,20 +28,20 @@ export function NewPurchaseOrderPageClient() {
     );
   }
 
-  if (suppliersQuery.error) {
+  const loadError = suppliersQuery.error ?? locationsQuery.error;
+  if (loadError) {
     return (
       <div className="space-y-6">
         <PageHeader icon={ClipboardList} title="New purchase order" />
         <Card className="px-4 py-8 text-center text-body text-danger">
-          {suppliersQuery.error instanceof Error
-            ? suppliersQuery.error.message
-            : "Could not load suppliers."}
+          {loadError instanceof Error ? loadError.message : "Could not load this page."}
         </Card>
       </div>
     );
   }
 
   const suppliers = suppliersQuery.data ?? [];
+  const locations = locationsQuery.data ?? [];
 
   if (suppliers.length === 0) {
     return (
@@ -59,11 +63,13 @@ export function NewPurchaseOrderPageClient() {
       <PageHeader
         icon={ClipboardList}
         title="New purchase order"
-        description="Add line items and, if the supplier expects installments, a payment schedule."
+        description="Pick a supplier and location, then add line items."
       />
       <CreatePurchaseOrderForm
         suppliers={suppliers}
+        locations={locations}
         defaultSupplierId={supplier}
+        defaultLocationId={currentLocationFilter ?? undefined}
         defaultOrderDate={storeToday()}
       />
     </div>

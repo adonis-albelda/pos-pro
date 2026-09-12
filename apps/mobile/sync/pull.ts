@@ -10,7 +10,9 @@ import {
   saveLocalTaxSettings,
 } from "@/db/discounts";
 import { replaceFeatureFlags } from "@/db/feature-flags";
+import { replaceLoyaltyRewards, saveLocalLoyaltyProgram } from "@/db/loyalty";
 import { getSyncMeta, recordSyncSuccess } from "@/db/meta";
+import { replaceScheduleAssignments, replaceWorkSchedules } from "@/db/schedules";
 import { countLocalProducts, replaceProducts, upsertProducts } from "@/db/products";
 import { replaceVariants, upsertVariants } from "@/db/product-variants";
 import { saveLocalReceiptLayout } from "@/db/receipt-layout";
@@ -98,6 +100,10 @@ export async function pull(
   await replaceDiscountRules(result.discountRules);
   await replaceComplexDiscountRules(result.complexDiscountRules);
   await saveLocalTaxSettings(result.taxSettings);
+  await replaceLoyaltyRewards(result.loyaltyRewards);
+  await saveLocalLoyaltyProgram(result.loyaltyProgram);
+  await replaceWorkSchedules(result.workSchedules);
+  await replaceScheduleAssignments(result.scheduleAssignments);
 
   try {
     const aiSettings = await getCompanyAiSettings(client);

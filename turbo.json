@@ -1,11 +1,13 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "globalEnv": [
-    "NEXT_PUBLIC_SUPABASE_URL",
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY",
-    "SUPABASE_SERVICE_ROLE_KEY",
-    "EXPO_PUBLIC_SUPABASE_URL",
-    "EXPO_PUBLIC_SUPABASE_ANON_KEY"
+    "NEXT_PUBLIC_TALLY_API_URL",
+    "EXPO_PUBLIC_API_URL",
+    "EXPO_PUBLIC_ADMIN_URL",
+    "EXPO_PUBLIC_REVERB_HOST",
+    "EXPO_PUBLIC_REVERB_APP_KEY",
+    "EXPO_PUBLIC_REVERB_PORT",
+    "EXPO_PUBLIC_REVERB_SCHEME"
   ],
   "tasks": {
     "build": {

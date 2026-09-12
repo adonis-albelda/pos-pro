@@ -33,7 +33,7 @@ const TOGGLES: { key: keyof ReceiptLayout; label: string; hint: string }[] = [
     hint: "Only when the sale has customer details.",
   },
   { key: "showDiscounts", label: "Discount line", hint: "When a counter discount exists." },
-  { key: "showPayment", label: "Payment method", hint: "Cash, GCash, card…" },
+  { key: "showPayment", label: "Payment method", hint: "Cash, E-Wallet, card…" },
   { key: "showFooter", label: "Footer", hint: "Store receipt footer, or “Thank you”." },
 ];
 

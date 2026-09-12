@@ -7,19 +7,13 @@
     "build": "turbo build",
     "lint": "turbo lint",
     "type-check": "turbo type-check",
-    "db:types": "supabase gen types typescript --project-id \"$SUPABASE_PROJECT_ID\" --schema public > packages/supabase/src/database.types.ts",
-    "db:push": "supabase db push",
-    "create-superadmin": "node --env-file=.env --import tsx scripts/create-superadmin.ts",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\""
   },
   "devDependencies": {
     "@double-a/config-eslint": "workspace:*",
-    "@double-a/supabase": "workspace:*",
     "@eslint/js": "^9.39.5",
-    "@supabase/supabase-js": "^2.111.0",
     "eslint": "^9.39.5",
     "prettier": "^3.9.6",
-    "tsx": "^4.21.0",
     "turbo": "^2.10.8",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.65.0"

@@ -1,38 +1,48 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
+  Easing,
   FlatList,
+  Image,
   Modal,
   Pressable,
+  ScrollView,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import Swipeable, {
   type SwipeableMethods,
 } from "react-native-gesture-handler/ReanimatedSwipeable";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect } from "expo-router";
 import * as Crypto from "expo-crypto";
 import {
-  BadgePercent,
+  ArrowLeft,
   Bookmark,
   BookmarkCheck,
   Banknote,
+  Camera,
+  Check,
   CheckCircle2,
   ChevronRight,
   CreditCard,
   FolderTree,
   HandCoins,
+  Images,
   Info,
   MapPin,
   Mic,
   Minus,
+  Package,
   PackageSearch,
   Pencil,
   Phone,
   Plus,
+  Printer,
   ScanBarcode,
   Search,
   ShoppingCart,
@@ -40,24 +50,21 @@ import {
   Smartphone,
   Tag,
   Trash2,
-  TriangleAlert,
   Truck,
   UserRound,
   X,
   type LucideIcon,
 } from "lucide-react-native";
+import * as ImagePicker from "expo-image-picker";
 import {
   cartDiscount,
   cartTotal,
-  checkPriceOverride,
+  computeSimpleDiscount,
   CUSTOMER_FIELD_MAX_LENGTH,
   formatMoney,
-  formatPercent,
   formatQuantity,
   hasCustomerDetails,
-  lineProfit,
   lineSubtotal,
-  marginPercent,
   normaliseCustomerDetails,
   priceForQuantity,
   QUANTITY_DECIMALS,
@@ -70,6 +77,8 @@ import {
   type CustomerDetails,
   type DiscountRule,
   type Fulfillment,
+  type LoyaltyReward,
+  type LocalSaleWithItems,
   type PaymentMethod,
   type ProductVariant,
   type ProductWithEstimatedStock,
@@ -78,7 +87,8 @@ import {
 } from "@double-a/shared-types";
 import { listLocalAddonGroups } from "@/db/addon-groups";
 import { listLocalCategories, type LocalCategory } from "@/db/categories";
-import { searchLocalCustomers, upsertLocalCustomer } from "@/db/customers";
+import { getLocalCustomer, searchLocalCustomers, upsertLocalCustomer } from "@/db/customers";
+import { getPendingRedeemedPoints, listLocalLoyaltyRewards } from "@/db/loyalty";
 import {
   countActiveLocalProducts,
   findLocalProductByBarcode,
@@ -101,10 +111,14 @@ import {
   listLocalDiscountRules,
 } from "@/db/discounts";
 import {
+  applicableAmountForRule,
   applyComplexRuleToCart,
+  applyLoyaltyRewardToCart,
   applySimpleRuleToCart,
+  eligibleLoyaltyRewards,
   orderDiscountImpact,
   qualifyingComplexRules,
+  qualifyingSimpleRules,
   type AppliedOrderDiscount,
 } from "@/lib/order-discounts";
 import {
@@ -123,9 +137,11 @@ import { useSession } from "@/lib/session";
 import { useThemePreferences } from "@/lib/theme-preferences";
 import { printReceipt } from "@/printing/receipt";
 import { useSync } from "@/sync/sync-provider";
-import { BottomSheet } from "@/components/bottom-sheet";
+import { BottomSheet, useKeyboardHeight } from "@/components/bottom-sheet";
+import { StoreHeader } from "@/components/store-header";
 import { AiSearchModal } from "@/components/ai-search-modal";
 import { BarcodeScanModal } from "@/components/barcode-scan-modal";
+import { CartQtyButton } from "@/components/cart-qty-button";
 import { CategoryDialog, type CategoryFilter } from "@/components/category-tabs";
 import { LoadingState } from "@/components/loading-state";
 import { ProductDetailSheet, ProductTile } from "@/components/product-tile";
@@ -151,14 +167,9 @@ import { color, fontSize, radius, space, styles } from "@/theme";
 /** What a cart with no customer attached looks like. Also the state after a sale. */
 const NO_CUSTOMER: CustomerDetails = { customerId: null, name: null, address: null, contact: null };
 
-// RN's Modal "slide" animation runs ~300ms. Pushing the next screen before the
-// confirm sheet and cart modal finish closing is what makes the sale screen
-// look like it "mixes up" with the cart underneath it.
-const MODAL_CLOSE_MS = 300;
-
 const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: LucideIcon }[] = [
   { value: "cash", label: "Cash", icon: Banknote },
-  { value: "gcash", label: "GCash", icon: Smartphone },
+  { value: "ewallet", label: "E-Wallet", icon: Smartphone },
   { value: "card", label: "Card", icon: CreditCard },
   { value: "credit", label: "Credit", icon: HandCoins },
 ];
@@ -230,7 +241,6 @@ function toVariantTileDisplay(
 }
 
 export default function SellScreen() {
-  const router = useRouter();
   const { cashier } = useSession();
   const { refresh, autoPush, dataVersion, offlineModeEnabled } = useSync();
   const { isEnabled } = useFeatureFlags();
@@ -238,10 +248,12 @@ export default function SellScreen() {
   // A phone cannot hold a grid and a cart side by side, so below the compact
   // breakpoint the cart moves behind a summary bar the cashier taps to pay.
   const layout = useLayout();
-  const { compact, columns } = layout;
+  const { compact, columns: layoutColumns } = layout;
 
   const [products, setProducts] = useState<ProductWithEstimatedStock[]>([]);
-  const { productViewMode, backgroundEffect } = useThemePreferences();
+  const { productViewMode, backgroundEffect, productLayout } = useThemePreferences();
+  // Theme "Row" = one product per line; "Grid" keeps the width-based column count.
+  const columns = productLayout === "row" ? 1 : layoutColumns;
   const { celebrate, node: confettiNode } = useSaleCelebration();
   // Only populated in "By variant" mode (Theme menu — lib/theme-preferences.ts).
   // Keyed by product id; fetched for whatever page of `products` is currently
@@ -331,16 +343,19 @@ export default function SellScreen() {
   // lines, so the cashier reads the same per-item price throughout; only the
   // Subtotal/Discount/Total band at the bottom moves.
   const [preDiscountPrices, setPreDiscountPrices] = useState<Record<string, number>>({});
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [discountSheetOpen, setDiscountSheetOpen] = useState(false);
-  const [ruleSheetOpen, setRuleSheetOpen] = useState(false);
   const [orderDiscounts, setOrderDiscounts] = useState<AppliedOrderDiscount[]>([]);
   const [discountRules, setDiscountRules] = useState<DiscountRule[]>([]);
   const [complexRules, setComplexRules] = useState<ComplexDiscountRule[]>([]);
+  const [loyaltyRewards, setLoyaltyRewards] = useState<LoyaltyReward[]>([]);
+  const [customerPoints, setCustomerPoints] = useState(0);
   const [taxSettings, setTaxSettings] = useState<TaxSettings>(DEFAULT_TAX_SETTINGS);
   const [promoSuggestion, setPromoSuggestion] = useState<ComplexDiscountRule | null>(null);
   const [qtyEditingId, setQtyEditingId] = useState<string | null>(null);
   const [payment, setPayment] = useState<PaymentMethod>("cash");
+  // Optional e-wallet proof screenshot — local file uri, cleared whenever
+  // the method isn't ewallet or the sale finishes.
+  const [paymentProofUri, setPaymentProofUri] = useState<string | null>(null);
   // Optional, and empty for most sales. Held on the cart rather than asked for
   // at the end, so a cashier can take a name while the order is still being
   // built and never has a dialog between them and completing the sale.
@@ -349,6 +364,8 @@ export default function SellScreen() {
   const [openField, setOpenField] = useState<"payment" | "fulfillment" | null>(null);
   const [editingCustomer, setEditingCustomer] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmSucceeded, setConfirmSucceeded] = useState(false);
+  const [completedSale, setCompletedSale] = useState<LocalSaleWithItems | null>(null);
   const [saving, setSaving] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [hasDraft, setHasDraft] = useState(false);
@@ -441,16 +458,36 @@ export default function SellScreen() {
 
   useEffect(() => {
     void (async () => {
-      const [simple, complex, tax] = await Promise.all([
+      const [simple, complex, tax, rewards] = await Promise.all([
         listLocalDiscountRules(),
         listLocalComplexDiscountRules(),
         getLocalTaxSettings(),
+        listLocalLoyaltyRewards(),
       ]);
       setDiscountRules(simple);
       setComplexRules(complex);
       setTaxSettings(tax);
+      setLoyaltyRewards(rewards);
     })();
   }, [dataVersion]);
+
+  // The synced balance only reflects what the last pull saw — subtract
+  // points this device has already spent on sales still waiting to push, so
+  // a second redemption before syncing doesn't read as still-eligible.
+  useEffect(() => {
+    const customerId = customer.customerId;
+    if (!customerId) {
+      setCustomerPoints(0);
+      return;
+    }
+    void (async () => {
+      const [record, pending] = await Promise.all([
+        getLocalCustomer(customerId),
+        getPendingRedeemedPoints(customerId),
+      ]);
+      setCustomerPoints(Math.max((record?.loyaltyPointsBalance ?? 0) - pending, 0));
+    })();
+  }, [customer.customerId, dataVersion, orderDiscounts]);
 
   // Re-evaluate complex promos whenever the cart changes.
   useEffect(() => {
@@ -954,38 +991,6 @@ export default function SellScreen() {
     setPreDiscountPrices(({ [productId]: _drop, ...rest }) => rest);
   }
 
-  function applyPrice(productId: string, price: number) {
-    setLines((current) =>
-      current.map((line) =>
-        line.productId === productId ? { ...line, unitPrice: roundMoney(price) } : line,
-      ),
-    );
-    setOverridden((current) =>
-      current.includes(productId) ? current : [...current, productId],
-    );
-    // A cashier typing a price on this line by hand makes it a real per-line
-    // discount from here on, even if the global split had touched it first.
-    setGlobalDiscountIds((current) => current.filter((id) => id !== productId));
-    setPreDiscountPrices(({ [productId]: _drop, ...rest }) => rest);
-    setEditingId(null);
-  }
-
-  /** Back to whatever the product is priced at for this quantity, bulk included. */
-  function resetPrice(productId: string) {
-    setOverridden((current) => current.filter((id) => id !== productId));
-    setGlobalDiscountIds((current) => current.filter((id) => id !== productId));
-    setPreDiscountPrices(({ [productId]: _drop, ...rest }) => rest);
-    setLines((current) =>
-      current.map((line) => {
-        if (line.productId !== productId) return line;
-        if (line.naturalPrice !== undefined) return { ...line, unitPrice: line.naturalPrice };
-        const product = byId.get(line.productId);
-        return product ? { ...line, unitPrice: priceForQuantity(product, line.quantity) } : line;
-      }),
-    );
-    setEditingId(null);
-  }
-
   /**
    * A flat peso amount off the whole cart, not a separate field anywhere —
    * split across every line's unit_price by its share of the total, same
@@ -1093,6 +1098,7 @@ export default function SellScreen() {
     setCustomer(NO_CUSTOMER);
     setFulfillment("pickup");
     setPayment("cash");
+    setPaymentProofUri(null);
     await refreshDrafts();
   }
 
@@ -1104,6 +1110,7 @@ export default function SellScreen() {
     setLines(draft.lines);
     setOverridden(draft.overridden);
     setPayment(draft.payment);
+    setPaymentProofUri(null);
     setCustomer(draft.customer);
     setFulfillment(draft.fulfillment);
     void listLocalProductsByIds(draft.lines.map((line) => line.productId)).then(
@@ -1187,6 +1194,7 @@ export default function SellScreen() {
         customer: saleCustomer,
         fulfillment,
         orderDiscounts,
+        paymentProofLocalUri: payment === "ewallet" ? paymentProofUri : null,
       });
 
       // "confetti" is the one background option that isn't a continuous
@@ -1202,30 +1210,43 @@ export default function SellScreen() {
       // put a stranger's name and address on the following receipt.
       setCustomer(NO_CUSTOMER);
       setFulfillment("pickup");
-      setConfirmOpen(false);
-      setCartOpen(false);
+      setPaymentProofUri(null);
+      // Keep the confirm dialog up — it flips to a success state. Cart stays
+      // open underneath so the phone CartShell Modal doesn't unmount this
+      // dialog with it. Print / Skip close both; print is opt-in (never auto).
+      setCompletedSale(sale);
+      setConfirmSucceeded(true);
       setFocusEpoch((epoch) => epoch + 1);
       void refresh();
 
-      // Deliberately not awaited: a printer that is off or unreachable must not
-      // be able to hold up, or undo, a completed sale. Same for the push — if
-      // this device happens to be online it quietly leaves early instead of
-      // waiting for the next manual Sync; offline, it just fails silently and
-      // the sale stays pending like it always has.
-      void printReceipt(sale, cashier.name).catch((error: unknown) => {
-        console.warn("Receipt did not print", error);
-      });
+      // Deliberately not awaited: if this device happens to be online it
+      // quietly leaves early instead of waiting for the next manual Sync;
+      // offline, it just fails silently and the sale stays pending.
       void autoPush();
-
-      setTimeout(() => router.push(`/pos/sale/${sale.id}`), MODAL_CLOSE_MS);
     } finally {
       setSaving(false);
     }
   }
 
+  function closeAfterSale() {
+    setConfirmOpen(false);
+    setConfirmSucceeded(false);
+    setCompletedSale(null);
+    setCartOpen(false);
+  }
+
+  function printCompletedSale() {
+    const sale = completedSale;
+    const name = cashier?.name;
+    closeAfterSale();
+    if (!sale || !name) return;
+    void printReceipt(sale, name).catch((error: unknown) => {
+      console.warn("Receipt did not print", error);
+    });
+  }
+
   const oversellRisk = lines.some((line) => line.quantity > line.availableStock);
   const itemCount = lines.reduce((count, line) => count + line.quantity, 0);
-  const editingLine = lines.find((line) => line.productId === editingId) ?? null;
   const qtyEditingLine =
     lines.find((line) => line.productId === qtyEditingId) ?? null;
 
@@ -1247,19 +1268,23 @@ export default function SellScreen() {
 
   return (
     <View style={{ flex: 1, flexDirection: compact ? "column" : "row" }}>
-      {/* On a wide tablet the grid is capped and centred rather than letting
-          tiles grow to billboard size. */}
-      <View
-        style={{
-          flex: 1,
-          padding: layout.gutter,
-          gap: space.md,
-          width: "100%",
-          maxWidth: compact ? undefined : layout.gridMaxWidth,
-          alignSelf: "center",
-          minHeight: 0,
-        }}
-      >
+      {/* Tablet: header lives in this column only — cart is a full-height
+          sibling (pos/_layout hides the shared StoreHeader on /pos). */}
+      <View style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
+        {compact ? null : <StoreHeader />}
+        {/* On a wide tablet the grid is capped and centred rather than letting
+            tiles grow to billboard size. */}
+        <View
+          style={{
+            flex: 1,
+            padding: layout.gutter,
+            gap: space.md,
+            width: "100%",
+            maxWidth: compact ? undefined : layout.gridMaxWidth,
+            alignSelf: "center",
+            minHeight: 0,
+          }}
+        >
         <View
           style={{
             flexDirection: "row",
@@ -1416,7 +1441,8 @@ export default function SellScreen() {
               // part of the key and a rotation remounts the grid.
               key={`grid-${columns}`}
               numColumns={columns}
-              columnWrapperStyle={{ gap: layout.gap }}
+              // RN forbids columnWrapperStyle when numColumns is 1 (row layout).
+              columnWrapperStyle={columns > 1 ? { gap: layout.gap } : undefined}
               contentContainerStyle={{
                 gap: layout.gap,
                 paddingBottom: space.sm,
@@ -1492,6 +1518,7 @@ export default function SellScreen() {
             </View>
           ) : null}
         </View>
+        </View>
       </View>
 
       <CartShell
@@ -1503,7 +1530,22 @@ export default function SellScreen() {
       >
         {/* Column fills the panel: lines grow, checkout stays docked bottom. */}
         <View style={{ flex: 1, minHeight: 0 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: space.sm,
+              // Bleed into CartShell padding so the wash reads as a real header bar.
+              marginHorizontal: -layout.gutter,
+              marginTop: -layout.gutter,
+              paddingHorizontal: layout.gutter,
+              paddingTop: layout.gutter,
+              paddingBottom: space.sm,
+              backgroundColor: color.primaryTint,
+              borderBottomWidth: 1,
+              borderBottomColor: color.borderSoft,
+            }}
+          >
             <View style={[styles.iconWell, { width: 34, height: 34 }]}>
               <ShoppingCart size={18} color={color.primary} strokeWidth={2} />
             </View>
@@ -1601,10 +1643,7 @@ export default function SellScreen() {
                   <CartRow
                     line={item}
                     product={byId.get(item.productId)}
-                    overridden={
-                      overridden.includes(item.productId) &&
-                      !globalDiscountIds.includes(item.productId)
-                    }
+                    priceLocked={overridden.includes(item.productId)}
                     displayUnitPrice={
                       globalDiscountIds.includes(item.productId)
                         ? (preDiscountPrices[item.productId] ?? item.unitPrice)
@@ -1612,7 +1651,6 @@ export default function SellScreen() {
                     }
                     onChange={(delta) => changeQuantity(item.productId, delta, item.variantId)}
                     onEditQuantity={() => setQtyEditingId(item.productId)}
-                    onEditPrice={() => setEditingId(item.productId)}
                     onRemove={() => confirmRemoveLine(item.productId, item.productName, item.variantId)}
                   />
                 )}
@@ -1656,9 +1694,9 @@ export default function SellScreen() {
                   onPress={() => setDiscountSheetOpen(true)}
                   accessibilityRole="button"
                   accessibilityLabel={
-                    lineDiscount > 0
-                      ? `Line discount given, ${formatMoney(lineDiscount)}. Edit.`
-                      : "Add a line discount for the whole cart"
+                    discount > 0
+                      ? `Discount given, ${formatMoney(discount)}. Edit.`
+                      : "Add a discount"
                   }
                   style={{ flexDirection: "row", alignItems: "center", gap: space.xs }}
                 >
@@ -1671,59 +1709,18 @@ export default function SellScreen() {
                       textDecorationStyle: "dotted",
                     }}
                   >
-                    {lineDiscount > 0 ? "Line discount" : "Add line discount"}
+                    {discount > 0 ? "Discount" : "Add discount"}
                   </Text>
                   <Pencil size={11} color={color.accentInk} strokeWidth={2} />
                 </Pressable>
-                {lineDiscount > 0 ? (
+                {discount > 0 ? (
                   <Text
                     style={[
                       styles.numeric,
                       { fontSize: fontSize.bodyLg, fontWeight: "700", color: color.accentInk },
                     ]}
                   >
-                    -{formatMoney(lineDiscount)}
-                  </Text>
-                ) : null}
-              </View>
-            ) : null}
-
-            {lines.length > 0 && discountRules.length > 0 ? (
-              <View
-                style={{
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: space.sm,
-                  marginBottom: space.sm,
-                }}
-              >
-                <Pressable
-                  onPress={() => setRuleSheetOpen(true)}
-                  accessibilityRole="button"
-                  accessibilityLabel="Apply Senior, PWD, or other discount rule"
-                  style={{ flexDirection: "row", alignItems: "center", gap: space.xs }}
-                >
-                  <BadgePercent size={14} color={color.primary} strokeWidth={2.5} />
-                  <Text
-                    style={{
-                      fontSize: fontSize.body,
-                      color: color.primary,
-                      textDecorationLine: "underline",
-                      textDecorationStyle: "dotted",
-                    }}
-                  >
-                    {orderDiscounts.length > 0 ? "Rules applied" : "Apply discount rule"}
-                  </Text>
-                </Pressable>
-                {orderDiscount > 0 ? (
-                  <Text
-                    style={[
-                      styles.numeric,
-                      { fontSize: fontSize.bodyLg, fontWeight: "700", color: color.primary },
-                    ]}
-                  >
-                    -{formatMoney(orderDiscount)}
+                    -{formatMoney(discount)}
                   </Text>
                 ) : null}
               </View>
@@ -1800,14 +1797,10 @@ export default function SellScreen() {
             </View>
 
             <View style={{ flexDirection: "row", gap: space.sm, marginTop: space.md }}>
-              <SelectField
-                label="Payment method"
+              <PaymentMethodTrigger
                 value={payment}
-                options={PAYMENT_METHODS}
-                open={openField === "payment"}
-                onOpen={() => setOpenField("payment")}
-                onClose={() => setOpenField(null)}
-                onChange={setPayment}
+                hasProof={Boolean(paymentProofUri)}
+                onPress={() => setOpenField("payment")}
               />
               <SelectField
                 label="Fulfillment"
@@ -1819,6 +1812,18 @@ export default function SellScreen() {
                 onChange={setFulfillment}
               />
             </View>
+
+            <PaymentMethodDialog
+              open={openField === "payment"}
+              value={payment}
+              proofUri={paymentProofUri}
+              onClose={() => setOpenField(null)}
+              onConfirm={(method, proofUri) => {
+                setPayment(method);
+                setPaymentProofUri(method === "ewallet" ? proofUri : null);
+                setOpenField(null);
+              }}
+            />
 
             {/* Optional, and it looks optional: one quiet row, never a required
                 step between the cashier and the total. */}
@@ -1862,6 +1867,7 @@ export default function SellScreen() {
                   );
                   return;
                 }
+                setConfirmSucceeded(false);
                 setConfirmOpen(true);
               }}
             />
@@ -1870,43 +1876,31 @@ export default function SellScreen() {
 
         {/* Inside the cart on purpose: on a phone the cart is itself a modal,
             and a sheet presented from outside it would open underneath. */}
-        <PriceSheet
-          key={editingId ?? "closed"}
-          line={editingLine}
-          onClose={() => setEditingId(null)}
-          onApply={applyPrice}
-          onReset={resetPrice}
-        />
-
         <DiscountSheet
           open={discountSheetOpen}
           total={cartTotal(lines)}
-          hasDiscount={lineDiscount > 0}
-          onClose={() => setDiscountSheetOpen(false)}
-          onApply={applyGlobalDiscount}
-          onClear={clearAllDiscounts}
-        />
-
-        <RuleDiscountSheet
-          open={ruleSheetOpen}
+          lines={lines}
           rules={discountRules}
+          loyaltyRewards={loyaltyRewards}
+          customerPoints={customerPoints}
+          hasCustomer={Boolean(customer.customerId)}
           applied={orderDiscounts}
           tax={taxSettings}
-          lines={lines}
-          onClose={() => setRuleSheetOpen(false)}
-          onApply={(discount) => {
+          hasDiscount={discount > 0}
+          onClose={() => setDiscountSheetOpen(false)}
+          onApplyAmount={applyGlobalDiscount}
+          onApplyRule={(discountRow) => {
             setOrderDiscounts((current) => {
-              // One simple rule at a time; replacing clears prior simple + any promo (stacking).
               const withoutSimple = current.filter((d) => d.discountRuleId == null);
-              if (discount.isVatExempt) {
-                return [discount];
+              if (discountRow.isVatExempt) {
+                return [discountRow];
               }
-              return [...withoutSimple.filter((d) => !d.isVatExempt), discount];
+              return [...withoutSimple.filter((d) => !d.isVatExempt), discountRow];
             });
             setPromoSuggestion(null);
-            setRuleSheetOpen(false);
+            setDiscountSheetOpen(false);
           }}
-          onClear={() => setOrderDiscounts([])}
+          onClear={clearAllDiscounts}
         />
 
         <QuantitySheet
@@ -1930,14 +1924,23 @@ export default function SellScreen() {
         <ConfirmSaleSheet
           key={confirmOpen ? "confirm-open" : "confirm-closed"}
           open={confirmOpen}
+          succeeded={confirmSucceeded}
           shelfTotal={shelfTotal}
           discount={discount}
           amountDue={total}
           payment={payment}
           itemCount={itemCount}
           busy={saving}
-          onClose={() => setConfirmOpen(false)}
+          onClose={() => {
+            if (confirmSucceeded) {
+              closeAfterSale();
+              return;
+            }
+            setConfirmOpen(false);
+          }}
           onConfirm={() => void finishSale()}
+          onPrintReceipt={printCompletedSale}
+          onSkip={closeAfterSale}
         />
 
       </CartShell>
@@ -2021,45 +2024,38 @@ export default function SellScreen() {
 function CartRow({
   line,
   product,
-  overridden,
+  priceLocked,
   displayUnitPrice,
   onChange,
   onEditQuantity,
-  onEditPrice,
   onRemove,
 }: {
   line: CartLine;
   product: ProductWithEstimatedStock | undefined;
-  overridden: boolean;
-  /** What the row shows for price/subtotal — frozen at the pre-split price
-   * for a line the global discount touched, so the per-item number never
-   * moves; the real (reduced) line.unitPrice still drives the cart totals. */
+  /** True when a global discount (or draft override) froze bulk reprice on this line. */
+  priceLocked: boolean;
+  /** Frozen pre-discount unit price when a global discount touched this line. */
   displayUnitPrice: number;
   onChange: (delta: number) => void;
   onEditQuantity: () => void;
-  onEditPrice: () => void;
   onRemove: () => void;
 }) {
   const stockCap = stockCapFor(line.availableStock, line.allowDecimal);
   const remaining = Math.max(0, stockCap - line.quantity);
   const atMax = line.quantity >= stockCap;
   const oversell = line.quantity > stockCap;
-  const discounted = line.unitPrice < line.listPrice;
-  // Only a real per-line override earns the "below cost" warning — a line
-  // touched only by the global discount split stays plain, same as every
-  // other visual sign of a per-item discount (overridden is already false
-  // for those lines at the call site).
-  const belowCost = overridden && line.unitPrice < line.unitCost;
   const bulkMin = product?.bulkMinQuantity ?? null;
-  const bulkApplied = !overridden && bulkMin !== null && line.quantity >= bulkMin;
+  const bulkApplied = !priceLocked && bulkMin !== null && line.quantity >= bulkMin;
   // At one, decrementing drops the line entirely, so the control says so.
   const RemoveIcon = line.quantity === 1 ? Trash2 : Minus;
-  const showFlags = bulkApplied || belowCost || oversell;
-  const priceTone = belowCost
-    ? color.dangerInk
-    : overridden
-      ? color.accentInk
-      : color.inkMuted;
+  const showFlags = bulkApplied || oversell;
+  const photoUrl = product?.photoUrl ?? null;
+  const lineTotal = lineSubtotal(displayUnitPrice, line.quantity);
+  const stockLabel = oversell
+    ? `${stockCap} in stock`
+    : remaining === 0
+      ? "At limit"
+      : `${remaining} left`;
 
   const swipeRef = useRef<SwipeableMethods>(null);
 
@@ -2104,175 +2100,116 @@ function CartRow({
       <View
         style={{
           flexDirection: "row",
-          alignItems: "center",
+          alignItems: "flex-start",
           gap: space.sm,
           paddingVertical: space.sm,
           backgroundColor: color.surface,
         }}
       >
-        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-        {/* Full name, wrapped rather than cut short with an ellipsis — a long
-            SKU description staying readable outranks the row staying compact. */}
-        <Text
+        <View
           style={{
-            fontSize: fontSize.body,
-            fontWeight: "700",
-            color: color.ink,
-          }}
-        >
-          {line.productName}
-        </Text>
-        {line.variantLabel ? (
-          <Text style={{ fontSize: fontSize.caption, fontWeight: "600", color: color.primary }}>
-            {line.variantLabel}
-          </Text>
-        ) : null}
-        {(line.addons ?? []).map((addon, index) => (
-          <Text
-            key={`${addon.addonGroupItemId}-${index}`}
-            style={{ fontSize: fontSize.caption, color: color.inkMuted }}
-          >
-            + {addon.name}
-          </Text>
-        ))}
-        <Text
-          style={{
-            alignSelf: "flex-start",
-            fontSize: fontSize.caption,
-            fontWeight: "600",
-            color: oversell || remaining === 0 ? color.warningInk : color.inkMuted,
-          }}
-        >
-          {oversell
-            ? `${stockCap} in stock`
-            : remaining === 0
-              ? "At limit"
-              : `${remaining} left`}
-        </Text>
-
-        <Pressable
-          onPress={onEditPrice}
-          accessibilityRole="button"
-          accessibilityLabel={`Change the price of ${line.productName}`}
-          style={({ pressed }) => ({
-            alignSelf: "flex-start",
-            flexDirection: "row",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: space.xs,
-            paddingVertical: 2,
-            paddingHorizontal: overridden ? space.xs : 0,
+            width: 48,
+            height: 48,
             borderRadius: radius.sm,
-            backgroundColor: pressed
-              ? color.primarySoft
-              : overridden
-                ? belowCost
-                  ? color.dangerSoft
-                  : color.accentSoft
-                : "transparent",
-          })}
+            overflow: "hidden",
+            backgroundColor: color.surfacePressed,
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
         >
-          <Text
-            style={[styles.numeric, { fontSize: fontSize.caption, color: color.inkMuted }]}
-          >
-            {formatQuantity(line.quantity)} {line.unit} ×
-          </Text>
-          {overridden && discounted ? (
-            <Text
-              style={[
-                styles.numeric,
-                {
-                  fontSize: fontSize.caption,
-                  color: color.inkMuted,
-                  textDecorationLine: "line-through",
-                },
-              ]}
-            >
-              {formatMoney(line.listPrice)}
-            </Text>
-          ) : null}
-          <Text
-            style={[
-              styles.numeric,
-              {
-                fontSize: fontSize.caption,
-                fontWeight: overridden ? "700" : "600",
-                color: priceTone,
-              },
-            ]}
-          >
-            {formatMoney(displayUnitPrice)}
-          </Text>
-          {overridden ? (
-            <Pencil size={11} color={priceTone} strokeWidth={2.5} />
+          {photoUrl ? (
+            <Image source={{ uri: photoUrl }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
           ) : (
-            <Pencil size={11} color={color.inkMuted} strokeWidth={2} />
+            <Package size={20} color={color.inkMuted} strokeWidth={2} />
           )}
-        </Pressable>
+        </View>
 
-        {showFlags ? (
-          <View
+        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+          {/* Full name, wrapped rather than cut short with an ellipsis — a long
+              SKU description staying readable outranks the row staying compact. */}
+          <Text
             style={{
-              flexDirection: "row",
-              flexWrap: "wrap",
-              gap: space.xs,
-              marginTop: 2,
+              fontSize: fontSize.body,
+              fontWeight: "700",
+              color: color.ink,
             }}
           >
-            {bulkApplied ? (
-              <Badge tone="success" icon={Tag} label={`Bulk from ${bulkMin}`} />
-            ) : null}
-            {belowCost ? (
-              <Badge tone="danger" icon={TriangleAlert} label="Below cost" />
-            ) : null}
-            {oversell ? <Badge tone="warning" label="Over stock" /> : null}
-          </View>
-        ) : null}
-      </View>
+            {line.productName}
+          </Text>
+          {line.variantLabel ? (
+            <Text style={{ fontSize: fontSize.caption, fontWeight: "600", color: color.primary }}>
+              {line.variantLabel}
+            </Text>
+          ) : null}
+          {(line.addons ?? []).map((addon, index) => (
+            <Text
+              key={`${addon.addonGroupItemId}-${index}`}
+              style={{ fontSize: fontSize.caption, color: color.inkMuted }}
+            >
+              + {addon.name}
+            </Text>
+          ))}
+          <Text
+            style={{
+              alignSelf: "flex-start",
+              fontSize: fontSize.caption,
+              fontWeight: "600",
+              color: oversell || remaining === 0 ? color.warningInk : color.inkMuted,
+            }}
+          >
+            {stockLabel}
+            <Text style={{ color: color.inkMuted }}> | </Text>
+            <Text style={{ color: color.ink, fontWeight: "700" }}>{formatMoney(lineTotal)}</Text>
+          </Text>
 
-      <View style={{ alignItems: "flex-end", gap: space.xs, flexShrink: 0 }}>
-        <Money
-          value={lineSubtotal(displayUnitPrice, line.quantity)}
-          style={{
-            fontSize: fontSize.body,
-            fontWeight: "700",
-            color: color.ink,
-          }}
-        />
+          {showFlags ? (
+            <View
+              style={{
+                flexDirection: "row",
+                flexWrap: "wrap",
+                gap: space.xs,
+                marginTop: 2,
+              }}
+            >
+              {bulkApplied ? (
+                <Badge tone="success" icon={Tag} label={`Bulk from ${bulkMin}`} />
+              ) : null}
+              {oversell ? <Badge tone="warning" label="Over stock" /> : null}
+            </View>
+          ) : null}
+        </View>
 
         <View
           style={{
             flexDirection: "row",
             alignItems: "center",
-            borderWidth: 1,
-            borderColor: color.border,
-            borderRadius: radius.sm,
-            overflow: "hidden",
-            backgroundColor: color.surface,
+            gap: space.xs,
+            flexShrink: 0,
+            paddingTop: 2,
           }}
         >
-          <StepperButton
+          <CartQtyButton
             icon={RemoveIcon}
             label={
               line.quantity === 1
                 ? `Remove ${line.productName} from the cart`
                 : `One less ${line.productName}`
             }
-            tint={line.quantity === 1 ? color.danger : color.ink}
             onPress={() => onChange(-1)}
           />
           <Pressable
             onPress={onEditQuantity}
             accessibilityRole="button"
             accessibilityLabel={`Type quantity for ${line.productName}`}
-            style={({ pressed }) => ({
-              minWidth: 40,
-              minHeight: 36,
+            hitSlop={8}
+            style={{
+              minWidth: 32,
+              minHeight: 40,
               paddingHorizontal: space.xs,
               alignItems: "center",
               justifyContent: "center",
-              backgroundColor: pressed ? color.primarySoft : "transparent",
-            })}
+            }}
           >
             <Text
               style={[
@@ -2281,28 +2218,24 @@ function CartRow({
                   textAlign: "center",
                   fontSize: fontSize.body,
                   fontWeight: "700",
-                  color: color.primaryDark,
-                  textDecorationLine: "underline",
-                  textDecorationStyle: "dotted",
+                  color: color.ink,
                 },
               ]}
             >
               {formatQuantity(line.quantity)}
             </Text>
           </Pressable>
-          <StepperButton
+          <CartQtyButton
             icon={Plus}
             label={
               atMax
                 ? `${line.productName} is at stock limit`
                 : `One more ${line.productName}`
             }
-            tint={atMax ? color.inkMuted : color.primary}
             disabled={atMax}
             onPress={() => onChange(1)}
           />
         </View>
-      </View>
       </View>
     </Swipeable>
   );
@@ -2421,254 +2354,735 @@ function QuantitySheet({
 }
 
 /**
- * Typing the price a line actually sold for.
- *
- * Selling below cost is allowed — clearing dead stock and matching a rival are
- * both real decisions the owner wants attendants to be able to make. It is
- * called out plainly so nobody does it by accident, and the margin updates as
- * the price is typed, because cashiers on this shop floor are trusted with cost.
+ * Catalog rules that match the current cart, plus a free-typed peso amount.
+ * Rules come from the local discounts table (synced); scoped rules only
+ * appear when a cart line hits their product/category/variant.
  */
-function PriceSheet({
-  line,
-  onClose,
-  onApply,
-  onReset,
-}: {
-  line: CartLine | null;
-  onClose: () => void;
-  onApply: (productId: string, price: number) => void;
-  onReset: (productId: string) => void;
-}) {
-  // Seeded once, at mount. The caller keys this component on the line being
-  // edited, so opening a different one remounts with that line's price already
-  // in the field, ready to be typed over.
-  const [draft, setDraft] = useState(() => line?.unitPrice.toFixed(2) ?? "");
-
-  if (!line) return null;
-
-  const typed = Number(draft);
-  const check = checkPriceOverride(typed, line);
-  const margin = marginPercent(typed, line.unitCost);
-  const profit = lineProfit(typed, line.unitCost, line.quantity);
-  const off = check.ok ? Math.max(line.listPrice - typed, 0) * line.quantity : 0;
-
-  return (
-    <BottomSheet open={line !== null} onClose={onClose}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
-            <View style={[styles.iconWell, { width: 34, height: 34 }]}>
-              <Tag size={18} color={color.primary} strokeWidth={2} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text numberOfLines={1} style={styles.subheading}>
-                {line.productName}
-              </Text>
-              <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
-                Shelf {formatMoney(line.listPrice)} · Cost {formatMoney(line.unitCost)} ·{" "}
-                {formatQuantity(line.quantity)} {line.unit}
-              </Text>
-            </View>
-            <IconButton icon={X} label="Close" onPress={onClose} />
-          </View>
-
-          <Text style={{ fontSize: fontSize.body, fontWeight: "600" }}>
-            Price per {line.unit}
-          </Text>
-
-          <TextInput
-            value={draft}
-            onChangeText={(next) => setDraft(next.replace(/[^0-9.]/g, ""))}
-            keyboardType="decimal-pad"
-            autoFocus
-            selectTextOnFocus
-            accessibilityLabel={`Price per ${line.unit} for ${line.productName}`}
-            style={[
-              styles.numeric,
-              {
-                minHeight: 64,
-                borderWidth: 2,
-                borderColor: check.ok ? color.primary : color.danger,
-                borderRadius: radius.sm,
-                backgroundColor: check.ok ? color.primaryTint : color.dangerSoft,
-                color: check.ok ? color.primaryDark : color.dangerInk,
-                paddingHorizontal: space.md,
-                fontSize: fontSize.headingMd,
-                fontWeight: "700",
-              },
-            ]}
-          />
-
-          {check.error ? (
-            <Text style={{ fontSize: fontSize.body, color: color.dangerInk }}>
-              {check.error}
-            </Text>
-          ) : (
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                gap: space.sm,
-              }}
-            >
-              <Text style={{ fontSize: fontSize.body, color: color.inkMuted }}>
-                Margin{" "}
-                <Text
-                  style={[
-                    styles.numeric,
-                    {
-                      fontWeight: "700",
-                      color: check.belowCost ? color.dangerInk : color.primary,
-                    },
-                  ]}
-                >
-                  {formatPercent(margin)}
-                </Text>{" "}
-                · {formatMoney(profit)} on this line
-              </Text>
-              {off > 0 ? (
-                <Text
-                  style={[styles.numeric, { fontSize: fontSize.body, color: color.inkMuted }]}
-                >
-                  -{formatMoney(off)}
-                </Text>
-              ) : null}
-            </View>
-          )}
-
-          {check.belowCost ? (
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "flex-start",
-                gap: space.sm,
-                padding: space.md,
-                borderRadius: radius.sm,
-                backgroundColor: color.warningSoft,
-              }}
-            >
-              <TriangleAlert size={18} color={color.warningInk} strokeWidth={2} />
-              <Text style={{ flex: 1, fontSize: fontSize.body, color: color.warningInk }}>
-                Below the {formatMoney(line.unitCost)} this cost us. You can still sell
-                at this price — it goes on the office's discount report.
-              </Text>
-            </View>
-          ) : null}
-
-          {check.aboveList ? (
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "flex-start",
-                gap: space.sm,
-                padding: space.md,
-                borderRadius: radius.sm,
-                backgroundColor: color.paper,
-              }}
-            >
-              <Info size={18} color={color.inkMuted} strokeWidth={2} />
-              <Text style={{ flex: 1, fontSize: fontSize.body, color: color.inkMuted }}>
-                Above the {formatMoney(line.listPrice)} shelf price.
-              </Text>
-            </View>
-          ) : null}
-
-          <Button
-            label="Save price"
-            large
-            icon={CheckCircle2}
-            disabled={!check.ok}
-            onPress={() => onApply(line.productId, typed)}
-          />
-          <Button
-            label="Back to shelf price"
-            variant="secondary"
-            onPress={() => onReset(line.productId)}
-          />
-    </BottomSheet>
-  );
-}
-
-/** A flat amount off the whole cart, split across every line on apply. */
 function DiscountSheet({
   open,
   total,
+  lines,
+  rules,
+  loyaltyRewards,
+  customerPoints,
+  hasCustomer,
+  applied,
+  tax,
   hasDiscount,
   onClose,
-  onApply,
+  onApplyAmount,
+  onApplyRule,
   onClear,
 }: {
   open: boolean;
   total: number;
+  lines: CartLine[];
+  rules: DiscountRule[];
+  loyaltyRewards: LoyaltyReward[];
+  customerPoints: number;
+  hasCustomer: boolean;
+  applied: AppliedOrderDiscount[];
+  tax: TaxSettings;
   hasDiscount: boolean;
   onClose: () => void;
-  onApply: (amount: number) => void;
+  onApplyAmount: (amount: number) => void;
+  onApplyRule: (discount: AppliedOrderDiscount) => void;
   onClear: () => void;
 }) {
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const keyboardHeight = useKeyboardHeight();
   const [draft, setDraft] = useState("");
+  const [pendingRule, setPendingRule] = useState<DiscountRule | null>(null);
+  const [idNumber, setIdNumber] = useState("");
+  const [idHolderName, setIdHolderName] = useState("");
   const typed = Number(draft);
   const valid = draft.trim() !== "" && Number.isFinite(typed) && typed > 0;
+  const applicable = qualifyingSimpleRules(rules, lines);
+  const eligibleRewardEntries = hasCustomer
+    ? eligibleLoyaltyRewards({ rewards: loyaltyRewards, discountRules: rules, pointsBalance: customerPoints, lines })
+    : [];
+  const appliedTotal = orderDiscountImpact(applied);
 
-  // Not keyed like PriceSheet (there's no per-line id to key on) — clear the
-  // typed amount by hand each time the sheet opens, so a re-open never shows
-  // the last discount typed.
   useEffect(() => {
-    if (open) setDraft("");
+    if (!open) {
+      setDraft("");
+      setPendingRule(null);
+      setIdNumber("");
+      setIdHolderName("");
+    }
   }, [open]);
 
+  if (!open) return null;
+
+  function pickRule(rule: DiscountRule) {
+    if (rule.requiresIdNumber) {
+      setPendingRule(rule);
+      return;
+    }
+    onApplyRule(applySimpleRuleToCart({ rule, lines, tax }));
+  }
+
+  function confirmId() {
+    if (!pendingRule) return;
+    if (!idNumber.trim() || !idHolderName.trim()) {
+      Alert.alert("ID required", "Enter the ID number and the cardholder's name.");
+      return;
+    }
+    onApplyRule(
+      applySimpleRuleToCart({
+        rule: pendingRule,
+        lines,
+        tax,
+        idNumber: idNumber.trim(),
+        idHolderName: idHolderName.trim(),
+      }),
+    );
+  }
+
+  const dialogWidth = width * 0.8;
+  const usableHeight = height - keyboardHeight - insets.top - insets.bottom;
+  const dialogHeight = Math.min(height * 0.8, usableHeight * 0.95);
+
   return (
-    <BottomSheet open={open} onClose={onClose} scroll={false}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
-        <View style={[styles.iconWell, { width: 34, height: 34 }]}>
-          <Tag size={18} color={color.primary} strokeWidth={2} />
+    <Modal
+      visible={open}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: `${color.ink}99`,
+          alignItems: "center",
+          justifyContent: "center",
+          paddingBottom: keyboardHeight,
+          paddingHorizontal: space.sm,
+        }}
+      >
+        <Pressable
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss"
+          style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+        />
+
+        <View
+          style={{
+            width: dialogWidth,
+            height: dialogHeight,
+            maxWidth: 720,
+            backgroundColor: color.surface,
+            borderRadius: radius.lg,
+            padding: space.lg,
+            gap: space.md,
+            shadowColor: "#000",
+            shadowOpacity: 0.22,
+            shadowRadius: 28,
+            shadowOffset: { width: 0, height: 12 },
+            elevation: 20,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
+            <View style={[styles.iconWell, { width: 44, height: 44 }]}>
+              <Tag size={24} color={color.primary} strokeWidth={2} />
+            </View>
+            <Text
+              style={{
+                flex: 1,
+                fontSize: fontSize.headingMd,
+                fontWeight: "700",
+                color: color.ink,
+              }}
+            >
+              {pendingRule ? "ID required" : "Apply discount"}
+            </Text>
+            <IconButton icon={X} label="Close" onPress={onClose} />
+          </View>
+
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ gap: space.lg, paddingBottom: space.sm }}
+            style={{ flex: 1 }}
+          >
+            {pendingRule ? (
+              <View style={{ gap: space.md }}>
+                <View
+                  style={{
+                    alignItems: "center",
+                    gap: space.xs,
+                    paddingVertical: space.md,
+                    paddingHorizontal: space.md,
+                    borderRadius: radius.md,
+                    backgroundColor: color.primaryTint,
+                    borderWidth: 1,
+                    borderColor: color.primarySoft,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: fontSize.bodyLg,
+                      fontWeight: "600",
+                      color: color.primaryDark,
+                    }}
+                  >
+                    Discount rule
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: fontSize.headingSm,
+                      fontWeight: "700",
+                      color: color.primaryDark,
+                      textAlign: "center",
+                    }}
+                  >
+                    {pendingRule.name}
+                  </Text>
+                  <Text style={{ fontSize: fontSize.bodyLg, fontWeight: "600", color: color.ink }}>
+                    Enter ID number and cardholder name
+                  </Text>
+                </View>
+
+                <View style={{ gap: space.sm }}>
+                  <Text style={{ fontSize: fontSize.headingSm, fontWeight: "700", color: color.ink }}>
+                    ID number
+                  </Text>
+                  <TextInput
+                    value={idNumber}
+                    onChangeText={setIdNumber}
+                    placeholder="ID number"
+                    autoFocus
+                    accessibilityLabel="ID number"
+                    style={[
+                      styles.numeric,
+                      {
+                        minHeight: 64,
+                        borderWidth: 2,
+                        borderColor: color.primary,
+                        borderRadius: radius.sm,
+                        backgroundColor: color.primaryTint,
+                        paddingHorizontal: space.md,
+                        fontSize: fontSize.headingSm,
+                        fontWeight: "700",
+                        color: color.primaryDark,
+                      },
+                    ]}
+                  />
+                  <Text style={{ fontSize: fontSize.headingSm, fontWeight: "700", color: color.ink }}>
+                    Cardholder name
+                  </Text>
+                  <TextInput
+                    value={idHolderName}
+                    onChangeText={setIdHolderName}
+                    placeholder="Cardholder name"
+                    accessibilityLabel="Cardholder name"
+                    style={[
+                      styles.numeric,
+                      {
+                        minHeight: 64,
+                        borderWidth: 2,
+                        borderColor: color.primary,
+                        borderRadius: radius.sm,
+                        backgroundColor: color.primaryTint,
+                        paddingHorizontal: space.md,
+                        fontSize: fontSize.headingSm,
+                        fontWeight: "700",
+                        color: color.primaryDark,
+                      },
+                    ]}
+                  />
+                </View>
+              </View>
+            ) : (
+              <View style={{ gap: space.lg }}>
+                {/* Cart total first — cashier sees what discount cuts against. */}
+                <View
+                  style={{
+                    alignItems: "center",
+                    gap: space.xs,
+                    paddingVertical: space.md,
+                    paddingHorizontal: space.md,
+                    borderRadius: radius.md,
+                    backgroundColor: color.primaryTint,
+                    borderWidth: 1,
+                    borderColor: color.primarySoft,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: fontSize.bodyLg,
+                      fontWeight: "600",
+                      color: color.primaryDark,
+                      letterSpacing: 0.4,
+                    }}
+                  >
+                    Cart total
+                  </Text>
+                  <Text
+                    style={[
+                      styles.numeric,
+                      {
+                        fontSize: fontSize.display,
+                        fontWeight: "700",
+                        color: color.primaryDark,
+                      },
+                    ]}
+                  >
+                    {formatMoney(total)}
+                  </Text>
+                  {hasDiscount ? (
+                    <Text
+                      style={{
+                        fontSize: fontSize.bodyLg,
+                        fontWeight: "700",
+                        color: color.successInk,
+                        marginTop: space.xs,
+                      }}
+                    >
+                      Discount applied −{formatMoney(appliedTotal)}
+                    </Text>
+                  ) : (
+                    <Text
+                      style={{
+                        fontSize: fontSize.bodyLg,
+                        fontWeight: "600",
+                        color: color.ink,
+                        marginTop: space.xs,
+                      }}
+                    >
+                      Pick a rule or type a custom amount
+                    </Text>
+                  )}
+                </View>
+
+                {eligibleRewardEntries.length > 0 ? (
+                  <View style={{ gap: space.sm }}>
+                    <Text style={{ fontSize: fontSize.headingSm, fontWeight: "700", color: color.ink }}>
+                      Loyalty rewards
+                    </Text>
+                    {eligibleRewardEntries.map(({ reward, rule }) => {
+                      const active = applied.some((d) => d.loyaltyRewardId === reward.id);
+                      const base = applicableAmountForRule(rule, lines);
+                      const preview = computeSimpleDiscount(rule, base, tax);
+                      return (
+                        <Pressable
+                          key={reward.id}
+                          onPress={() =>
+                            onApplyRule(applyLoyaltyRewardToCart({ reward, rule, lines, tax }))
+                          }
+                          accessibilityRole="button"
+                          accessibilityLabel={`Redeem ${reward.name}`}
+                          style={{
+                            padding: space.md,
+                            minHeight: 64,
+                            borderRadius: radius.sm,
+                            borderWidth: 1,
+                            borderColor: active ? color.primary : color.border,
+                            backgroundColor: active ? color.primaryTint : color.surface,
+                            gap: space.xs,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: fontSize.bodyLg,
+                              fontWeight: "700",
+                              color: color.ink,
+                            }}
+                          >
+                            {reward.name}
+                          </Text>
+                          <Text style={{ fontSize: fontSize.body, fontWeight: "600", color: color.inkMuted }}>
+                            {reward.pointsRequired.toLocaleString()} pts
+                            {" · "}
+                            {active ? "applied" : `about −${formatMoney(preview.discountAmount)}`}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : null}
+
+                <View style={{ gap: space.sm }}>
+                  <Text style={{ fontSize: fontSize.headingSm, fontWeight: "700", color: color.ink }}>
+                    Available for this cart
+                  </Text>
+                  {applicable.length === 0 ? (
+                    <Text style={{ fontSize: fontSize.bodyLg, fontWeight: "600", color: color.inkMuted }}>
+                      No catalog discounts match these items. Type a custom amount below.
+                    </Text>
+                  ) : (
+                    applicable.map((rule) => {
+                      const active = applied.some((d) => d.discountRuleId === rule.id);
+                      const base = applicableAmountForRule(rule, lines);
+                      const preview = computeSimpleDiscount(rule, base, tax);
+                      const scopeHint =
+                        rule.appliesTo === "total"
+                          ? "Whole cart"
+                          : rule.appliesTo === "specific_products"
+                            ? "Matching products"
+                            : "Matching categories";
+                      return (
+                        <Pressable
+                          key={rule.id}
+                          onPress={() => pickRule(rule)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Apply ${rule.name}`}
+                          style={{
+                            padding: space.md,
+                            minHeight: 64,
+                            borderRadius: radius.sm,
+                            borderWidth: 1,
+                            borderColor: active ? color.primary : color.border,
+                            backgroundColor: active ? color.primaryTint : color.surface,
+                            gap: space.xs,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: fontSize.bodyLg,
+                              fontWeight: "700",
+                              color: color.ink,
+                            }}
+                          >
+                            {rule.name}
+                          </Text>
+                          <Text style={{ fontSize: fontSize.body, fontWeight: "600", color: color.inkMuted }}>
+                            {rule.type === "percentage" ? `${rule.value}%` : formatMoney(rule.value)}
+                            {" · "}
+                            {scopeHint}
+                            {rule.isVatExempt ? " · VAT exempt" : ""}
+                            {rule.requiresIdNumber ? " · ID required" : ""}
+                          </Text>
+                          <Text
+                            style={{
+                              fontSize: fontSize.bodyLg,
+                              fontWeight: "700",
+                              color: active ? color.primaryDark : color.ink,
+                            }}
+                          >
+                            {active ? "Applied" : `About −${formatMoney(preview.discountAmount)}`}
+                          </Text>
+                        </Pressable>
+                      );
+                    })
+                  )}
+                </View>
+
+                <View style={{ gap: space.sm }}>
+                  <Text style={{ fontSize: fontSize.headingSm, fontWeight: "700", color: color.ink }}>
+                    Custom amount
+                  </Text>
+                  <Text style={{ fontSize: fontSize.bodyLg, fontWeight: "600", color: color.inkMuted }}>
+                    Free-typed peso off, split across every line on the receipt.
+                  </Text>
+                  <TextInput
+                    value={draft}
+                    onChangeText={(next) => setDraft(next.replace(/[^0-9.]/g, ""))}
+                    keyboardType="decimal-pad"
+                    placeholder="0.00"
+                    accessibilityLabel="Custom discount amount in pesos"
+                    style={[
+                      styles.numeric,
+                      {
+                        minHeight: 72,
+                        borderWidth: 2,
+                        borderColor: color.primary,
+                        borderRadius: radius.sm,
+                        backgroundColor: color.primaryTint,
+                        color: color.primaryDark,
+                        paddingHorizontal: space.md,
+                        fontSize: fontSize.headingLg,
+                        fontWeight: "700",
+                      },
+                    ]}
+                  />
+                  {typed > total ? (
+                    <Text style={{ fontSize: fontSize.bodyLg, fontWeight: "600", color: color.inkMuted }}>
+                      Capped at {formatMoney(total)} — the cart&apos;s current total.
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+            )}
+          </ScrollView>
+
+          <View style={{ gap: space.sm }}>
+            {pendingRule ? (
+              <>
+                <Button label="Apply with ID" large icon={CheckCircle2} onPress={confirmId} />
+                <Button label="Back" variant="secondary" onPress={() => setPendingRule(null)} />
+              </>
+            ) : (
+              <>
+                <Button
+                  label="Apply custom amount"
+                  large
+                  icon={CheckCircle2}
+                  disabled={!valid}
+                  onPress={() => onApplyAmount(typed)}
+                />
+                {hasDiscount ? (
+                  <Button label="Clear all discounts" variant="secondary" onPress={onClear} />
+                ) : (
+                  <Button label="Back to cart" variant="secondary" onPress={onClose} />
+                )}
+              </>
+            )}
+          </View>
         </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.subheading}>Discount the whole cart</Text>
-          <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
-            Split across every line, so it still shows per item on the receipt.
-          </Text>
-        </View>
-        <IconButton icon={X} label="Close" onPress={onClose} />
       </View>
+    </Modal>
+  );
+}
 
-      <TextInput
-        value={draft}
-        onChangeText={(next) => setDraft(next.replace(/[^0-9.]/g, ""))}
-        keyboardType="decimal-pad"
-        autoFocus
-        placeholder="0.00"
-        accessibilityLabel="Discount amount in pesos"
-        style={[
-          styles.numeric,
-          {
-            minHeight: 64,
-            borderWidth: 2,
-            borderColor: color.primary,
-            borderRadius: radius.sm,
-            backgroundColor: color.primaryTint,
-            color: color.primaryDark,
-            paddingHorizontal: space.md,
-            fontSize: fontSize.headingMd,
-            fontWeight: "700",
-          },
-        ]}
-      />
+/** Same trigger shape as SelectField, plus a small dot once a proof photo is attached. */
+function PaymentMethodTrigger({
+  value,
+  hasProof,
+  onPress,
+}: {
+  value: PaymentMethod;
+  hasProof: boolean;
+  onPress: () => void;
+}) {
+  const selected = PAYMENT_METHODS.find((option) => option.value === value);
+  const Icon = selected?.icon;
 
-      {typed > total ? (
-        <Text style={{ fontSize: fontSize.body, color: color.inkMuted }}>
-          Capped at {formatMoney(total)} — the cart's current total.
-        </Text>
-      ) : null}
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Payment method: ${selected?.label ?? value}`}
+      style={{
+        flex: 1,
+        minHeight: 48,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: space.xs,
+        paddingHorizontal: space.sm,
+        borderRadius: radius.sm,
+        borderWidth: 1,
+        borderColor: color.border,
+        backgroundColor: color.surface,
+      }}
+    >
+      {Icon ? <Icon size={16} color={color.primary} strokeWidth={2} /> : null}
+      <Text
+        numberOfLines={1}
+        style={{ flex: 1, fontSize: fontSize.body, fontWeight: "600", color: color.ink }}
+      >
+        {selected?.label ?? value}
+      </Text>
+      {hasProof ? <Camera size={14} color={color.primary} strokeWidth={2} /> : null}
+      <ChevronRight size={16} color={color.inkMuted} strokeWidth={2} />
+    </Pressable>
+  );
+}
 
-      <Button
-        label="Apply discount"
-        large
-        icon={CheckCircle2}
-        disabled={!valid}
-        onPress={() => onApply(typed)}
-      />
-      {hasDiscount ? (
-        <Button label="Clear all discounts" variant="secondary" onPress={onClear} />
-      ) : null}
-    </BottomSheet>
+/**
+ * Payment method picker — a centered dialog rather than a bottom drawer, so
+ * it reads as a deliberate choice the cashier is making rather than
+ * something to swipe away. E-Wallet has a second, still-optional step: a
+ * proof screenshot the cashier may attach, never required to move on.
+ */
+function PaymentMethodDialog({
+  open,
+  value,
+  proofUri,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  value: PaymentMethod;
+  proofUri: string | null;
+  onClose: () => void;
+  onConfirm: (method: PaymentMethod, proofUri: string | null) => void;
+}) {
+  const [step, setStep] = useState<"method" | "proof">("method");
+  const [draftMethod, setDraftMethod] = useState<PaymentMethod>(value);
+  const [draftProofUri, setDraftProofUri] = useState<string | null>(proofUri);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setStep("method");
+      setDraftMethod(value);
+      setDraftProofUri(proofUri);
+      setPhotoError(null);
+    }
+  }, [open, value, proofUri]);
+
+  function pickMethod(method: PaymentMethod) {
+    setDraftMethod(method);
+    if (method === "ewallet") {
+      setStep("proof");
+    } else {
+      onConfirm(method, null);
+    }
+  }
+
+  async function takePhoto() {
+    setPhotoError(null);
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      setPhotoError(
+        permission.canAskAgain
+          ? "Needs camera access to take a photo."
+          : "Camera access is off for this app. Turn it on in Settings.",
+      );
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({ quality: 0.7 });
+    const uri = result.canceled ? null : result.assets[0]?.uri;
+    if (uri) setDraftProofUri(uri);
+  }
+
+  async function pickFromLibrary() {
+    setPhotoError(null);
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setPhotoError(
+        permission.canAskAgain
+          ? "Needs access to photos to pick an existing one."
+          : "Photo access is off for this app. Turn it on in Settings.",
+      );
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.7 });
+    const uri = result.canceled ? null : result.assets[0]?.uri;
+    if (uri) setDraftProofUri(uri);
+  }
+
+  return (
+    <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: "rgba(27, 31, 29, 0.55)", justifyContent: "center" }}>
+        <Pressable
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss"
+          style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+        />
+
+        <View
+          style={{
+            marginHorizontal: space.lg,
+            padding: space.lg,
+            borderRadius: radius.lg,
+            backgroundColor: color.surface,
+            gap: space.md,
+            shadowColor: "#000",
+            shadowOpacity: 0.2,
+            shadowRadius: 24,
+            shadowOffset: { width: 0, height: 8 },
+            elevation: 16,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
+            {step === "proof" ? (
+              <IconButton icon={ArrowLeft} label="Back" onPress={() => setStep("method")} />
+            ) : null}
+            <Text style={{ flex: 1, fontSize: fontSize.headingMd, fontWeight: "700", color: color.ink }}>
+              {step === "method" ? "Payment method" : "Add proof photo?"}
+            </Text>
+            <IconButton icon={X} label="Close" onPress={onClose} />
+          </View>
+
+          {step === "method" ? (
+            <View style={{ gap: space.sm }}>
+              {PAYMENT_METHODS.map((option) => {
+                const isSelected = option.value === draftMethod;
+                const OptionIcon = option.icon;
+                return (
+                  <Pressable
+                    key={option.value}
+                    onPress={() => pickMethod(option.value)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isSelected }}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: space.md,
+                      minHeight: 56,
+                      paddingHorizontal: space.md,
+                      borderRadius: radius.sm,
+                      borderWidth: 1,
+                      borderColor: isSelected ? color.primary : color.border,
+                      backgroundColor: isSelected ? color.primaryTint : color.surface,
+                    }}
+                  >
+                    <OptionIcon
+                      size={22}
+                      color={isSelected ? color.primary : color.inkMuted}
+                      strokeWidth={2}
+                    />
+                    <Text
+                      style={{
+                        flex: 1,
+                        fontSize: fontSize.bodyLg,
+                        fontWeight: isSelected ? "700" : "500",
+                        color: isSelected ? color.primaryDark : color.ink,
+                      }}
+                    >
+                      {option.label}
+                    </Text>
+                    {isSelected ? (
+                      <Check size={20} color={color.primary} strokeWidth={2.5} />
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : (
+            <View style={{ gap: space.md }}>
+              <Text style={{ fontSize: fontSize.bodyLg, color: color.inkMuted, lineHeight: 22 }}>
+                A screenshot of the transfer, for your records. Optional — the sale is the same
+                either way.
+              </Text>
+
+              {draftProofUri ? (
+                <View style={{ gap: space.sm }}>
+                  <Image
+                    source={{ uri: draftProofUri }}
+                    style={{ width: "100%", height: 220, borderRadius: radius.sm }}
+                    resizeMode="contain"
+                  />
+                  <Button
+                    label="Remove photo"
+                    variant="secondary"
+                    icon={Trash2}
+                    onPress={() => setDraftProofUri(null)}
+                  />
+                </View>
+              ) : (
+                <View style={{ flexDirection: "row", gap: space.sm }}>
+                  <Button label="Take photo" icon={Camera} style={{ flex: 1 }} onPress={takePhoto} />
+                  <Button
+                    label="Choose photo"
+                    variant="secondary"
+                    icon={Images}
+                    style={{ flex: 1 }}
+                    onPress={pickFromLibrary}
+                  />
+                </View>
+              )}
+
+              {photoError ? <WarningNote>{photoError}</WarningNote> : null}
+
+              <Button
+                label={draftProofUri ? "Done" : "Skip — no photo"}
+                large
+                icon={CheckCircle2}
+                onPress={() => onConfirm("ewallet", draftProofUri)}
+              />
+            </View>
+          )}
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -3035,39 +3449,6 @@ function CustomerField({
   );
 }
 
-function StepperButton({
-  icon: Icon,
-  label,
-  tint,
-  disabled = false,
-  onPress,
-}: {
-  icon: LucideIcon;
-  label: string;
-  tint: string;
-  disabled?: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled }}
-      style={({ pressed }) => ({
-        width: 40,
-        height: 40,
-        alignItems: "center",
-        justifyContent: "center",
-        opacity: disabled ? 0.4 : 1,
-        backgroundColor: pressed && !disabled ? color.border : "transparent",
-      })}
-    >
-      <Icon size={18} color={tint} strokeWidth={2.25} />
-    </Pressable>
-  );
-}
 
 /**
  * Pick which parked cart to bring back. Many drafts can sit on one terminal.
@@ -3175,10 +3556,13 @@ function DraftPickerSheet({
 
 /**
  * Last look before the sale is written. Cash needs the notes in hand so change
- * is clear; GCash/card only need the amount due confirmed.
+ * is clear; E-Wallet/card only need the amount due confirmed. After completeSale
+ * succeeds the same dialog flips to a success state — cart stays mounted under
+ * it until Print Receipt or Skip closes both. Print is opt-in (never auto).
  */
 function ConfirmSaleSheet({
   open,
+  succeeded,
   shelfTotal,
   discount,
   amountDue,
@@ -3187,8 +3571,11 @@ function ConfirmSaleSheet({
   busy,
   onClose,
   onConfirm,
+  onPrintReceipt,
+  onSkip,
 }: {
   open: boolean;
+  succeeded: boolean;
   shelfTotal: number;
   discount: number;
   amountDue: number;
@@ -3197,7 +3584,12 @@ function ConfirmSaleSheet({
   busy: boolean;
   onClose: () => void;
   onConfirm: () => void;
+  onPrintReceipt: () => void;
+  onSkip: () => void;
 }) {
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const keyboardHeight = useKeyboardHeight();
   const isCash = payment === "cash";
   const [cashDraft, setCashDraft] = useState(() => amountDue.toFixed(2));
 
@@ -3210,172 +3602,390 @@ function ConfirmSaleSheet({
   const methodLabel =
     PAYMENT_METHODS.find((method) => method.value === payment)?.label ?? payment;
 
+  // Success: fill most of the screen so title + actions read at till distance.
+  // Confirm: 80% — shrink further when the soft keyboard is up so cash entry
+  // stays on-screen on phones.
+  const dialogWidth = succeeded ? width * 0.92 : width * 0.8;
+  const usableHeight = height - keyboardHeight - insets.top - insets.bottom;
+  const dialogHeight = succeeded
+    ? Math.min(height * 0.88, usableHeight * 0.96)
+    : Math.min(height * 0.8, usableHeight * 0.95);
+
   return (
-    <BottomSheet open={open} onClose={busy ? () => undefined : onClose}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
-            <View style={[styles.iconWell, { width: 34, height: 34 }]}>
-              <CheckCircle2 size={18} color={color.primary} strokeWidth={2} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.subheading}>Confirm sale</Text>
-              <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
-                {itemCount} item{itemCount === 1 ? "" : "s"} · {methodLabel}
-              </Text>
-            </View>
-            <IconButton icon={X} label="Close" onPress={onClose} disabled={busy} />
-          </View>
+    <Modal
+      visible={open}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={busy ? undefined : onClose}
+    >
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: `${color.ink}99`,
+          alignItems: "center",
+          justifyContent: "center",
+          paddingBottom: succeeded ? 0 : keyboardHeight,
+          paddingHorizontal: space.sm,
+        }}
+      >
+        <Pressable
+          onPress={busy ? undefined : onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss"
+          style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+        />
 
-          <View
-            style={{
-              gap: space.sm,
-              padding: space.md,
-              borderRadius: radius.md,
-              backgroundColor: color.paper,
-              borderWidth: 1,
-              borderColor: color.border,
-            }}
-          >
-            <ConfirmRow label="Total amount" value={shelfTotal} />
-            <ConfirmRow
-              label="Discount"
-              value={discount}
-              muted={discount === 0}
-              prefix={discount > 0 ? "-" : undefined}
-            />
-            <LedgerLine />
-            <ConfirmRow label="Amount to pay" value={amountDue} emphasize />
-          </View>
-
-          {isCash ? (
-            <View style={{ gap: space.sm }}>
-              <Text style={{ fontSize: fontSize.body, fontWeight: "600" }}>
-                Cash on hand
-              </Text>
-              <TextInput
-                value={cashDraft}
-                onChangeText={(next) => setCashDraft(next.replace(/[^0-9.]/g, ""))}
-                keyboardType="decimal-pad"
-                autoFocus
-                selectTextOnFocus
-                accessibilityLabel="Cash on hand from the customer"
-                style={[
-                  styles.numeric,
-                  {
-                    minHeight: 64,
-                    borderWidth: 2,
-                    borderColor: cashValid ? color.primary : color.danger,
-                    borderRadius: radius.sm,
-                    backgroundColor: cashValid ? color.primaryTint : color.dangerSoft,
-                    color: cashValid ? color.primaryDark : color.dangerInk,
-                    paddingHorizontal: space.md,
-                    fontSize: fontSize.headingMd,
-                    fontWeight: "700",
-                  },
-                ]}
-              />
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space.sm }}>
-                <Pressable
-                  onPress={() => setCashDraft(amountDue.toFixed(2))}
-                  style={({ pressed }) => ({
-                    minHeight: 44,
-                    paddingHorizontal: space.md,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    borderRadius: radius.sm,
-                    borderWidth: 1,
-                    borderColor: color.primarySoft,
-                    backgroundColor: pressed ? color.primarySoft : color.primaryTint,
-                  })}
-                >
-                  <Text style={{ fontWeight: "600", color: color.primary }}>Exact</Text>
-                </Pressable>
-                {[50, 100, 200, 500, 1000]
-                  .map((bill) => roundMoney(Math.ceil(amountDue / bill) * bill))
-                  .filter((next, index, all) => next > amountDue && all.indexOf(next) === index)
-                  .slice(0, 3)
-                  .map((next) => (
-                    <Pressable
-                      key={next}
-                      onPress={() => setCashDraft(next.toFixed(2))}
-                      style={({ pressed }) => ({
-                        minHeight: 44,
-                        paddingHorizontal: space.md,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        borderRadius: radius.sm,
-                        borderWidth: 1,
-                        borderColor: color.border,
-                        backgroundColor: pressed ? color.surfacePressed : color.surface,
-                      })}
-                    >
-                      <Text style={{ fontWeight: "600", color: color.ink }}>
-                        {formatMoney(next)}
-                      </Text>
-                    </Pressable>
-                  ))}
-              </View>
-              {!cashValid ? (
-                <Text style={{ fontSize: fontSize.body, color: color.dangerInk }}>
-                  Cash on hand must cover {formatMoney(amountDue)}.
-                </Text>
-              ) : (
-                <View
+        <View
+          style={{
+            width: dialogWidth,
+            height: dialogHeight,
+            maxWidth: succeeded ? 900 : 720,
+            backgroundColor: color.surface,
+            borderRadius: radius.lg,
+            padding: succeeded ? space.xl : space.lg,
+            gap: space.md,
+            shadowColor: "#000",
+            shadowOpacity: 0.22,
+            shadowRadius: 28,
+            shadowOffset: { width: 0, height: 12 },
+            elevation: 20,
+          }}
+        >
+          {succeeded ? (
+            <>
+              <View
+                style={{
+                  flex: 1,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: space.xl,
+                  paddingHorizontal: space.lg,
+                }}
+              >
+                <SaleSuccessCheck />
+                <Text
                   style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                    alignItems: "baseline",
-                    padding: space.md,
-                    borderRadius: radius.sm,
-                    backgroundColor: color.successSoft,
+                    fontSize: fontSize.display,
+                    fontWeight: "700",
+                    color: color.ink,
+                    textAlign: "center",
+                    lineHeight: fontSize.display + 8,
                   }}
                 >
-                  <Text style={{ fontSize: fontSize.body, fontWeight: "600", color: color.successInk }}>
-                    Change
+                  Sale created successfully
+                </Text>
+                <Text
+                  style={{
+                    fontSize: fontSize.headingMd,
+                    fontWeight: "600",
+                    color: color.inkMuted,
+                    textAlign: "center",
+                    lineHeight: fontSize.headingMd + 8,
+                    maxWidth: 520,
+                  }}
+                >
+                  Print a receipt for this customer, or skip and start the next sale.
+                </Text>
+              </View>
+              <View style={{ gap: space.sm }}>
+                <Button
+                  label="Print Receipt"
+                  large
+                  icon={Printer}
+                  onPress={onPrintReceipt}
+                />
+                <Button
+                  label="Skip"
+                  large
+                  variant="secondary"
+                  onPress={onSkip}
+                />
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
+                <View style={[styles.iconWell, { width: 44, height: 44 }]}>
+                  <CheckCircle2 size={24} color={color.primary} strokeWidth={2} />
+                </View>
+                <Text
+                  style={{
+                    flex: 1,
+                    fontSize: fontSize.headingMd,
+                    fontWeight: "700",
+                    color: color.ink,
+                  }}
+                >
+                  Confirm sale
+                </Text>
+                <IconButton icon={X} label="Close" onPress={onClose} disabled={busy} />
+              </View>
+
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="interactive"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ gap: space.lg, paddingBottom: space.sm }}
+                style={{ flex: 1 }}
+              >
+                {/* Amount due first — cashier reads this before anything else. */}
+                <View
+                  style={{
+                    alignItems: "center",
+                    gap: space.xs,
+                    paddingVertical: space.md,
+                    paddingHorizontal: space.md,
+                    borderRadius: radius.md,
+                    backgroundColor: color.primaryTint,
+                    borderWidth: 1,
+                    borderColor: color.primarySoft,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: fontSize.bodyLg,
+                      fontWeight: "600",
+                      color: color.primaryDark,
+                      letterSpacing: 0.4,
+                    }}
+                  >
+                    Amount to pay
                   </Text>
                   <Text
                     style={[
                       styles.numeric,
                       {
-                        fontSize: fontSize.headingSm,
+                        fontSize: fontSize.display,
                         fontWeight: "700",
-                        color: color.successInk,
+                        color: color.primaryDark,
                       },
                     ]}
                   >
-                    {formatMoney(change)}
+                    {formatMoney(amountDue)}
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: fontSize.bodyLg,
+                      fontWeight: "600",
+                      color: color.ink,
+                      marginTop: space.xs,
+                    }}
+                  >
+                    {itemCount} item{itemCount === 1 ? "" : "s"} · {methodLabel}
                   </Text>
                 </View>
-              )}
-            </View>
-          ) : (
-            <Text style={{ fontSize: fontSize.body, color: color.inkMuted }}>
-              Customer pays {formatMoney(amountDue)} by {methodLabel}. No cash change.
-            </Text>
-          )}
 
-          <Button
-            label={busy ? "Saving..." : "Confirm and complete"}
-            large
-            icon={CheckCircle2}
-            busy={busy}
-            disabled={!canConfirm || busy}
-            onPress={onConfirm}
-          />
-          <Button label="Back to cart" variant="secondary" disabled={busy} onPress={onClose} />
-    </BottomSheet>
+                {isCash ? (
+                  <View style={{ gap: space.sm }}>
+                    <Text style={{ fontSize: fontSize.headingSm, fontWeight: "700", color: color.ink }}>
+                      Cash on hand
+                    </Text>
+                    <TextInput
+                      value={cashDraft}
+                      onChangeText={(next) => setCashDraft(next.replace(/[^0-9.]/g, ""))}
+                      keyboardType="decimal-pad"
+                      autoFocus
+                      selectTextOnFocus
+                      accessibilityLabel="Cash on hand from the customer"
+                      style={[
+                        styles.numeric,
+                        {
+                          minHeight: 72,
+                          borderWidth: 2,
+                          borderColor: cashValid ? color.primary : color.danger,
+                          borderRadius: radius.sm,
+                          backgroundColor: cashValid ? color.primaryTint : color.dangerSoft,
+                          color: cashValid ? color.primaryDark : color.dangerInk,
+                          paddingHorizontal: space.md,
+                          fontSize: fontSize.headingLg,
+                          fontWeight: "700",
+                        },
+                      ]}
+                    />
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space.sm }}>
+                      <Pressable
+                        onPress={() => setCashDraft(amountDue.toFixed(2))}
+                        style={({ pressed }) => ({
+                          minHeight: 52,
+                          paddingHorizontal: space.lg,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          borderRadius: radius.sm,
+                          borderWidth: 1,
+                          borderColor: color.primarySoft,
+                          backgroundColor: pressed ? color.primarySoft : color.primaryTint,
+                        })}
+                      >
+                        <Text style={{ fontSize: fontSize.bodyLg, fontWeight: "700", color: color.primary }}>
+                          Exact
+                        </Text>
+                      </Pressable>
+                      {[50, 100, 200, 500, 1000]
+                        .map((bill) => roundMoney(Math.ceil(amountDue / bill) * bill))
+                        .filter((next, index, all) => next > amountDue && all.indexOf(next) === index)
+                        .slice(0, 3)
+                        .map((next) => (
+                          <Pressable
+                            key={next}
+                            onPress={() => setCashDraft(next.toFixed(2))}
+                            style={({ pressed }) => ({
+                              minHeight: 52,
+                              paddingHorizontal: space.lg,
+                              alignItems: "center",
+                              justifyContent: "center",
+                              borderRadius: radius.sm,
+                              borderWidth: 1,
+                              borderColor: color.border,
+                              backgroundColor: pressed ? color.surfacePressed : color.surface,
+                            })}
+                          >
+                            <Text style={{ fontSize: fontSize.bodyLg, fontWeight: "700", color: color.ink }}>
+                              {formatMoney(next)}
+                            </Text>
+                          </Pressable>
+                        ))}
+                    </View>
+                    {!cashValid ? (
+                      <Text style={{ fontSize: fontSize.bodyLg, fontWeight: "600", color: color.dangerInk }}>
+                        Cash on hand must cover {formatMoney(amountDue)}.
+                      </Text>
+                    ) : (
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          alignItems: "baseline",
+                          padding: space.md,
+                          borderRadius: radius.sm,
+                          backgroundColor: color.successSoft,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: fontSize.headingSm,
+                            fontWeight: "700",
+                            color: color.successInk,
+                          }}
+                        >
+                          Change
+                        </Text>
+                        <Text
+                          style={[
+                            styles.numeric,
+                            {
+                              fontSize: fontSize.headingLg,
+                              fontWeight: "700",
+                              color: color.successInk,
+                            },
+                          ]}
+                        >
+                          {formatMoney(change)}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                ) : (
+                  <Text
+                    style={{
+                      fontSize: fontSize.bodyLg,
+                      fontWeight: "600",
+                      color: color.inkMuted,
+                      textAlign: "center",
+                    }}
+                  >
+                    Customer pays by {methodLabel}. No cash change.
+                  </Text>
+                )}
+
+                {/* Shelf / discount last — secondary context after the due amount. */}
+                <View
+                  style={{
+                    gap: space.sm,
+                    padding: space.md,
+                    borderRadius: radius.md,
+                    backgroundColor: color.paper,
+                    borderWidth: 1,
+                    borderColor: color.border,
+                  }}
+                >
+                  <ConfirmRow label="Shelf total" value={shelfTotal} />
+                  <ConfirmRow
+                    label="Discount"
+                    value={discount}
+                    muted={discount === 0}
+                    prefix={discount > 0 ? "-" : undefined}
+                  />
+                </View>
+              </ScrollView>
+
+              <View style={{ gap: space.sm }}>
+                <Button
+                  label={busy ? "Saving..." : "Confirm and complete"}
+                  large
+                  icon={CheckCircle2}
+                  busy={busy}
+                  disabled={!canConfirm || busy}
+                  onPress={onConfirm}
+                />
+                <Button label="Back to cart" variant="secondary" disabled={busy} onPress={onClose} />
+              </View>
+            </>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+/** Big check that pops in after a sale lands — spring scale + fade. */
+function SaleSuccessCheck() {
+  const scale = useRef(new Animated.Value(0.2)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(scale, {
+        toValue: 1,
+        friction: 5,
+        tension: 80,
+        useNativeDriver: true,
+      }),
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 220,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [opacity, scale]);
+
+  return (
+    <Animated.View
+      style={{
+        width: 160,
+        height: 160,
+        borderRadius: 80,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: color.successSoft,
+        opacity,
+        transform: [{ scale }],
+      }}
+    >
+      <CheckCircle2 size={96} color={color.successInk} strokeWidth={2.5} />
+    </Animated.View>
   );
 }
 
 function ConfirmRow({
   label,
   value,
-  emphasize,
   muted,
   prefix,
 }: {
   label: string;
   value: number;
-  emphasize?: boolean;
   muted?: boolean;
   prefix?: string;
 }) {
@@ -3390,9 +4000,9 @@ function ConfirmRow({
     >
       <Text
         style={{
-          fontSize: emphasize ? fontSize.bodyLg : fontSize.body,
-          fontWeight: emphasize ? "700" : "500",
-          color: muted ? color.inkMuted : emphasize ? color.primaryDark : color.ink,
+          fontSize: fontSize.bodyLg,
+          fontWeight: "600",
+          color: muted ? color.inkMuted : color.ink,
         }}
       >
         {label}
@@ -3401,9 +4011,9 @@ function ConfirmRow({
         style={[
           styles.numeric,
           {
-            fontSize: emphasize ? fontSize.headingSm : fontSize.bodyLg,
+            fontSize: fontSize.headingSm,
             fontWeight: "700",
-            color: muted ? color.inkMuted : emphasize ? color.primaryDark : color.ink,
+            color: muted ? color.inkMuted : color.ink,
           },
         ]}
       >
@@ -3484,158 +4094,5 @@ function CartShell({
     >
       <SafeAreaView style={{ flex: 1, backgroundColor: color.surface }}>{body}</SafeAreaView>
     </Modal>
-  );
-}
-
-/** Cashier-selected simple discount rules (Senior/PWD, Employee, etc.). */
-function RuleDiscountSheet({
-  open,
-  rules,
-  applied,
-  tax,
-  lines,
-  onClose,
-  onApply,
-  onClear,
-}: {
-  open: boolean;
-  rules: DiscountRule[];
-  applied: AppliedOrderDiscount[];
-  tax: TaxSettings;
-  lines: CartLine[];
-  onClose: () => void;
-  onApply: (discount: AppliedOrderDiscount) => void;
-  onClear: () => void;
-}) {
-  const [pendingRule, setPendingRule] = useState<DiscountRule | null>(null);
-  const [idNumber, setIdNumber] = useState("");
-  const [idHolderName, setIdHolderName] = useState("");
-
-  useEffect(() => {
-    if (!open) {
-      setPendingRule(null);
-      setIdNumber("");
-      setIdHolderName("");
-    }
-  }, [open]);
-
-  function pickRule(rule: DiscountRule) {
-    if (rule.requiresIdNumber) {
-      setPendingRule(rule);
-      return;
-    }
-    onApply(applySimpleRuleToCart({ rule, lines, tax }));
-  }
-
-  function confirmId() {
-    if (!pendingRule) return;
-    if (!idNumber.trim() || !idHolderName.trim()) {
-      Alert.alert("ID required", "Enter the ID number and the cardholder's name.");
-      return;
-    }
-    onApply(
-      applySimpleRuleToCart({
-        rule: pendingRule,
-        lines,
-        tax,
-        idNumber: idNumber.trim(),
-        idHolderName: idHolderName.trim(),
-      }),
-    );
-  }
-
-  return (
-    <BottomSheet open={open} onClose={onClose} scroll>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
-        <View style={[styles.iconWell, { width: 34, height: 34 }]}>
-          <BadgePercent size={18} color={color.primary} strokeWidth={2} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.subheading}>Apply discount rule</Text>
-          <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
-            Senior/PWD remove VAT when the shop is VAT-registered. Cannot stack with a promo.
-          </Text>
-        </View>
-        <IconButton icon={X} label="Close" onPress={onClose} />
-      </View>
-
-      {pendingRule ? (
-        <View style={{ gap: space.sm }}>
-          <Text style={{ fontSize: fontSize.body, fontWeight: "600", color: color.ink }}>
-            {pendingRule.name} — ID capture
-          </Text>
-          <TextInput
-            value={idNumber}
-            onChangeText={setIdNumber}
-            placeholder="ID number"
-            accessibilityLabel="ID number"
-            style={[
-              styles.numeric,
-              {
-                minHeight: 48,
-                borderWidth: 1,
-                borderColor: color.border,
-                borderRadius: radius.sm,
-                paddingHorizontal: space.md,
-                fontSize: fontSize.body,
-                color: color.ink,
-              },
-            ]}
-          />
-          <TextInput
-            value={idHolderName}
-            onChangeText={setIdHolderName}
-            placeholder="Cardholder name"
-            accessibilityLabel="Cardholder name"
-            style={[
-              styles.numeric,
-              {
-                minHeight: 48,
-                borderWidth: 1,
-                borderColor: color.border,
-                borderRadius: radius.sm,
-                paddingHorizontal: space.md,
-                fontSize: fontSize.body,
-                color: color.ink,
-              },
-            ]}
-          />
-          <Button label="Apply with ID" large onPress={confirmId} />
-          <Button label="Back" variant="secondary" onPress={() => setPendingRule(null)} />
-        </View>
-      ) : (
-        <View style={{ gap: space.sm }}>
-          {rules.map((rule) => {
-            const active = applied.some((d) => d.discountRuleId === rule.id);
-            return (
-              <Pressable
-                key={rule.id}
-                onPress={() => pickRule(rule)}
-                style={{
-                  padding: space.md,
-                  borderRadius: radius.sm,
-                  borderWidth: 1,
-                  borderColor: active ? color.primary : color.border,
-                  backgroundColor: active ? color.primaryTint : color.surface,
-                }}
-              >
-                <Text style={{ fontSize: fontSize.body, fontWeight: "600", color: color.ink }}>
-                  {rule.name}
-                </Text>
-                <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
-                  {rule.type === "percentage" ? `${rule.value}%` : formatMoney(rule.value)}
-                  {rule.isVatExempt ? " · VAT exempt" : ""}
-                  {rule.requiresIdNumber ? " · ID required" : ""}
-                  {active ? " · applied" : ""}
-                </Text>
-              </Pressable>
-            );
-          })}
-          {applied.length > 0 ? (
-            <Button label="Clear rule discounts" variant="secondary" onPress={onClear} />
-          ) : null}
-        </View>
-      )}
-    </BottomSheet>
   );
 }

@@ -37,3 +37,6 @@ export * from "./brands";
 export * from "./tags";
 export * from "./discounts";
 export * from "./tax-settings";
+export * from "./loyalty";
+export * from "./attendance";
+export * from "./cash-flow";

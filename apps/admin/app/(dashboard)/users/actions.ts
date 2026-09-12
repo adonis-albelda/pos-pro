@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { isValidPin } from "@double-a/shared-types";
 import { ApiError } from "@double-a/api-client";
-import { createUser, setUserPin, updateUser } from "@double-a/api-client/queries";
+import { createUser, setUserPin, updateUser, uploadUserAvatar } from "@double-a/api-client/queries";
 import type { FormState } from "@/lib/form-state";
 import { getAuthedClient } from "@/lib/api/session";
 
@@ -61,9 +61,20 @@ export async function saveCashier(
   const password = String(formData.get("password") ?? "");
   const canSell = formData.get("can_sell") === "true";
   const locationId = String(formData.get("location_id") ?? "").trim() || null;
+  const avatar = formData.get("avatar");
+  const avatarFile = avatar instanceof File && avatar.size > 0 ? avatar : null;
 
   if (!name) return { error: "Name is required.", ok: false };
   if (!email) return { error: "Email is required — it identifies the person.", ok: false };
+
+  if (avatarFile) {
+    if (!["image/jpeg", "image/png", "image/webp"].includes(avatarFile.type)) {
+      return { error: "The photo must be a JPEG, PNG, or WebP image.", ok: false };
+    }
+    if (avatarFile.size > 1024 * 1024) {
+      return { error: "The photo must be under 1 MB.", ok: false };
+    }
+  }
 
   if (!id && role === "superadmin") {
     return { error: "A shop cannot create a platform superadmin.", ok: false };
@@ -110,6 +121,9 @@ export async function saveCashier(
       if (canUnlockWithPin(role) && pin) {
         await setUserPin(client, id, pin);
       }
+      if (avatarFile) {
+        await uploadUserAvatar(client, id, avatarFile);
+      }
     } else {
       const created = await createUser(client, {
         name,
@@ -121,6 +135,9 @@ export async function saveCashier(
       });
       if (canUnlockWithPin(role) && pin) {
         await setUserPin(client, created.id, pin);
+      }
+      if (avatarFile) {
+        await uploadUserAvatar(client, created.id, avatarFile);
       }
     }
   } catch (error) {

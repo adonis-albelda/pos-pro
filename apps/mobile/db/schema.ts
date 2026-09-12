@@ -468,6 +468,81 @@ ALTER TABLE product_variants ADD COLUMN is_bundle INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS product_variants_barcode_idx ON product_variants (barcode);
 `;
 
+/**
+ * v23: Loyalty — rewards are pulled whole each sync (same as discount_rules,
+ * v21) since a deactivated/deleted reward must leave the device, not linger.
+ * customers.loyalty_points_balance is the same "last synced" cached balance
+ * as the server's own column (loyalty_program migration) — the POS reads it
+ * to show eligibility, never writes it directly; the real deduction happens
+ * server-side when a redemption's sale_discounts row pushes (see
+ * queries/pos.ts's toPushSalePayload comment). sale_discounts.loyalty_reward_id
+ * just tags which applied discount (if any) was a reward redemption, so it
+ * can travel with the sale on push.
+ */
+const V23_LOYALTY = `
+CREATE TABLE IF NOT EXISTS loyalty_rewards (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  points_required INTEGER NOT NULL,
+  simple_discount_id TEXT NOT NULL,
+  is_active INTEGER NOT NULL DEFAULT 1
+);
+
+ALTER TABLE customers ADD COLUMN loyalty_points_balance INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sale_discounts ADD COLUMN loyalty_reward_id TEXT;
+`;
+
+/**
+ * v24: optional e-wallet payment proof. payment_proof_local_uri is a file
+ * this device saved (never uploaded anywhere on its own); it clears to NULL
+ * once the best-effort background upload after a push writes back the
+ * server's payment_proof_url. Cash/card/credit sales never touch either.
+ */
+const V24_PAYMENT_PROOF = `
+ALTER TABLE sales ADD COLUMN payment_proof_local_uri TEXT;
+ALTER TABLE sales ADD COLUMN payment_proof_url TEXT;
+`;
+
+/**
+ * v25: loyalty settings (points-per-currency rate, needed on-device to show
+ * how many points a sale earns before it ever syncs) plus work schedules and
+ * schedule assignments — whole-replace on pull, same as discount_rules/
+ * loyalty_rewards (a handful of rows, and a deleted schedule/assignment must
+ * leave the device). Realtime-patched too, see sync/realtime.ts.
+ */
+const V25_LOYALTY_SETTINGS_AND_SCHEDULES = `
+CREATE TABLE IF NOT EXISTS loyalty_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  loyalty_enabled INTEGER NOT NULL DEFAULT 0,
+  loyalty_points_per_currency REAL NOT NULL DEFAULT 1,
+  loyalty_program_name TEXT
+);
+INSERT OR IGNORE INTO loyalty_settings (id, loyalty_enabled, loyalty_points_per_currency, loyalty_program_name)
+VALUES (1, 0, 1, NULL);
+
+CREATE TABLE IF NOT EXISTS work_schedules (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  start_time TEXT NOT NULL,
+  end_time TEXT NOT NULL,
+  crosses_midnight INTEGER NOT NULL DEFAULT 0,
+  break_minutes INTEGER NOT NULL DEFAULT 0,
+  grace_minutes INTEGER NOT NULL DEFAULT 0,
+  is_active INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS schedule_assignments (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  day_of_week INTEGER NOT NULL,
+  work_schedule_id TEXT,
+  effective_from TEXT NOT NULL,
+  effective_to TEXT
+);
+
+CREATE INDEX IF NOT EXISTS schedule_assignments_user_id_idx ON schedule_assignments (user_id);
+`;
+
 /** Ordered, append-only. Never edit a step that has shipped. */
 export const MIGRATIONS: Migration[] = [
   { version: 1, sql: V1_INITIAL },
@@ -492,6 +567,9 @@ export const MIGRATIONS: Migration[] = [
   { version: 20, sql: V20_IDLE_TIMEOUT },
   { version: 21, sql: V21_DISCOUNTS_AND_TAX },
   { version: 22, sql: V22_VARIANT_BARCODE_AND_BUNDLE },
+  { version: 23, sql: V23_LOYALTY },
+  { version: 24, sql: V24_PAYMENT_PROOF },
+  { version: 25, sql: V25_LOYALTY_SETTINGS_AND_SCHEDULES },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.reduce(

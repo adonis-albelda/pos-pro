@@ -1,7 +1,8 @@
-import type { Expense } from "@double-a/shared-types";
+import type { Expense, PaymentMethod } from "@double-a/shared-types";
 import { roundMoney } from "@double-a/shared-types";
 import { ApiError, type ApiClient, type JsonApiPage, type JsonApiResource } from "../http";
 import { type ExpenseAttrs, toExpense } from "../mappers";
+import { appendMultipartFile, type MultipartFile } from "../multipart";
 
 /** Admin-only (CLAUDE.md rule 14) — never called from the POS or synced to SQLite. */
 
@@ -14,6 +15,8 @@ export interface ExpenseInput {
   note?: string | null;
   /** Null/omitted = company-wide. Set = this outlay belongs to one branch/warehouse. */
   locationId?: string | null;
+  /** Null/omitted = cash (every expense logged before this field existed). Only "cash" affects Cash Flow. */
+  paymentMethod?: PaymentMethod | null;
 }
 
 function toPayload(input: Partial<ExpenseInput>): Record<string, unknown> {
@@ -24,6 +27,7 @@ function toPayload(input: Partial<ExpenseInput>): Record<string, unknown> {
   if (input.expenseDate !== undefined) payload.expense_date = input.expenseDate;
   if (input.note !== undefined) payload.note = input.note;
   if (input.locationId !== undefined) payload.location_id = input.locationId;
+  if (input.paymentMethod !== undefined) payload.payment_method = input.paymentMethod;
   return payload;
 }
 
@@ -96,18 +100,20 @@ export async function listExpenses(
 }
 
 /**
- * GAP: no aggregate endpoint on the Tally API (the old query was a single
- * `select amount` summed in Postgres). This walks every page in range via
- * `listExpenses` and sums client-side — fine for a shop-sized expense list;
- * ask backend for a real aggregate if this gets slow.
+ * Single SQL sum via `GET /expenses/sum` — avoids walking every page just to
+ * compose Net on the dashboard/reports.
  */
 export async function sumExpenses(
   client: ApiClient,
   range: ExpenseDayRange,
   filter?: ExpenseFilterOptions,
 ): Promise<number> {
-  const expenses = await listExpenses(client, range, filter);
-  return roundMoney(expenses.reduce((sum, expense) => sum + expense.amount, 0));
+  const { data } = await client.get<{ data: { total: number } }>("/expenses/sum", {
+    from: range.fromDay,
+    to: range.toDay,
+    location_id: filter?.locationId ?? undefined,
+  });
+  return roundMoney(Number(data.total));
 }
 
 export async function getExpense(client: ApiClient, id: string): Promise<Expense | null> {
@@ -143,4 +149,19 @@ export async function updateExpense(
 
 export async function deleteExpense(client: ApiClient, id: string): Promise<void> {
   await client.delete(`/expenses/${id}`);
+}
+
+/** Optional — attaches or replaces the proof photo/PDF on an existing expense. */
+export async function attachExpenseReceipt(
+  client: ApiClient,
+  id: string,
+  photo: MultipartFile,
+): Promise<Expense> {
+  const formData = new FormData();
+  await appendMultipartFile(formData, "photo", photo);
+  const { data } = await client.postMultipart<{ data: JsonApiResource<ExpenseAttrs> }>(
+    `/expenses/${id}/receipt`,
+    formData,
+  );
+  return toExpense(data);
 }

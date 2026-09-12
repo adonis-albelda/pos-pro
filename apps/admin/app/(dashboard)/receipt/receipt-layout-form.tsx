@@ -32,7 +32,7 @@ const TOGGLES: { key: keyof ReceiptLayout; label: string; hint: string }[] = [
     hint: "Only when the sale has customer details.",
   },
   { key: "showDiscounts", label: "Discount line", hint: "When a counter discount exists." },
-  { key: "showPayment", label: "Payment method", hint: "Cash, GCash, card…" },
+  { key: "showPayment", label: "Payment method", hint: "Cash, E-Wallet, card…" },
   {
     key: "showFooter",
     label: "Footer",
@@ -90,12 +90,12 @@ export function ReceiptLayoutForm({
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_280px]">
-      <form action={action} className="space-y-5">
+    <div className="relative z-0 grid gap-6 xl:grid-cols-[minmax(0,1fr)_280px]">
+      <form action={action} className="relative z-0 space-y-5">
         {TOGGLES.map(({ key, label, hint }) => (
           <label
             key={key}
-            className="flex cursor-pointer items-start gap-3 rounded-sm border border-border px-3 py-3 transition-colors hover:bg-paper"
+            className="flex cursor-pointer items-start gap-3 rounded-sm border border-border bg-surface px-3 py-3 transition-colors hover:bg-paper"
           >
             <input type="hidden" name={FIELD_NAMES[key]} value={layout[key] ? "true" : "false"} />
             <input
@@ -124,30 +124,68 @@ export function ReceiptLayoutForm({
         </Button>
       </form>
 
-      <aside className="xl:sticky xl:top-6 xl:self-start">
-        <div className="mb-2 flex items-center gap-2 text-caption font-medium text-ink-muted uppercase tracking-wide">
+      <aside className="relative z-0 xl:sticky xl:top-6 xl:self-start">
+        <div className="mb-2 flex items-center gap-2 text-caption font-medium tracking-wide text-ink-muted uppercase">
           <Printer size={14} />
           Printer overview · {RECEIPT_PAPER_WIDTH_MM}mm
         </div>
         <div
-          className="mx-auto overflow-hidden rounded-sm border border-border bg-[#f7f4ea] shadow-xs"
+          className="relative isolate mx-auto overflow-hidden rounded-sm border border-border bg-[#f7f4ea] shadow-xs"
           style={{ width: 240 }}
-          aria-label="Receipt preview at 58mm width"
+          aria-label="Delivery receipt preview at 58mm width"
         >
-          <div className="border-b border-dashed border-border/80 px-3 py-1.5 text-center text-[10px] text-ink-muted">
+          <ReceiptDisclaimerWatermark />
+          <div className="relative z-10 border-b border-dashed border-border/80 bg-[#f7f4ea]/80 px-3 py-1.5 text-center text-[10px] text-ink-muted">
             {RECEIPT_PRINTER_MODEL}
           </div>
           <pre
-            className="overflow-x-auto px-3 py-3 font-mono text-[11px] leading-[1.35] text-ink whitespace-pre"
+            className="relative z-10 overflow-x-auto bg-transparent px-3 py-3 font-mono text-[11px] leading-[1.35] text-ink whitespace-pre"
             style={{ width: "100%" }}
           >
             {preview}
           </pre>
-          <div className="border-t border-dashed border-border/80 px-3 py-2 text-center text-[10px] text-ink-muted">
-            Live preview · sample sale
+          <div className="relative z-10 border-t border-dashed border-border/80 bg-[#f7f4ea]/80 px-3 py-2 text-center text-[10px] text-ink-muted">
+            Live preview · sample sale · not an OR
           </div>
         </div>
       </aside>
     </div>
   );
 }
+
+/** Scattered gray disclaimer behind delivery preview text — never covers the receipt body. */
+function ReceiptDisclaimerWatermark() {
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-0 z-0 overflow-hidden select-none"
+    >
+      {WATERMARK_PLACEMENTS.map((spot, index) => (
+        <span
+          key={index}
+          className="absolute whitespace-nowrap text-[9px] font-semibold tracking-wide text-ink/15 uppercase"
+          style={{
+            top: spot.top,
+            left: spot.left,
+            transform: `rotate(${spot.rotate}deg)`,
+          }}
+        >
+          This is not an official receipt
+        </span>
+      ))}
+    </div>
+  );
+}
+
+const WATERMARK_PLACEMENTS = [
+  { top: "8%", left: "-8%", rotate: -28 },
+  { top: "22%", left: "12%", rotate: 18 },
+  { top: "38%", left: "-18%", rotate: -22 },
+  { top: "52%", left: "8%", rotate: 32 },
+  { top: "66%", left: "-4%", rotate: -16 },
+  { top: "80%", left: "18%", rotate: 24 },
+  { top: "14%", left: "42%", rotate: -34 },
+  { top: "58%", left: "36%", rotate: 12 },
+  { top: "88%", left: "-12%", rotate: -20 },
+] as const;
+

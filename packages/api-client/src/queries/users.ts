@@ -1,6 +1,7 @@
 import type { User, UserRole } from "@double-a/shared-types";
 import { ApiError, type ApiClient, type JsonApiResource } from "../http";
 import { type UserAttrs, toUser } from "../mappers";
+import { appendMultipartFile, type MultipartFile } from "../multipart";
 
 /**
  * Live PIN verification (cashier unlock) and session/current-user lookups
@@ -128,7 +129,7 @@ export async function setUserActive(client: ApiClient, id: string, isActive: boo
   return updateUser(client, id, { isActive });
 }
 
-/** Hard delete — DestroyUserController has no deactivate-instead option; use setUserActive(false) for that. */
+/** Soft delete — User uses SoftDeletes server-side. Use setUserActive(false) for a reversible deactivate instead. */
 export async function deleteUser(client: ApiClient, id: string): Promise<void> {
   await client.delete(`/users/${id}`);
 }
@@ -136,6 +137,23 @@ export async function deleteUser(client: ApiClient, id: string): Promise<void> {
 /** Admin sets a cashier's PIN. Distinct from cashier unlock (`verify-pin`), which lives elsewhere. */
 export async function setUserPin(client: ApiClient, id: string, pin: string): Promise<User> {
   const { data } = await client.put<{ data: JsonApiResource<UserAttrs> }>(`/users/${id}/pin`, { pin });
+  return toUser(data);
+}
+
+/** Uploads a profile photo to S3 and returns the updated user. */
+export async function uploadUserAvatar(client: ApiClient, id: string, avatar: MultipartFile): Promise<User> {
+  const formData = new FormData();
+  await appendMultipartFile(formData, "avatar", avatar);
+  const { data } = await client.postMultipart<{ data: JsonApiResource<UserAttrs> }>(
+    `/users/${id}/avatar`,
+    formData,
+  );
+  return toUser(data);
+}
+
+/** Deletes the avatar object from S3 and clears avatar_url. */
+export async function deleteUserAvatar(client: ApiClient, id: string): Promise<User> {
+  const { data } = await client.delete<{ data: JsonApiResource<UserAttrs> }>(`/users/${id}/avatar`);
   return toUser(data);
 }
 

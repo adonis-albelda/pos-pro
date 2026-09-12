@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePathname, useRouter } from "expo-router";
 import {
   Building2,
+  CalendarClock,
   CloudUpload,
   LogOut,
   Palette,
@@ -139,6 +140,11 @@ export function AccountDrawer({
     setTimeout(openPriceInquiryModal, ANIM_MS);
   }
 
+  function openAttendance() {
+    onClose();
+    setTimeout(() => router.push("/attendance"), ANIM_MS);
+  }
+
   function endShift() {
     onClose();
     setTimeout(() => {
@@ -249,6 +255,13 @@ export function AccountDrawer({
                 onPress={openPriceInquiry}
               />
             ) : null}
+            <DrawerTab
+              key="attendance"
+              icon={CalendarClock}
+              label="Attendance"
+              active={pathname === "/attendance"}
+              onPress={openAttendance}
+            />
           </View>
 
           {compact ? <LocationSwitcher variant="drawer" /> : null}

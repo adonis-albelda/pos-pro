@@ -43,7 +43,7 @@ export async function saveTransfer(
 
   const items = (Array.isArray(rawItems) ? rawItems : [])
     .filter(
-      (item): item is { productId: string; quantity: number } =>
+      (item): item is { productId: string; variantId: string | null; quantity: number } =>
         typeof item === "object" &&
         item !== null &&
         typeof (item as { productId?: unknown }).productId === "string" &&
@@ -56,10 +56,13 @@ export async function saveTransfer(
     return { error: "Add at least one product with a quantity greater than zero.", ok: false };
   }
 
+  const notes = String(formData.get("notes") ?? "").trim() || null;
+
   try {
     await createStockTransfer(getAuthedClient(), {
       fromLocationId,
       toLocationId,
+      notes,
       items,
       receiveNow,
     });

@@ -1,7 +1,8 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
-import { Check, FolderPlus } from "lucide-react";
+import { useActionState, useEffect, useId } from "react";
+import { Check, FolderPlus, X } from "lucide-react";
+import { SheetFooter, useSheetChrome } from "@/components/overlay";
 import { Button, Combobox, ErrorNote, Field, Input, SuccessNote } from "@/components/ui";
 import {
   descendantIds,
@@ -21,6 +22,8 @@ export function CategoryForm({
   categories: CategoryOption[];
   onDone?: () => void;
 }) {
+  const formId = useId();
+  const inSheet = useSheetChrome() !== null;
   const [state, action, pending] = useActionState(saveCategory, EMPTY_FORM_STATE);
   const invalidate = useInvalidateCategories();
 
@@ -36,8 +39,27 @@ export function CategoryForm({
   // Moving a category under one of its own children would orphan the branch.
   const blocked = category ? descendantIds(categories, category.id) : new Set<string>();
 
+  const actions = (
+    <div className="flex justify-end gap-2">
+      {onDone ? (
+        <Button type="button" variant="secondary" icon={X} onClick={onDone}>
+          Cancel
+        </Button>
+      ) : null}
+      <Button
+        type="submit"
+        form={inSheet ? formId : undefined}
+        loading={pending}
+        icon={category ? Check : FolderPlus}
+      >
+        {pending ? "Saving..." : category ? "Save changes" : "Add category"}
+      </Button>
+    </div>
+  );
+
   return (
-    <form action={action} className="space-y-4">
+    <>
+    <form id={formId} action={action} className="space-y-4">
       {category ? <input type="hidden" name="id" value={category.id} /> : null}
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -99,21 +121,9 @@ export function CategoryForm({
         </SuccessNote>
       ) : null}
 
-      <div className="flex flex-col-reverse gap-2 sm:flex-row">
-        <Button
-          type="submit"
-          loading={pending}
-          icon={category ? Check : FolderPlus}
-          className="w-full sm:w-auto"
-        >
-          {pending ? "Saving..." : category ? "Save changes" : "Add category"}
-        </Button>
-        {onDone ? (
-          <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={onDone}>
-            Cancel
-          </Button>
-        ) : null}
-      </div>
+      {!inSheet ? actions : null}
     </form>
+    {inSheet ? <SheetFooter>{actions}</SheetFooter> : null}
+    </>
   );
 }

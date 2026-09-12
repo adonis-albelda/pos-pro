@@ -1,6 +1,7 @@
-import { useRef } from "react";
-import { ImageBackground, Pressable, Text, View } from "react-native";
+import { useId, useRef, useState } from "react";
+import { ImageBackground, Pressable, StyleSheet, Text, View } from "react-native";
 import { Image } from "expo-image";
+import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
 import { Minus, Package, Tag, Trash2, Truck, X } from "lucide-react-native";
 import { formatMoney, stockLevel, type ProductWithEstimatedStock } from "@double-a/shared-types";
 import { type FlyRect } from "@/lib/fly-to-cart";
@@ -45,9 +46,16 @@ export function ProductTile({
   // Theme menu (app/pos/theme.tsx) — "text" drops the thumbnail below,
   // "image-dominant" replaces this component's whole body with a full-bleed
   // photo, "image-text" is this file's original layout, untouched.
-  const { cardDisplayStyle } = useThemePreferences();
-  const imageDominant = cardDisplayStyle === "image-dominant";
+  // productLayout "row" (one per line) uses its own horizontal body instead.
+  const { cardDisplayStyle, productLayout } = useThemePreferences();
+  const rowLayout = productLayout === "row";
+  const imageDominant = !rowLayout && cardDisplayStyle === "image-dominant";
   const showThumbnail = cardDisplayStyle !== "text";
+  const tileMinHeight = minHeight ?? (compact ? 96 : 112);
+  // Unique per mount — variant mode can show many tiles for one product.id,
+  // and SVG gradient ids must not collide across the FlatList.
+  const instanceId = useId().replace(/:/g, "");
+  const gradId = `tile-${instanceId}`;
 
   // Manual hold timer, same reason as the cart row: Pressable's built-in
   // onLongPress can misfire as a child of a FlatList row. didHold suppresses
@@ -94,30 +102,53 @@ export function ProductTile({
           ? `${product.name}, hold to remove from cart`
           : `${product.name}, hold for details`
       }
-      style={({ pressed }) => [
+      style={[
         styles.card,
         {
           flex: 1,
-          minHeight: minHeight ?? (compact ? 96 : 112),
-          // Image-dominant bleeds the photo to every edge — an inset would
-          // leave a plain border strip around it instead of a full cover.
+          minHeight: tileMinHeight,
+          // Image-dominant still bleeds edge-to-edge. Row keeps card padding so
+          // the thumb sits inset (left/top), not full-bleed height.
           padding: imageDominant ? 0 : padding,
-          overflow: imageDominant ? "hidden" : undefined,
-          justifyContent: imageDominant ? undefined : "space-between",
+          // Clip the theme gradient to the card radius.
+          overflow: "hidden",
+          flexDirection: rowLayout ? "row" : undefined,
+          alignItems: rowLayout ? "center" : undefined,
+          justifyContent: imageDominant || rowLayout ? undefined : "space-between",
           // A tile already in the cart is filled, not just outlined — the state
           // has to survive a glance across a counter.
           borderColor: inCartNow ? color.primary : color.border,
           borderWidth: inCartNow ? 2 : 1,
-          backgroundColor: pressed
-            ? color.primarySoft
-            : inCartNow
-              ? color.primaryTint
-              : color.surface,
+          // Gradient paints the fill; keep transparent so it shows through.
+          backgroundColor: "transparent",
           opacity: outOfStock ? 0.7 : 1,
         },
       ]}
     >
-      {imageDominant ? (
+      {({ pressed }) => (
+        <>
+          {/* Image-dominant is the photo itself — skip wash so it stays true. */}
+          {imageDominant ? null : (
+            <CardThemeGradient
+              gradId={gradId}
+              inCart={inCartNow}
+              pressed={pressed}
+            />
+          )}
+      {rowLayout ? (
+        <RowLayoutBody
+          product={product}
+          level={level}
+          unitSuffix={unitSuffix}
+          showThumbnail={showThumbnail}
+          compact={compact}
+          imageSize={Math.max(64, tileMinHeight - padding * 2)}
+          inCart={inCart}
+          inCartNow={inCartNow}
+          RemoveIcon={RemoveIcon}
+          onRemove={onRemove}
+        />
+      ) : imageDominant ? (
         <ImageDominantBody
           product={product}
           inCartNow={inCartNow}
@@ -223,12 +254,10 @@ export function ProductTile({
       </View>
 
       {/*
-        No flexWrap here on purpose — with it, adding the last item's "N in
-        cart" pill on the right could push this row past the tile's width
-        and wrap onto a second line, growing the tile's height and shoving
-        every tile after it in the grid. The stock indicator on the left
-        shrinks/truncates instead, so this row is always exactly one line
-        and the tile's height never changes between empty-cart and in-cart.
+        No flexWrap here on purpose — with the pill gone from this row, the
+        stock indicator is free to run the row's full width and simply
+        truncate on a very long name/unit combination instead of wrapping
+        the tile onto a second line.
       */}
       <View
         style={{
@@ -236,78 +265,342 @@ export function ProductTile({
           alignItems: "center",
           gap: space.xs,
           marginTop: space.xs,
+          // Room for the qty pill pinned at the bottom-right corner below,
+          // so a long "N in stock" line never runs underneath it.
+          paddingRight: inCartNow ? 84 : 0,
         }}
       >
-        <View style={{ flex: 1, minWidth: 0 }}>
-          {level === "out" ? (
-            <Badge tone="danger" label="Out of stock" />
-          ) : level === "low" ? (
-            <Badge tone="warning" label={`${product.estimatedStock}${unitSuffix} left`} />
+        {level === "out" ? (
+          <Badge tone="danger" label="Out of stock" />
+        ) : level === "low" ? (
+          <Badge tone="warning" label={`${product.estimatedStock}${unitSuffix} left`} />
+        ) : (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: space.xs }}>
+            <View
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: 3,
+                backgroundColor: color.success,
+              }}
+            />
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.numeric,
+                { flexShrink: 1, fontSize: fontSize.caption, color: color.inkMuted },
+              ]}
+            >
+              {product.estimatedStock}
+              {unitSuffix} in stock
+            </Text>
+          </View>
+        )}
+      </View>
+        </>
+      )}
+      {/* Pinned to the card's own bottom-right corner rather than sharing a
+          row with the stock indicator — the count doubles as the
+          take-one-off control: the whole tile adds, this corner subtracts.
+          Nested Pressable, so a hit here never reaches the tile underneath
+          and turns a removal into an addition. */}
+      {!rowLayout && !imageDominant && inCartNow ? (
+        <Pressable
+          onPress={onRemove}
+          accessibilityRole="button"
+          accessibilityLabel={
+            inCart === 1
+              ? `Remove ${product.name} from cart`
+              : `Take one ${product.name} off the cart, ${inCart} on it`
+          }
+          hitSlop={space.sm}
+          style={({ pressed }) => ({
+            position: "absolute",
+            bottom: space.sm,
+            right: space.sm,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: space.xs,
+            minHeight: 32,
+            backgroundColor: pressed ? color.primaryDark : color.primary,
+            borderRadius: radius.sm,
+            paddingHorizontal: space.sm,
+            paddingVertical: space.xs,
+          })}
+        >
+          <RemoveIcon size={14} color={color.onPrimary} strokeWidth={2.5} />
+          <Text
+            style={{
+              color: color.onPrimary,
+              fontSize: fontSize.caption,
+              fontWeight: "700",
+            }}
+          >
+            {compact ? inCart : `${inCart} in cart`}
+          </Text>
+        </Pressable>
+      ) : null}
+        </>
+      )}
+    </Pressable>
+  );
+}
+
+/**
+ * Soft diagonal wash from the Theme menu primary — primarySoft/Tint into
+ * surface. SVG, not expo-linear-gradient: keeps the native module set stable
+ * (same reason as sage-backdrop.tsx).
+ */
+function CardThemeGradient({
+  gradId,
+  inCart,
+  pressed,
+}: {
+  gradId: string;
+  inCart: boolean;
+  pressed: boolean;
+}) {
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  const start = pressed || inCart ? color.primarySoft : color.primaryTint;
+  const mid = inCart ? color.primarySoft : color.primaryTint;
+  const end = color.surface;
+
+  return (
+    <View
+      pointerEvents="none"
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        if (width !== size.w || height !== size.h) {
+          setSize({ w: width, h: height });
+        }
+      }}
+      style={StyleSheet.absoluteFill}
+    >
+      {size.w > 0 && size.h > 0 ? (
+        <Svg width={size.w} height={size.h}>
+          <Defs>
+            <SvgLinearGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
+              <Stop offset="0" stopColor={start} />
+              <Stop offset="0.55" stopColor={mid} />
+              <Stop offset="1" stopColor={end} />
+            </SvgLinearGradient>
+          </Defs>
+          <Rect x={0} y={0} width={size.w} height={size.h} fill={`url(#${gradId})`} />
+        </Svg>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * Theme "Row" layout — inset square photo on the left (card padding keeps
+ * left/top gap), details on the right, stock status pinned top-right.
+ */
+function RowLayoutBody({
+  product,
+  level,
+  unitSuffix,
+  showThumbnail,
+  compact,
+  imageSize,
+  inCart,
+  inCartNow,
+  RemoveIcon,
+  onRemove,
+}: {
+  product: ProductWithEstimatedStock;
+  level: ReturnType<typeof stockLevel>;
+  unitSuffix: string;
+  showThumbnail: boolean;
+  compact: boolean;
+  imageSize: number;
+  inCart: number;
+  inCartNow: boolean;
+  RemoveIcon: typeof Minus;
+  onRemove: () => void;
+}) {
+  return (
+    <>
+      {showThumbnail ? (
+        <View
+          style={{
+            width: imageSize,
+            height: imageSize,
+            marginRight: space.sm,
+            borderRadius: radius.sm,
+            overflow: "hidden",
+            backgroundColor: color.primaryTint,
+          }}
+        >
+          {product.photoUrl ? (
+            <Image
+              source={{ uri: product.photoUrl }}
+              style={{ width: imageSize, height: imageSize }}
+              contentFit="cover"
+              cachePolicy="disk"
+            />
           ) : (
+            <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+              <Package size={28} color={color.primary} strokeWidth={2} />
+            </View>
+          )}
+        </View>
+      ) : null}
+
+      <View
+        style={{
+          flex: 1,
+          minWidth: 0,
+          // Room for top-right stock chip so name/price never collide with it.
+          paddingRight: 96,
+          justifyContent: "space-between",
+          gap: space.xs,
+          alignSelf: "stretch",
+        }}
+      >
+        <View style={{ gap: space.xs }}>
+          <Text
+            numberOfLines={2}
+            style={{
+              fontSize: compact ? fontSize.body : fontSize.bodyLg,
+              fontWeight: "600",
+              color: color.ink,
+              lineHeight: compact ? 18 : 22,
+            }}
+          >
+            {product.name}
+          </Text>
+          <View style={{ flexDirection: "row", alignItems: "baseline", gap: space.xs }}>
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              style={[
+                styles.price,
+                { fontSize: compact ? fontSize.bodyLg : fontSize.headingSm },
+              ]}
+            >
+              {formatMoney(product.price)}
+            </Text>
+            {product.unit === "pc" ? null : (
+              <Text
+                numberOfLines={1}
+                style={{ fontSize: fontSize.caption, color: color.inkMuted }}
+              >
+                /{product.unit}
+              </Text>
+            )}
+          </View>
+          {!compact && product.bulkPrice !== null && product.bulkMinQuantity !== null ? (
             <View style={{ flexDirection: "row", alignItems: "center", gap: space.xs }}>
-              <View
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: 3,
-                  backgroundColor: color.success,
-                }}
-              />
+              <Tag size={12} color={color.accentInk} strokeWidth={2.5} />
               <Text
                 numberOfLines={1}
                 style={[
                   styles.numeric,
-                  { flexShrink: 1, fontSize: fontSize.caption, color: color.inkMuted },
+                  { fontSize: fontSize.caption, color: color.accentInk },
                 ]}
               >
-                {product.estimatedStock}
-                {unitSuffix} in stock
+                {formatMoney(product.bulkPrice)} from {product.bulkMinQuantity}{" "}
+                {product.unit}
               </Text>
             </View>
-          )}
+          ) : null}
         </View>
-
-        {/* The count doubles as the take-one-off control: the whole tile adds,
-            this corner of it subtracts. Nested Pressable, so a hit here never
-            reaches the tile underneath and turns a removal into an addition. */}
-        {inCartNow ? (
-          <Pressable
-            onPress={onRemove}
-            accessibilityRole="button"
-            accessibilityLabel={
-              inCart === 1
-                ? `Remove ${product.name} from cart`
-                : `Take one ${product.name} off the cart, ${inCart} on it`
-            }
-            hitSlop={space.sm}
-            style={({ pressed }) => ({
-              marginLeft: "auto",
-              flexDirection: "row",
-              alignItems: "center",
-              gap: space.xs,
-              minHeight: 32,
-              backgroundColor: pressed ? color.primaryDark : color.primary,
-              borderRadius: radius.sm,
-              paddingHorizontal: space.sm,
-              paddingVertical: space.xs,
-            })}
-          >
-            <RemoveIcon size={14} color={color.onPrimary} strokeWidth={2.5} />
-            <Text
-              style={{
-                color: color.onPrimary,
-                fontSize: fontSize.caption,
-                fontWeight: "700",
-              }}
-            >
-              {compact ? inCart : `${inCart} in cart`}
-            </Text>
-          </Pressable>
-        ) : null}
       </View>
-        </>
-      )}
-    </Pressable>
+
+      {inCartNow ? (
+        <Pressable
+          onPress={onRemove}
+          accessibilityRole="button"
+          accessibilityLabel={
+            inCart === 1
+              ? `Remove ${product.name} from cart`
+              : `Take one ${product.name} off the cart, ${inCart} on it`
+          }
+          hitSlop={space.sm}
+          style={({ pressed }) => ({
+            // Sibling of the text column — bottom-right corner of the row card.
+            flexShrink: 0,
+            alignSelf: "flex-end",
+            marginLeft: space.xs,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: space.xs,
+            minHeight: 32,
+            backgroundColor: pressed ? color.primaryDark : color.primary,
+            borderRadius: radius.sm,
+            paddingHorizontal: space.sm,
+            paddingVertical: space.xs,
+          })}
+        >
+          <RemoveIcon size={14} color={color.onPrimary} strokeWidth={2.5} />
+          <Text
+            style={{
+              color: color.onPrimary,
+              fontSize: fontSize.caption,
+              fontWeight: "700",
+            }}
+          >
+            {compact ? inCart : `${inCart} in cart`}
+          </Text>
+        </Pressable>
+      ) : null}
+
+      <View
+        pointerEvents="none"
+        style={{
+          position: "absolute",
+          top: space.sm,
+          right: space.sm,
+          zIndex: 1,
+          maxWidth: "45%",
+        }}
+      >
+        {level === "out" ? (
+          <Badge tone="danger" label="Out of stock" />
+        ) : level === "low" ? (
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.numeric,
+              {
+                fontSize: fontSize.bodyLg,
+                fontWeight: "700",
+                color: color.warning,
+              },
+            ]}
+          >
+            {product.estimatedStock}
+            {unitSuffix} left
+          </Text>
+        ) : (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: space.xs }}>
+            <View
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: 4,
+                backgroundColor: color.success,
+              }}
+            />
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.numeric,
+                {
+                  fontSize: fontSize.bodyLg,
+                  fontWeight: "600",
+                  color: color.inkMuted,
+                },
+              ]}
+            >
+              {product.estimatedStock}
+              {unitSuffix} in stock
+            </Text>
+          </View>
+        )}
+      </View>
+    </>
   );
 }
 

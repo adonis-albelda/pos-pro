@@ -12,7 +12,7 @@ import {
   setEnrolledLocationId,
   setEnrolledRole,
 } from "@/lib/device";
-import { apiUrl, createScopedClient, VERSION_HEADERS } from "./client";
+import { apiUrl, apiHostHeader, createScopedClient, VERSION_HEADERS } from "./client";
 
 const SESSION_TOKEN_KEY = "double-a.session-token";
 
@@ -36,7 +36,11 @@ async function clearSessionToken(): Promise<void> {
  * §1.
  */
 export function getApiClient(): ApiClient {
-  return new ApiClient({ baseUrl: apiUrl(), getToken: () => getSessionToken(), extraHeaders: VERSION_HEADERS });
+  return new ApiClient({
+    baseUrl: apiUrl(),
+    getToken: () => getSessionToken(),
+    extraHeaders: { ...VERSION_HEADERS, ...apiHostHeader() },
+  });
 }
 
 export async function isEnrolled(): Promise<boolean> {

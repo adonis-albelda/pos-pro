@@ -9,17 +9,19 @@ flag it explicitly rather than silently deviating.
 ## What this project is
 
 A POS and inventory system made of two apps in one Turborepo monorepo, sharing one
-Supabase (Postgres) backend:
+Laravel API backend (the "Tally API", `pos-inventory-laravel`, a separate repo):
 
 - **`apps/admin`** — Next.js web dashboard. Always-online. Used by the business owner/managers
   to manage products, prices, inventory, users, and view sales history/reports.
 - **`apps/mobile`** — React Native (Expo) POS app. Used by cashiers on the shop floor.
-  Designed to work fully offline, with a local SQLite database, synced to Supabase
+  Designed to work fully offline, with a local SQLite database, synced to the Tally API
   **manually** via a button — never automatically.
 
-**Golden rule: Supabase is the single source of truth for everything** — products, prices,
-inventory levels, sales history, users. The mobile app's local SQLite database is a
-disposable working copy, not a second source of truth.
+**Golden rule: the Laravel API is the single source of truth for everything** — products,
+prices, inventory levels, sales history, users. The mobile app's local SQLite database is a
+disposable working copy, not a second source of truth. Business logic and DB schema
+(migrations, models, observers, RLS-equivalent authorization) live in the Laravel repo, not
+here — this repo's `packages/api-client` is the only thing that talks to it.
 
 ---
 
@@ -30,7 +32,7 @@ apps/
   admin/     Next.js — online-only dashboard
   mobile/    React Native (Expo) — offline-capable POS
 packages/
-  supabase/         Shared Supabase client + generated DB types
+  api-client/        Typed HTTP client for the Laravel/Tally API + JSON:API mappers
   shared-types/      Shared TS interfaces (Product, Sale, SaleItem, InventoryMovement, User)
   ui/                Shared UI primitives where feasible (design tokens, cross-platform where possible)
   config-eslint/
@@ -38,15 +40,15 @@ packages/
 ```
 
 **Rules for where code goes:**
-- If it's a TypeScript type, a Supabase query, or a business-logic function with no
+- If it's a TypeScript type, an api-client query, or a business-logic function with no
   platform dependency → belongs in `packages/`, imported by both apps.
 - If it's Next.js-specific (server components, API routes, `app/` router conventions) →
   stays in `apps/admin`.
 - If it's React Native/Expo-specific (native modules, `expo-sqlite`, printer integration) →
   stays in `apps/mobile`.
-- Never duplicate a type or a Supabase query definition across both apps — that's what
-  `packages/shared-types` and `packages/supabase` are for. Type drift between the two apps
-  is the #1 risk in this project, since mobile writes the same tables admin reads.
+- Never duplicate a type or an api-client query definition across both apps — that's what
+  `packages/shared-types` and `packages/api-client` are for. Type drift between the two apps
+  is the #1 risk in this project, since mobile writes through the same API admin reads from.
 
 **New/touched data fetching or posting in `apps/admin` should be a direct client-side API
 call, not a `"use server"` Server Action** — a TanStack Query hook in
@@ -104,7 +106,7 @@ The mobile app has exactly one *manual* sync action, unchanged either way:
 1. **Push** — upload pending local `customers`, then `sales`/`sale_items` where
    `sync_status = 'pending'`, then patch `is_paid` / `delivery_completed` for sales
    with `flags_pending`. If this fails, stop — do not proceed to pull.
-2. **Pull** — fetch products/users/inventory from Supabase where `updated_at > last_synced_at`,
+2. **Pull** — fetch products/users/inventory from the Tally API where `updated_at > last_synced_at`,
    overwrite local rows, update `last_synced_at`. Categories, customers, and store settings
    are fetched whole every pull.
 
@@ -127,7 +129,7 @@ on the **Sync tab**, and Refresh is repeated on the unlock screen so a locked te
 catalog before the shift starts.
 
 **Login is always live.** Admin email/password, terminal enrollment, and cashier PIN unlock
-all call Supabase — never local SQLite. `verify_pin()` checks the PIN server-side. Local
+all call the Tally API — never local SQLite. `verify_pin()` checks the PIN server-side. Local
 SQLite exists for POS work *after* the cashier unlocks (products, cart, pending sales).
 
 The *state* is not on a tab. `StoreHeader` is one chrome row on every POS screen: logo
@@ -168,10 +170,9 @@ completes in the gap before a tick arrives can still oversell. Offline mode has 
 such mitigation at all; the tradeoff is exactly as before.
 
 ### 3. IDs are client-generated UUIDs for anything created offline
-`sales` and related records generate their `id` on-device (UUID) at creation time, not via
-Supabase's `gen_random_uuid()` default. This is required so offline-created records never
-collide with each other or the server on sync, and so a sale is fully valid before it's ever
-synced.
+`sales` and related records generate their `id` on-device (UUID) at creation time, not
+server-assigned on insert. This is required so offline-created records never collide with
+each other or the server on sync, and so a sale is fully valid before it's ever synced.
 
 ### 4. Nothing about completing a sale or printing a receipt should ever wait on network state
 Both must work identically offline and online, with zero perceptible difference to the cashier.
@@ -225,7 +226,7 @@ categories) and never treats SQLite as the source of truth after a pull lands. A
 customers and filters sales by `customer_id`.
 
 ### 12. Paid and fulfillment live on the sale
-`sales.is_paid` defaults from payment method: cash → paid; GCash / card / other → unpaid until
+`sales.is_paid` defaults from payment method: cash → paid; e-wallet / card / other → unpaid until
 the cashier (or admin) marks paid. `sales.fulfillment` is `pickup` | `delivery` (default pickup).
 `delivery_completed` is only meaningful for deliveries. Flag changes after a sale has already
 synced go through `patch_sale_flags` on the next Sync — insert upserts use `ignoreDuplicates` and

@@ -22,6 +22,7 @@ export const REASON_LABELS: Record<InventoryReason, string> = {
   oversell_correction: "Oversell correction",
   void_restore: "Sale voided",
   replace_restore: "Item replaced",
+  refund_restore: "Item refunded",
   transfer_out: "Transfer out",
   transfer_in: "Transfer in",
 };
@@ -33,6 +34,7 @@ export const REASON_ICONS: Record<InventoryReason, LucideIcon> = {
   oversell_correction: PackageCheck,
   void_restore: RotateCcw,
   replace_restore: Replace,
+  refund_restore: RotateCcw,
   transfer_out: ArrowUpFromLine,
   transfer_in: ArrowDownToLine,
 };
@@ -54,5 +56,7 @@ export function reasonIcon(reason: string): LucideIcon {
 /** A movement points at a sale only for the two reasons a sale creates. */
 export function movementSaleId(reason: string, referenceId: string | null): string | null {
   if (!referenceId) return null;
-  return reason === "sale" || reason === "void_restore" ? referenceId : null;
+  return reason === "sale" || reason === "void_restore" || reason === "replace_restore" || reason === "refund_restore"
+    ? referenceId
+    : null;
 }

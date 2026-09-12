@@ -16,7 +16,8 @@ import {
 import type { GoodsReceipt } from "@double-a/api-client/queries";
 import type { Location } from "@double-a/shared-types";
 import { STORE_TIME_ZONE } from "@double-a/shared-types";
-import { formatStoreDay, storeDayOf } from "@/lib/date-range";
+import { DateRangePicker, type DayWindowValue } from "@/components/date-range-picker";
+import { formatStoreDay, resolveDayWindow, storeDayOf, type DayWindow } from "@/lib/date-range";
 import { isInitialQueryLoad, matchesQuery, paginateItems, parseListQuery } from "@/lib/list-query";
 import { Badge, ButtonLink, Card, CardHeader, EmptyState, StatCard, Table, TableSkeleton, Td, Th } from "@/components/ui";
 import { Pagination, SearchField } from "@/components/record-list";
@@ -29,6 +30,7 @@ import { useSuppliers } from "@/lib/query/suppliers";
 import { ReceivingFollowUpBanner } from "./receiving-follow-up-banner";
 import { consumeReceivingFollowUp, type ReceivingFollowUp } from "./receiving-follow-up";
 import { ReceiptPhotoDialog } from "./receipt-photo-dialog";
+import { ReceivingFiltersPopover } from "./receiving-filters";
 import { receiptHasCountDiscrepancy } from "./receiving-discrepancy";
 
 function formatReceiptCreated(instant: string): { date: string; time: string } {
@@ -53,10 +55,10 @@ function receiptSupplierLabel(
   return "—";
 }
 
-function buildReceivingHref(params: { q?: string; discrepancy?: boolean }): Route {
+function buildReceivingHref(params: { q?: string; status?: "matched" | "discrepancy" }): Route {
   const search = new URLSearchParams();
   if (params.q) search.set("q", params.q);
-  if (params.discrepancy) search.set("discrepancy", "1");
+  if (params.status) search.set("status", params.status);
   const qs = search.toString();
   return (qs ? `/receiving?${qs}` : "/receiving") as Route;
 }
@@ -68,7 +70,13 @@ export function ReceivingPageClient() {
     q: searchParams.get("q") ?? undefined,
     page: searchParams.get("page") ?? undefined,
   });
-  const discrepancyOnly = searchParams.get("discrepancy") === "1";
+  const statusFilter = searchParams.get("status") === "discrepancy" ? "discrepancy" : searchParams.get("status") === "matched" ? "matched" : null;
+  const supplierFilter = searchParams.get("supplierId") ?? null;
+  const receivingLocationFilter = searchParams.get("locationId") ?? null;
+  const dayWindow = resolveDayWindow({
+    from: searchParams.get("from") ?? undefined,
+    to: searchParams.get("to") ?? undefined,
+  });
   const { locationId: currentLocationFilter } = useLocationFilter();
   const [followUp, setFollowUp] = useState<ReceivingFollowUp | null>(null);
 
@@ -119,7 +127,7 @@ export function ReceivingPageClient() {
           hint="Qty differs from purchase order"
           tone={discrepancyCount > 0 ? "warning" : "neutral"}
           loading={receiptsQuery.isPending}
-          onClick={() => router.push(buildReceivingHref({ q, discrepancy: true }))}
+          onClick={() => router.push(buildReceivingHref({ q, status: "discrepancy" }))}
         />
         <StatCard
           icon={CheckCircle2}
@@ -128,7 +136,7 @@ export function ReceivingPageClient() {
           hint="No count mismatch"
           tone={matchedCount > 0 ? "success" : "neutral"}
           loading={receiptsQuery.isPending}
-          onClick={() => router.push(buildReceivingHref({ q }))}
+          onClick={() => router.push(buildReceivingHref({ q, status: "matched" }))}
         />
         <StatCard
           icon={PackageOpen}
@@ -155,7 +163,10 @@ export function ReceivingPageClient() {
           locationFilter={currentLocationFilter}
           q={q}
           page={page}
-          discrepancyOnly={discrepancyOnly}
+          statusFilter={statusFilter}
+          supplierFilter={supplierFilter}
+          receivingLocationFilter={receivingLocationFilter}
+          dayWindow={dayWindow}
           fetching={receiptsQuery.isFetching && Boolean(receiptsQuery.data)}
         />
       )}
@@ -170,7 +181,10 @@ function ReceivingListBody({
   locationFilter,
   q,
   page,
-  discrepancyOnly,
+  statusFilter,
+  supplierFilter,
+  receivingLocationFilter,
+  dayWindow,
   fetching = false,
 }: {
   receipts: GoodsReceipt[];
@@ -179,9 +193,13 @@ function ReceivingListBody({
   locationFilter: string | null;
   q: string;
   page: number;
-  discrepancyOnly: boolean;
+  statusFilter: "matched" | "discrepancy" | null;
+  supplierFilter: string | null;
+  receivingLocationFilter: string | null;
+  dayWindow: DayWindow;
   fetching?: boolean;
 }) {
+  const router = useRouter();
   const mutationsLocked = useLocationMutationsLocked();
   const locationNameById = new Map(locations.map((location) => [location.id, location.name]));
   const supplierNameById = new Map(suppliers.map((supplier) => [supplier.id, supplier.name]));
@@ -192,7 +210,20 @@ function ReceivingListBody({
     : receipts;
 
   const filtered = scoped
-    .filter((receipt) => !discrepancyOnly || receiptHasCountDiscrepancy(receipt))
+    .filter((receipt) => {
+      if (statusFilter === "discrepancy") return receiptHasCountDiscrepancy(receipt);
+      if (statusFilter === "matched") return !receiptHasCountDiscrepancy(receipt);
+      return true;
+    })
+    .filter((receipt) => !supplierFilter || receipt.supplierId === supplierFilter)
+    .filter((receipt) => !receivingLocationFilter || receipt.locationId === receivingLocationFilter)
+    .filter((receipt) => {
+      if (!dayWindow.from && !dayWindow.to) return true;
+      const instant = receipt.createdAt ?? receipt.receivedAt;
+      if (dayWindow.from && instant < dayWindow.from) return false;
+      if (dayWindow.to && instant > dayWindow.to) return false;
+      return true;
+    })
     .filter((receipt) =>
       matchesQuery(
         [
@@ -208,8 +239,28 @@ function ReceivingListBody({
 
   const listQuery = {
     q: q || undefined,
-    discrepancy: discrepancyOnly ? "1" : undefined,
+    status: statusFilter ?? undefined,
+    supplierId: supplierFilter ?? undefined,
+    locationId: receivingLocationFilter ?? undefined,
+    from: dayWindow.fromDay ?? undefined,
+    to: dayWindow.toDay ?? undefined,
   };
+
+  function applyWindow(window: DayWindowValue) {
+    const next = new URLSearchParams();
+    if (q) next.set("q", q);
+    if (statusFilter) next.set("status", statusFilter);
+    if (supplierFilter) next.set("supplierId", supplierFilter);
+    if (receivingLocationFilter) next.set("locationId", receivingLocationFilter);
+    if (window.fromDay) next.set("from", window.fromDay);
+    if (window.toDay) next.set("to", window.toDay);
+    const qs = next.toString();
+    router.push((qs ? `/receiving?${qs}` : "/receiving") as Route);
+  }
+
+  const hasActiveFilters = Boolean(
+    q || statusFilter || supplierFilter || receivingLocationFilter || dayWindow.fromDay || dayWindow.toDay,
+  );
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
 
   return (
@@ -218,13 +269,23 @@ function ReceivingListBody({
       <CardHeader
         icon={PackageCheck}
         title="Receive orders"
-        description="Deliveries you've logged — stock restocked and prices updated from each receipt."
         action={
           <div className="flex flex-wrap items-center gap-2">
             <SearchField
               placeholder="Search supplier, reference, notes…"
               defaultValue={q}
               preserve={listQuery}
+              className="sm:max-w-xs"
+            />
+            <DateRangePicker
+              fromDay={dayWindow.fromDay}
+              toDay={dayWindow.toDay}
+              onApply={applyWindow}
+              className="sm:max-w-xs"
+            />
+            <ReceivingFiltersPopover
+              suppliers={suppliers}
+              locations={locations}
               className="sm:max-w-xs"
             />
             {mutationsLocked ? (
@@ -249,18 +310,16 @@ function ReceivingListBody({
       {total === 0 ? (
         <EmptyState
           icon={PackageCheck}
-          title={
-            q || discrepancyOnly ? "Nothing matches that search" : "No received orders yet"
-          }
+          title={hasActiveFilters ? "Nothing matches that search" : "No received orders yet"}
           instruction={
-            discrepancyOnly
+            statusFilter === "discrepancy"
               ? "No receipts with a count mismatch in this view."
-              : q
-                ? "Try a different supplier or reference."
+              : hasActiveFilters
+                ? "Try a different supplier, branch, date range, or search."
                 : "Log a delivery to restock inventory and record what actually arrived."
           }
           action={
-            !q && !discrepancyOnly ? (
+            !hasActiveFilters ? (
               <ButtonLink
                 href={mutationsLocked ? "/receiving" : "/receiving/new"}
                 className={mutationsLocked ? "pointer-events-none opacity-40" : undefined}

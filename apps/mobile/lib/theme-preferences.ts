@@ -42,6 +42,11 @@ export type BackgroundEffect =
  * color plate for a product with no photo (components/product-tile.tsx).
  */
 export type CardDisplayStyle = "text" | "image-text" | "image-dominant";
+/**
+ * "grid" keeps the width-based column count from lib/layout.ts.
+ * "row" forces one product per line (numColumns = 1 on the Sell FlatList).
+ */
+export type ProductLayoutMode = "grid" | "row";
 
 export interface ThemePreferences {
   radiusStyle: RadiusStyle;
@@ -49,6 +54,7 @@ export interface ThemePreferences {
   productViewMode: ProductViewMode;
   backgroundEffect: BackgroundEffect;
   cardDisplayStyle: CardDisplayStyle;
+  productLayout: ProductLayoutMode;
 }
 
 /** "full" = today's existing corner scale (packages/ui's radius token), "teal" = today's existing brand color, "image-text" = today's existing tile layout — an un-migrated device looks unchanged. */
@@ -58,6 +64,7 @@ const DEFAULT_PREFERENCES: ThemePreferences = {
   productViewMode: "product",
   backgroundEffect: "none",
   cardDisplayStyle: "image-text",
+  productLayout: "grid",
 };
 
 export const RADIUS_SCALES: Record<RadiusStyle, { sm: number; md: number; lg: number }> = {
@@ -184,6 +191,10 @@ export async function setBackgroundEffect(backgroundEffect: BackgroundEffect): P
 
 export async function setCardDisplayStyle(cardDisplayStyle: CardDisplayStyle): Promise<void> {
   await persist({ ...cache, cardDisplayStyle });
+}
+
+export async function setProductLayout(productLayout: ProductLayoutMode): Promise<void> {
+  await persist({ ...cache, productLayout });
 }
 
 /** Re-renders the calling component on any theme preference change — the Theme screen itself uses this to keep its selection UI in sync; most of the app instead relies on the root remount (app/_layout.tsx). */

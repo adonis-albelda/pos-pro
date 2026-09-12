@@ -19,16 +19,25 @@ export function NewReceivingPageClient() {
 
   const suppliersQuery = useSuppliers();
   const locationsQuery = useLocations({ type: "branch" });
-  const openOrdersQuery = usePurchaseOrders({ status: "ordered", limit: 100 });
+  // Both statuses: a partially-received PO must stay pickable so the rest of
+  // it can still be received — only "received"/"draft"/"cancelled" drop off.
+  const orderedQuery = usePurchaseOrders({ status: "ordered", limit: 100 });
+  const partiallyReceivedQuery = usePurchaseOrders({ status: "partially_received", limit: 100 });
   const orderQuery = usePurchaseOrder(purchaseOrderId);
 
   const isPending =
     suppliersQuery.isPending ||
     locationsQuery.isPending ||
-    openOrdersQuery.isPending ||
+    orderedQuery.isPending ||
+    partiallyReceivedQuery.isPending ||
     (Boolean(purchaseOrderId) && orderQuery.isPending);
   const error =
-    suppliersQuery.error ?? locationsQuery.error ?? openOrdersQuery.error ?? orderQuery.error;
+    suppliersQuery.error ??
+    locationsQuery.error ??
+    orderedQuery.error ??
+    partiallyReceivedQuery.error ??
+    orderQuery.error;
+  const openPurchaseOrders = [...(orderedQuery.data ?? []), ...(partiallyReceivedQuery.data ?? [])];
 
   if (isPending) {
     return (
@@ -66,7 +75,7 @@ export function NewReceivingPageClient() {
       <ReceivingForm
         suppliers={suppliersQuery.data ?? []}
         locations={locationsQuery.data ?? []}
-        openPurchaseOrders={openOrdersQuery.data ?? []}
+        openPurchaseOrders={openPurchaseOrders}
         purchaseOrderId={purchaseOrderId}
         onSelectPurchaseOrder={setPurchaseOrderId}
         linkedOrder={linkedOrder}

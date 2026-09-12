@@ -166,16 +166,6 @@ export function ReceivingPreviewDialog({
             <dd className="mt-0.5 text-body text-ink">{notes.trim() || "—"}</dd>
           </div>
         </dl>
-
-        {hasFlaggedLines ? (
-          <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-caption text-warning-ink">
-            <TriangleAlert size={15} className="mt-0.5 shrink-0" />
-            Some items are new and not in your product list yet. You can still save this receipt.
-            Use &ldquo;Hide from shop&rdquo; on each new line if you want them off the floor until
-            their full details are finished.
-          </div>
-        ) : null}
-
         <div className="space-y-2">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-body font-medium text-ink">

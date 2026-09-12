@@ -58,13 +58,13 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Used to scan a product's barcode, or photograph a delivery receipt."
+          "cameraPermission": "Used to scan a product's barcode, or photograph a delivery receipt or payment proof."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Used to pick an existing photo of a delivery receipt."
+          "photosPermission": "Used to pick an existing photo of a delivery receipt or payment proof."
         }
       ],
       "expo-image"

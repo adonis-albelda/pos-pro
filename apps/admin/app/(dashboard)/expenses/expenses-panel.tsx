@@ -1,15 +1,18 @@
 "use client";
 
-import { useState } from "react";
-import { Pencil, Wallet } from "lucide-react";
+import { useState, useTransition } from "react";
+import { Pencil, Trash2, Wallet } from "lucide-react";
+import { toast } from "sonner";
 import { formatMoney } from "@double-a/shared-types";
 import type { Expense, Location } from "@double-a/shared-types";
 import { Card, EmptyState, IconButton, Money, Table, Td, Th } from "@/components/ui";
-import { Sheet } from "@/components/overlay";
+import { ConfirmDialog, Sheet } from "@/components/overlay";
 import { Pagination, RecordToolbar } from "@/components/record-list";
 import { useLocationMutationsLocked } from "@/components/location-mutations-banner";
 import { formatStoreDay } from "@/lib/date-range";
+import { useInvalidateExpenses } from "@/lib/query/expenses";
 import { ExpenseForm } from "./expense-form";
+import { removeExpense } from "./actions";
 
 export function ExpensesPanel({
   expenses,
@@ -33,7 +36,22 @@ export function ExpensesPanel({
   const mutationsLocked = useLocationMutationsLocked();
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
+  const [deleting, setDeleting] = useState<Expense | null>(null);
+  const [removing, startRemove] = useTransition();
+  const invalidateExpenses = useInvalidateExpenses();
   const locationsById = new Map(locations.map((location) => [location.id, location.name]));
+
+  function confirmDelete() {
+    if (!deleting) return;
+    const form = new FormData();
+    form.set("id", deleting.id);
+    startRemove(async () => {
+      await removeExpense(form);
+      invalidateExpenses();
+      toast.success("Expense deleted.");
+      setDeleting(null);
+    });
+  }
 
   return (
     <>
@@ -92,12 +110,19 @@ export function ExpensesPanel({
                     <Money value={expense.amount} />
                   </Td>
                   <Td>
-                    <div className="flex justify-end">
+                    <div className="flex justify-end gap-1">
                       <IconButton
                         icon={Pencil}
                         label={`Edit ${formatMoney(expense.amount)} expense`}
                         onClick={() => setEditing(expense)}
-                      disabled={mutationsLocked}
+                        disabled={mutationsLocked}
+                      />
+                      <IconButton
+                        icon={Trash2}
+                        label={`Delete ${formatMoney(expense.amount)} expense`}
+                        tone="danger"
+                        onClick={() => setDeleting(expense)}
+                        disabled={mutationsLocked}
                       />
                     </div>
                   </Td>
@@ -146,6 +171,17 @@ export function ExpensesPanel({
           />
         ) : null}
       </Sheet>
+
+      <ConfirmDialog
+        open={deleting !== null}
+        onClose={() => setDeleting(null)}
+        onConfirm={confirmDelete}
+        pending={removing}
+        title="Delete expense?"
+        description="This removes it from the books and from today's net. Cannot be undone."
+        confirmLabel="Delete expense"
+        confirmationText={deleting?.description ?? ""}
+      />
     </>
   );
 }

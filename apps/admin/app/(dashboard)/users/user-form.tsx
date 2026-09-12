@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState, type FormEvent } from "react";
+import { useActionState, useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { toast } from "sonner";
 import {
   Check,
   HandHelping,
@@ -13,20 +14,23 @@ import {
   Truck,
   UserCog,
   UserRound,
+  X,
 } from "lucide-react";
 import { isDemoTeamLimitMessage, type User, type UserRole } from "@double-a/shared-types";
 import {
   Button,
   ErrorNote,
   Field,
+  FileInput,
   Input,
   Select,
   SuccessNote,
 } from "@/components/ui";
-import { ConfirmDialog } from "@/components/overlay";
+import { ConfirmDialog, SheetFooter, useSheetChrome } from "@/components/overlay";
 import { PasswordInput } from "@/components/password-input";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
 import { notifyDemoUpgradeLimit } from "@/lib/demo-upgrade-notice";
+import { isImageFile, NOT_AN_IMAGE_MESSAGE } from "@/lib/is-image-file";
 import { useInvalidateUsers } from "@/lib/query/users";
 import { useLocations } from "@/lib/query/locations";
 import { saveCashier } from "./actions";
@@ -70,6 +74,8 @@ export function UserForm({
   defaultRole?: UserRole;
   onDone?: () => void;
 }) {
+  const formId = useId();
+  const inSheet = useSheetChrome() !== null;
   const [state, action, pending] = useActionState(saveCashier, EMPTY_FORM_STATE);
   const [role, setRole] = useState<UserRole>(user?.role ?? defaultRole);
   const [branchId, setBranchId] = useState(user?.locationId ?? "");
@@ -78,6 +84,11 @@ export function UserForm({
   const formRef = useRef<HTMLFormElement>(null);
   const invalidateUsers = useInvalidateUsers();
   const locationsQuery = useLocations({ type: "branch" });
+
+  // Previewed from the chosen file rather than after the round trip, so the
+  // admin sees the photo they picked before committing to it.
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const shownAvatar = avatarPreview ?? user?.avatarUrl ?? null;
 
   useEffect(() => {
     if (state.ok) {
@@ -139,9 +150,33 @@ export function UserForm({
     formRef.current?.requestSubmit();
   }
 
+  const actions = (
+    <div className="flex justify-end gap-2">
+      {onDone ? (
+        <Button type="button" variant="secondary" icon={X} onClick={onDone}>
+          Cancel
+        </Button>
+      ) : null}
+      <Button
+        type="submit"
+        form={inSheet ? formId : undefined}
+        loading={pending}
+        icon={Check}
+      >
+        {pending ? "Saving..." : user ? "Save changes" : "Add person"}
+      </Button>
+    </div>
+  );
+
   return (
     <>
-      <form ref={formRef} action={action} onSubmit={onSubmit} className="space-y-5">
+      <form
+        id={formId}
+        ref={formRef}
+        action={action}
+        onSubmit={onSubmit}
+        className="space-y-5"
+      >
         {user ? <input type="hidden" name="id" value={user.id} /> : null}
 
         <div className="flex items-start gap-3 rounded-md border border-border bg-primary-tint px-4 py-3">
@@ -151,6 +186,34 @@ export function UserForm({
           <p className="text-caption leading-relaxed text-ink-muted">
             {roleDescription(role)}
           </p>
+        </div>
+
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+          <span className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-paper">
+            {shownAvatar ? (
+              // Public S3 URL — no next/image host allowlist needed.
+              <img src={shownAvatar} alt="" className="size-full object-cover" />
+            ) : (
+              <UserRound size={24} strokeWidth={2} className="text-ink-muted" />
+            )}
+          </span>
+          <div className="min-w-0 flex-1">
+            <Field label="Photo" hint="PNG, JPEG or WebP, under 1 MB." required={false}>
+              <FileInput
+                name="avatar"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  if (file && !isImageFile(file)) {
+                    toast.error(NOT_AN_IMAGE_MESSAGE);
+                    event.currentTarget.value = "";
+                    return;
+                  }
+                  setAvatarPreview(file ? URL.createObjectURL(file) : null);
+                }}
+              />
+            </Field>
+          </div>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -306,17 +369,11 @@ export function UserForm({
         {showInlineError ? <ErrorNote>{state.error}</ErrorNote> : null}
         {state.ok ? <SuccessNote>{successMessage(role)}</SuccessNote> : null}
 
-        <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row">
-          <Button type="submit" loading={pending} icon={Check} className="w-full sm:w-auto">
-            {pending ? "Saving..." : user ? "Save changes" : "Add person"}
-          </Button>
-          {onDone ? (
-            <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={onDone}>
-              Cancel
-            </Button>
-          ) : null}
-        </div>
+        {!inSheet ? (
+          <div className="border-t border-border pt-4">{actions}</div>
+        ) : null}
       </form>
+      {inSheet ? <SheetFooter>{actions}</SheetFooter> : null}
 
       <ConfirmDialog
         open={confirmBranch}

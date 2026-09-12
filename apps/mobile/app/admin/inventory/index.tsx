@@ -49,6 +49,7 @@ const REASON_LABELS: Record<InventoryReason, string> = {
   oversell_correction: "Oversell correction",
   void_restore: "Void restore",
   replace_restore: "Item replaced",
+  refund_restore: "Item refunded",
   transfer_out: "Transfer out",
   transfer_in: "Transfer in",
 };

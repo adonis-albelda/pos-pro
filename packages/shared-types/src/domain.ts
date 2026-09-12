@@ -24,13 +24,13 @@ export type UserRole =
   | "helper"
   | "device"
   | "superadmin";
-export type PaymentMethod = "cash" | "gcash" | "card" | "other" | "credit";
+export type PaymentMethod = "cash" | "ewallet" | "card" | "other" | "credit";
 export type SaleStatus = "completed" | "voided" | "refunded";
 /** How the customer takes the goods. Default pickup — delivery is opt-in. */
 export type Fulfillment = "pickup" | "delivery";
 
 /**
- * Cash is settled at the counter. GCash / card / other wait on a later
+ * Cash is settled at the counter. E-wallet / card / other wait on a later
  * confirmation that the payment actually landed.
  */
 export function isPaidByDefault(method: PaymentMethod): boolean {
@@ -55,6 +55,7 @@ export type InventoryReason =
   | "oversell_correction"
   | "void_restore"
   | "replace_restore"
+  | "refund_restore"
   | "transfer_out"
   | "transfer_in";
 
@@ -411,13 +412,35 @@ export interface Location {
   updatedAt: string;
 }
 
-export type StockTransferStatus = "pending" | "in_transit" | "received" | "cancelled";
+export type StockTransferStatus =
+  | "pending"
+  | "in_transit"
+  | "partially_received"
+  | "received"
+  | "cancelled";
 
 export interface StockTransferItem {
   id: string;
   productId: string;
   productName: string | null;
+  variantId: string | null;
+  sku: string | null;
   quantity: number;
+  quantityReceived: number;
+  quantityRemaining: number;
+}
+
+export interface StockTransferReceiptItem {
+  stockTransferItemId: string;
+  quantityReceived: number;
+}
+
+/** One receiving action against a transfer — the "Receiving #1/#2/#3" history. */
+export interface StockTransferReceipt {
+  id: string;
+  receivedBy: string | null;
+  receivedAt: string | null;
+  items: StockTransferReceiptItem[];
 }
 
 export interface StockTransfer {
@@ -428,11 +451,14 @@ export interface StockTransfer {
   fromLocationName: string | null;
   toLocationName: string | null;
   status: StockTransferStatus;
+  notes: string | null;
   createdBy: string | null;
+  createdByName: string | null;
   receivedAt: string | null;
   createdAt: string;
   updatedAt: string;
   items: StockTransferItem[];
+  receipts: StockTransferReceipt[];
 }
 
 /** A tenant the platform superadmin creates. Shop identity still lives in store_settings. */
@@ -686,6 +712,8 @@ export interface Customer {
   name: string;
   address: string | null;
   contact: string | null;
+  /** Cached from loyalty_points_ledger — see LoyaltyLedgerEntry (loyalty.ts) for the source of truth. */
+  loyaltyPointsBalance: number;
   updatedAt: string;
 }
 
@@ -725,13 +753,72 @@ export interface Expense {
   /** Shop calendar day (yyyy-mm-dd), Asia/Manila. */
   expenseDate: string;
   note: string | null;
+  /** Optional proof of the outlay (receipt/invoice photo) — never required. */
+  receiptUrl: string | null;
   createdBy: string | null;
   /** Set when this ledger row was created via Mark paid on a bill. */
   expenseBillId: string | null;
   /** Null = company-wide. Set = this outlay belongs to one branch/warehouse. */
   locationId: string | null;
+  /** Null = treated as cash (every expense logged before this field existed). Only "cash" affects Cash Flow. */
+  paymentMethod: PaymentMethod | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Cash Flow: what kind of cash movement a ledger row or manual entry is. */
+export type CashFlowMovementType =
+  | "sale"
+  | "refund"
+  | "expense"
+  | "adjustment_in"
+  | "adjustment_out"
+  | "other_income";
+
+export type CashFlowDirection = "in" | "out";
+
+/** Type used only for manual entries — sales/refunds/expenses are derived, never created here. */
+export type CashMovementType = "adjustment_in" | "adjustment_out" | "other_income";
+
+export interface CashMovement {
+  id: string;
+  type: CashMovementType;
+  locationId: string;
+  terminalId: string | null;
+  amount: number;
+  reason: string;
+  createdBy: string | null;
+  createdByName: string | null;
+  createdAt: string;
+}
+
+/** One row in the Cash Flow ledger — a sale, refund, expense, or manual entry, never stored separately. */
+export interface CashFlowLedgerEntry {
+  date: string;
+  type: CashFlowMovementType;
+  direction: CashFlowDirection;
+  description: string;
+  amount: number;
+  locationId: string | null;
+  locationName: string | null;
+  terminalId: string | null;
+  terminalName: string | null;
+  referenceType: string | null;
+  referenceId: string | null;
+  userId: string | null;
+  userName: string | null;
+}
+
+export interface CashFlowSummary {
+  from: string;
+  to: string;
+  openingCash: number;
+  cashIn: number;
+  cashOut: number;
+  netCashFlow: number;
+  expectedCash: number;
+  cashInByType: Partial<Record<CashFlowMovementType, number>>;
+  cashOutByType: Partial<Record<CashFlowMovementType, number>>;
 }
 
 export const EXPENSE_DESCRIPTION_MAX = 200;
@@ -850,7 +937,7 @@ export interface Sale {
   customerName: string | null;
   customerAddress: string | null;
   customerContact: string | null;
-  /** False until the cashier confirms GCash/card/online actually landed. */
+  /** False until the cashier confirms e-wallet/card/online actually landed. */
   isPaid: boolean;
   fulfillment: Fulfillment;
   /** Only meaningful when `fulfillment === "delivery"`. */
@@ -859,6 +946,13 @@ export interface Sale {
   companyId?: string | null;
   /** Branch that rang up the sale — stock decrements here. */
   locationId?: string | null;
+  /**
+   * Optional cashier-attached proof of an e-wallet payment (a screenshot of
+   * the transfer). Never required — a sale completes the same with or
+   * without it. Server URL once uploaded; null before that or when none was
+   * taken.
+   */
+  paymentProofUrl?: string | null;
 }
 
 /** The customer columns of a sale, as `CustomerDetails`. */
@@ -908,10 +1002,17 @@ export interface SaleItem {
    * Set once this line has been swapped for a different product (admin
    * dashboard only). The row itself is never rewritten — it still shows
    * exactly what was originally sold, at the price it sold for — this just
-   * points at what replaced it. Null means still the live line.
+   * points at what replaced it. Null means still the live line (unless
+   * refundedAt is set).
    */
   replacedByProductId: string | null;
   replacedByProductName: string | null;
+  /**
+   * Set when this line was refunded (admin). Original charge stays on the
+   * record; the line drops out of total_amount. Mutually exclusive with a
+   * replacement in practice — a line is either live, replaced, or refunded.
+   */
+  refundedAt: string | null;
   /** Empty for a line with no add-ons, or when not eager-loaded. */
   addons: SaleItemAddon[];
 }
@@ -919,6 +1020,12 @@ export interface SaleItem {
 export interface LocalSale extends Sale {
   syncStatus: SyncStatus;
   syncedAt: string | null;
+  /**
+   * On-device file path for an attached proof photo, before it has
+   * uploaded — `paymentProofUrl` is the server copy, once that upload
+   * lands. Local-only; never sent anywhere itself.
+   */
+  paymentProofLocalUri?: string | null;
 }
 
 export interface SaleWithItems extends Sale {
@@ -1032,6 +1139,7 @@ export const PURCHASE_ORDER_STATUS_LABELS: Record<PurchaseOrderStatus, string> =
 export interface PurchaseOrder {
   id: string;
   supplierId: string;
+  locationId: string | null;
   status: PurchaseOrderStatus;
   /** Shop calendar day (yyyy-mm-dd), Asia/Manila. */
   orderDate: string;

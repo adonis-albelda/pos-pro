@@ -29,6 +29,7 @@ import type { Location, PurchaseOrder, PurchaseOrderItem, Supplier } from "@doub
 import { ApiError } from "@double-a/api-client";
 import type { GoodsReceiptItemInput } from "@double-a/api-client/queries";
 import {
+  Badge,
   Button,
   buttonClass,
   Card,
@@ -62,10 +63,16 @@ import {
 import { saveReceivingFollowUp, type ReceivingFollowUp } from "./receiving-follow-up";
 import {
   clearReceivingDraft,
+  clearReceivingDraftPhotos,
   draftHasContent,
   loadReceivingDraft,
+  readReceivingDraftPhotos,
+  RECEIVING_DRAFT_KEY,
+  RECEIVING_HELD_PHOTOS_KEY,
   saveReceivingDraft,
+  writeReceivingDraftPhotos,
   type ReceivingDraft,
+  type ReceivingDraftPhotos,
 } from "./receiving-draft";
 import { ReceivingLineAccordion } from "./receiving-line-accordion";
 import { variantListLabel } from "./match-product-combobox";
@@ -153,9 +160,8 @@ function describeSaveError(error: unknown): string {
 /**
  * "Hold receipt" parks the in-progress form so the attendant can start
  * another delivery and come back later — one slot, this browser only, never
- * sent anywhere. A raw uploaded photo (a `File`) can't be JSON-serialized,
- * so only a gallery-sourced photo (just an id) survives the hold; a direct
- * upload is dropped and `hadUnkeptPhoto` flags that for the resume toast.
+ * sent anywhere. Photo bytes live in IndexedDB (same as the auto-draft);
+ * gallery picks also keep their id for a cheaper restore.
  */
 const HELD_RECEIPT_KEY = "receiving:held-receipt";
 
@@ -172,13 +178,21 @@ interface HeldReceipt {
   paymentTerms: "cod" | "installment";
   rows: LineRow[];
   galleryPhotoId: string | null;
+  /** Legacy flag — new holds set hasLocalPhoto instead when IndexedDB write works. */
   hadUnkeptPhoto: boolean;
+  hasLocalPhoto: boolean;
 }
 
 function loadHeldReceipt(): HeldReceipt | null {
   try {
     const raw = window.localStorage.getItem(HELD_RECEIPT_KEY);
-    return raw ? (JSON.parse(raw) as HeldReceipt) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as HeldReceipt;
+    return {
+      ...parsed,
+      hasLocalPhoto: Boolean(parsed.hasLocalPhoto),
+      hadUnkeptPhoto: Boolean(parsed.hadUnkeptPhoto),
+    };
   } catch {
     return null;
   }
@@ -198,6 +212,7 @@ function clearHeldReceipt(): void {
   } catch {
     // Nothing to do if storage is unavailable.
   }
+  void clearReceivingDraftPhotos(RECEIVING_HELD_PHOTOS_KEY);
 }
 
 export function ReceivingForm({
@@ -305,22 +320,46 @@ export function ReceivingForm({
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [heldReceipt, setHeldReceipt] = useState<HeldReceipt | null>(null);
   const [draftPendingRestore, setDraftPendingRestore] = useState<ReceivingDraft | null>(null);
+  const [draftPendingPhotos, setDraftPendingPhotos] = useState<ReceivingDraftPhotos | null>(null);
 
   // Client-only — detect held receipt or saved draft; neither loads into the form until the user chooses.
   useEffect(() => {
-    const held = loadHeldReceipt();
-    if (held) {
-      setHeldReceipt(held);
+    void (async () => {
+      const held = loadHeldReceipt();
+      if (held) {
+        setHeldReceipt(held);
+        setDraftHydrated(true);
+        return;
+      }
+
+      const draft = loadReceivingDraft();
+      const photos = await readReceivingDraftPhotos(RECEIVING_DRAFT_KEY);
+      if ((draft && draftHasContent(draft)) || photos?.photo) {
+        setDraftPendingRestore(
+          draft ?? {
+            savedAt: new Date().toISOString(),
+            locationId: defaultLocationId ?? locations[0]?.id ?? "",
+            supplierId: "",
+            supplierName: "",
+            purchaseOrderId: "",
+            referenceNo: "",
+            notes: "",
+            deliveryDate: "",
+            salesmanName: "",
+            paymentTerms: "cod",
+            rows: [],
+            galleryPhotoId: null,
+            hadUnkeptPhoto: false,
+            hasLocalPhoto: Boolean(photos?.photo),
+            photoRead: false,
+            expandedKey: null,
+          },
+        );
+        setDraftPendingPhotos(photos);
+      }
+
       setDraftHydrated(true);
-      return;
-    }
-
-    const draft = loadReceivingDraft();
-    if (draft && draftHasContent(draft)) {
-      setDraftPendingRestore(draft);
-    }
-
-    setDraftHydrated(true);
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -357,6 +396,7 @@ export function ReceivingForm({
     onSelectPurchaseOrder("");
     clearReceivingDraft();
     setDraftPendingRestore(null);
+    setDraftPendingPhotos(null);
   }
 
   function clearAllData() {
@@ -381,61 +421,78 @@ export function ReceivingForm({
     Boolean(galleryPhotoId);
 
   function holdReceipt() {
-    saveHeldReceipt({
-      heldAt: new Date().toISOString(),
-      locationId,
-      supplierId,
-      supplierName,
-      purchaseOrderId,
-      referenceNo,
-      notes,
-      deliveryDate,
-      salesmanName,
-      paymentTerms,
-      rows,
-      galleryPhotoId,
-      hadUnkeptPhoto: Boolean(photo) && !galleryPhotoId,
-    });
-    clearReceivingDraft();
-    toast.success(
-      photo && !galleryPhotoId
-        ? "Receipt held — its photo wasn't kept, you'll need to re-add it on resume."
-        : "Receipt held — resume it anytime from this page.",
-    );
+    void (async () => {
+      const photoKept = photo
+        ? await writeReceivingDraftPhotos(RECEIVING_HELD_PHOTOS_KEY, photo, workingPhoto)
+        : true;
 
-    // Blank the form for the next delivery — the hold already has everything.
-    resetForm();
-    setHeldReceipt(loadHeldReceipt());
+      saveHeldReceipt({
+        heldAt: new Date().toISOString(),
+        locationId,
+        supplierId,
+        supplierName,
+        purchaseOrderId,
+        referenceNo,
+        notes,
+        deliveryDate,
+        salesmanName,
+        paymentTerms,
+        rows,
+        galleryPhotoId,
+        hasLocalPhoto: Boolean(photo) && photoKept,
+        hadUnkeptPhoto: Boolean(photo) && !galleryPhotoId && !photoKept,
+      });
+      clearReceivingDraft();
+      toast.success(
+        photo && !photoKept && !galleryPhotoId
+          ? "Receipt held — its photo wasn't kept, you'll need to re-add it on resume."
+          : "Receipt held — resume it anytime from this page.",
+      );
+
+      // Blank the form for the next delivery — the hold already has everything.
+      resetForm();
+      setHeldReceipt(loadHeldReceipt());
+    })();
   }
 
   function resumeHeldReceipt() {
     if (!heldReceipt) return;
-    setSupplierId(heldReceipt.supplierId);
-    setSupplierName(heldReceipt.supplierName);
-    setLocationId(heldReceipt.locationId);
-    setReferenceNo(heldReceipt.referenceNo);
-    setNotes(heldReceipt.notes);
-    setDeliveryDate(heldReceipt.deliveryDate ?? "");
-    setSalesmanName(heldReceipt.salesmanName ?? "");
-    setPaymentTerms(heldReceipt.paymentTerms ?? "cod");
-    const normalizedRows = heldReceipt.rows.map(normalizeHeldRow);
-    setRows(normalizedRows);
-    const firstUnresolved = normalizedRows.find((row) => !row.excluded && !lineIsResolved(row));
-    setExpandedKey(firstUnresolved?.key ?? normalizedRows[0]?.key ?? null);
-    onSelectPurchaseOrder(heldReceipt.purchaseOrderId);
+    void (async () => {
+      setSupplierId(heldReceipt.supplierId);
+      setSupplierName(heldReceipt.supplierName);
+      setLocationId(heldReceipt.locationId);
+      setReferenceNo(heldReceipt.referenceNo);
+      setNotes(heldReceipt.notes);
+      setDeliveryDate(heldReceipt.deliveryDate ?? "");
+      setSalesmanName(heldReceipt.salesmanName ?? "");
+      setPaymentTerms(heldReceipt.paymentTerms ?? "cod");
+      const normalizedRows = heldReceipt.rows.map(normalizeHeldRow);
+      setRows(normalizedRows);
+      const firstUnresolved = normalizedRows.find((row) => !row.excluded && !lineIsResolved(row));
+      setExpandedKey(firstUnresolved?.key ?? normalizedRows[0]?.key ?? null);
+      onSelectPurchaseOrder(heldReceipt.purchaseOrderId);
 
-    const galleryRecord = heldReceipt.galleryPhotoId
-      ? (galleryQuery.data ?? []).find((record) => record.id === heldReceipt.galleryPhotoId)
-      : undefined;
-    if (galleryRecord) {
-      void pickGalleryPhoto(galleryRecord);
-    } else if (heldReceipt.galleryPhotoId || heldReceipt.hadUnkeptPhoto) {
-      toast.message("This receipt's photo wasn't kept — re-add it if you still need it.");
-    }
+      const localPhotos = await readReceivingDraftPhotos(RECEIVING_HELD_PHOTOS_KEY);
+      const galleryRecord = heldReceipt.galleryPhotoId
+        ? (galleryQuery.data ?? []).find((record) => record.id === heldReceipt.galleryPhotoId)
+        : undefined;
 
-    clearHeldReceipt();
-    clearReceivingDraft();
-    setHeldReceipt(null);
+      if (localPhotos?.photo) {
+        setPhoto(localPhotos.photo);
+        setWorkingPhoto(localPhotos.workingPhoto);
+        setGalleryPhotoId(heldReceipt.galleryPhotoId);
+        setCropOpen(false);
+        setPhotoRead(false);
+      } else if (galleryRecord) {
+        void pickGalleryPhoto(galleryRecord);
+      } else if (heldReceipt.galleryPhotoId || heldReceipt.hadUnkeptPhoto) {
+        toast.message("This receipt's photo wasn't kept — re-add it if you still need it.");
+      }
+
+      clearHeldReceipt();
+      clearReceivingDraft();
+      setHeldReceipt(null);
+    })();
   }
 
   function discardHeldReceipt() {
@@ -449,6 +506,7 @@ export function ReceivingForm({
   function restoreSavedDraft() {
     if (!draftPendingRestore) return;
     const draft = draftPendingRestore;
+    const photos = draftPendingPhotos;
 
     setLocationId(draft.locationId || (defaultLocationId ?? locations[0]?.id ?? ""));
     setSupplierId(draft.supplierId);
@@ -464,18 +522,25 @@ export function ReceivingForm({
     setGalleryPhotoId(draft.galleryPhotoId);
     pendingGalleryRestoreId.current = draft.galleryPhotoId;
     onSelectPurchaseOrder(draft.purchaseOrderId);
-    setDraftPendingRestore(null);
 
-    if (draft.hadUnkeptPhoto && !draft.galleryPhotoId) {
+    if (photos?.photo) {
+      setPhoto(photos.photo);
+      setWorkingPhoto(photos.workingPhoto);
+      setCropOpen(false);
+      // Gallery id already set — submit still reuses gallery_photo_id when present.
+    } else if (draft.hadUnkeptPhoto && !draft.galleryPhotoId) {
       toast.message("Your draft's photo wasn't kept — re-add it if you still need it.");
     }
 
+    setDraftPendingRestore(null);
+    setDraftPendingPhotos(null);
     toast.success("Draft restored.");
   }
 
   function discardSavedDraft() {
     clearReceivingDraft();
     setDraftPendingRestore(null);
+    setDraftPendingPhotos(null);
     toast.success("Draft discarded.");
   }
 
@@ -800,36 +865,48 @@ export function ReceivingForm({
     void pickGalleryPhoto(record);
   }, [galleryQuery.data, photo]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Debounced auto-save — survives refresh/accidental tab close. Direct photo
-  // uploads can't be serialized; gallery picks persist via galleryPhotoId.
+  // Debounced auto-save — survives refresh/accidental tab close. Photo bytes
+  // go to IndexedDB; gallery picks also keep galleryPhotoId for a cheap restore.
   useEffect(() => {
     if (!draftHydrated) return;
     if (draftPendingRestore) return;
 
-    const draft: ReceivingDraft = {
-      savedAt: new Date().toISOString(),
-      locationId,
-      supplierId,
-      supplierName,
-      purchaseOrderId,
-      referenceNo,
-      notes,
-      deliveryDate,
-      salesmanName,
-      paymentTerms,
-      rows,
-      galleryPhotoId,
-      hadUnkeptPhoto: Boolean(photo) && !galleryPhotoId,
-      photoRead,
-      expandedKey,
-    };
+    const timeout = window.setTimeout(() => {
+      void (async () => {
+        let photoKept = true;
+        if (photo) {
+          photoKept = await writeReceivingDraftPhotos(RECEIVING_DRAFT_KEY, photo, workingPhoto);
+        } else {
+          await clearReceivingDraftPhotos(RECEIVING_DRAFT_KEY);
+        }
 
-    if (!draftHasContent(draft)) {
-      clearReceivingDraft();
-      return;
-    }
+        const draft: ReceivingDraft = {
+          savedAt: new Date().toISOString(),
+          locationId,
+          supplierId,
+          supplierName,
+          purchaseOrderId,
+          referenceNo,
+          notes,
+          deliveryDate,
+          salesmanName,
+          paymentTerms,
+          rows,
+          galleryPhotoId,
+          hasLocalPhoto: Boolean(photo) && photoKept,
+          hadUnkeptPhoto: Boolean(photo) && !galleryPhotoId && !photoKept,
+          photoRead,
+          expandedKey,
+        };
 
-    const timeout = window.setTimeout(() => saveReceivingDraft(draft), 500);
+        if (!draftHasContent(draft) && !photo) {
+          clearReceivingDraft();
+          return;
+        }
+
+        saveReceivingDraft(draft);
+      })();
+    }, 500);
     return () => window.clearTimeout(timeout);
   }, [
     draftHydrated,
@@ -845,6 +922,7 @@ export function ReceivingForm({
     rows,
     galleryPhotoId,
     photo,
+    workingPhoto,
     photoRead,
     expandedKey,
     draftPendingRestore,
@@ -1164,9 +1242,13 @@ export function ReceivingForm({
               <p className="mt-0.5 text-caption text-ink-muted">
                 {draftPendingRestore.rows.length} item
                 {draftPendingRestore.rows.length === 1 ? "" : "s"}
-                {draftPendingRestore.hadUnkeptPhoto && !draftPendingRestore.galleryPhotoId
-                  ? " — photo wasn't kept"
-                  : ""}
+                {draftPendingPhotos?.photo || draftPendingRestore.hasLocalPhoto
+                  ? " — photo saved"
+                  : draftPendingRestore.hadUnkeptPhoto && !draftPendingRestore.galleryPhotoId
+                    ? " — photo wasn't kept"
+                    : draftPendingRestore.galleryPhotoId
+                      ? " — photo saved"
+                      : ""}
               </p>
             </div>
           </div>
@@ -1195,7 +1277,11 @@ export function ReceivingForm({
               </p>
               <p className="mt-0.5 text-caption text-ink-muted">
                 {heldReceipt.rows.length} item{heldReceipt.rows.length === 1 ? "" : "s"}
-                {heldReceipt.hadUnkeptPhoto ? " — photo wasn't kept" : ""}
+                {heldReceipt.hasLocalPhoto || heldReceipt.galleryPhotoId
+                  ? " — photo saved"
+                  : heldReceipt.hadUnkeptPhoto
+                    ? " — photo wasn't kept"
+                    : ""}
               </p>
             </div>
           </div>
@@ -1263,127 +1349,6 @@ export function ReceivingForm({
 
       <div className="rounded-md border border-border bg-surface p-4 sm:p-6">
         <div className="space-y-6">
-          <div className="space-y-4">
-            <div>
-              <h3 className="text-heading-sm font-semibold">Delivery details</h3>
-              <p className="mt-1 text-caption text-ink-muted">
-                Who it&rsquo;s from, where it landed, and any reference.
-              </p>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {linkedOrder ? (
-                <Field label="Supplier">
-                  <Input
-                    value={suppliers.find((s) => s.id === linkedOrder.supplierId)?.name ?? "—"}
-                    disabled
-                  />
-                </Field>
-              ) : (
-                <Field label="Supplier" hint="Pick one, or type a name for an ad-hoc delivery.">
-                  <Combobox
-                    value={supplierId}
-                    onChange={(value) => {
-                      setSupplierId(value);
-                      if (value) setSupplierName("");
-                    }}
-                    options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
-                    placeholder="Search suppliers…"
-                  />
-                </Field>
-              )}
-              {!linkedOrder ? (
-                <Field label="Or supplier name" required={false} hint="Only if not in the list above.">
-                  <Input
-                    value={supplierName}
-                    onChange={(event) => {
-                      setSupplierName(event.target.value);
-                      if (event.target.value) setSupplierId("");
-                    }}
-                    placeholder="Walk-in supplier"
-                  />
-                </Field>
-              ) : null}
-              <Field label="Received at" required>
-                <Combobox
-                  value={locationId}
-                  onChange={setLocationId}
-                  options={locations.map((l) => ({ value: l.id, label: l.name }))}
-                  placeholder="Search branches…"
-                />
-              </Field>
-              <Field
-                label="Link to purchase order"
-                required={false}
-                hint="Only orders still marked “ordered” show up here."
-              >
-                <div className="flex gap-2 w-full">
-                  <Combobox
-                    className="w-full"
-                    value={purchaseOrderId}
-                    onChange={onSelectPurchaseOrder}
-                    options={openPurchaseOrders.map((po) => ({
-                      value: po.id,
-                      label: po.referenceNo || `PO ${po.id.slice(0, 8)}`,
-                      sublabel: po.orderDate,
-                    }))}
-                    placeholder="Search open purchase orders…"
-                    emptyLabel="No purchase orders are in “ordered” status."
-                  />
-                  {purchaseOrderId ? (
-                    <IconButton
-                      icon={X}
-                      label="Unlink purchase order"
-                      onClick={() => {
-                        onSelectPurchaseOrder("");
-                        setSupplierId("");
-                        setReferenceNo("");
-                      }}
-                    />
-                  ) : null}
-                </div>
-              </Field>
-              <Field
-                label="Reference no."
-                hint="Delivery/invoice number, optional — separate from a linked PO's own reference."
-                required={false}
-              >
-                <Input value={referenceNo} onChange={(event) => setReferenceNo(event.target.value)} />
-              </Field>
-              <Field label="Delivery date" required={false} hint="As printed on the receipt.">
-                <Input
-                  type="date"
-                  value={deliveryDate}
-                  onChange={(event) => setDeliveryDate(event.target.value)}
-                />
-              </Field>
-              <Field label="Salesman" required={false}>
-                <Input
-                  value={salesmanName}
-                  onChange={(event) => setSalesmanName(event.target.value)}
-                  placeholder="Optional"
-                />
-              </Field>
-              <Field label="Terms" required={false}>
-                <Select
-                  value={paymentTerms}
-                  onChange={(event) => setPaymentTerms(event.target.value as "cod" | "installment")}
-                >
-                  <option value="cod">Cash on Delivery</option>
-                  <option value="installment">Installment</option>
-                </Select>
-              </Field>
-            </div>
-            <Field label="Notes" hint="Discrepancies, damage, anything worth flagging." required={false}>
-              <Textarea
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-                rows={2}
-              />
-            </Field>
-          </div>
-
-          <div className="h-px w-full bg-border" />
-
           <div className="space-y-4">
             <div>
               <h3 className="text-heading-sm font-semibold">Receipt photo</h3>
@@ -1609,6 +1574,127 @@ export function ReceivingForm({
               </p>
             )}
           </div>
+
+          <div className="h-px w-full bg-border" />
+
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-heading-sm font-semibold">Delivery details</h3>
+              <p className="mt-1 text-caption text-ink-muted">
+                Who it&rsquo;s from, where it landed, and any reference.
+              </p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {linkedOrder ? (
+                <Field label="Supplier">
+                  <Input
+                    value={suppliers.find((s) => s.id === linkedOrder.supplierId)?.name ?? "—"}
+                    disabled
+                  />
+                </Field>
+              ) : (
+                <Field label="Supplier" hint="Pick one, or type a name for an ad-hoc delivery.">
+                  <Combobox
+                    value={supplierId}
+                    onChange={(value) => {
+                      setSupplierId(value);
+                      if (value) setSupplierName("");
+                    }}
+                    options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
+                    placeholder="Search suppliers…"
+                  />
+                </Field>
+              )}
+              {!linkedOrder ? (
+                <Field label="Or supplier name" required={false} hint="Only if not in the list above.">
+                  <Input
+                    value={supplierName}
+                    onChange={(event) => {
+                      setSupplierName(event.target.value);
+                      if (event.target.value) setSupplierId("");
+                    }}
+                    placeholder="Walk-in supplier"
+                  />
+                </Field>
+              ) : null}
+              <Field label="Received at" required>
+                <Combobox
+                  value={locationId}
+                  onChange={setLocationId}
+                  options={locations.map((l) => ({ value: l.id, label: l.name }))}
+                  placeholder="Search branches…"
+                />
+              </Field>
+              <Field
+                label="Link to purchase order"
+                required={false}
+                hint="Orders still awaiting delivery — ordered or partially received."
+              >
+                <div className="flex gap-2 w-full">
+                  <Combobox
+                    className="w-full"
+                    value={purchaseOrderId}
+                    onChange={onSelectPurchaseOrder}
+                    options={openPurchaseOrders.map((po) => ({
+                      value: po.id,
+                      label: po.referenceNo || `PO ${po.id.slice(0, 8)}`,
+                      sublabel: po.orderDate,
+                    }))}
+                    placeholder="Search open purchase orders…"
+                    emptyLabel="No purchase orders are in “ordered” status."
+                  />
+                  {purchaseOrderId ? (
+                    <IconButton
+                      icon={X}
+                      label="Unlink purchase order"
+                      onClick={() => {
+                        onSelectPurchaseOrder("");
+                        setSupplierId("");
+                        setReferenceNo("");
+                      }}
+                    />
+                  ) : null}
+                </div>
+              </Field>
+              <Field
+                label="Reference no."
+                hint="Delivery/invoice number, optional — separate from a linked PO's own reference."
+                required={false}
+              >
+                <Input value={referenceNo} onChange={(event) => setReferenceNo(event.target.value)} />
+              </Field>
+              <Field label="Delivery date" required={false} hint="As printed on the receipt.">
+                <Input
+                  type="date"
+                  value={deliveryDate}
+                  onChange={(event) => setDeliveryDate(event.target.value)}
+                />
+              </Field>
+              <Field label="Salesman" required={false}>
+                <Input
+                  value={salesmanName}
+                  onChange={(event) => setSalesmanName(event.target.value)}
+                  placeholder="Optional"
+                />
+              </Field>
+              <Field label="Terms" required={false}>
+                <Select
+                  value={paymentTerms}
+                  onChange={(event) => setPaymentTerms(event.target.value as "cod" | "installment")}
+                >
+                  <option value="cod">Cash on Delivery</option>
+                  <option value="installment">Installment</option>
+                </Select>
+              </Field>
+            </div>
+            <Field label="Notes" hint="Discrepancies, damage, anything worth flagging." required={false}>
+              <Textarea
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+                rows={2}
+              />
+            </Field>
+          </div>
         </div>
       </div>
 
@@ -1622,16 +1708,33 @@ export function ReceivingForm({
                   <Th>Product</Th>
                   <Th numeric>Ordered</Th>
                   <Th numeric>Received so far</Th>
+                  <Th numeric>Remaining</Th>
+                  <Th>Status</Th>
                 </tr>
               </thead>
               <tbody>
-                {linkedOrder.items.map((item) => (
-                  <tr key={item.id}>
-                    <Td className="font-medium">{item.productName}</Td>
-                    <Td numeric>{formatQuantity(item.quantityOrdered)}</Td>
-                    <Td numeric>{formatQuantity(item.quantityReceived)}</Td>
-                  </tr>
-                ))}
+                {linkedOrder.items.map((item) => {
+                  const remaining = Math.max(0, item.quantityOrdered - item.quantityReceived);
+                  const isComplete = item.quantityReceived >= item.quantityOrdered;
+                  const isPartial = ! isComplete && item.quantityReceived > 0;
+                  return (
+                    <tr key={item.id}>
+                      <Td className="font-medium">{item.productName}</Td>
+                      <Td numeric>{formatQuantity(item.quantityOrdered)}</Td>
+                      <Td numeric>{formatQuantity(item.quantityReceived)}</Td>
+                      <Td numeric>{formatQuantity(remaining)}</Td>
+                      <Td>
+                        {isComplete ? (
+                          <Badge tone="success">Complete</Badge>
+                        ) : isPartial ? (
+                          <Badge tone="warning">Partial</Badge>
+                        ) : (
+                          <Badge tone="neutral">Not received</Badge>
+                        )}
+                      </Td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </Table>
           </Card>
@@ -1721,15 +1824,6 @@ export function ReceivingForm({
           )}
         </Card>
       </div>
-
-      {rows.some((row) => lineIsFlagged(row)) ? (
-        <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-4 py-3 text-caption text-warning-ink">
-          <TriangleAlert size={16} className="mt-0.5 shrink-0" />
-          Some items are new and not in your product list yet. You can still save this receipt.
-          Use &ldquo;Hide from shop&rdquo; on each new line if you want them off the floor until
-          their full details are finished.
-        </div>
-      ) : null}
 
       {error ? <ErrorNote>{error}</ErrorNote> : null}
 

@@ -7,7 +7,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { Check, ChevronDown, MapPin } from "lucide-react-native";
+import { Check, ChevronDown, Store } from "lucide-react-native";
 import { useLocationScope } from "@/lib/location-scope";
 import { useSync } from "@/sync/sync-provider";
 import { color, fontSize, radius, space } from "@/theme";
@@ -18,10 +18,9 @@ import { queryKeys } from "@/lib/query/keys";
  * Admin-enrolled tablets only. Device terminals stay locked to their
  * enrolled branch — no control rendered.
  *
- * "header" (default) is the small pill on StoreHeader's primary-color chrome
- * row — phone hides it there entirely (too crowded next to the sync chip),
- * tablet keeps it. "drawer" is a full-width light-background list row,
- * rendered instead inside AccountDrawer on phone.
+ * "header" (default) is the flat branch label on StoreHeader chrome — phone
+ * hides it there (too crowded), tablet keeps it. "drawer" is a full-width
+ * list row inside AccountDrawer on phone.
  */
 export function LocationSwitcher({ variant = "header" }: { variant?: "header" | "drawer" }) {
   const { canSwitch, locationId, locations, setLocationId, refresh } = useLocationScope();
@@ -30,13 +29,15 @@ export function LocationSwitcher({ variant = "header" }: { variant?: "header" | 
   const [open, setOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
 
-  // Nothing to switch between with one (or zero) active branch — the
-  // picker would just be a dead tap target showing the same name forever.
-  if (!canSwitch || locations.length <= 1) return null;
+  // Device terminals stay locked — no control. Admin tablets always show
+  // the active branch name, even with a single branch (still useful label;
+  // picker only opens when there is something to switch to).
+  if (!canSwitch) return null;
 
-  const selected = locations.find((row) => row.id === locationId) ?? null;
+  const selected =
+    locations.find((row) => row.id === locationId) ?? locations[0] ?? null;
   const title = selected?.name ?? "Choose branch";
-  const subtitle = selected?.address?.trim() || "Branch for stock and sales";
+  const canPick = locations.length > 1;
 
   async function pick(nextId: string) {
     if (nextId === locationId) {
@@ -60,15 +61,18 @@ export function LocationSwitcher({ variant = "header" }: { variant?: "header" | 
   const isDrawer = variant === "drawer";
   const iconColor = isDrawer ? color.primary : color.onPrimary;
   const titleColor = isDrawer ? color.ink : color.onPrimary;
-  const subtitleColor = isDrawer ? color.inkMuted : "rgba(255,255,255,0.75)";
 
   return (
     <>
       <Pressable
-        onPress={() => setOpen(true)}
-        disabled={switching}
+        onPress={() => {
+          if (canPick) setOpen(true);
+        }}
+        disabled={switching || !canPick}
         accessibilityRole="button"
-        accessibilityLabel={`Location ${title}. Change branch.`}
+        accessibilityLabel={
+          canPick ? `Location ${title}. Change branch.` : `Location ${title}.`
+        }
         style={({ pressed }) =>
           isDrawer
             ? {
@@ -78,24 +82,25 @@ export function LocationSwitcher({ variant = "header" }: { variant?: "header" | 
                 gap: space.md,
                 paddingHorizontal: space.md,
                 borderRadius: 14,
-                backgroundColor: pressed ? color.surfacePressed : "transparent",
+                backgroundColor: pressed && canPick ? color.surfacePressed : "transparent",
                 opacity: switching ? 0.7 : 1,
               }
             : {
-                maxWidth: 160,
+                alignSelf: "stretch",
+                minHeight: 40,
+                maxWidth: 180,
                 flexDirection: "row",
                 alignItems: "center",
                 gap: 6,
-                paddingHorizontal: space.sm,
-                paddingVertical: 6,
-                borderRadius: radius.sm,
-                backgroundColor: "rgba(255,255,255,0.15)",
-                opacity: pressed || switching ? 0.7 : 1,
+                paddingHorizontal: space.xs,
+                opacity: pressed && canPick ? 0.7 : switching ? 0.7 : 1,
               }
         }
       >
-        <MapPin size={isDrawer ? 20 : 14} color={iconColor} strokeWidth={isDrawer ? 2 : 2.25} />
-        <View style={{ flex: 1, minWidth: 0 }}>
+        <Store size={isDrawer ? 20 : 14} color={iconColor} strokeWidth={isDrawer ? 2 : 2.25} />
+        {/* Header: no flex:1 — that collapses width to 0 inside an
+            intrinsic-sized pill. Drawer keeps flex so the row fills. */}
+        <View style={isDrawer ? { flex: 1, minWidth: 0 } : { flexShrink: 1, minWidth: 0 }}>
           <Text
             numberOfLines={1}
             style={{
@@ -106,15 +111,12 @@ export function LocationSwitcher({ variant = "header" }: { variant?: "header" | 
           >
             {title}
           </Text>
-          <Text numberOfLines={1} style={{ color: subtitleColor, fontSize: isDrawer ? fontSize.caption : 10 }}>
-            {subtitle}
-          </Text>
         </View>
         {switching ? (
           <ActivityIndicator size="small" color={iconColor} />
-        ) : (
+        ) : canPick ? (
           <ChevronDown size={isDrawer ? 18 : 14} color={iconColor} strokeWidth={2.25} />
-        )}
+        ) : null}
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
@@ -168,7 +170,7 @@ export function LocationSwitcher({ variant = "header" }: { variant?: "header" | 
                       onPress={() => void pick(location.id)}
                       style={({ pressed }) => ({
                         flexDirection: "row",
-                        alignItems: "flex-start",
+                        alignItems: "center",
                         gap: space.sm,
                         paddingHorizontal: space.md,
                         paddingVertical: space.sm + 2,
@@ -181,7 +183,6 @@ export function LocationSwitcher({ variant = "header" }: { variant?: "header" | 
                     >
                       <View
                         style={{
-                          marginTop: 2,
                           width: 28,
                           height: 28,
                           borderRadius: 14,
@@ -190,7 +191,7 @@ export function LocationSwitcher({ variant = "header" }: { variant?: "header" | 
                           backgroundColor: active ? color.primarySoft : color.paper,
                         }}
                       >
-                        <MapPin
+                        <Store
                           size={14}
                           color={active ? color.primary : color.inkMuted}
                           strokeWidth={2.25}
@@ -205,15 +206,6 @@ export function LocationSwitcher({ variant = "header" }: { variant?: "header" | 
                           }}
                         >
                           {location.name}
-                        </Text>
-                        <Text
-                          style={{
-                            marginTop: 2,
-                            fontSize: fontSize.caption,
-                            color: color.inkMuted,
-                          }}
-                        >
-                          {location.address?.trim() || "Branch"}
                         </Text>
                       </View>
                       {active ? (

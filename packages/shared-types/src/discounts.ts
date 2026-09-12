@@ -85,6 +85,8 @@ export interface SaleDiscount {
   saleId: string;
   discountRuleId: string | null;
   complexDiscountRuleId: string | null;
+  /** Set when this discount is a loyalty reward redemption, not a plain rule pick. */
+  loyaltyRewardId?: string | null;
   /** Rule name snapshotted for receipts after a rename. */
   name?: string | null;
   idNumber: string | null;

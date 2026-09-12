@@ -75,8 +75,9 @@ export function syncLook(state: SyncState): SyncLook {
     ink,
     fill,
     icon,
-    text: busy ? message : failed ? (error ?? message) : `Last synced: ${ago}`,
-    shortText: busy ? message : failed ? "Sync failed" : ago,
+    text: busy ? message : failed ? (error ?? message) : `Synced: ${ago}`,
+    /** Value line for the flat header stat — ago / busy message / failed. */
+    shortText: busy ? message : failed ? "Failed" : ago,
     busy,
     failed,
     stale,

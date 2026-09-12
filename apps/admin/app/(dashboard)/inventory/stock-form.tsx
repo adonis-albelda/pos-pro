@@ -3,6 +3,7 @@
 import {
   useActionState,
   useEffect,
+  useId,
   useRef,
   useState,
   type ReactNode,
@@ -22,6 +23,7 @@ import {
   Select,
   SuccessNote,
 } from "@/components/ui";
+import { SheetFooter, useSheetChrome } from "@/components/overlay";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
 import { useInvalidateInventory } from "@/lib/query/inventory";
 import { useLocationFilter } from "@/components/location-filter-provider";
@@ -68,6 +70,8 @@ export function StockForm({
   defaultProductId?: string;
   onDone?: () => void;
 }) {
+  const formId = useId();
+  const inSheet = useSheetChrome() !== null;
   const [state, action, pending] = useActionState(moveStock, EMPTY_FORM_STATE);
   const invalidate = useInvalidateInventory();
   const { locationId } = useLocationFilter();
@@ -124,8 +128,28 @@ export function StockForm({
     setQuantity(String(Math.max(0, base + by)));
   }
 
+  const actions = (
+    <div className="flex justify-end gap-2">
+      {onDone ? (
+        <Button type="button" variant="secondary" icon={X} onClick={onDone}>
+          Cancel
+        </Button>
+      ) : null}
+      <Button
+        type="submit"
+        form={inSheet ? formId : undefined}
+        loading={pending}
+        icon={ClipboardCheck}
+        disabled={!productId}
+      >
+        {pending ? "Recording..." : "Record movement"}
+      </Button>
+    </div>
+  );
+
   return (
-    <form action={action} className="space-y-5">
+    <>
+    <form id={formId} action={action} className="space-y-5">
       <input type="hidden" name="product_id" value={productId} />
       <input type="hidden" name="mode" value={mode} />
       {locationId ? <input type="hidden" name="location_id" value={locationId} /> : null}
@@ -252,17 +276,10 @@ export function StockForm({
       {state.error ? <ErrorNote>{state.error}</ErrorNote> : null}
       {state.ok ? <SuccessNote>Movement recorded. Stock updated.</SuccessNote> : null}
 
-      <div className="flex flex-col gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
-        <Button
-          type="submit"
-          loading={pending}
-          icon={ClipboardCheck}
-          disabled={!productId}
-        >
-          {pending ? "Recording..." : "Record movement"}
-        </Button>
-      </div>
+      {!inSheet ? <div className="border-t border-border pt-4">{actions}</div> : null}
     </form>
+    {inSheet ? <SheetFooter>{actions}</SheetFooter> : null}
+    </>
   );
 }
 

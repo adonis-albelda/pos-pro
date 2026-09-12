@@ -1,13 +1,14 @@
 # DOUBLE A — POS & Inventory
 
-A Turborepo monorepo holding two apps over one Supabase project:
+A Turborepo monorepo holding two apps over one Laravel API (the "Tally API",
+`pos-inventory-laravel`, a separate repo):
 
 - **`apps/admin`** — Next.js dashboard. Always online. Products, pricing, inventory, cashiers,
   sales history.
 - **`apps/mobile`** — Expo POS. Works fully offline against local SQLite, synced manually with
   one button.
 
-Supabase is the single source of truth. The mobile database is a disposable working copy.
+The Laravel API is the single source of truth. The mobile database is a disposable working copy.
 
 ## Getting started
 
@@ -15,9 +16,10 @@ Supabase is the single source of truth. The mobile database is a disposable work
 pnpm install
 ```
 
-Then set up Supabase — see [supabase/README.md](supabase/README.md) for the migrations, the
-first admin, and enrolling a terminal. Copy [.env.example](.env.example) into
-`apps/admin/.env.local` and `apps/mobile/.env.local`.
+Set up and run `pos-inventory-laravel` separately — see that repo's own README/CLAUDE.md for
+migrations, seeding the first admin, and enrolling a terminal. Copy [.env.example](.env.example)
+into `apps/admin/.env.local` and `apps/mobile/.env.local`, pointing `NEXT_PUBLIC_TALLY_API_URL` /
+`EXPO_PUBLIC_API_URL` at that API.
 
 ```bash
 pnpm dev                  # both apps
@@ -34,12 +36,13 @@ pnpm build                # admin only; mobile ships through EAS
 apps/admin                Next.js dashboard
 apps/mobile               Expo POS
 packages/shared-types     Domain types, money maths, validation, sync copy
-packages/supabase         Client factories, generated DB types, shared queries
+packages/api-client       Typed HTTP client for the Tally API + JSON:API mappers
 packages/ui               Design tokens from design-system.md
 packages/config-*         Shared ESLint and TypeScript config
-supabase/migrations       Schema, inventory triggers, RLS
-supabase/seeds            First admin, terminal, cashier PINs, demo catalog
 ```
+
+Schema, migrations, and business-logic side effects (stock movements, observers,
+authorization) live in `pos-inventory-laravel`, not here.
 
 ## How sync works
 
@@ -54,18 +57,17 @@ subscriptions on mobile.
 
 Two details worth knowing before changing that code:
 
-- The push **upserts and ignores duplicates**. The stock trigger fires on `sale_items` insert,
-  so a retried push using a plain insert would decrement stock twice.
+- The push is idempotent — a retried push must not double-apply a sale's stock movement.
 - The pull's high water mark is a **server** timestamp, kept separately from the
   "last synced" time shown to the cashier. A device clock that runs fast would otherwise skip
   rows.
 
 ## Inventory
 
-`products.stock_quantity` is only ever written by the `inventory_movements` trigger, so it
-always equals the sum of a product's movements — `stock_reconciliation` will show any drift.
-Sales log a negative movement server-side; restocks and adjustments go through
-`adjust_stock()` from the dashboard.
+`products.stock_quantity` is only ever written through `inventory_movements`, so it always
+equals the sum of a product's movements. Sales log a negative movement server-side; restocks
+and adjustments go through the same movement path from the dashboard (CLAUDE.md rule 8 — this
+is a Laravel Observer, not a DB trigger).
 
 Stock is allowed to go negative. That is what an oversell looks like when two offline
 terminals both sell the last unit, and it is flagged in the dashboard for manual correction
@@ -79,18 +81,18 @@ estimated stock = last synced stock - pending local sales
 
 ## Auth
 
-- **Dashboard** — Supabase Auth email and password. The account must map to a `public.users`
-  row with role `admin`.
-- **Terminal** — enrolled once during setup with any Auth login whose `public.users` role is
-  `admin` or `device`, since every POS write policy accepts both. A shop with one admin login
-  needs no extra account; a dedicated `device` account is for keeping terminals off the admin
-  password. That session persists on device so later syncs need no login. Sales are attributed
-  by the device's own id, not by the enrolling account.
-- **Cashier** — picks their name and enters a PIN; live `verify_pin()` checks it. Admins may
+- **Dashboard** — email and password against the Tally API. The account must have an
+  `admin` role.
+- **Terminal** — enrolled once during setup with an account whose role is `admin` or `device`,
+  since every POS write accepts both. A shop with one admin login needs no extra account; a
+  dedicated `device` account is for keeping terminals off the admin password. That session
+  persists on device so later syncs need no login. Sales are attributed by the device's own id,
+  not by the enrolling account.
+- **Cashier** — picks their name and enters a PIN; a live server call checks it. Admins may
   also hold a PIN, set on the same Users form as their password, so an owner can ring up a sale
   without a second account.
   Needs a connection to unlock. After unlock, selling uses local SQLite. The PIN is a
-  shift lock, not a data boundary: the terminal session is what RLS authenticates.
+  shift lock, not a data boundary: the terminal's own session is what authorizes POS writes.
 
 ## Receipt printing
 

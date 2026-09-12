@@ -1,6 +1,7 @@
 import type { SaleWithItems, SalesPageStats } from "@double-a/shared-types";
 import { ApiError, type ApiClient, type JsonApiPage, type JsonApiResource } from "../http";
 import { type SaleAttrs, toSaleWithItems } from "../mappers";
+import { appendMultipartFile, type MultipartFile } from "../multipart";
 
 /**
  * The POS's own sales still only ever arrive through the mobile sync push
@@ -94,7 +95,7 @@ export interface CreateSaleItemInput {
 
 export interface CreateSaleInput {
   items: CreateSaleItemInput[];
-  paymentMethod: "cash" | "gcash" | "card";
+  paymentMethod: "cash" | "ewallet" | "card";
   customerId?: string;
   /** Defaults to true for cash, false otherwise — same rule the POS follows (CLAUDE.md §12). */
   isPaid?: boolean;
@@ -185,6 +186,23 @@ export async function replaceSaleItem(
   return toSaleWithItems(data);
 }
 
+/**
+ * Refunds one line on a completed sale. Original row stays for history;
+ * stock restores; total_amount drops that line. Admin-only.
+ */
+export async function refundSaleItem(
+  client: ApiClient,
+  saleId: string,
+  saleItemId: string,
+): Promise<SaleWithItems> {
+  const { data } = await client.post<{ data: JsonApiResource<SaleAttrs> }>(
+    `/sales/${saleId}/items/${saleItemId}/refund`,
+    {},
+    { idempotent: true },
+  );
+  return toSaleWithItems(data);
+}
+
 /** Completed-sale aggregates for the sales list header — same filters as listSalesPage. */
 export async function getSalesStats(
   client: ApiClient,
@@ -217,4 +235,23 @@ export async function getSalesStats(
     marginPercent: Number(data.margin_percent),
     count: data.count,
   };
+}
+
+/**
+ * Best-effort, fired after that sale itself has already synced (its id
+ * must exist server-side first) — never awaited by the sale flow itself.
+ * Replaces any previous proof on the same sale.
+ */
+export async function attachSalePaymentProof(
+  client: ApiClient,
+  saleId: string,
+  photo: MultipartFile,
+): Promise<SaleWithItems> {
+  const formData = new FormData();
+  await appendMultipartFile(formData, "photo", photo);
+  const { data } = await client.postMultipart<{ data: JsonApiResource<SaleAttrs> }>(
+    `/sales/${saleId}/payment-proof`,
+    formData,
+  );
+  return toSaleWithItems(data);
 }

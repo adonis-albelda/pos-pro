@@ -1,8 +1,13 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { LocationType } from "@double-a/shared-types";
-import { listLocations, listStockTransfers } from "@double-a/api-client/queries";
+import {
+  getStockTransfer,
+  listLocations,
+  listStockTransfers,
+  type StockTransfersFilter,
+} from "@double-a/api-client/queries";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 import { queryKeys } from "./keys";
 
@@ -13,12 +18,19 @@ export function useLocations(options: { type?: LocationType; includeInactive?: b
   });
 }
 
-export function useStockTransfers(options: { status?: string } = {}) {
+export function useStockTransfers(options: StockTransfersFilter = {}) {
   return useQuery({
-    queryKey: queryKeys.locations.transfers(options),
-    queryFn: () => listStockTransfers(getBrowserApiClient(), {
-      status: options.status as "pending" | "in_transit" | "received" | "cancelled" | undefined,
-    }),
+    queryKey: queryKeys.locations.transfers(options as Record<string, unknown>),
+    placeholderData: keepPreviousData,
+    queryFn: () => listStockTransfers(getBrowserApiClient(), options),
+  });
+}
+
+export function useStockTransfer(id: string) {
+  return useQuery({
+    queryKey: [...queryKeys.locations.all, "transfer", id] as const,
+    queryFn: () => getStockTransfer(getBrowserApiClient(), id),
+    enabled: Boolean(id),
   });
 }
 
