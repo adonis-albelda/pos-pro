@@ -236,6 +236,18 @@ export async function registerDemoAccount(client: ApiClient, input: RegisterInpu
   );
 }
 
+/**
+ * Resend for the "New to POSPro?" flow specifically — the prospect has no
+ * bearer token yet at this point (register() never signs them in), so the
+ * generic authenticated resend endpoint is out of reach. Looked up by email
+ * server-side, not a token. Same generic-message contract as
+ * forgotPassword() except when a resend cooldown is still active, which
+ * throws (ApiError, field-level message) so the UI can show it.
+ */
+export async function resendRegistrationVerification(client: ApiClient, email: string): Promise<void> {
+  await client.post<{ message: string }>("/auth/register/resend-verification", { email });
+}
+
 export interface ResetPasswordInput {
   token: string;
   email: string;

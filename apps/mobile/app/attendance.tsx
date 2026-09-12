@@ -91,6 +91,11 @@ export default function AttendanceScreen() {
   const [enforcementEnabled, setEnforcementEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  // Own flag, not the clock-in/break/clock-out `busy` — Refresh sat
+  // disabled the instant any of those started (all four share one flag)
+  // and, worse, had no spinner of its own, so tapping it while idle gave no
+  // feedback either — looked broken either way.
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -153,10 +158,14 @@ export default function AttendanceScreen() {
   }, []);
 
   async function refresh() {
+    setRefreshing(true);
+    setError(null);
     try {
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not reach the server.");
+    } finally {
+      setRefreshing(false);
     }
   }
 
@@ -387,7 +396,13 @@ export default function AttendanceScreen() {
                   </Text>
                 ) : null}
 
-                <Button label="Refresh" variant="secondary" onPress={refresh} disabled={busy} />
+                <Button
+                  label={refreshing ? "Refreshing..." : "Refresh"}
+                  variant="secondary"
+                  busy={refreshing}
+                  onPress={() => void refresh()}
+                  disabled={busy}
+                />
               </>
             )}
           </View>

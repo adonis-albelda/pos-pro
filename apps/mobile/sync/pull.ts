@@ -13,8 +13,8 @@ import { replaceFeatureFlags } from "@/db/feature-flags";
 import { replaceLoyaltyRewards, saveLocalLoyaltyProgram } from "@/db/loyalty";
 import { getSyncMeta, recordSyncSuccess } from "@/db/meta";
 import { replaceScheduleAssignments, replaceWorkSchedules } from "@/db/schedules";
-import { countLocalProducts, replaceProducts, upsertProducts } from "@/db/products";
-import { replaceVariants, upsertVariants } from "@/db/product-variants";
+import { countLocalProducts, deleteProducts, replaceProducts, upsertProducts } from "@/db/products";
+import { deleteVariants, replaceVariants, upsertVariants } from "@/db/product-variants";
 import { saveLocalReceiptLayout } from "@/db/receipt-layout";
 import { saveLocalStoreSettings } from "@/db/store";
 import { replaceUsers, upsertUsers } from "@/db/users";
@@ -87,7 +87,15 @@ export async function pull(
     const span = 100 - FETCH_WEIGHT - 5;
     options.onProgress?.(FETCH_WEIGHT + Math.round((done / total) * span));
   });
+  // No-op on the replace path (table already dropped and rebuilt) — only
+  // load-bearing for a plain incremental Sync/Pull.
+  await deleteProducts(result.deletedProductIds);
   await writeVariants(result.variants);
+  // No-op on the replace path (the table was just dropped and rebuilt) —
+  // only load-bearing for a plain incremental Sync/Pull, where a variant
+  // that was soft-deleted server-side never appears in `result.variants` at
+  // all and would otherwise linger here forever.
+  await deleteVariants(result.deletedVariantIds);
 
   // PIN hashes stay on the server — unlock calls verify-pin live. Local
   // users rows are for sale attribution after the shift starts, not

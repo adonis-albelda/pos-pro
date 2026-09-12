@@ -210,6 +210,22 @@ export async function upsertVariants(variants: ProductVariant[]): Promise<void> 
   });
 }
 
+/**
+ * Removes variants soft-deleted server-side since the last pull (a merged
+ * duplicate, a real delete) — the incremental pull's own `variants` list
+ * can only ever say "here's what changed," never "this id is gone now," so
+ * the pull step calls this separately with `deletedVariantIds`. Without it,
+ * a deleted variant just sits in local SQLite forever and the picker keeps
+ * offering it alongside the one that's actually still there.
+ */
+export async function deleteVariants(variantIds: string[]): Promise<void> {
+  if (variantIds.length === 0) return;
+
+  const db = getDb();
+  const placeholders = variantIds.map(() => "?").join(", ");
+  await db.runAsync(`DELETE FROM product_variants WHERE id IN (${placeholders})`, ...variantIds);
+}
+
 /** "Replace everything" path — mirrors replaceProducts. */
 export async function replaceVariants(variants: ProductVariant[]): Promise<void> {
   const db = getDb();

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BUSINESS_TYPES, ROLES, type User } from "@double-a/shared-types";
@@ -8,6 +8,7 @@ import {
   forgotPassword,
   login,
   registerDemoAccount,
+  resendRegistrationVerification,
   updateCompanyBusinessType,
 } from "@double-a/api-client/queries";
 import { getSyncMeta, markFirstPullSkipped } from "@/db/meta";
@@ -63,6 +64,9 @@ const LOGO = require("../assets/logo.webp");
  */
 const VERIFY_POLL_INTERVAL_MS = 7000;
 
+/** Must match the API's AUTH_VERIFICATION_EXPIRE (config/auth.php). */
+const VERIFICATION_LINK_EXPIRE_MINUTES = 10;
+
 type SetupFlowStep = "first-pull" | "business-type" | "done";
 type Step = "sign-in" | "feature-onboarding" | SetupFlowStep;
 
@@ -110,6 +114,14 @@ export default function SetupScreen() {
   const [registerSent, setRegisterSent] = useState(false);
   const [registerError, setRegisterError] = useState<string | null>(null);
   const [businessTypeBusy, setBusinessTypeBusy] = useState(false);
+  // When the current verification link was sent — link dies
+  // VERIFICATION_LINK_EXPIRE_MINUTES after this (must match the API's
+  // AUTH_VERIFICATION_EXPIRE, config/auth.php).
+  const [verificationSentAt, setVerificationSentAt] = useState<number | null>(null);
+  const [verificationExpired, setVerificationExpired] = useState(false);
+  const [resendBusy, setResendBusy] = useState(false);
+  const [resendError, setResendError] = useState<string | null>(null);
+  const [resendConfirmation, setResendConfirmation] = useState<string | null>(null);
 
   useEffect(() => {
     async function prime() {
@@ -298,11 +310,22 @@ export default function SetupScreen() {
         businessName: registerBusinessName.trim(),
       });
       setRegisterSent(true);
+      setVerificationSentAt(Date.now());
+      setVerificationExpired(false);
     } catch (cause) {
+      // A 422 here always means the field-level message (e.g. "An account
+      // already exists for this email") — cause.message is only ever
+      // Laravel's generic "The given data was invalid." wrapper text, never
+      // the actual reason, so read the field error out of .errors instead.
+      const fieldError =
+        cause instanceof ApiError && cause.errors
+          ? Object.values(cause.errors)[0]?.[0]
+          : undefined;
       setRegisterError(
-        cause instanceof Error
-          ? cause.message
-          : "Could not reach the server — check the connection and try again",
+        fieldError ??
+          (cause instanceof Error
+            ? cause.message
+            : "Could not reach the server — check the connection and try again"),
       );
     } finally {
       setRegisterBusy(false);
@@ -316,6 +339,58 @@ export default function SetupScreen() {
     setRegisterEmail("");
     setRegisterPassword("");
     setRegisterBusinessName("");
+    setVerificationSentAt(null);
+    setVerificationExpired(false);
+    setResendError(null);
+    setResendConfirmation(null);
+  }
+
+  // While waiting on verification, "Back to sign in" drops this screen's
+  // only copy of the poll loop — the account itself is untouched server-side
+  // (still there, still unverified), but the owner would need to register
+  // again from scratch to get back to a "check your email" state on this
+  // device. Worth a confirm; filling out the form pre-submit has no such
+  // cost, so only gate it once a link has actually gone out.
+  function requestCloseRegistration() {
+    if (!registerSent) {
+      closeRegistration();
+      return;
+    }
+
+    Alert.alert(
+      "Go back to sign in?",
+      "This stops waiting for your verification email. You'll need to register again to get a new link.",
+      [
+        { text: "Stay here", style: "cancel" },
+        { text: "Go back", style: "destructive", onPress: closeRegistration },
+      ],
+    );
+  }
+
+  async function resendVerification() {
+    const emailToResend = registerEmail.trim();
+    if (!emailToResend) return;
+
+    setResendBusy(true);
+    setResendError(null);
+    setResendConfirmation(null);
+    try {
+      await resendRegistrationVerification(createBareClient(), emailToResend);
+      setVerificationSentAt(Date.now());
+      setVerificationExpired(false);
+      setResendConfirmation(`Sent a new link to ${emailToResend}`);
+    } catch (cause) {
+      const fieldError =
+        cause instanceof ApiError && cause.errors ? Object.values(cause.errors)[0]?.[0] : undefined;
+      setResendError(
+        fieldError ??
+          (cause instanceof Error
+            ? cause.message
+            : "Could not reach the server — check the connection and try again"),
+      );
+    } finally {
+      setResendBusy(false);
+    }
   }
 
   // Stay on the "check your email" screen and keep retrying login in the
@@ -354,6 +429,23 @@ export default function SetupScreen() {
       clearInterval(timer);
     };
   }, [registerSent, registerEmail, registerPassword]);
+
+  // Flips once the current link is past AUTH_VERIFICATION_EXPIRE — the login
+  // poll above keeps running regardless (harmless either way, it's just
+  // trying a login), this only swaps the "waiting" UI for a resend prompt.
+  useEffect(() => {
+    if (!registerSent || null === verificationSentAt) return;
+
+    const elapsed = Date.now() - verificationSentAt;
+    const remaining = VERIFICATION_LINK_EXPIRE_MINUTES * 60_000 - elapsed;
+    if (remaining <= 0) {
+      setVerificationExpired(true);
+      return;
+    }
+
+    const timer = setTimeout(() => setVerificationExpired(true), remaining);
+    return () => clearTimeout(timer);
+  }, [registerSent, verificationSentAt]);
 
   async function firstPull() {
     setBusy(true);
@@ -479,7 +571,12 @@ export default function SetupScreen() {
           // into is always the thing sitting right below the header, and
           // pad the bottom by the keyboard's own height so there's still
           // room to scroll the last field/button above it.
-          justifyContent: keyboardHeight > 0 ? "flex-start" : "center",
+          // Verification-pending body (spinner + resend area) and the
+          // download-catalog step both grow/shrink as their own state
+          // changes — true-centering either means the logo/title above them
+          // visibly drift instead of sitting still at the top.
+          justifyContent:
+            keyboardHeight > 0 || registerSent || "first-pull" === step ? "flex-start" : "center",
           paddingHorizontal: layout.gutter,
           // Must stay equal top/bottom when no keyboard — that symmetry is
           // what makes the sole flow child (the card) land at the screen's
@@ -511,7 +608,8 @@ export default function SetupScreen() {
             // could push the logo up past the ScrollView's own top padding
             // and under the status bar. Perfect optical centering loses to
             // "never draws outside the safe area."
-            marginTop: Math.max(-headerHeight / 2, -space.xl),
+            marginTop:
+              registerSent || "first-pull" === step ? 0 : Math.max(-headerHeight / 2, -space.xl),
           }}
         >
           <View
@@ -667,19 +765,41 @@ export default function SetupScreen() {
                         Sent to {registerEmail.trim()}
                       </Text>
                     </View>
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: space.sm,
-                      }}
-                    >
-                      <ActivityIndicator color={color.primary} />
-                      <Text style={{ fontSize: fontSize.body, color: color.inkMuted }}>
-                        Waiting for verification — stay on this screen
-                      </Text>
-                    </View>
+                    {verificationExpired ? (
+                      <>
+                        <ErrorNote>
+                          That link has expired. Send yourself a new one to keep going.
+                        </ErrorNote>
+                        {resendConfirmation ? (
+                          <Text style={{ fontSize: fontSize.caption, color: color.success, textAlign: "center" }}>
+                            {resendConfirmation}
+                          </Text>
+                        ) : null}
+                        {resendError ? <ErrorNote>{resendError}</ErrorNote> : null}
+                        <Button
+                          label={resendBusy ? "Sending..." : "Resend verification email"}
+                          large
+                          busy={resendBusy}
+                          onPress={() => void resendVerification()}
+                          style={{ borderRadius: 14 }}
+                          icon={Send}
+                        />
+                      </>
+                    ) : (
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: space.sm,
+                        }}
+                      >
+                        <ActivityIndicator color={color.primary} />
+                        <Text style={{ fontSize: fontSize.body, color: color.inkMuted }}>
+                          Waiting for verification — stay on this screen
+                        </Text>
+                      </View>
+                    )}
                     {error ? <ErrorNote>{error}</ErrorNote> : null}
                   </>
                 ) : (
@@ -719,10 +839,9 @@ export default function SetupScreen() {
                       style={{ borderRadius: 14 }}
                       icon={UserPlus}
                     />
-                    <InfoLine text="Creates a free demo shop — full features, sample data, expires after a couple weeks." />
                   </>
                 )}
-                <TextLink label="Back to sign in" onPress={closeRegistration} disabled={registerBusy} />
+                <TextLink label="Back to sign in" onPress={requestCloseRegistration} disabled={registerBusy} />
               </>
             ) : null}
 

@@ -327,6 +327,22 @@ export async function upsertProducts(
 }
 
 /**
+ * Removes products soft-deleted server-side since the last pull — same
+ * reasoning as db/product-variants.ts's deleteVariants: an incremental
+ * pull's own `products` list can only say "here's what changed," never
+ * "this id is gone," so a deleted (or replaced-with-a-new-row) product
+ * would otherwise sit in local SQLite forever, listed right alongside
+ * whatever's actually current.
+ */
+export async function deleteProducts(productIds: string[]): Promise<void> {
+  if (productIds.length === 0) return;
+
+  const db = getDb();
+  const placeholders = productIds.map(() => "?").join(", ");
+  await db.runAsync(`DELETE FROM products WHERE id IN (${placeholders})`, ...productIds);
+}
+
+/**
  * Wholesale replace, not an upsert — every local row is dropped and rebuilt
  * from this pull. Only reached from the Sync tab's explicit "Replace
  * everything" action; the regular Sync/Refresh path stays on the upsert

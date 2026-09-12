@@ -318,8 +318,19 @@ export interface PullSyncResult {
   /** Branch/warehouse the stock_quantity figures belong to. */
   locationId: string | null;
   products: Product[];
+  /** Product ids soft-deleted since `since` — same reasoning as deletedVariantIds, empty on a first/full pull. */
+  deletedProductIds: string[];
   /** One row per sellable unit — a single-variant product still has exactly one (its default). */
   variants: ProductVariant[];
+  /**
+   * Variant ids soft-deleted since `since` — empty on a first/full pull
+   * (nothing local to reconcile yet). An incremental `updated_at >` filter
+   * on `variants` above can't surface a deletion (the row just stops
+   * appearing), so the device has to be told explicitly which local rows to
+   * drop, or a duplicate/merged variant lingers forever and the picker
+   * keeps offering it alongside the real one.
+   */
+  deletedVariantIds: string[];
   /** Whole-replace every pull, same as categories/customers (CLAUDE.md §1) — a handful of rows. */
   addonGroups: AddonGroup[];
   users: User[];
@@ -347,7 +358,9 @@ interface PullSyncResponse {
   server_time: string;
   location_id?: string | null;
   products: { type: string; id: string; attributes: ProductAttrs }[];
+  deleted_product_ids?: string[];
   variants?: { type: string; id: string; attributes: ProductVariantAttrs }[];
+  deleted_variant_ids?: string[];
   addon_groups?: { type: string; id: string; attributes: AddonGroupAttrs }[];
   users: { type: string; id: string; attributes: UserAttrs }[];
   categories: { type: string; id: string; attributes: CategoryAttrs }[];
@@ -445,7 +458,9 @@ export async function pullSync(
     serverTime: data.server_time,
     locationId: data.location_id ?? null,
     products: mapResourceList(data.products, "products", toProduct),
+    deletedProductIds: Array.isArray(data.deleted_product_ids) ? data.deleted_product_ids : [],
     variants: mapResourceList(data.variants, "variants", toProductVariant),
+    deletedVariantIds: Array.isArray(data.deleted_variant_ids) ? data.deleted_variant_ids : [],
     addonGroups: mapResourceList(data.addon_groups, "addon_groups", toAddonGroup),
     users: mapResourceList(data.users, "users", toUser),
     categories: mapResourceList(data.categories, "categories", toCategory),

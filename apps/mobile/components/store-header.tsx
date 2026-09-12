@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Animated, Image, Pressable, Text, View } from "react-native";
 import { usePathname, useRouter } from "expo-router";
-import { Menu, ShoppingCart } from "lucide-react-native";
-import { formatMoney, storeInitial } from "@double-a/shared-types";
+import { CheckCircle2, Menu, ShoppingCart } from "lucide-react-native";
+import { formatMoney, storeInitial, type SyncPhase } from "@double-a/shared-types";
 import { AccountDrawer } from "@/components/account-drawer";
 import { LocationSwitcher } from "@/components/location-switcher";
 import { summariseToday, type LocalDaySummary } from "@/db/sales";
@@ -47,6 +47,25 @@ export function StoreHeader() {
 
   useMinuteTick();
   const look = syncLook(state);
+
+  // A one-shot confirmation the instant Sync/Pull/Replace (all three land on
+  // phase "done" — sync.tsx has no way to tell them apart) finishes, not a
+  // persistent "you're synced" indicator — the header's own sync chip
+  // already covers that. Fires only on the idle/pulling/pushing → done
+  // transition, not on every render while phase happens to already be
+  // "done" (it stays "done" until the next action or a reload).
+  const [banner, setBanner] = useState<string | null>(null);
+  const previousPhase = useRef<SyncPhase>(state.phase);
+  useEffect(() => {
+    const justFinished = state.phase === "done" && previousPhase.current !== "done";
+    previousPhase.current = state.phase;
+    if (justFinished) setBanner(state.message || "Synced");
+  }, [state.phase, state.message]);
+  useEffect(() => {
+    if (!banner) return;
+    const timer = setTimeout(() => setBanner(null), 3000);
+    return () => clearTimeout(timer);
+  }, [banner]);
 
   const logoSize = compact ? 32 : 36;
 
@@ -268,6 +287,26 @@ export function StoreHeader() {
             drawer instead. Tablet keeps it here. */}
         {compact ? null : <LocationSwitcher />}
       </View>
+
+      {banner ? (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: space.xs,
+            paddingVertical: space.xs,
+            backgroundColor: color.successSoft,
+            borderBottomWidth: 1,
+            borderBottomColor: color.successInk + "33",
+          }}
+        >
+          <CheckCircle2 size={14} color={color.successInk} strokeWidth={2.5} />
+          <Text style={{ fontSize: fontSize.caption, fontWeight: "700", color: color.successInk }}>
+            {banner}
+          </Text>
+        </View>
+      ) : null}
 
       <AccountDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
     </>

@@ -577,6 +577,21 @@ const V28_REPULL_FOR_VARIANT_PHOTO = `
 UPDATE sync_meta SET high_water_mark = NULL WHERE id = 1;
 `;
 
+/**
+ * v29: a product/variant deleted (merged, duplicate cleanup, discontinued)
+ * before PullController started reporting deleted_product_ids/
+ * deleted_variant_ids has no way to be caught by that mechanism from here on
+ * out — it only reports deletions *since* the pull's own `since` cursor, and
+ * this device's ghost predates any cursor that could name it. Clearing
+ * high_water_mark again forces one more unfiltered pull; PullController
+ * responds to a request with no `since` by returning every currently
+ * trashed id (not just recent ones) specifically so this one-time backfill
+ * works, same idea as v28's photo backfill.
+ */
+const V29_REPULL_FOR_STALE_DELETES = `
+UPDATE sync_meta SET high_water_mark = NULL WHERE id = 1;
+`;
+
 /** Ordered, append-only. Never edit a step that has shipped. */
 export const MIGRATIONS: Migration[] = [
   { version: 1, sql: V1_INITIAL },
@@ -607,6 +622,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 26, sql: V26_EWALLET_PROVIDER },
   { version: 27, sql: V27_VARIANT_PHOTO },
   { version: 28, sql: V28_REPULL_FOR_VARIANT_PHOTO },
+  { version: 29, sql: V29_REPULL_FOR_STALE_DELETES },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.reduce(

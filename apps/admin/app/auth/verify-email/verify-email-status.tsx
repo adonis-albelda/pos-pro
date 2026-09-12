@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, Loader2, Smartphone, TriangleAlert } from "lucide-react";
+import Link from "next/link";
+import { CheckCircle2, LogIn, Loader2, Smartphone, TriangleAlert } from "lucide-react";
 import { ApiError } from "@double-a/api-client";
 import { verifyEmail, type VerifyEmailResult } from "@double-a/api-client/queries";
 import { getBrowserBareClient } from "@/lib/api/browser-client";
@@ -30,6 +31,13 @@ function VerifiedPanel({ result }: { result: VerifyEmailResult }) {
           The app was waiting on this — it signs you in on its own now that your email is verified.
         </p>
       </div>
+      <Link
+        href="/login"
+        className="mt-1 inline-flex w-full items-center justify-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-body font-semibold text-on-primary transition-colors hover:bg-primary-dark"
+      >
+        <LogIn size={16} strokeWidth={2} />
+        Sign in now
+      </Link>
     </div>
   );
 }
