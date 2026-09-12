@@ -141,6 +141,7 @@ import { BottomSheet, useKeyboardHeight } from "@/components/bottom-sheet";
 import { StoreHeader } from "@/components/store-header";
 import { AiSearchModal } from "@/components/ai-search-modal";
 import { BarcodeScanModal } from "@/components/barcode-scan-modal";
+import { FloatingBarcodeScanner } from "@/components/floating-barcode-scanner";
 import { CartQtyButton } from "@/components/cart-qty-button";
 import { CategoryDialog, type CategoryFilter } from "@/components/category-tabs";
 import { LoadingState } from "@/components/loading-state";
@@ -399,6 +400,7 @@ export default function SellScreen() {
   const [voiceSearchOpen, setVoiceSearchOpen] = useState(false);
   const [voiceVocabulary, setVoiceVocabulary] = useState<string[]>([]);
   const [barcodeScanOpen, setBarcodeScanOpen] = useState(false);
+  const [floatingScannerOpen, setFloatingScannerOpen] = useState(false);
   const [aiSearchOpen, setAiSearchOpen] = useState(false);
   const [viewingProduct, setViewingProduct] = useState<ProductWithEstimatedStock | null>(null);
   // Set only for a product with >1 variant and/or attached add-on groups —
@@ -412,6 +414,20 @@ export default function SellScreen() {
   // exactly these (in this order) instead of the normal query/category list.
   const [aiResultIds, setAiResultIds] = useState<string[] | null>(null);
   const [aiResultLabel, setAiResultLabel] = useState("");
+
+  // Remount + stagger enter when the *set* of tiles changes for the cashier
+  // (search / category / AI / product-vs-variant). Not dataVersion — live stock
+  // ticks would replay the whole grid every few seconds. Applied only after
+  // the matching fetch lands (`loadingPage` false) so mid-fetch remounts
+  // don't slide the previous page in again.
+  const pendingListEnterKey = `${query}\0${category ?? ""}\0${aiResultIds?.join(",") ?? ""}\0${productViewMode}`;
+  const [listEnterKey, setListEnterKey] = useState(pendingListEnterKey);
+  // First ~screenful only. Higher indices are load-more / off-screen.
+  const LIST_ENTER_MAX = Math.min(columns * 4, 12);
+
+  useEffect(() => {
+    if (!loadingPage) setListEnterKey(pendingListEnterKey);
+  }, [loadingPage, pendingListEnterKey]);
 
   /** Product names, fetched fresh each time the mic opens — biases recognition toward this shop's actual catalogue. */
   function openVoiceSearch() {
@@ -1085,6 +1101,21 @@ export default function SellScreen() {
     setSearch("");
   }
 
+  /**
+   * FloatingBarcodeScanner's continuous scan-to-cart — same exact-match
+   * lookup and add as the hardware-scanner path above (submitSearch), just
+   * triggered by the camera instead of a keyboard-wedge Enter. Existing
+   * line bumps by 1 (addToCart's own repeat-tap behavior); a first match
+   * adds at quantity 1. Returns whether it matched so the scanner knows
+   * which sound to play.
+   */
+  async function handleFloatingScan(code: string): Promise<boolean> {
+    const scanned = await findLocalProductByBarcode(code);
+    if (!scanned) return false;
+    await addToCart(scanned);
+    return true;
+  }
+
   function confirmClearCart() {
     Alert.alert("Empty the cart?", "Every item on this sale is removed.", [
       { text: "Keep it", style: "cancel" },
@@ -1379,8 +1410,9 @@ export default function SellScreen() {
           {isEnabled("barcode_scan") ? (
             <Pressable
               onPress={() => setBarcodeScanOpen(true)}
+              onLongPress={() => setFloatingScannerOpen(true)}
               accessibilityRole="button"
-              accessibilityLabel="Scan a barcode or QR code"
+              accessibilityLabel="Scan a barcode or QR code. Hold for continuous scanning"
               hitSlop={4}
               style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}
             >
@@ -1461,10 +1493,17 @@ export default function SellScreen() {
             <FlatList
               data={paddedTiles}
               style={{ flex: 1 }}
-              keyExtractor={(item, index) => item?.display.id ?? `filler-${index}`}
+              keyExtractor={(item, index) =>
+                item
+                  ? item.variant
+                    ? `${item.display.id}:${item.variant.id}`
+                    : item.display.id
+                  : `filler-${index}`
+              }
               // numColumns cannot change on a mounted list, so the column count is
-              // part of the key and a rotation remounts the grid.
-              key={`grid-${columns}`}
+              // part of the key and a rotation remounts the grid. listEnterKey
+              // remounts on search/category so FadeInUp entering can fire once.
+              key={`grid-${columns}-${listEnterKey}`}
               numColumns={columns}
               // RN forbids columnWrapperStyle when numColumns is 1 (row layout).
               columnWrapperStyle={columns > 1 ? { gap: layout.gap } : undefined}
@@ -1494,7 +1533,7 @@ export default function SellScreen() {
                   instruction="Check the spelling, or scan the barcode on the item itself."
                 />
               }
-              renderItem={({ item }) =>
+              renderItem={({ item, index }) =>
                 item ? (
                   <ProductTile
                     product={item.display}
@@ -1507,6 +1546,7 @@ export default function SellScreen() {
                     minHeight={layout.tileMinHeight}
                     padding={space.md}
                     justCreated={justCreatedProductIds.has(item.display.id)}
+                    enterIndex={index < LIST_ENTER_MAX ? index : null}
                     onPress={(sourceRect) => void handleTilePress(item, sourceRect)}
                     onRemove={() => changeQuantity(item.realProduct.id, -1, item.variant?.id)}
                     onHoldRemove={() =>
@@ -2013,6 +2053,12 @@ export default function SellScreen() {
         open={barcodeScanOpen}
         onClose={() => setBarcodeScanOpen(false)}
         onResult={applyManualSearch}
+      />
+
+      <FloatingBarcodeScanner
+        open={floatingScannerOpen}
+        onClose={() => setFloatingScannerOpen(false)}
+        onScan={handleFloatingScan}
       />
 
       <AiSearchModal
@@ -3789,10 +3835,11 @@ function ConfirmSaleSheet({
   const methodIcon = selectedMethod?.icon ?? CreditCard;
   const isDelivery = fulfillment === "delivery";
 
-  // Fixed 98% of the screen either way — big enough that the confirm step's
-  // whole breakdown (amount due, cash entry, shelf/discount/change) fits with
-  // no scrolling, capped by usableHeight so the soft keyboard never pushes
-  // the confirm button off-screen.
+  // Fixed 98% of the screen either way, capped by usableHeight so the soft
+  // keyboard never pushes the confirm button off-screen. On tablet/landscape
+  // this is big enough for both columns side by side with no scrolling; on
+  // an upright phone the same content stacked can still run taller than
+  // this, so ConfirmSaleBody scrolls it there instead of clipping.
   const usableHeight = height - keyboardHeight - insets.top - insets.bottom;
   const dialogWidth = width * 0.98;
   const dialogHeight = Math.min(height * 0.98, usableHeight * 0.99);
@@ -3861,22 +3908,30 @@ function ConfirmSaleSheet({
             <IconButton icon={X} label="Close" onPress={onClose} disabled={busy} />
           </View>
 
-          <View style={{ flex: 1, flexDirection: compact ? "column" : "row", gap: space.lg }}>
+          <ConfirmSaleBody compact={compact}>
             {/* Left column — how this sale is being paid and fulfilled, and
                 who it's for. Stays put across confirm → success; only the
-                right column's content changes once the sale lands. */}
-            <View style={{ flex: 1, gap: space.md }}>
+                right column's content changes once the sale lands. On a
+                phone this stacks above the right column and shrinks (see
+                ConfirmDetailBlock's compact prop) — the two full-size
+                columns plus a full cash keypad below never fit an upright
+                phone's height without either shrinking or scrolling; this
+                does both. */}
+            <View style={{ flex: compact ? undefined : 1, gap: compact ? space.sm : space.md }}>
               <ConfirmDetailBlock
+                compact={compact}
                 icon={methodIcon}
                 label="Payment method"
                 value={ewalletProvider ? `${methodLabel} · ${ewalletProvider}` : methodLabel}
               />
               <ConfirmDetailBlock
+                compact={compact}
                 icon={isDelivery ? Truck : Package}
                 label="Fulfillment"
                 value={isDelivery ? "Delivery" : "Pickup"}
               />
               <ConfirmDetailBlock
+                compact={compact}
                 icon={UserRound}
                 label="Customer"
                 value={customer.name?.trim() || "Walk-in"}
@@ -3886,7 +3941,7 @@ function ConfirmSaleSheet({
 
             {/* Right column — the confirm step's own math and cash entry,
                 replaced by the success state once the sale is saved. */}
-            <View style={{ flex: 1, justifyContent: "space-between" }}>
+            <View style={{ flex: compact ? undefined : 1, justifyContent: "space-between", gap: compact ? space.md : 0 }}>
               {succeeded ? (
                 <>
                   <View
@@ -4119,10 +4174,34 @@ function ConfirmSaleSheet({
                 </>
               )}
             </View>
-          </View>
+          </ConfirmSaleBody>
         </View>
       </View>
     </Modal>
+  );
+}
+
+/**
+ * Tablet/landscape: fixed-height two-column row, exactly as before — both
+ * columns fit without scrolling. Phone: the same two columns stacked can
+ * still overflow an upright screen's height (3 detail blocks + the full
+ * cash keypad), so this scrolls instead of clipping/squeezing them into a
+ * fixed height.
+ */
+function ConfirmSaleBody({ compact, children }: { compact: boolean; children: ReactNode }) {
+  if (!compact) {
+    return <View style={{ flex: 1, flexDirection: "row", gap: space.lg }}>{children}</View>;
+  }
+
+  return (
+    <ScrollView
+      style={{ flex: 1 }}
+      contentContainerStyle={{ gap: space.lg }}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+    >
+      {children}
+    </ScrollView>
   );
 }
 
@@ -4220,37 +4299,44 @@ function SummaryStat({
 
 /** One row of the confirm sheet's left column — payment method, fulfillment, or customer. */
 function ConfirmDetailBlock({
+  compact = false,
   icon: Icon,
   label,
   value,
   sub,
 }: {
+  /** Phone confirm-sale layout — smaller well/icon/text so three of these plus the full cash keypad below can fit an upright screen without dominating it. */
+  compact?: boolean;
   icon: LucideIcon;
   label: string;
   value: string;
   sub?: string;
 }) {
+  const wellSize = compact ? 32 : 40;
   return (
     <View
       style={{
         flexDirection: "row",
         alignItems: "center",
         gap: space.sm,
-        padding: space.md,
+        padding: compact ? space.sm : space.md,
         borderRadius: radius.md,
         backgroundColor: color.paper,
         borderWidth: 1,
         borderColor: color.border,
       }}
     >
-      <View style={[styles.iconWell, { width: 40, height: 40 }]}>
-        <Icon size={20} color={color.primary} strokeWidth={2} />
+      <View style={[styles.iconWell, { width: wellSize, height: wellSize }]}>
+        <Icon size={compact ? 16 : 20} color={color.primary} strokeWidth={2} />
       </View>
       <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
         <Text style={{ fontSize: fontSize.caption, fontWeight: "600", color: color.inkMuted }}>
           {label}
         </Text>
-        <Text numberOfLines={1} style={{ fontSize: fontSize.headingSm, fontWeight: "700", color: color.ink }}>
+        <Text
+          numberOfLines={1}
+          style={{ fontSize: compact ? fontSize.body : fontSize.headingSm, fontWeight: "700", color: color.ink }}
+        >
           {value}
         </Text>
         {sub ? (

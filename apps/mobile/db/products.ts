@@ -365,15 +365,18 @@ export async function replaceProducts(
 /**
  * The one live-broadcast write — patches just this product's stock, unlike
  * every other write in this file which is a bulk upsert/replace from a pull.
- * A no-op if the product hasn't been pulled to this device yet (WHERE finds
- * nothing to update).
+ * Returns whether it actually found a row — a false here means this device
+ * never had this product locally at all (missed sync, or predates it), and
+ * the caller (sync/realtime.ts) falls back to a full single-product refetch
+ * instead of the tick silently doing nothing forever.
  */
-export async function updateProductStock(productId: string, quantity: number): Promise<void> {
-  await getDb().runAsync(
+export async function updateProductStock(productId: string, quantity: number): Promise<boolean> {
+  const result = await getDb().runAsync(
     "UPDATE products SET stock_quantity = ? WHERE id = ?",
     quantity,
     productId,
   );
+  return result.changes > 0;
 }
 
 /**

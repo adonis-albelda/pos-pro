@@ -1,6 +1,6 @@
 import { useId, useRef, useState } from "react";
 import { ImageBackground, Pressable, StyleSheet, Text, View } from "react-native";
-import Animated, { FadeInDown } from "react-native-reanimated";
+import Animated, { FadeInDown, FadeInUp } from "react-native-reanimated";
 import { Image } from "expo-image";
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
 import { Minus, Package, Tag, Trash2, Truck, X } from "lucide-react-native";
@@ -24,6 +24,12 @@ export function ProductTile({
   onHoldView,
   /** Flagged by sync/sync-provider.tsx's justCreatedProductIds — a tile for a product that just arrived over realtime (as opposed to one loaded normally on mount/scroll) slides/fades in instead of just appearing. */
   justCreated = false,
+  /**
+   * Sell grid stagger index for the first screenful after a list reveal
+   * (load / search / category). Omit / null = no enter (scroll recycle,
+   * load-more rows). justCreated wins when both set.
+   */
+  enterIndex,
 }: {
   product: ProductWithEstimatedStock;
   inCart: number;
@@ -38,6 +44,7 @@ export function ProductTile({
   /** Holding a tile not yet in the cart opens the full name/description/supplier detail sheet. */
   onHoldView: () => void;
   justCreated?: boolean;
+  enterIndex?: number | null;
 }) {
   // Per product, not one shop-wide number: a box of screws and a length of GI
   // pipe run out at very different counts.
@@ -349,12 +356,30 @@ export function ProductTile({
     </Pressable>
   );
 
-  if (!justCreated) return tile;
+  // entering fires once on this Animated.View's mount. FlatList recycle /
+  // scroll must not wrap, or every reused row replays the slide.
+  if (justCreated) {
+    return (
+      <Animated.View entering={FadeInDown.springify().damping(16)} style={{ flex: 1 }}>
+        {tile}
+      </Animated.View>
+    );
+  }
 
-  // Only a genuinely new tile animates in — entering fires once, on this
-  // Animated.View's own mount, so a normal tile scrolling into view (or a
-  // FlatList recycling a row) never replays it.
-  return <Animated.View entering={FadeInDown.springify().damping(16)} style={{ flex: 1 }}>{tile}</Animated.View>;
+  if (enterIndex != null) {
+    // Cap stagger so a full first page still lands in under ~0.5s.
+    const delay = Math.min(enterIndex, 11) * 35;
+    return (
+      <Animated.View
+        entering={FadeInUp.delay(delay).springify().damping(18)}
+        style={{ flex: 1 }}
+      >
+        {tile}
+      </Animated.View>
+    );
+  }
+
+  return tile;
 }
 
 /**

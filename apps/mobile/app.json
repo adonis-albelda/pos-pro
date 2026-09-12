@@ -67,7 +67,8 @@
           "photosPermission": "Used to pick an existing photo of a delivery receipt or payment proof."
         }
       ],
-      "expo-image"
+      "expo-image",
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true

@@ -333,11 +333,21 @@ export async function connectRealtime(
   const stockChannel: Channel = echo.private(`location.${locationId}.stock`);
   stockChannel.listen(".stock.updated", (payload: StockUpdatedPayload) => {
     if (__DEV__) console.warn("[realtime] stock.updated", payload);
-    void serialized(() => updateProductStock(payload.product_id, payload.quantity)).then(onStockTick);
+    void serialized(() => updateProductStock(payload.product_id, payload.quantity)).then((found) => {
+      // false means this device never had the product locally at all — a
+      // plain UPDATE can't fix that, only a real fetch can. Same self-heal
+      // as .product.created/.variant.created below, just reached from a
+      // stock tick instead of a creation signal.
+      if (found) onStockTick();
+      else void refetchAndUpsertProduct(payload.product_id, locationId, onStockTick);
+    });
   });
   stockChannel.listen(".variant.stock.updated", (payload: VariantStockUpdatedPayload) => {
     if (__DEV__) console.warn("[realtime] variant.stock.updated", payload);
-    void serialized(() => updateVariantStock(payload.variant_id, payload.quantity)).then(onStockTick);
+    void serialized(() => updateVariantStock(payload.variant_id, payload.quantity)).then((found) => {
+      if (found) onStockTick();
+      else void refetchAndUpsertProduct(payload.product_id, locationId, onStockTick);
+    });
   });
   stockChannel.error((error: unknown) => {
     // Almost always a 403/422 from /broadcasting/auth — wrong location_id

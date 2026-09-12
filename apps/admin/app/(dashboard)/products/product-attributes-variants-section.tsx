@@ -525,16 +525,22 @@ function VariantStockAdjustForm({
   productId,
   variantId,
   variantLabel,
-  suppliers,
   onDone,
 }: {
   productId: string;
   variantId: string;
   variantLabel: string;
-  suppliers: VariantSupplierLink[];
   onDone: () => void;
 }) {
   const locationsQuery = useLocations({ type: "branch" });
+  // Every company supplier, not just ones already linked to this variant —
+  // a restock shouldn't be blocked on a separate trip to link one first
+  // (the /inventory page's own restock flow doesn't require a supplier at
+  // all). Was variant.suppliers before, which left this dropdown empty —
+  // and "in" mode unsubmittable — for any variant with no supplier linked
+  // yet, even with suppliers on file company-wide.
+  const suppliersQuery = useSuppliers();
+  const suppliers = suppliersQuery.data ?? [];
   const adjustStock = useAdjustProductStock(productId);
   const [mode, setMode] = useState<(typeof STOCK_ADJUST_MODES)[number]["key"]>("in");
   const [locationId, setLocationId] = useState(locationsQuery.data?.[0]?.id ?? "");
@@ -650,9 +656,9 @@ function VariantStockAdjustForm({
             }}
           >
             <option value="">Choose supplier</option>
-            {suppliers.map((link) => (
-              <option key={link.supplierId} value={link.supplierId}>
-                {link.supplierName ?? "Unknown supplier"}
+            {suppliers.map((supplier) => (
+              <option key={supplier.id} value={supplier.id}>
+                {supplier.name}
               </option>
             ))}
           </Select>
@@ -2014,7 +2020,6 @@ export function ProductAttributesAndVariantsSection({
             productId={product.id}
             variantId={viewingVariant.id}
             variantLabel={variantLabel(viewingVariant)}
-            suppliers={viewingVariant.suppliers}
             onDone={() => setViewing(null)}
           />
         ) : null}

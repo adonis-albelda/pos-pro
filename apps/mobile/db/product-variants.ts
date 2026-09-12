@@ -239,15 +239,17 @@ export async function replaceVariants(variants: ProductVariant[]): Promise<void>
 
 /**
  * The one live-broadcast write — patches just this variant's stock, mirroring
- * updateProductStock. A no-op if the variant hasn't been pulled to this
- * device yet.
+ * updateProductStock. Returns whether it actually found a row — false means
+ * this device never had this variant locally, and the caller
+ * (sync/realtime.ts) falls back to a full single-product refetch.
  */
-export async function updateVariantStock(variantId: string, quantity: number): Promise<void> {
-  await getDb().runAsync(
+export async function updateVariantStock(variantId: string, quantity: number): Promise<boolean> {
+  const result = await getDb().runAsync(
     "UPDATE product_variants SET stock_quantity = ? WHERE id = ?",
     quantity,
     variantId,
   );
+  return result.changes > 0;
 }
 
 /**
