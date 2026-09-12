@@ -117,9 +117,11 @@ function SalesPanelHeader({
 function SalesTableSection({
   sales,
   users,
+  terminals,
 }: {
   sales: SaleWithItems[];
   users: User[];
+  terminals: User[];
 }) {
   const searchParams = useSearchParams();
   const { q, page } = parseListQuery({
@@ -137,6 +139,14 @@ function SalesTableSection({
     [users],
   );
 
+  // sale.deviceId is the enrolled terminal's own user id (EnrollDeviceController
+  // creates it as a role=terminal User, device_name → users.name) — a
+  // separate map since `users` above deliberately excludes terminal accounts.
+  const terminalNameById = useMemo(
+    () => new Map(terminals.map((terminal) => [terminal.id, terminal.name])),
+    [terminals],
+  );
+
   const filtered = useMemo(
     () =>
       sales.filter((sale) =>
@@ -144,6 +154,7 @@ function SalesTableSection({
           [
             sale.userId ? cashierNameById.get(sale.userId) : null,
             sale.customerName,
+            sale.deviceId ? terminalNameById.get(sale.deviceId) : null,
             sale.deviceId,
             sale.paymentMethod,
             sale.status,
@@ -152,7 +163,7 @@ function SalesTableSection({
           q,
         ),
       ),
-    [sales, cashierNameById, q],
+    [sales, cashierNameById, terminalNameById, q],
   );
 
   const { pageItems, page: safePage, pageCount, total, pageSize } = useMemo(
@@ -232,7 +243,9 @@ function SalesTableSection({
                     ) : null}
                   </Td>
                   <Td>{(sale.userId && cashierNameById.get(sale.userId)) ?? "—"}</Td>
-                  <Td className="num text-ink-muted">{sale.deviceId ?? "—"}</Td>
+                  <Td className="text-ink-muted">
+                    {(sale.deviceId && terminalNameById.get(sale.deviceId)) ?? sale.deviceId ?? "—"}
+                  </Td>
                   <Td>
                     {sale.paymentMethod ? (
                       <span className="inline-flex flex-col gap-0.5">
@@ -306,12 +319,14 @@ export function SalesPanel({
   sales,
   stats,
   users,
+  terminals,
   fromDay,
   toDay,
 }: {
   sales: SaleWithItems[];
   stats: SalesPageStats;
   users: User[];
+  terminals: User[];
   fromDay: string | null;
   toDay: string | null;
 }) {
@@ -347,7 +362,7 @@ export function SalesPanel({
 
       <Card>
         <SalesPanelHeader users={users} devices={devices} fromDay={fromDay} toDay={toDay} />
-        <SalesTableSection sales={sales} users={users} />
+        <SalesTableSection sales={sales} users={users} terminals={terminals} />
       </Card>
     </div>
   );

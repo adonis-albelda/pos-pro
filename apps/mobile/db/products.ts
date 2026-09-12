@@ -132,6 +132,14 @@ const BY_BARCODE_SQL = `${SELECT_SQL}
   WHERE p.is_active = 1 AND (p.barcode = ? OR p.sku = ?)
   LIMIT 1`;
 
+const BY_PRODUCT_ID_SQL = `${SELECT_SQL} WHERE p.id = ? AND p.is_active = 1`;
+
+/** A non-default variant's own code — never on the products row at all. */
+const VARIANT_BY_BARCODE_SQL = `
+  SELECT id, product_id FROM product_variants
+   WHERE is_active = 1 AND (barcode = ? OR sku = ?)
+   LIMIT 1`;
+
 /** First paint and each scroll batch on the sell grid. */
 export const PRODUCT_PAGE_SIZE = 50;
 
@@ -223,14 +231,33 @@ export async function listLocalProductsByIds(
  * Exact barcode or SKU match, for a scanner (or a QR printed from the SKU).
  * Equality only — a partial match would put the wrong product in the cart.
  */
-export async function findLocalProductByBarcode(
-  code: string,
-): Promise<ProductWithEstimatedStock | null> {
+export interface ProductBarcodeMatch {
+  product: ProductWithEstimatedStock;
+  /** Set only when the code matched a non-default variant's own barcode/sku — the product row itself and its default variant never carried this code. Null means the product-level (or default-variant-mirrored) code matched instead. */
+  variantId: string | null;
+}
+
+export async function findLocalProductByBarcode(code: string): Promise<ProductBarcodeMatch | null> {
   const needle = code.trim();
   if (!needle) return null;
 
   const row = await getDb().getFirstAsync<ProductRow>(BY_BARCODE_SQL, needle, needle);
-  return row ? toProductWithEstimate(row) : null;
+  if (row) return { product: toProductWithEstimate(row), variantId: null };
+
+  // A real attribute-combo variant (Red/L of the same t-shirt) can carry
+  // its own barcode/sku the product row never sees — CLAUDE.md's variant
+  // model, same reason each combination gets its own supplier cost.
+  const variantRow = await getDb().getFirstAsync<{ id: string; product_id: string }>(
+    VARIANT_BY_BARCODE_SQL,
+    needle,
+    needle,
+  );
+  if (!variantRow) return null;
+
+  const productRow = await getDb().getFirstAsync<ProductRow>(BY_PRODUCT_ID_SQL, variantRow.product_id);
+  if (!productRow) return null;
+
+  return { product: toProductWithEstimate(productRow), variantId: variantRow.id };
 }
 
 /**

@@ -96,8 +96,10 @@ import {
   listLocalProductsByIds,
   listLocalProductsPage,
   PRODUCT_PAGE_SIZE,
+  type ProductBarcodeMatch,
 } from "@/db/products";
 import {
+  getLocalVariant,
   getVariantPendingQuantity,
   listLocalVariantsForProduct,
   listLocalVariantsForProducts,
@@ -1086,6 +1088,26 @@ export default function SellScreen() {
   }
 
   /**
+   * A scanned code can match at the product level (a plain product, or one
+   * whose default variant mirrors its barcode/sku) or at a specific
+   * non-default variant's own barcode/sku (findLocalProductByBarcode's
+   * variantId) — the latter must add straight to that exact variant's
+   * line, not open the picker or land on the default one. Shared by the
+   * hardware keyboard-wedge path (submitSearch) and the camera scanner
+   * (handleFloatingScan).
+   */
+  async function addScannedMatchToCart(match: ProductBarcodeMatch): Promise<void> {
+    if (match.variantId) {
+      const variant = await getLocalVariant(match.variantId);
+      if (variant) {
+        await commitVariantSelection(match.product, variant, []);
+        return;
+      }
+    }
+    await addToCart(match.product);
+  }
+
+  /**
    * A hardware barcode scanner is a keyboard: it types the code and presses
    * enter. An exact match goes straight into the cart and the field clears,
    * ready for the next scan. Anything else stays put as an ordinary search.
@@ -1097,7 +1119,7 @@ export default function SellScreen() {
     const scanned = await findLocalProductByBarcode(code);
     if (!scanned) return;
 
-    await addToCart(scanned);
+    await addScannedMatchToCart(scanned);
     setSearch("");
   }
 
@@ -1105,14 +1127,13 @@ export default function SellScreen() {
    * FloatingBarcodeScanner's continuous scan-to-cart — same exact-match
    * lookup and add as the hardware-scanner path above (submitSearch), just
    * triggered by the camera instead of a keyboard-wedge Enter. Existing
-   * line bumps by 1 (addToCart's own repeat-tap behavior); a first match
-   * adds at quantity 1. Returns whether it matched so the scanner knows
-   * which sound to play.
+   * line bumps by 1; a first match adds at quantity 1. Returns whether it
+   * matched so the scanner knows which sound to play.
    */
   async function handleFloatingScan(code: string): Promise<boolean> {
     const scanned = await findLocalProductByBarcode(code);
     if (!scanned) return false;
-    await addToCart(scanned);
+    await addScannedMatchToCart(scanned);
     return true;
   }
 
@@ -1502,7 +1523,7 @@ export default function SellScreen() {
               }
               // numColumns cannot change on a mounted list, so the column count is
               // part of the key and a rotation remounts the grid. listEnterKey
-              // remounts on search/category so FadeInUp entering can fire once.
+              // remounts on search/category so SlideInUp entering can fire once.
               key={`grid-${columns}-${listEnterKey}`}
               numColumns={columns}
               // RN forbids columnWrapperStyle when numColumns is 1 (row layout).

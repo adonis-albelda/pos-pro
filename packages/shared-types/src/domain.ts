@@ -671,6 +671,19 @@ export interface VariantAttributeValue {
  * estimate as `Product.stockQuantity` (CLAUDE.md §2), just scoped to this
  * variant instead of summed across every variant of the product.
  */
+/** One supplier this variant is sourced from, at its own SKU/price — see ProductVariantSupplier (Laravel), VariantSupplierLinks::toArray. */
+export interface VariantSupplierLink {
+  id: string;
+  supplierId: string;
+  supplierName: string | null;
+  supplierSku: string | null;
+  /** "SUP-{supplierName}-{supplierSku}" — composed server-side, always unambiguous since each link owns exactly one supplier. */
+  supplierSkuDisplay: string | null;
+  supplierPrice: number | null;
+  isDefault: boolean;
+  lastOrderedAt: string | null;
+}
+
 export interface ProductVariant {
   id: string;
   productId: string;
@@ -685,6 +698,8 @@ export interface ProductVariant {
   isActive: boolean;
   isBundle: boolean;
   attributeValues: VariantAttributeValue[];
+  /** Every supplier this variant is sourced from, each at its own SKU/price — a t-shirt's Red/L might come from a different supplier than its Blue/S. */
+  suppliers: VariantSupplierLink[];
   updatedAt: string;
 }
 

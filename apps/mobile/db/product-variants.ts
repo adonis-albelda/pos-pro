@@ -1,4 +1,4 @@
-import type { ProductVariant, VariantAttributeValue } from "@double-a/shared-types";
+import type { ProductVariant, VariantAttributeValue, VariantSupplierLink } from "@double-a/shared-types";
 import { getDb } from "./index";
 
 interface ProductVariantRow {
@@ -14,16 +14,27 @@ interface ProductVariantRow {
   is_active: number;
   is_bundle: number;
   attribute_values: string;
+  suppliers: string | null;
   updated_at: string | null;
 }
 
 const VARIANT_COLUMNS = `id, product_id, sku, barcode, photo_url, price, cost_price, stock_quantity,
-       is_default, is_active, is_bundle, attribute_values, updated_at`;
+       is_default, is_active, is_bundle, attribute_values, suppliers, updated_at`;
 
 function parseAttributeValues(json: string): VariantAttributeValue[] {
   try {
     const parsed: unknown = JSON.parse(json);
     return Array.isArray(parsed) ? (parsed as VariantAttributeValue[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseSuppliers(json: string | null): VariantSupplierLink[] {
+  if (!json) return [];
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return Array.isArray(parsed) ? (parsed as VariantSupplierLink[]) : [];
   } catch {
     return [];
   }
@@ -43,6 +54,7 @@ function toProductVariant(row: ProductVariantRow): ProductVariant {
     isActive: row.is_active === 1,
     isBundle: row.is_bundle === 1,
     attributeValues: parseAttributeValues(row.attribute_values),
+    suppliers: parseSuppliers(row.suppliers),
     updatedAt: row.updated_at ?? "",
   };
 }
@@ -167,8 +179,8 @@ async function insertOrReplaceVariant(
 ): Promise<void> {
   await db.runAsync(
     `INSERT INTO product_variants
-       (id, product_id, sku, barcode, photo_url, price, cost_price, stock_quantity, is_default, is_active, is_bundle, attribute_values, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       (id, product_id, sku, barcode, photo_url, price, cost_price, stock_quantity, is_default, is_active, is_bundle, attribute_values, suppliers, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (id) DO UPDATE SET
        product_id = excluded.product_id,
        sku = excluded.sku,
@@ -181,6 +193,7 @@ async function insertOrReplaceVariant(
        is_active = excluded.is_active,
        is_bundle = excluded.is_bundle,
        attribute_values = excluded.attribute_values,
+       suppliers = excluded.suppliers,
        updated_at = excluded.updated_at`,
     variant.id,
     variant.productId,
@@ -194,6 +207,7 @@ async function insertOrReplaceVariant(
     variant.isActive ? 1 : 0,
     variant.isBundle ? 1 : 0,
     JSON.stringify(variant.attributeValues),
+    JSON.stringify(variant.suppliers),
     variant.updatedAt,
   );
 }
@@ -263,7 +277,7 @@ export async function updateVariantCatalogFields(variant: ProductVariant): Promi
   await getDb().runAsync(
     `UPDATE product_variants SET
        product_id = ?, sku = ?, barcode = ?, photo_url = ?, price = ?, cost_price = ?,
-       is_default = ?, is_active = ?, is_bundle = ?, attribute_values = ?, updated_at = ?
+       is_default = ?, is_active = ?, is_bundle = ?, attribute_values = ?, suppliers = ?, updated_at = ?
      WHERE id = ?`,
     variant.productId,
     variant.sku,
@@ -275,6 +289,7 @@ export async function updateVariantCatalogFields(variant: ProductVariant): Promi
     variant.isActive ? 1 : 0,
     variant.isBundle ? 1 : 0,
     JSON.stringify(variant.attributeValues),
+    JSON.stringify(variant.suppliers),
     variant.updatedAt,
     variant.id,
   );

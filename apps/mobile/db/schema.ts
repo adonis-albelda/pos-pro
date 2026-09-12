@@ -592,6 +592,20 @@ const V29_REPULL_FOR_STALE_DELETES = `
 UPDATE sync_meta SET high_water_mark = NULL WHERE id = 1;
 `;
 
+const V30_VARIANT_SUPPLIERS = `
+ALTER TABLE product_variants ADD COLUMN suppliers TEXT;
+`;
+
+/**
+ * v31: v30 only adds the column — every variant already on-device keeps it
+ * null until its own next incremental update, same reasoning as v28 for
+ * photo_url. Forces one more unfiltered pull so supplier SKU/price already
+ * on file server-side shows up without waiting on an unrelated edit.
+ */
+const V31_REPULL_FOR_VARIANT_SUPPLIERS = `
+UPDATE sync_meta SET high_water_mark = NULL WHERE id = 1;
+`;
+
 /** Ordered, append-only. Never edit a step that has shipped. */
 export const MIGRATIONS: Migration[] = [
   { version: 1, sql: V1_INITIAL },
@@ -623,6 +637,8 @@ export const MIGRATIONS: Migration[] = [
   { version: 27, sql: V27_VARIANT_PHOTO },
   { version: 28, sql: V28_REPULL_FOR_VARIANT_PHOTO },
   { version: 29, sql: V29_REPULL_FOR_STALE_DELETES },
+  { version: 30, sql: V30_VARIANT_SUPPLIERS },
+  { version: 31, sql: V31_REPULL_FOR_VARIANT_SUPPLIERS },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.reduce(

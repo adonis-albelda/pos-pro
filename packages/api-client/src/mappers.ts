@@ -36,6 +36,7 @@ import type {
   User,
   UserRole,
   VariantAttributeValue,
+  VariantSupplierLink,
   AiPlanId,
 } from "@double-a/shared-types";
 import type { JsonApiResource } from "./http";
@@ -145,6 +146,17 @@ export function toProduct(resource: JsonApiResource<ProductAttrs>): Product {
   };
 }
 
+interface VariantSupplierLinkAttrs {
+  id: string;
+  supplier_id: string;
+  supplier_name: string | null;
+  supplier_sku: string | null;
+  supplier_sku_display: string | null;
+  supplier_price: number | null;
+  is_default: boolean;
+  last_ordered_at: string | null;
+}
+
 export interface ProductVariantAttrs {
   product_id: string;
   sku: string | null;
@@ -161,6 +173,7 @@ export interface ProductVariantAttrs {
     company_attribute_value_id: string;
     value: string | null;
   }[];
+  suppliers?: VariantSupplierLinkAttrs[];
   updated_at: string | null;
 }
 
@@ -183,6 +196,18 @@ export function toProductVariant(resource: JsonApiResource<ProductVariantAttrs>)
         companyAttributeId: value.company_attribute_id,
         companyAttributeValueId: value.company_attribute_value_id,
         value: value.value,
+      }),
+    ),
+    suppliers: (a.suppliers ?? []).map(
+      (link): VariantSupplierLink => ({
+        id: link.id,
+        supplierId: link.supplier_id,
+        supplierName: link.supplier_name,
+        supplierSku: link.supplier_sku,
+        supplierSkuDisplay: link.supplier_sku_display ?? link.supplier_sku,
+        supplierPrice: link.supplier_price,
+        isDefault: link.is_default,
+        lastOrderedAt: link.last_ordered_at,
       }),
     ),
     updatedAt: a.updated_at ?? "",

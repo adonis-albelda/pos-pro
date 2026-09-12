@@ -91,6 +91,7 @@ export function SalesPageClient() {
           }
         }
         users={(usersQuery.data ?? []).filter((user) => user.role !== ROLES.TERMINAL)}
+        terminals={(usersQuery.data ?? []).filter((user) => user.role === ROLES.TERMINAL)}
         fromDay={dayWindow.fromDay}
         toDay={dayWindow.toDay}
       />
