@@ -9,7 +9,7 @@ import {
 } from "react";
 import { Animated, Easing, Image } from "react-native";
 import { Package } from "lucide-react-native";
-import { color } from "@/theme";
+import { circleRadius, color } from "@/theme";
 
 export interface FlyRect {
   x: number;
@@ -131,9 +131,8 @@ function FlyingClone({ flight, target }: { flight: Flight; target: FlyRect | nul
         top: 0,
         width: CLONE_SIZE,
         height: CLONE_SIZE,
-        // Fully round, not the card's own corner radius — this is meant to
-        // read as a distinct "flying chip," not a shrinking copy of the card.
-        borderRadius: CLONE_SIZE / 2,
+        // Theme-aware disc — Flat corners keep this square too.
+        borderRadius: circleRadius(CLONE_SIZE),
         overflow: "hidden",
         backgroundColor: photoUrl ? color.surface : color.primary,
         alignItems: "center",

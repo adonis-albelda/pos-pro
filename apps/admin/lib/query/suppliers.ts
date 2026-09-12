@@ -1,7 +1,8 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  createSupplier,
   listProducts,
   listSupplierBalances,
   listSupplierProducts,
@@ -74,6 +75,23 @@ export function useSupplierProducts(supplierId: string, enabled = true) {
     queryKey: [...queryKeys.suppliers.detail(supplierId), "products"] as const,
     queryFn: () => listSupplierProducts(getBrowserApiClient(), supplierId),
     enabled: enabled && Boolean(supplierId),
+  });
+}
+
+/**
+ * Name-only quick-create for the creatable supplier picker (product-form.tsx,
+ * product-attributes-variants-section.tsx) — same "type to search, or create
+ * it" pattern as useCreateBrand/useCreateTag. Full supplier detail (contact,
+ * phone, TIN, ...) still only gets filled in from the dedicated Suppliers
+ * page's own form (Server Action) — this is deliberately minimal.
+ */
+export function useCreateSupplier() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Parameters<typeof createSupplier>[1]) => createSupplier(getBrowserApiClient(), input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.suppliers.all });
+    },
   });
 }
 

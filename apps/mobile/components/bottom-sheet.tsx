@@ -11,7 +11,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { color, space, radius } from "@/theme";
+import { color, radius, space } from "@/theme";
 import { useLayout } from "@/lib/layout";
 
 /** Live keyboard height — Modals on Android ignore activity adjustResize. */
@@ -102,8 +102,8 @@ export function BottomSheet({
           <View
             style={{
               backgroundColor: color.surface,
-              borderTopLeftRadius: centered ? radius.lg : 24,
-              borderTopRightRadius: centered ? radius.lg : 24,
+              borderTopLeftRadius: radius.lg,
+              borderTopRightRadius: radius.lg,
               borderBottomLeftRadius: centered ? radius.lg : 0,
               borderBottomRightRadius: centered ? radius.lg : 0,
               padding: space.lg,

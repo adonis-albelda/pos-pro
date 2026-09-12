@@ -12,7 +12,7 @@ import { Search, Sparkles, TriangleAlert, X } from "lucide-react-native";
 import { ApiError, type ApiClient } from "@double-a/api-client";
 import { vectorSearchProducts } from "@double-a/api-client/queries";
 import { Button } from "@/components/ui";
-import { color, fontSize, space } from "@/theme";
+import { circleRadius, color, fontSize, radius, space } from "@/theme";
 
 type Phase = "input" | "processing" | "error";
 
@@ -100,7 +100,7 @@ export function AiSearchModal({
           style={{
             width: "100%",
             maxWidth: 380,
-            borderRadius: 24,
+            borderRadius: radius.lg,
             backgroundColor: color.surface,
             borderWidth: 1,
             borderColor: color.borderSoft,
@@ -121,7 +121,7 @@ export function AiSearchModal({
                 style={{
                   width: 72,
                   height: 72,
-                  borderRadius: 36,
+                  borderRadius: circleRadius(72),
                   backgroundColor: color.primarySoft,
                   alignItems: "center",
                   justifyContent: "center",
@@ -145,7 +145,7 @@ export function AiSearchModal({
                 style={{
                   width: 72,
                   height: 72,
-                  borderRadius: 36,
+                  borderRadius: circleRadius(72),
                   backgroundColor: color.dangerSoft,
                   alignItems: "center",
                   justifyContent: "center",
@@ -160,12 +160,12 @@ export function AiSearchModal({
                 {errorMessage}
               </Text>
               <View style={{ flexDirection: "row", gap: space.sm, width: "100%" }}>
-                <Button label="Try again" onPress={retry} style={{ flex: 1, borderRadius: 14 }} />
+                <Button label="Try again" onPress={retry} style={{ flex: 1 }} />
                 <Button
                   label="Cancel"
                   variant="secondary"
                   onPress={onClose}
-                  style={{ flex: 1, borderRadius: 14 }}
+                  style={{ flex: 1 }}
                 />
               </View>
             </>
@@ -175,7 +175,7 @@ export function AiSearchModal({
                 style={{
                   width: 72,
                   height: 72,
-                  borderRadius: 36,
+                  borderRadius: circleRadius(72),
                   backgroundColor: color.primarySoft,
                   alignItems: "center",
                   justifyContent: "center",
@@ -199,7 +199,7 @@ export function AiSearchModal({
                   minHeight: 52,
                   borderWidth: 2,
                   borderColor: color.primary,
-                  borderRadius: 14,
+                  borderRadius: radius.sm,
                   paddingHorizontal: space.md,
                 }}
               >
@@ -235,13 +235,13 @@ export function AiSearchModal({
                   icon={Sparkles}
                   disabled={!query.trim()}
                   onPress={() => void submit()}
-                  style={{ flex: 1, borderRadius: 14 }}
+                  style={{ flex: 1 }}
                 />
                 <Button
                   label="Cancel"
                   variant="secondary"
                   onPress={onClose}
-                  style={{ flex: 1, borderRadius: 14 }}
+                  style={{ flex: 1 }}
                 />
               </View>
             </>

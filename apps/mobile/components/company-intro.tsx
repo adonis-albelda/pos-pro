@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { COMPANY_INTRO_HOLD_MS, COMPANY_PRODUCT } from "@double-a/ui";
 import { WaveBackdrop } from "@/components/wave-backdrop";
-import { color, fontSize, space } from "@/theme";
+import { color, fontSize, radius, space } from "@/theme";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- same asset-require pattern as elsewhere; no *.gif module declaration in this project
 const SPLASH_LOGO = require("../assets/splash-loop.webp");
@@ -88,7 +88,7 @@ export function CompanyIntro({ onDone }: { onDone: () => void }) {
           maxWidth: 340,
           width: "100%",
           backgroundColor: color.surface,
-          borderRadius: 24,
+          borderRadius: radius.lg,
           borderWidth: 1,
           borderColor: color.borderSoft,
           paddingVertical: space["2xl"],

@@ -42,7 +42,7 @@ import { useKeyboardHeight } from "@/components/bottom-sheet";
 import { FeatureOnboarding } from "@/components/feature-onboarding";
 import { WaveBackdrop } from "@/components/wave-backdrop";
 import { hasSeenFeatureOnboarding } from "@/lib/onboarding";
-import { color, fontSize, space } from "@/theme";
+import { circleRadius, color, fontSize, radius, space } from "@/theme";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- same asset-require pattern as company-intro.tsx; no *.png module declaration in this project
 const LOGO = require("../assets/logo.webp");
@@ -620,7 +620,7 @@ export default function SetupScreen() {
               style={{
                 width: 100,
                 height: 100,
-                borderRadius: 50,
+                borderRadius: circleRadius(100),
                 backgroundColor: color.surface,
                 alignItems: "center",
                 justifyContent: "center",
@@ -657,7 +657,7 @@ export default function SetupScreen() {
           <View
             style={{
               backgroundColor: color.surface,
-              borderRadius: 24,
+              borderRadius: radius.lg,
               borderWidth: 1,
               borderColor: color.borderSoft,
               paddingHorizontal: space.xl,
@@ -676,7 +676,7 @@ export default function SetupScreen() {
                 style={{
                   width: 36,
                   height: 36,
-                  borderRadius: 12,
+                  borderRadius: radius.md,
                   backgroundColor: step === "done" ? color.successSoft : color.primarySoft,
                   alignItems: "center",
                   justifyContent: "center",
@@ -725,7 +725,7 @@ export default function SetupScreen() {
                   large
                   busy={busy}
                   onPress={() => void connectTerminal()}
-                  style={{ borderRadius: 14 }}
+                 
                   icon={LogIn}
                 />
                 <View
@@ -750,7 +750,7 @@ export default function SetupScreen() {
                     <View
                       style={{
                         backgroundColor: color.successSoft,
-                        borderRadius: 12,
+                        borderRadius: radius.md,
                         paddingHorizontal: space.md,
                         paddingVertical: space.md,
                         alignItems: "center",
@@ -781,7 +781,7 @@ export default function SetupScreen() {
                           large
                           busy={resendBusy}
                           onPress={() => void resendVerification()}
-                          style={{ borderRadius: 14 }}
+                         
                           icon={Send}
                         />
                       </>
@@ -836,7 +836,7 @@ export default function SetupScreen() {
                       large
                       busy={registerBusy}
                       onPress={() => void submitRegistration()}
-                      style={{ borderRadius: 14 }}
+                     
                       icon={UserPlus}
                     />
                   </>
@@ -851,7 +851,7 @@ export default function SetupScreen() {
                   <View
                     style={{
                       backgroundColor: color.successSoft,
-                      borderRadius: 12,
+                      borderRadius: radius.md,
                       paddingHorizontal: space.md,
                       paddingVertical: space.md,
                       alignItems: "center",
@@ -881,7 +881,7 @@ export default function SetupScreen() {
                       large
                       busy={forgotBusy}
                       onPress={() => void sendResetLink()}
-                      style={{ borderRadius: 14 }}
+                     
                       icon={Send}
                     />
                     <InfoLine text="Password resets are for admin accounts only." />
@@ -900,7 +900,7 @@ export default function SetupScreen() {
                       alignItems: "center",
                       gap: space.sm,
                       backgroundColor: color.primaryTint,
-                      borderRadius: 12,
+                      borderRadius: radius.md,
                       paddingHorizontal: space.md,
                       paddingVertical: space.sm,
                     }}
@@ -917,7 +917,7 @@ export default function SetupScreen() {
                   large
                   busy={busy}
                   onPress={() => void firstPull()}
-                  style={{ borderRadius: 14 }}
+                 
                   icon={RefreshCw}
                 />
                 <TextLink label="Use a different account" onPress={() => void switchAccount()} disabled={busy} icon={<UserX size={14} color={color.primary} strokeWidth={2} />} />
@@ -939,7 +939,7 @@ export default function SetupScreen() {
                         flexDirection: "row",
                         alignItems: "center",
                         gap: space.xs,
-                        borderRadius: 12,
+                        borderRadius: radius.md,
                         borderWidth: 1.5,
                         borderColor: color.primarySoft,
                         backgroundColor: color.surface,
@@ -964,7 +964,7 @@ export default function SetupScreen() {
                 <View
                   style={{
                     backgroundColor: color.successSoft,
-                    borderRadius: 12,
+                    borderRadius: radius.md,
                     paddingHorizontal: space.md,
                     paddingVertical: space.md,
                     alignItems: "center",
@@ -984,7 +984,7 @@ export default function SetupScreen() {
                   label="Start Shift"
                   large
                   onPress={() => router.replace("/unlock")}
-                  style={{ borderRadius: 14 }}
+                 
                   icon={Play}
                 />
                 <TextLink label="Use a different account" onPress={() => void switchAccount()} disabled={busy} icon={<UserX size={14} color={color.primary} strokeWidth={2} />} />
@@ -1110,7 +1110,7 @@ function FilledInput({
           flexDirection: "row",
           alignItems: "center",
           backgroundColor: color.surface,
-          borderRadius: 12,
+          borderRadius: radius.md,
           borderWidth: 1.5,
           borderColor: focused ? color.primary : color.primarySoft,
           paddingHorizontal: space.md,

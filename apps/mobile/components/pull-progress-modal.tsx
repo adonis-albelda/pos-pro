@@ -1,7 +1,7 @@
 import { Modal, Text, View } from "react-native";
 import { CloudDownload } from "lucide-react-native";
 import { useSync } from "@/sync/sync-provider";
-import { color, fontSize, space } from "@/theme";
+import { circleRadius, color, fontSize, radius, space } from "@/theme";
 
 /**
  * Mounted once at the app root (app/_layout.tsx) so it shows over whichever
@@ -34,7 +34,7 @@ export function PullProgressModal() {
             width: "100%",
             maxWidth: 340,
             backgroundColor: color.surface,
-            borderRadius: 24,
+            borderRadius: radius.lg,
             padding: space.xl,
             gap: space.md,
             alignItems: "center",
@@ -44,7 +44,7 @@ export function PullProgressModal() {
             style={{
               width: 56,
               height: 56,
-              borderRadius: 28,
+              borderRadius: circleRadius(56),
               backgroundColor: color.primarySoft,
               alignItems: "center",
               justifyContent: "center",

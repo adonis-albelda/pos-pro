@@ -162,7 +162,7 @@ import {
   Money,
   WarningNote,
 } from "@/components/ui";
-import { color, fontSize, radius, space, styles } from "@/theme";
+import { circleRadius, color, fontSize, radius, space, styles } from "@/theme";
 
 /** What a cart with no customer attached looks like. Also the state after a sale. */
 const NO_CUSTOMER: CustomerDetails = { customerId: null, name: null, address: null, contact: null };
@@ -260,7 +260,7 @@ function toVariantTileDisplay(
 
 export default function SellScreen() {
   const { cashier } = useSession();
-  const { refresh, autoPush, dataVersion, offlineModeEnabled } = useSync();
+  const { refresh, autoPush, dataVersion, offlineModeEnabled, justCreatedProductIds } = useSync();
   const { isEnabled } = useFeatureFlags();
 
   // A phone cannot hold a grid and a cart side by side, so below the compact
@@ -1506,6 +1506,7 @@ export default function SellScreen() {
                     compact={compact}
                     minHeight={layout.tileMinHeight}
                     padding={space.md}
+                    justCreated={justCreatedProductIds.has(item.display.id)}
                     onPress={(sourceRect) => void handleTilePress(item, sourceRect)}
                     onRemove={() => changeQuantity(item.realProduct.id, -1, item.variant?.id)}
                     onHoldRemove={() =>
@@ -4152,7 +4153,7 @@ function SaleSuccessCheck() {
       style={{
         width: 160,
         height: 160,
-        borderRadius: 80,
+        borderRadius: circleRadius(160),
         alignItems: "center",
         justifyContent: "center",
         backgroundColor: color.successSoft,

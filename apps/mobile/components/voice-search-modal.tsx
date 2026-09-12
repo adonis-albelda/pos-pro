@@ -6,7 +6,7 @@ import {
   useSpeechRecognitionEvent,
 } from "expo-speech-recognition";
 import { Button } from "@/components/ui";
-import { color, fontSize, space } from "@/theme";
+import { circleRadius, color, fontSize, radius, space } from "@/theme";
 
 type Phase = "requesting" | "listening" | "error";
 
@@ -139,7 +139,7 @@ export function VoiceSearchModal({
           style={{
             width: "100%",
             maxWidth: 340,
-            borderRadius: 24,
+            borderRadius: radius.lg,
             backgroundColor: color.surface,
             borderWidth: 1,
             borderColor: color.borderSoft,
@@ -160,7 +160,7 @@ export function VoiceSearchModal({
                 style={{
                   width: 88,
                   height: 88,
-                  borderRadius: 44,
+                  borderRadius: circleRadius(88),
                   backgroundColor: color.dangerSoft,
                   alignItems: "center",
                   justifyContent: "center",
@@ -175,12 +175,12 @@ export function VoiceSearchModal({
                 {errorMessage}
               </Text>
               <View style={{ flexDirection: "row", gap: space.sm, width: "100%" }}>
-                <Button label="Try again" onPress={retry} style={{ flex: 1, borderRadius: 14 }} />
+                <Button label="Try again" onPress={retry} style={{ flex: 1 }} />
                 <Button
                   label="Cancel"
                   variant="secondary"
                   onPress={onClose}
-                  style={{ flex: 1, borderRadius: 14 }}
+                  style={{ flex: 1 }}
                 />
               </View>
             </>
@@ -265,7 +265,7 @@ function PulsingMic({ active }: { active: boolean }) {
     position: "absolute" as const,
     width: 88,
     height: 88,
-    borderRadius: 44,
+    borderRadius: circleRadius(88),
     backgroundColor: color.primary,
     opacity: value.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0] }),
     transform: [{ scale: value.interpolate({ inputRange: [0, 1], outputRange: [1, 1.7] }) }],
@@ -279,7 +279,7 @@ function PulsingMic({ active }: { active: boolean }) {
         style={{
           width: 72,
           height: 72,
-          borderRadius: 36,
+          borderRadius: circleRadius(72),
           backgroundColor: color.primary,
           alignItems: "center",
           justifyContent: "center",

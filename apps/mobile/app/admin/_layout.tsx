@@ -11,7 +11,8 @@ import { useIdleLock } from "@/lib/idle-lock";
 import { ensureFreshSession } from "@/lib/api/session";
 import { Button } from "@/components/ui";
 import { LoadingState } from "@/components/loading-state";
-import { color, fontSize, space, styles } from "@/theme";
+import { PinRelockOverlay } from "@/components/pin-relock-overlay";
+import { color, fontSize, radius, space, styles } from "@/theme";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- same asset-require pattern as setup.tsx; no *.png module declaration in this project
 const LOGO = require("../../assets/logo.webp");
@@ -123,7 +124,7 @@ export default function AdminLayout() {
           style={{
             width: 28,
             height: 28,
-            borderRadius: 14,
+            borderRadius: radius.sm,
             backgroundColor: color.surface,
             alignItems: "center",
             justifyContent: "center",
@@ -145,6 +146,7 @@ export default function AdminLayout() {
           }}
         />
       </View>
+      <PinRelockOverlay />
     </View>
   );
 }

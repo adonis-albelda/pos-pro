@@ -25,7 +25,7 @@ import {
 import { toast } from "sonner";
 import { ApiError } from "@double-a/api-client";
 import { shelfPriceFromMarkup } from "@double-a/shared-types";
-import type { Product } from "@double-a/shared-types";
+import type { Product, Supplier } from "@double-a/shared-types";
 import type { CompanyAttribute, MarginType, ProductVariant, VariantSupplierLink } from "@double-a/api-client/queries";
 import {
   Badge,
@@ -76,7 +76,7 @@ import {
 } from "@/lib/query/attributes";
 import { useAdjustProductStock } from "@/lib/query/products";
 import { useLocations } from "@/lib/query/locations";
-import { useSuppliers } from "@/lib/query/suppliers";
+import { useCreateSupplier, useSuppliers } from "@/lib/query/suppliers";
 import { useCreateUnit, useUnits } from "@/lib/query/units";
 import { useSkuAvailability } from "@/lib/use-sku-check";
 import { isImageFile, NOT_AN_IMAGE_MESSAGE } from "@/lib/is-image-file";
@@ -362,13 +362,43 @@ export function VariantSupplierLinksEditor({
   variant: ProductVariant;
 }) {
   const suppliersQuery = useSuppliers();
+  const createSupplier = useCreateSupplier();
   const add = useAddProductVariantSupplier(productId);
   const [picking, setPicking] = useState("");
   const [pendingSku, setPendingSku] = useState("");
   const [pendingPrice, setPendingPrice] = useState("");
+  // Bridges a just-created supplier and useSuppliers()'s own refetch landing
+  // — same reasoning as product-form.tsx's PendingSupplierLinksEditor.
+  const [justCreated, setJustCreated] = useState<Supplier | null>(null);
 
   const linkedSupplierIds = new Set(variant.suppliers.map((link) => link.supplierId));
-  const available = (suppliersQuery.data ?? []).filter((supplier) => !linkedSupplierIds.has(supplier.id));
+  const knownSuppliers = suppliersQuery.data ?? [];
+  const available = [
+    ...knownSuppliers,
+    ...(justCreated && !knownSuppliers.some((supplier) => supplier.id === justCreated.id) ? [justCreated] : []),
+  ].filter((supplier) => !linkedSupplierIds.has(supplier.id));
+
+  function onCreateSupplier(name: string) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const existing = knownSuppliers.find(
+      (supplier) => supplier.name.trim().toLowerCase() === trimmed.toLowerCase(),
+    );
+    if (existing) {
+      setPicking(existing.id);
+      return;
+    }
+    createSupplier.mutate(
+      { name: trimmed },
+      {
+        onSuccess: (created) => {
+          setJustCreated(created);
+          setPicking(created.id);
+        },
+        onError: (error) => toast.error(error instanceof Error ? error.message : "Could not create that supplier."),
+      },
+    );
+  }
 
   function addSupplier() {
     if (!picking) return;
@@ -422,6 +452,9 @@ export function VariantSupplierLinksEditor({
                 label: supplier.name,
                 sublabel: supplier.contactPerson ?? supplier.phone ?? undefined,
               }))}
+              creatable
+              createOptionLabel={(typed) => `"${typed}" doesn't exist — create it`}
+              onCreate={onCreateSupplier}
             />
           </Field>
         </div>

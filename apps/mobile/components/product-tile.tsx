@@ -1,5 +1,6 @@
 import { useId, useRef, useState } from "react";
 import { ImageBackground, Pressable, StyleSheet, Text, View } from "react-native";
+import Animated, { FadeInDown } from "react-native-reanimated";
 import { Image } from "expo-image";
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
 import { Minus, Package, Tag, Trash2, Truck, X } from "lucide-react-native";
@@ -21,6 +22,8 @@ export function ProductTile({
   onRemove,
   onHoldRemove,
   onHoldView,
+  /** Flagged by sync/sync-provider.tsx's justCreatedProductIds — a tile for a product that just arrived over realtime (as opposed to one loaded normally on mount/scroll) slides/fades in instead of just appearing. */
+  justCreated = false,
 }: {
   product: ProductWithEstimatedStock;
   inCart: number;
@@ -34,6 +37,7 @@ export function ProductTile({
   onHoldRemove: () => void;
   /** Holding a tile not yet in the cart opens the full name/description/supplier detail sheet. */
   onHoldView: () => void;
+  justCreated?: boolean;
 }) {
   // Per product, not one shop-wide number: a box of screws and a length of GI
   // pipe run out at very different counts.
@@ -71,7 +75,7 @@ export function ProductTile({
     }
   }
 
-  return (
+  const tile = (
     <Pressable
       ref={tileRef}
       onPressIn={() => {
@@ -344,6 +348,13 @@ export function ProductTile({
       )}
     </Pressable>
   );
+
+  if (!justCreated) return tile;
+
+  // Only a genuinely new tile animates in — entering fires once, on this
+  // Animated.View's own mount, so a normal tile scrolling into view (or a
+  // FlatList recycling a row) never replays it.
+  return <Animated.View entering={FadeInDown.springify().damping(16)} style={{ flex: 1 }}>{tile}</Animated.View>;
 }
 
 /**
@@ -671,7 +682,7 @@ function ImageDominantBody({
             style={({ pressed }) => ({
               width: 28,
               height: 28,
-              borderRadius: 14,
+              borderRadius: radius.sm,
               alignItems: "center",
               justifyContent: "center",
               backgroundColor: pressed ? color.primaryDark : color.primary,
@@ -690,7 +701,7 @@ function ImageDominantBody({
             minWidth: 22,
             height: 22,
             paddingHorizontal: 6,
-            borderRadius: 11,
+            borderRadius: radius.sm,
             backgroundColor: color.primary,
             alignItems: "center",
             justifyContent: "center",

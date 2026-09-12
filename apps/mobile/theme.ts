@@ -54,6 +54,17 @@ export const radius: typeof baseRadius = new Proxy(baseRadius, {
 });
 
 /**
+ * Disc shapes (avatar, FAB, icon well). Flat → square; reduced → lg;
+ * full → true circle. Never hardcode diameter/2 — Flat corners would stay round.
+ */
+export function circleRadius(diameter: number): number {
+  const style = getThemePreferences().radiusStyle;
+  if (style === "flat") return 0;
+  if (style === "reduced") return RADIUS_SCALES.reduced.lg;
+  return diameter / 2;
+}
+
+/**
  * Shop-floor rules from design-system.md: big tap targets, high contrast, flat
  * surfaces (shadows cost battery), and totals rendered large enough to read at
  * a glance under bad lighting.

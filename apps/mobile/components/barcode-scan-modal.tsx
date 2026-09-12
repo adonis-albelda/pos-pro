@@ -3,7 +3,7 @@ import { Modal, Pressable, Text, View } from "react-native";
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "expo-camera";
 import { ScanLine, TriangleAlert, X } from "lucide-react-native";
 import { Button } from "@/components/ui";
-import { color, fontSize, radius, space } from "@/theme";
+import { circleRadius, color, fontSize, radius, space } from "@/theme";
 
 /**
  * Retail barcodes, plus qr — the admin Product QR/barcode label sheet
@@ -124,7 +124,7 @@ export function BarcodeScanModal({
               style={{
                 width: 88,
                 height: 88,
-                borderRadius: 44,
+                borderRadius: circleRadius(88),
                 backgroundColor: color.dangerSoft,
                 alignItems: "center",
                 justifyContent: "center",
@@ -152,7 +152,7 @@ export function BarcodeScanModal({
                 icon={ScanLine}
                 busy={requesting}
                 onPress={() => void askPermission()}
-                style={{ borderRadius: 14 }}
+               
               />
             ) : null}
           </View>
@@ -169,7 +169,7 @@ export function BarcodeScanModal({
             right: space.lg,
             width: 44,
             height: 44,
-            borderRadius: 22,
+            borderRadius: radius.lg,
             alignItems: "center",
             justifyContent: "center",
             backgroundColor: "rgba(0,0,0,0.4)",

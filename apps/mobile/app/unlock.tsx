@@ -35,7 +35,7 @@ import {
 } from "lucide-react-native";
 import { WaveBackdrop } from "@/components/wave-backdrop";
 import { Button, Card, EmptyState, ErrorNote, IconButton } from "@/components/ui";
-import { color, fontSize, space, styles } from "@/theme";
+import { circleRadius, color, fontSize, radius, space, styles } from "@/theme";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- same asset-require pattern as company-intro.tsx; no *.png module declaration in this project
 const PIN_ICON = require("../assets/password-protection.webp");
@@ -202,7 +202,7 @@ export default function UnlockScreen() {
           backgroundColor: color.surface,
           borderWidth: 1,
           borderColor: color.borderSoft,
-          borderRadius: 20,
+          borderRadius: radius.lg,
           shadowColor: "#000",
           shadowOpacity: 0.1,
           shadowRadius: 16,
@@ -214,7 +214,7 @@ export default function UnlockScreen() {
           style={{
             width: 44,
             height: 44,
-            borderRadius: 14,
+            borderRadius: radius.sm,
             borderWidth: 1,
             borderColor: store.logoUrl ? color.border : color.primary,
             overflow: "hidden",
@@ -261,7 +261,7 @@ export default function UnlockScreen() {
         icon={UserRoundCog}
         disabled={busy || syncing}
         onPress={() => void switchAccount()}
-        style={{ borderRadius: 14 }}
+       
       />
 
       <View style={{ flexDirection: "row", alignItems: "flex-start", gap: space.md }}>
@@ -288,7 +288,7 @@ export default function UnlockScreen() {
           icon={RefreshCw}
           busy={syncing || loadingList}
           onPress={() => void refreshCashiers()}
-          style={{ borderRadius: 14 }}
+         
         />
       </View>
 
@@ -360,7 +360,7 @@ export default function UnlockScreen() {
                   style={{
                     width: 56,
                     height: 56,
-                    borderRadius: 28,
+                    borderRadius: circleRadius(56),
                     alignItems: "center",
                     justifyContent: "center",
                     backgroundColor: active ? color.primary : color.primarySoft,
@@ -454,7 +454,7 @@ export default function UnlockScreen() {
             maxWidth: 400,
             alignSelf: "center",
             backgroundColor: color.surface,
-            borderRadius: 24,
+            borderRadius: radius.lg,
             borderWidth: 1,
             borderColor: color.borderSoft,
             padding: space.lg,
@@ -475,7 +475,7 @@ export default function UnlockScreen() {
               style={{
                 width: 72,
                 height: 72,
-                borderRadius: 36,
+                borderRadius: circleRadius(72),
                 backgroundColor: color.primarySoft,
                 alignItems: "center",
                 justifyContent: "center",
@@ -500,7 +500,7 @@ export default function UnlockScreen() {
                   style={{
                     width: 20,
                     height: 20,
-                    borderRadius: 10,
+                    borderRadius: radius.sm,
                     borderWidth: filled ? 0 : 1,
                     // Past the minimum the remaining dots are optional, so they
                     // stay faint rather than reading as digits still owed.
@@ -545,7 +545,7 @@ export default function UnlockScreen() {
                       style={({ pressed }) => ({
                         width: 64,
                         height: 64,
-                        borderRadius: 32,
+                        borderRadius: circleRadius(64),
                         alignItems: "center",
                         justifyContent: "center",
                         borderWidth: 1,
@@ -580,7 +580,7 @@ export default function UnlockScreen() {
             busy={busy}
             disabled={pin.length < PIN_LENGTH_MIN}
             onPress={() => void submit()}
-            style={{ borderRadius: 14 }}
+           
           />
 
           <Text style={{ fontSize: fontSize.caption, color: color.inkMuted, textAlign: "center" }}>

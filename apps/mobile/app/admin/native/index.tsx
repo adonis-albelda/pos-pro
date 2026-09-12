@@ -87,7 +87,7 @@ function DashboardHeader() {
             style={{
               width: 48,
               height: 48,
-              borderRadius: 24,
+              borderRadius: radius.lg,
               overflow: "hidden",
               alignItems: "center",
               justifyContent: "center",

@@ -13,7 +13,7 @@ import {
   type ScanQuality,
 } from "@double-a/shared-types";
 import { Button } from "@/components/ui";
-import { color, fontSize, radius, space } from "@/theme";
+import { circleRadius, color, fontSize, radius, space } from "@/theme";
 
 const ANALYSIS_MS = 700;
 
@@ -235,7 +235,7 @@ export function DocumentScanCameraModal({
                 alignSelf: "center",
                 width: 76,
                 height: 76,
-                borderRadius: 38,
+                borderRadius: circleRadius(76),
                 backgroundColor: color.onPrimary,
                 borderWidth: 4,
                 borderColor: quality === "ready" ? color.success : "rgba(255,255,255,0.45)",

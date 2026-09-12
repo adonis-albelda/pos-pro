@@ -1,6 +1,7 @@
 import type Echo from "laravel-echo";
 import type { Channel } from "laravel-echo";
 import {
+  getPosProduct,
   toComplexDiscountRule,
   toDiscountRule,
   toLoyaltyProgram,
@@ -28,8 +29,8 @@ import {
   upsertLocalDiscountRule,
 } from "@/db/discounts";
 import { deleteLocalLoyaltyReward, saveLocalLoyaltyProgram, upsertLocalLoyaltyReward } from "@/db/loyalty";
-import { updateProductCatalogFields, updateProductStock } from "@/db/products";
-import { updateVariantCatalogFields, updateVariantStock } from "@/db/product-variants";
+import { updateProductCatalogFields, updateProductStock, upsertProducts } from "@/db/products";
+import { updateVariantCatalogFields, updateVariantStock, upsertVariants } from "@/db/product-variants";
 import {
   deleteLocalScheduleAssignment,
   deleteLocalWorkSchedule,
@@ -37,7 +38,7 @@ import {
   upsertLocalWorkSchedule,
 } from "@/db/schedules";
 import { apiUrl } from "@/lib/api/client";
-import { getSessionToken } from "@/lib/api/session";
+import { getApiClient, getSessionToken } from "@/lib/api/session";
 
 /**
  * require(), not `import Echo from "laravel-echo"` / `import Pusher from
@@ -74,20 +75,16 @@ interface ProductUpdatedPayload {
 }
 
 /**
- * Backend contract for variant realtime (item 1) — not yet emitted by the
- * broadcast service (out of this repo); this is the shape mobile is built to
- * consume the moment it is. Mirrors the product events one-for-one:
+ * Variant realtime, emitted by the backend (App\Events\VariantStockUpdated /
+ * VariantUpdated) alongside the product events, same channels:
  *
- *   - VariantStockUpdated → same `location.{locationId}.stock` private
- *     channel as ProductStockUpdated, event name `.variant.stock.updated`,
- *     fired by the same InventoryMovementObserver write path whenever the
- *     moved stock belongs to a variant instead of a bare product.
- *   - VariantUpdated → same `company.{companyId}` private channel as
- *     ProductUpdated, event name `.variant.updated`, payload a JSON:API
- *     resource shaped like ProductVariantAttrs (packages/api-client) MINUS
- *     stock_quantity — same reasoning as ProductUpdated: this event has no
- *     location to scope a stock number to, so the stock channel's own event
- *     stays the only stock writer.
+ *   - VariantStockUpdated → `location.{locationId}.stock`, `.variant.stock.updated`,
+ *     fired from InventoryMovementObserver for every movement's own variant
+ *     row (in addition to the product-level, summed-across-variants tick).
+ *   - VariantUpdated → `company.{companyId}`, `.variant.updated`, fired from
+ *     ProductVariantObserver::updated() for any variant (default or not)
+ *     whose own catalogue fields changed. No stock_quantity, same reasoning
+ *     as ProductUpdated — the stock channel's own event is the only writer.
  */
 interface VariantStockUpdatedPayload {
   variant_id: string;
@@ -100,6 +97,25 @@ interface VariantUpdatedPayload {
   id: string;
   type: string;
   attributes: ProductVariantAttrs;
+}
+
+/**
+ * ProductCreated / ProductVariantCreated (backend) — a brand-new row this
+ * device has never seen, so unlike every other catalog event above there's
+ * no local row to patch. Signal only (an id), not the full attributes: a
+ * partial socket payload can't safely satisfy every column/join a fresh
+ * INSERT needs (supplier links, addon groups, attribute values), so this
+ * triggers a single-row fetch (getPosProduct) instead — same resource shape
+ * and stock scoping a pull already uses, just for the one product a signal
+ * just named. See refetchAndUpsertProduct below.
+ */
+interface ProductCreatedPayload {
+  id: string;
+}
+
+interface VariantCreatedPayload {
+  id: string;
+  product_id: string;
 }
 
 /**
@@ -202,6 +218,49 @@ interface ScheduleDeletedPayload {
 let echo: Echo<"reverb"> | null = null;
 let connectedLocationId: string | null = null;
 let connectedCompanyId: string | null = null;
+/** Guards against .product.created and .variant.created (its auto-created default variant) both naming the same product at once — the fetch below is idempotent, this just skips the redundant second network call. */
+const productRefetchInFlight = new Set<string>();
+
+/**
+ * Serializes every realtime DB write against this file's single SQLite
+ * connection. Broadcasts fire in rapid, unordered bursts (a new product +
+ * its variants + their stock ticks can all land within milliseconds of each
+ * other) — expo-sqlite has no queueing of its own, so an explicit
+ * multi-statement transaction (refetchAndUpsertProduct's upsertProducts/
+ * upsertVariants) racing a concurrent plain UPDATE from a sibling listener
+ * corrupts its internal transaction bookkeeping ("Call to function
+ * 'NativeDatabase.execAsync' has been rejected... cannot rollback - no
+ * transaction is active"). Every listener below routes its write through
+ * this so only one is ever touching the DB at a time.
+ */
+let writeQueue: Promise<unknown> = Promise.resolve();
+function serialized<T>(task: () => Promise<T>): Promise<T> {
+  const run = writeQueue.then(task, task);
+  writeQueue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+/** Fetch one product + its variants and write them in, for a device that has never seen this row before. */
+async function refetchAndUpsertProduct(productId: string, locationId: string, onDone: () => void): Promise<void> {
+  if (productRefetchInFlight.has(productId)) return;
+  productRefetchInFlight.add(productId);
+
+  try {
+    const { product, variants } = await getPosProduct(getApiClient(), productId, locationId);
+    if (product) await serialized(() => upsertProducts([product]));
+    if (variants.length > 0) await serialized(() => upsertVariants(variants));
+    onDone();
+  } catch (error) {
+    // Same non-fatal treatment as every other realtime listener — the next
+    // manual Sync/Pull still catches this row regardless.
+    console.warn("[realtime] product/variant created refetch failed", error);
+  } finally {
+    productRefetchInFlight.delete(productId);
+  }
+}
 /** The real Pusher-protocol socket state — "connected" is the only state that means what the store-header dot promises. Not the same as `echo !== null`, which is true the instant Echo is constructed, well before the handshake finishes (or fails). */
 let socketState = "disconnected";
 
@@ -219,6 +278,8 @@ export async function connectRealtime(
   companyId: string,
   onStockTick: () => void,
   onStateChange?: (connected: boolean) => void,
+  /** Fired (in addition to onStockTick) the moment a brand-new product's id is known — lets a mounted product grid play an entrance animation for that one tile instead of a plain silent appearance. */
+  onProductCreated?: (productId: string) => void,
 ): Promise<void> {
   if (echo && connectedLocationId === locationId && connectedCompanyId === companyId) return;
   disconnectRealtime();
@@ -272,11 +333,11 @@ export async function connectRealtime(
   const stockChannel: Channel = echo.private(`location.${locationId}.stock`);
   stockChannel.listen(".stock.updated", (payload: StockUpdatedPayload) => {
     if (__DEV__) console.warn("[realtime] stock.updated", payload);
-    void updateProductStock(payload.product_id, payload.quantity).then(onStockTick);
+    void serialized(() => updateProductStock(payload.product_id, payload.quantity)).then(onStockTick);
   });
   stockChannel.listen(".variant.stock.updated", (payload: VariantStockUpdatedPayload) => {
     if (__DEV__) console.warn("[realtime] variant.stock.updated", payload);
-    void updateVariantStock(payload.variant_id, payload.quantity).then(onStockTick);
+    void serialized(() => updateVariantStock(payload.variant_id, payload.quantity)).then(onStockTick);
   });
   stockChannel.error((error: unknown) => {
     // Almost always a 403/422 from /broadcasting/auth — wrong location_id
@@ -287,59 +348,69 @@ export async function connectRealtime(
   const catalogChannel: Channel = echo.private(`company.${companyId}`);
   catalogChannel.listen(".product.updated", (payload: ProductUpdatedPayload) => {
     if (__DEV__) console.warn("[realtime] product.updated", payload);
-    void updateProductCatalogFields(toProduct(payload)).then(onStockTick);
+    void serialized(() => updateProductCatalogFields(toProduct(payload))).then(onStockTick);
   });
   catalogChannel.listen(".variant.updated", (payload: VariantUpdatedPayload) => {
     if (__DEV__) console.warn("[realtime] variant.updated", payload);
-    void updateVariantCatalogFields(toProductVariant(payload)).then(onStockTick);
+    void serialized(() => updateVariantCatalogFields(toProductVariant(payload))).then(onStockTick);
+  });
+  catalogChannel.listen(".product.created", (payload: ProductCreatedPayload) => {
+    if (__DEV__) console.warn("[realtime] product.created", payload);
+    onProductCreated?.(payload.id);
+    void refetchAndUpsertProduct(payload.id, locationId, onStockTick);
+  });
+  catalogChannel.listen(".variant.created", (payload: VariantCreatedPayload) => {
+    if (__DEV__) console.warn("[realtime] variant.created", payload);
+    onProductCreated?.(payload.product_id);
+    void refetchAndUpsertProduct(payload.product_id, locationId, onStockTick);
   });
   catalogChannel.listen(".discount-rule.updated", (payload: DiscountRuleUpdatedPayload) => {
     if (__DEV__) console.warn("[realtime] discount-rule.updated", payload);
-    void upsertLocalDiscountRule(toDiscountRule(payload)).then(onStockTick);
+    void serialized(() => upsertLocalDiscountRule(toDiscountRule(payload))).then(onStockTick);
   });
   catalogChannel.listen(".discount-rule.deleted", (payload: DiscountRuleDeletedPayload) => {
     if (__DEV__) console.warn("[realtime] discount-rule.deleted", payload);
-    void deleteLocalDiscountRule(payload.id).then(onStockTick);
+    void serialized(() => deleteLocalDiscountRule(payload.id)).then(onStockTick);
   });
   catalogChannel.listen(".complex-discount-rule.updated", (payload: ComplexDiscountRuleUpdatedPayload) => {
     if (__DEV__) console.warn("[realtime] complex-discount-rule.updated", payload);
-    void upsertLocalComplexDiscountRule(toComplexDiscountRule(payload)).then(onStockTick);
+    void serialized(() => upsertLocalComplexDiscountRule(toComplexDiscountRule(payload))).then(onStockTick);
   });
   catalogChannel.listen(".complex-discount-rule.deleted", (payload: DiscountRuleDeletedPayload) => {
     if (__DEV__) console.warn("[realtime] complex-discount-rule.deleted", payload);
-    void deleteLocalComplexDiscountRule(payload.id).then(onStockTick);
+    void serialized(() => deleteLocalComplexDiscountRule(payload.id)).then(onStockTick);
   });
   catalogChannel.listen(".tax-settings.updated", (payload: TaxSettingsUpdatedPayload) => {
     if (__DEV__) console.warn("[realtime] tax-settings.updated", payload);
-    void saveLocalTaxSettings(toTaxSettings(payload.data)).then(onStockTick);
+    void serialized(() => saveLocalTaxSettings(toTaxSettings(payload.data))).then(onStockTick);
   });
   catalogChannel.listen(".loyalty-reward.updated", (payload: LoyaltyRewardUpdatedPayload) => {
     if (__DEV__) console.warn("[realtime] loyalty-reward.updated", payload);
-    void upsertLocalLoyaltyReward(toLoyaltyReward(payload)).then(onStockTick);
+    void serialized(() => upsertLocalLoyaltyReward(toLoyaltyReward(payload))).then(onStockTick);
   });
   catalogChannel.listen(".loyalty-reward.deleted", (payload: LoyaltyRewardDeletedPayload) => {
     if (__DEV__) console.warn("[realtime] loyalty-reward.deleted", payload);
-    void deleteLocalLoyaltyReward(payload.id).then(onStockTick);
+    void serialized(() => deleteLocalLoyaltyReward(payload.id)).then(onStockTick);
   });
   catalogChannel.listen(".loyalty-settings.updated", (payload: LoyaltySettingsUpdatedPayload) => {
     if (__DEV__) console.warn("[realtime] loyalty-settings.updated", payload);
-    void saveLocalLoyaltyProgram(toLoyaltyProgram(payload.data)).then(onStockTick);
+    void serialized(() => saveLocalLoyaltyProgram(toLoyaltyProgram(payload.data))).then(onStockTick);
   });
   catalogChannel.listen(".work-schedule.updated", (payload: WorkScheduleUpdatedPayload) => {
     if (__DEV__) console.warn("[realtime] work-schedule.updated", payload);
-    void upsertLocalWorkSchedule(toWorkSchedule(payload)).then(onStockTick);
+    void serialized(() => upsertLocalWorkSchedule(toWorkSchedule(payload))).then(onStockTick);
   });
   catalogChannel.listen(".work-schedule.deleted", (payload: ScheduleDeletedPayload) => {
     if (__DEV__) console.warn("[realtime] work-schedule.deleted", payload);
-    void deleteLocalWorkSchedule(payload.id).then(onStockTick);
+    void serialized(() => deleteLocalWorkSchedule(payload.id)).then(onStockTick);
   });
   catalogChannel.listen(".schedule-assignment.updated", (payload: ScheduleAssignmentUpdatedPayload) => {
     if (__DEV__) console.warn("[realtime] schedule-assignment.updated", payload);
-    void upsertLocalScheduleAssignment(toScheduleAssignment(payload)).then(onStockTick);
+    void serialized(() => upsertLocalScheduleAssignment(toScheduleAssignment(payload))).then(onStockTick);
   });
   catalogChannel.listen(".schedule-assignment.deleted", (payload: ScheduleDeletedPayload) => {
     if (__DEV__) console.warn("[realtime] schedule-assignment.deleted", payload);
-    void deleteLocalScheduleAssignment(payload.id).then(onStockTick);
+    void serialized(() => deleteLocalScheduleAssignment(payload.id)).then(onStockTick);
   });
   catalogChannel.error((error: unknown) => {
     console.warn("[realtime] catalog channel auth failed", error);

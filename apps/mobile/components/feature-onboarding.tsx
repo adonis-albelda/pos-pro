@@ -13,7 +13,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react-native";
 import { Button } from "@/components/ui";
 import { WaveBackdrop } from "@/components/wave-backdrop";
 import { markFeatureOnboardingSeen } from "@/lib/onboarding";
-import { color, fontSize, space } from "@/theme";
+import { circleRadius, color, fontSize, radius, space } from "@/theme";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- asset-require pattern; no image module declaration
 const LOGO = require("../assets/logo.webp");
@@ -165,7 +165,7 @@ export function FeatureOnboarding({ onDone }: { onDone: () => void }) {
             style={{
               width: 100,
               height: 100,
-              borderRadius: 50,
+              borderRadius: circleRadius(100),
               backgroundColor: color.surface,
               alignItems: "center",
               justifyContent: "center",
@@ -200,7 +200,7 @@ export function FeatureOnboarding({ onDone }: { onDone: () => void }) {
           style={{
             width: "100%",
             backgroundColor: color.surface,
-            borderRadius: 24,
+            borderRadius: radius.lg,
             borderWidth: 1,
             borderColor: color.borderSoft,
             paddingTop: space.xl,

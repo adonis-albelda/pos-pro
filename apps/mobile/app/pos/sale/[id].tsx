@@ -91,7 +91,7 @@ export default function SaleScreen() {
           style={{
             width: 48,
             height: 48,
-            borderRadius: 24,
+            borderRadius: radius.lg,
             backgroundColor: color.successSoft,
             alignItems: "center",
             justifyContent: "center",

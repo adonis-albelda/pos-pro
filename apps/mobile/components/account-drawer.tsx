@@ -39,7 +39,7 @@ import { useStoreSettings } from "@/lib/store";
 import { useSync } from "@/sync/sync-provider";
 import { Button } from "@/components/ui";
 import { LocationSwitcher } from "@/components/location-switcher";
-import { color, fontSize, space, styles } from "@/theme";
+import { circleRadius, color, fontSize, radius, space, styles } from "@/theme";
 
 const POS_TABS = [
   { href: "/pos", label: "Sell", icon: ShoppingCart },
@@ -161,12 +161,9 @@ export function AccountDrawer({
           style={{
             width: panelWidth,
             backgroundColor: color.surface,
-            // Floats over the scrim now — shadow does the separation, not a flat border.
-            shadowColor: "#000",
-            shadowOpacity: 0.18,
-            shadowRadius: 24,
-            shadowOffset: { width: 8, height: 0 },
-            elevation: 16,
+            // Flat Surfaces: hard edge + border, not a floating shadow.
+            borderRightWidth: 1,
+            borderRightColor: color.border,
             transform: [{ translateX }],
           }}
         >
@@ -205,7 +202,7 @@ export function AccountDrawer({
               style={{
                 width: 56,
                 height: 56,
-                borderRadius: 16,
+                borderRadius: radius.md,
                 backgroundColor: color.primarySoft,
                 alignItems: "center",
                 justifyContent: "center",
@@ -280,22 +277,17 @@ export function AccountDrawer({
                 alignItems: "center",
                 gap: space.md,
                 padding: space.md,
-                borderRadius: 18,
+                borderRadius: radius.lg,
                 backgroundColor: color.primaryTint,
                 borderWidth: 1,
                 borderColor: color.primarySoft,
-                shadowColor: "#000",
-                shadowOpacity: 0.05,
-                shadowRadius: 8,
-                shadowOffset: { width: 0, height: 3 },
-                elevation: 2,
               }}
             >
               <View
                 style={{
                   width: 52,
                   height: 52,
-                  borderRadius: 26,
+                  borderRadius: circleRadius(52),
                   backgroundColor: color.primary,
                   alignItems: "center",
                   justifyContent: "center",
@@ -346,7 +338,7 @@ export function AccountDrawer({
               alignItems: "center",
               gap: space.sm,
               padding: space.sm,
-              borderRadius: 14,
+              borderRadius: radius.sm,
               backgroundColor: color.primarySoft,
             }}
           >
@@ -373,7 +365,6 @@ export function AccountDrawer({
             variant="secondary"
             icon={LogOut}
             large
-            style={{ borderRadius: 14 }}
             onPress={endShift}
           />
 
@@ -431,7 +422,7 @@ function DrawerTab({
         gap: space.md,
         paddingHorizontal: space.md,
         paddingVertical: description ? space.sm : 0,
-        borderRadius: 14,
+        borderRadius: radius.sm,
         backgroundColor: active ? color.primarySoft : pressed ? color.surfacePressed : "transparent",
       })}
     >

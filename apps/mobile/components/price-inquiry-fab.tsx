@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { Animated, Dimensions, PanResponder, View } from "react-native";
 import { Tag } from "lucide-react-native";
 import { usePriceInquiry } from "@/lib/price-inquiry";
-import { color, space } from "@/theme";
+import { circleRadius, color, space } from "@/theme";
 
 const FAB_SIZE = 56;
 const FAB_MARGIN = space.lg;
@@ -70,7 +70,7 @@ export function PriceInquiryFab() {
         top: position.y,
         width: FAB_SIZE,
         height: FAB_SIZE,
-        borderRadius: FAB_SIZE / 2,
+        borderRadius: circleRadius(FAB_SIZE),
         zIndex: 50,
         elevation: 8,
       }}
@@ -79,7 +79,7 @@ export function PriceInquiryFab() {
         style={{
           width: "100%",
           height: "100%",
-          borderRadius: FAB_SIZE / 2,
+          borderRadius: circleRadius(FAB_SIZE),
           backgroundColor: color.primary,
           alignItems: "center",
           justifyContent: "center",

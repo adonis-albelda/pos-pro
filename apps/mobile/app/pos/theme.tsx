@@ -349,7 +349,7 @@ function ColorSwatch({
         style={{
           width: 44,
           height: 44,
-          borderRadius: 22,
+          borderRadius: radius.lg,
           backgroundColor: palette.primary,
           alignItems: "center",
           justifyContent: "center",

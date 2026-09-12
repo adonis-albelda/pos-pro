@@ -46,6 +46,14 @@ interface SyncContextValue extends SyncState {
   /** True only once the live stock-broadcast socket is actually connected — distinct from "online mode is on" (see components/store-header.tsx's dot). */
   realtimeConnected: boolean;
   /**
+   * Product ids named by a realtime ProductCreated/ProductVariantCreated
+   * signal in roughly the last 8 seconds — a mounted product grid checks
+   * this to play a one-time entrance animation for a tile that just
+   * appeared, instead of it silently popping into the list. Self-expiring:
+   * nothing ever needs to remove an id explicitly.
+   */
+  justCreatedProductIds: Set<string>;
+  /**
    * Call right after setup.tsx writes enrollment (company/location/role) to
    * SecureStore, or after anything else changes which location/company this
    * device should be connected as. The realtime-connect effect below only
@@ -73,7 +81,24 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const [pullProgress, setPullProgress] = useState<number | null>(null);
   const [offlineModeEnabled, setOfflineModeEnabledState] = useState(false);
   const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const [justCreatedProductIds, setJustCreatedProductIds] = useState<Set<string>>(new Set());
   const { isConnected } = useNetworkStatus();
+
+  const markProductJustCreated = useCallback((productId: string) => {
+    setJustCreatedProductIds((prev) => {
+      const next = new Set(prev);
+      next.add(productId);
+      return next;
+    });
+    setTimeout(() => {
+      setJustCreatedProductIds((prev) => {
+        if (!prev.has(productId)) return prev;
+        const next = new Set(prev);
+        next.delete(productId);
+        return next;
+      });
+    }, 8000);
+  }, []);
 
   useEffect(() => {
     void getOfflineModeEnabled().then(setOfflineModeEnabledState);
@@ -117,6 +142,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         (connected) => {
           if (!cancelled) setRealtimeConnected(connected);
         },
+        markProductJustCreated,
       );
     }
 
@@ -134,7 +160,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     // dataVersion: also re-run right after a fresh enrollment or a branch
     // switch (see notifyEnrollmentChanged / replaceAll), both of which bump
     // it — that is what lets realtime connect without an app restart.
-  }, [isConnected, offlineModeEnabled, dataVersion]);
+  }, [isConnected, offlineModeEnabled, dataVersion, markProductJustCreated]);
 
   const notifyEnrollmentChanged = useCallback(() => {
     setDataVersion((version) => version + 1);
@@ -313,6 +339,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       offlineModeEnabled,
       setOfflineModeEnabled,
       realtimeConnected,
+      justCreatedProductIds,
       notifyEnrollmentChanged,
     }),
     [
@@ -327,6 +354,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       offlineModeEnabled,
       setOfflineModeEnabled,
       realtimeConnected,
+      justCreatedProductIds,
       notifyEnrollmentChanged,
     ],
   );

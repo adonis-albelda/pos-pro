@@ -81,7 +81,7 @@ export function LocationSwitcher({ variant = "header" }: { variant?: "header" | 
                 alignItems: "center",
                 gap: space.md,
                 paddingHorizontal: space.md,
-                borderRadius: 14,
+                borderRadius: radius.sm,
                 backgroundColor: pressed && canPick ? color.surfacePressed : "transparent",
                 opacity: switching ? 0.7 : 1,
               }
@@ -185,7 +185,7 @@ export function LocationSwitcher({ variant = "header" }: { variant?: "header" | 
                         style={{
                           width: 28,
                           height: 28,
-                          borderRadius: 14,
+                          borderRadius: radius.sm,
                           alignItems: "center",
                           justifyContent: "center",
                           backgroundColor: active ? color.primarySoft : color.paper,

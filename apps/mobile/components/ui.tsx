@@ -17,7 +17,7 @@ import {
   type LucideIcon,
 } from "lucide-react-native";
 import { formatMoney } from "@double-a/shared-types";
-import { MIN_TAP_TARGET, color, fontSize, radius, space, styles } from "@/theme";
+import { circleRadius, color, fontSize, MIN_TAP_TARGET, radius, space, styles } from "@/theme";
 
 type ButtonVariant = "primary" | "secondary" | "accent" | "danger";
 
@@ -324,7 +324,7 @@ export function EmptyState({
           style={{
             width: 60,
             height: 60,
-            borderRadius: 30,
+            borderRadius: circleRadius(60),
             borderWidth: 1,
             borderStyle: "dashed",
             borderColor: color.primarySoft,

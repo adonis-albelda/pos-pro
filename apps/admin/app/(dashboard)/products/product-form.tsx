@@ -67,7 +67,7 @@ import {
   useVariantStockByLocation,
 } from "@/lib/query/attributes";
 import { useBrands, useCreateBrand } from "@/lib/query/brands";
-import { useSuppliers } from "@/lib/query/suppliers";
+import { useCreateSupplier, useSuppliers } from "@/lib/query/suppliers";
 import { useAttachProductTag, useCreateTag, useDetachProductTag, useTags } from "@/lib/query/tags";
 import {
   useAdjustProductStock,
@@ -848,12 +848,44 @@ function PendingSupplierLinksEditor({
   onChange: (links: PendingSupplierLink[]) => void;
 }) {
   const suppliersQuery = useSuppliers();
+  const createSupplier = useCreateSupplier();
   const [picking, setPicking] = useState("");
   const [pendingSku, setPendingSku] = useState("");
   const [pendingPrice, setPendingPrice] = useState("");
+  // Bridges the gap between a just-created supplier and useSuppliers()'s own
+  // refetch landing — without this, add() below can't find it in `available`
+  // (still built from the stale list) even though picking already points at
+  // its real id.
+  const [justCreated, setJustCreated] = useState<{ id: string; name: string } | null>(null);
 
   const linkedIds = new Set(links.map((link) => link.supplierId));
-  const available = (suppliersQuery.data ?? []).filter((supplier) => !linkedIds.has(supplier.id));
+  const knownSuppliers = suppliersQuery.data ?? [];
+  const available = [
+    ...knownSuppliers,
+    ...(justCreated && !knownSuppliers.some((supplier) => supplier.id === justCreated.id) ? [justCreated] : []),
+  ].filter((supplier) => !linkedIds.has(supplier.id));
+
+  function onCreateSupplier(name: string) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const existing = knownSuppliers.find(
+      (supplier) => supplier.name.trim().toLowerCase() === trimmed.toLowerCase(),
+    );
+    if (existing) {
+      setPicking(existing.id);
+      return;
+    }
+    createSupplier.mutate(
+      { name: trimmed },
+      {
+        onSuccess: (created) => {
+          setJustCreated({ id: created.id, name: created.name });
+          setPicking(created.id);
+        },
+        onError: (error) => toast.error(error instanceof Error ? error.message : "Could not create that supplier."),
+      },
+    );
+  }
 
   function add() {
     if (!picking) return;
@@ -895,6 +927,9 @@ function PendingSupplierLinksEditor({
                     : "No matches."
               }
               options={available.map((supplier) => ({ value: supplier.id, label: supplier.name }))}
+              creatable
+              createOptionLabel={(typed) => `"${typed}" doesn't exist — create it`}
+              onCreate={onCreateSupplier}
             />
           </Field>
         </div>

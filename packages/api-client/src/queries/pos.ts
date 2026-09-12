@@ -495,3 +495,34 @@ export async function pullSync(
     ),
   };
 }
+
+interface ShowPosProductResponse {
+  products: { type: string; id: string; attributes: ProductAttrs }[];
+  variants: { type: string; id: string; attributes: ProductVariantAttrs }[];
+}
+
+/**
+ * Single-product fetch for the realtime ProductCreated/ProductVariantCreated
+ * signals (sync/realtime.ts) — same resource shape as pullSync's own
+ * products/variants fields (ShowPosProductController deliberately mirrors
+ * PullController's stock scoping), so this reuses the identical mapping.
+ * Not part of the manual Sync/Pull flow — this is the one exception to
+ * "sync only happens on a button press" (CLAUDE.md §1), scoped to a single
+ * row a realtime signal just named, never a background full pull.
+ */
+export async function getPosProduct(
+  client: ApiClient,
+  productId: string,
+  locationId?: string | null,
+): Promise<{ product: Product | null; variants: ProductVariant[] }> {
+  const { data } = await client.get<DataEnvelope<ShowPosProductResponse>>(
+    `/pos/products/${productId}`,
+    { location_id: locationId ?? undefined },
+  );
+
+  const products = mapResourceList(data.products, "products", toProduct);
+  return {
+    product: products[0] ?? null,
+    variants: mapResourceList(data.variants, "variants", toProductVariant),
+  };
+}

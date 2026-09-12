@@ -3,7 +3,7 @@ import { DownloadCloud, Sparkles, X } from "lucide-react-native";
 import type { AppVersion } from "@double-a/api-client/queries";
 import type { UpdateStatus } from "@/lib/version-check";
 import { Button } from "@/components/ui";
-import { color, fontSize, radius, space, styles } from "@/theme";
+import { circleRadius, color, fontSize, radius, space, styles } from "@/theme";
 
 /**
  * Force (status "force"): no dismiss, no scrim tap-out — the only way
@@ -70,7 +70,7 @@ export function UpdateDialog({
             style={{
               width: 52,
               height: 52,
-              borderRadius: 26,
+              borderRadius: circleRadius(52),
               alignItems: "center",
               justifyContent: "center",
               backgroundColor: forced ? color.dangerSoft : color.primarySoft,

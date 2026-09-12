@@ -11,6 +11,7 @@ import { PriceInquiryProvider } from "@/lib/price-inquiry";
 import { StoreHeader } from "@/components/store-header";
 import { PriceInquiryFab } from "@/components/price-inquiry-fab";
 import { PriceInquiryModal } from "@/components/price-inquiry-modal";
+import { PinRelockOverlay } from "@/components/pin-relock-overlay";
 import { styles } from "@/theme";
 
 export default function PosLayout() {
@@ -55,6 +56,7 @@ export default function PosLayout() {
             </View>
             <PriceInquiryFab />
             <PriceInquiryModal />
+            <PinRelockOverlay />
           </View>
         </PriceInquiryProvider>
       </FlyToCartProvider>

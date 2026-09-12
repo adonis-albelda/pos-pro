@@ -33,7 +33,7 @@ import { useLocationScope } from "@/lib/location-scope";
 import { useLayout } from "@/lib/layout";
 import { Button } from "@/components/ui";
 import { WaveBackdrop } from "@/components/wave-backdrop";
-import { color, fontSize, space } from "@/theme";
+import { circleRadius, color, fontSize, radius, space } from "@/theme";
 
 function scheduleLine(record: AttendanceRecord): string | null {
   if (!record.scheduledStart || !record.scheduledEnd) return null;
@@ -266,7 +266,7 @@ export default function AttendanceScreen() {
               style={{
                 width: 100,
                 height: 100,
-                borderRadius: 50,
+                borderRadius: circleRadius(100),
                 backgroundColor: color.surface,
                 alignItems: "center",
                 justifyContent: "center",
@@ -299,7 +299,7 @@ export default function AttendanceScreen() {
           <View
             style={{
               backgroundColor: color.surface,
-              borderRadius: 24,
+              borderRadius: radius.lg,
               borderWidth: 1,
               borderColor: color.borderSoft,
               paddingHorizontal: space.xl,
