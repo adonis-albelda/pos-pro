@@ -575,14 +575,30 @@ export default function SellScreen() {
     setLoadingMore(false);
     setHasMore(false);
 
+    // Fetched alongside whichever product list lands below (same .then, same
+    // tick) rather than in the separate effect further down that watches
+    // `products` — that effect still exists for a bare productViewMode
+    // toggle, but reacting to a *changed* products array after the fact
+    // means one render shows the new products with the still-stale variant
+    // map. A realtime signal (dataVersion bump) hits this path constantly —
+    // that gap is exactly what showed a plain product-level tile right
+    // after a create/update, in "By variant" mode, until the next render.
+    async function withVariants<T extends { id: string }>(rows: T[]): Promise<void> {
+      if (productViewMode !== "variant") return;
+      const map = await listLocalVariantsForProducts(rows.map((row) => row.id));
+      if (id === requestId.current) setVariantsByProduct(map);
+    }
+
     if (aiResultIds) {
       void listLocalProductsByIds(aiResultIds)
-        .then((rows) => {
+        .then(async (rows) => {
           if (id !== requestId.current) return;
           const byIdRow = new Map(rows.map((row) => [row.id, row]));
           const ordered = aiResultIds
             .map((productId) => byIdRow.get(productId))
             .filter((row): row is ProductWithEstimatedStock => row !== undefined);
+          await withVariants(ordered);
+          if (id !== requestId.current) return;
           setProducts(ordered);
           setLoadingPage(false);
           setReady(true);
@@ -606,7 +622,9 @@ export default function SellScreen() {
       search: query,
       categoryIds,
     })
-      .then((next) => {
+      .then(async (next) => {
+        if (id !== requestId.current) return;
+        await withVariants(next);
         if (id !== requestId.current) return;
         setProducts(next);
         setHasMore(next.length === PRODUCT_PAGE_SIZE);
@@ -622,6 +640,12 @@ export default function SellScreen() {
     return () => {
       requestId.current += 1;
     };
+    // productViewMode deliberately excluded — withVariants() above only
+    // needs its current value at the moment THIS effect's own trigger
+    // (search/category/dataVersion/etc.) fires; adding it here would force
+    // a full product-list reload on every Theme menu toggle instead of the
+    // separate effect below's much cheaper variants-only refetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, categoryIds, dataVersion, focusEpoch, aiResultIds]);
 
   useEffect(() => {
