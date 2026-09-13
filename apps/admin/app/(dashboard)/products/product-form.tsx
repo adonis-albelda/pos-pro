@@ -3646,12 +3646,19 @@ export function ProductForm({
                   </Field>
                 ) : (
                   <Field
-                    label="Cost price (calculated)"
-                    hint="Resolved from linked suppliers — edit in the Variants section below."
+                    label="Cost price"
+                    hint="What the supplier charges — feeds margin reports. A supplier-link price change or a pricing strategy switch on a variant with multiple suppliers can still overwrite this."
+                    required
                   >
-                    <div className="flex min-h-11 w-full items-center rounded-sm border border-border bg-canvas px-3">
-                      <Money value={product.costPrice} className="text-ink-muted" />
-                    </div>
+                    <MoneyInput
+                      name="cost_price"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={costPrice}
+                      onChange={(event) => setCostPrice(event.target.value)}
+                      required
+                    />
                   </Field>
                 )}
                 <Field label="Shelf price" required>
