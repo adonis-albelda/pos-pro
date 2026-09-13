@@ -21,6 +21,7 @@ import {
   quickCreateAttributeAndGenerateVariants,
   removeProductVariantSupplier,
   reorderVariantPhotos,
+  updateCompanyAttributeValue,
   updateProductVariant,
   updateProductVariantSupplier,
   uploadProductVariantPhoto,
@@ -79,6 +80,21 @@ export function useCreateCompanyAttributeValue() {
       ...input
     }: { attributeId: string } & Parameters<typeof createCompanyAttributeValue>[2]) =>
       createCompanyAttributeValue(getBrowserApiClient(), attributeId, input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.attributes.all });
+      void queryClient.invalidateQueries({ queryKey: PRODUCT_ATTRIBUTES_PREFIX });
+    },
+  });
+}
+
+export function useUpdateCompanyAttributeValue() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      valueId,
+      ...patch
+    }: { valueId: string } & Parameters<typeof updateCompanyAttributeValue>[2]) =>
+      updateCompanyAttributeValue(getBrowserApiClient(), valueId, patch),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.attributes.all });
       void queryClient.invalidateQueries({ queryKey: PRODUCT_ATTRIBUTES_PREFIX });

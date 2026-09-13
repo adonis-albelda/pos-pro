@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Palette, Plus, Tags, Trash2, X } from "lucide-react";
+import { Palette, Pencil, Plus, Tags, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   Button,
@@ -19,6 +19,7 @@ import {
   useCreateCompanyAttributeValue,
   useDeleteCompanyAttribute,
   useDeleteCompanyAttributeValue,
+  useUpdateCompanyAttributeValue,
 } from "@/lib/query/attributes";
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -27,7 +28,10 @@ function errorMessage(error: unknown, fallback: string): string {
 
 function AttributeCard({ attribute }: { attribute: { id: string; name: string; values: { id: string; value: string; hexCode: string | null }[] } }) {
   const [newValue, setNewValue] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState("");
   const createValue = useCreateCompanyAttributeValue();
+  const updateValue = useUpdateCompanyAttributeValue();
   const deleteValue = useDeleteCompanyAttributeValue();
   const deleteAttribute = useDeleteCompanyAttribute();
 
@@ -41,6 +45,27 @@ function AttributeCard({ attribute }: { attribute: { id: string; name: string; v
         onError: (error) => toast.error(errorMessage(error, "Could not add that value.")),
       },
     );
+  }
+
+  function startEditing(value: { id: string; value: string }) {
+    setEditingId(value.id);
+    setEditingText(value.value);
+  }
+
+  function commitEdit(originalValue: string) {
+    const next = editingText.trim();
+    if (!editingId) return;
+    if (!next || next === originalValue) {
+      setEditingId(null);
+      return;
+    }
+    updateValue.mutate(
+      { valueId: editingId, value: next },
+      {
+        onError: (error) => toast.error(errorMessage(error, "Could not rename this value.")),
+      },
+    );
+    setEditingId(null);
   }
 
   return (
@@ -62,33 +87,68 @@ function AttributeCard({ attribute }: { attribute: { id: string; name: string; v
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
-          {attribute.values.map((value) => (
-            <span
-              key={value.id}
-              className="inline-flex h-7 items-center gap-1.5 rounded-sm border border-border bg-canvas px-2 text-caption"
-            >
-              {value.hexCode ? (
-                <span
-                  className="size-3 rounded-full border border-border"
-                  style={{ backgroundColor: value.hexCode }}
-                  aria-hidden
-                />
-              ) : null}
-              {value.value}
-              <button
-                type="button"
-                onClick={() =>
-                  deleteValue.mutate(value.id, {
-                    onError: (error) => toast.error(errorMessage(error, "Could not remove this value.")),
-                  })
-                }
-                aria-label={`Remove ${value.value}`}
-                className="text-ink-muted transition-colors hover:text-danger"
+          {attribute.values.map((value) =>
+            editingId === value.id ? (
+              <Input
+                key={value.id}
+                autoFocus
+                value={editingText}
+                onChange={(event) => setEditingText(event.target.value)}
+                onBlur={() => commitEdit(value.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    commitEdit(value.value);
+                  } else if (event.key === "Escape") {
+                    event.preventDefault();
+                    setEditingId(null);
+                  }
+                }}
+                className="h-7 w-28 text-caption"
+              />
+            ) : (
+              <span
+                key={value.id}
+                className="inline-flex h-7 items-center gap-1.5 rounded-sm border border-border bg-canvas px-2 text-caption"
               >
-                <X size={12} strokeWidth={2} />
-              </button>
-            </span>
-          ))}
+                {value.hexCode ? (
+                  <span
+                    className="size-3 rounded-full border border-border"
+                    style={{ backgroundColor: value.hexCode }}
+                    aria-hidden
+                  />
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => startEditing(value)}
+                  aria-label={`Rename ${value.value}`}
+                  className="transition-colors hover:text-primary"
+                >
+                  {value.value}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => startEditing(value)}
+                  aria-label={`Edit ${value.value}`}
+                  className="text-ink-muted transition-colors hover:text-primary"
+                >
+                  <Pencil size={11} strokeWidth={2} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    deleteValue.mutate(value.id, {
+                      onError: (error) => toast.error(errorMessage(error, "Could not remove this value.")),
+                    })
+                  }
+                  aria-label={`Remove ${value.value}`}
+                  className="text-ink-muted transition-colors hover:text-danger"
+                >
+                  <X size={12} strokeWidth={2} />
+                </button>
+              </span>
+            ),
+          )}
           <Input
             value={newValue}
             onChange={(event) => setNewValue(event.target.value)}

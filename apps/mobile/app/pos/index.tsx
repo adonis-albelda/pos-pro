@@ -2146,6 +2146,7 @@ export default function SellScreen() {
       <VariantAddonPicker
         open={pickerState !== null}
         productName={pickerState?.product.name ?? ""}
+        productBrandName={pickerState?.product.brandName ?? null}
         productPhotoUrl={pickerState?.product.photoUrl}
         variants={pickerState?.variants ?? []}
         addonGroups={pickerState?.addonGroups ?? []}

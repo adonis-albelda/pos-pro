@@ -175,7 +175,25 @@ export function ProductTile({
         />
       ) : (
         <>
-      <View style={{ gap: space.xs }}>
+      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: space.sm }}>
+      <View style={{ flex: 1, minWidth: 0, gap: space.xs }}>
+        {/* Category breadcrumb — the same flattened `category` path used
+            elsewhere (CLAUDE.md #9), just rendered with a chevron instead of
+            the raw "/" separator. */}
+        {!compact && showThumbnail && product.category ? (
+          <Text
+            numberOfLines={1}
+            style={{
+              fontSize: fontSize.caption,
+              fontWeight: "700",
+              letterSpacing: 0.4,
+              textTransform: "uppercase",
+              color: color.inkMuted,
+            }}
+          >
+            {product.category.replace(/\s*\/\s*/g, " › ")}
+          </Text>
+        ) : null}
         {/* On a phone the tile is too narrow to carry the icon and still leave
             room for a readable product name, so the icon is dropped there. */}
         {showThumbnail ? (
@@ -189,51 +207,54 @@ export function ProductTile({
                 cachePolicy="disk"
               />
             ) : null
-          ) : product.photoUrl ? (
-            <Image
-              source={{ uri: product.photoUrl }}
-              style={{ width: 30, height: 30, borderRadius: radius.sm }}
-              contentFit="cover"
-              cachePolicy="disk"
-            />
           ) : (
             <View style={[styles.iconWell, { width: 30, height: 30 }]}>
               <Package size={15} color={color.primary} strokeWidth={2} />
             </View>
           )}
-          <Text
-            numberOfLines={2}
-            style={{
-              flex: 1,
-              fontSize: compact ? fontSize.body : fontSize.bodyLg,
-              fontWeight: "600",
-              color: color.ink,
-              lineHeight: compact ? 18 : 22,
-            }}
-          >
-            {product.name}
-          </Text>
+          {/* Brand sits under the name text, not under the icon — same left
+              edge, since it shares this column instead of the icon's row. */}
+          <View style={{ flex: 1, minWidth: 0, gap: space.xs }}>
+            <Text
+              numberOfLines={2}
+              style={{
+                fontSize: compact ? fontSize.body : fontSize.bodyLg,
+                fontWeight: "600",
+                color: color.ink,
+                lineHeight: compact ? 18 : 22,
+              }}
+            >
+              {product.name}
+            </Text>
+            {product.brandName ? (
+              <View style={{ alignSelf: "flex-start" }}>
+                <Badge tone="neutral" label={product.brandName} />
+              </View>
+            ) : null}
+          </View>
         </View>
         ) : (
           // "Text only" (Theme menu) — no thumbnail, so the name needs its
           // own line instead of sharing a row with an icon.
-          <Text
-            numberOfLines={2}
-            style={{
-              fontSize: compact ? fontSize.body : fontSize.bodyLg,
-              fontWeight: "600",
-              color: color.ink,
-              lineHeight: compact ? 18 : 22,
-            }}
-          >
-            {product.name}
-          </Text>
+          <>
+            <Text
+              numberOfLines={2}
+              style={{
+                fontSize: compact ? fontSize.body : fontSize.bodyLg,
+                fontWeight: "600",
+                color: color.ink,
+                lineHeight: compact ? 18 : 22,
+              }}
+            >
+              {product.name}
+            </Text>
+            {product.brandName ? (
+              <View style={{ alignSelf: "flex-start" }}>
+                <Badge tone="neutral" label={product.brandName} />
+              </View>
+            ) : null}
+          </>
         )}
-        {product.brandName ? (
-          <View style={{ alignSelf: "flex-start" }}>
-            <Badge tone="neutral" label={product.brandName} />
-          </View>
-        ) : null}
         <View style={{ flexDirection: "row", alignItems: "baseline", gap: space.xs }}>
           <Text
             numberOfLines={1}
@@ -273,6 +294,18 @@ export function ProductTile({
             </Text>
           </View>
         ) : null}
+      </View>
+      {/* The real product photo — separate from the generic package icon
+          above, which stays put as the name's icon either way. Only worth
+          the space outside compact mode, and only when there is one. */}
+      {!compact && showThumbnail && product.photoUrl ? (
+        <Image
+          source={{ uri: product.photoUrl }}
+          style={{ width: 72, height: 72, borderRadius: radius.md }}
+          contentFit="cover"
+          cachePolicy="disk"
+        />
+      ) : null}
       </View>
 
       {/*

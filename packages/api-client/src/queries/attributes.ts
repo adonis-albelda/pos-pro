@@ -265,8 +265,33 @@ export async function createCompanyAttributeValue(
   return toCompanyAttributeValue(data);
 }
 
+export async function updateCompanyAttributeValue(
+  client: ApiClient,
+  valueId: string,
+  patch: Partial<{ value: string; sortOrder: number; hexCode: string | null }>,
+): Promise<CompanyAttributeValue> {
+  const payload: Record<string, unknown> = {};
+  if (patch.value !== undefined) payload.value = patch.value;
+  if (patch.sortOrder !== undefined) payload.sort_order = patch.sortOrder;
+  if (patch.hexCode !== undefined) payload.hex_code = patch.hexCode;
+
+  const { data } = await client.patch<{ data: JsonApiResource<CompanyAttributeValueAttrs> }>(
+    `/attributes/values/${valueId}`,
+    payload,
+  );
+  return toCompanyAttributeValue(data);
+}
+
+/** Fails with a validation error if the value is already assigned to a variant — see DestroyCompanyAttributeValueController. */
 export async function deleteCompanyAttributeValue(client: ApiClient, valueId: string): Promise<void> {
-  await client.delete(`/attributes/values/${valueId}`);
+  try {
+    await client.delete(`/attributes/values/${valueId}`);
+  } catch (error) {
+    if (error instanceof ApiError && error.isValidation) {
+      throw new Error(Object.values(error.errors ?? {})[0]?.[0] ?? "Could not delete this value.");
+    }
+    throw error;
+  }
 }
 
 /** Attributes already attached to this product (with their full value sets), for the product form's Attributes section. */

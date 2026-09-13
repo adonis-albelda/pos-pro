@@ -37,6 +37,7 @@ export interface VariantAddonSelection {
 export function VariantAddonPicker({
   open,
   productName,
+  productBrandName,
   productPhotoUrl,
   variants,
   addonGroups,
@@ -45,6 +46,7 @@ export function VariantAddonPicker({
 }: {
   open: boolean;
   productName: string;
+  productBrandName?: string | null;
   /** Shown for a variant with no photo of its own — same fallback ProductVariantResource already resolves server-side, kept here too for whatever hasn't re-synced since. */
   productPhotoUrl?: string | null;
   variants: ProductVariant[];
@@ -115,9 +117,16 @@ export function VariantAddonPicker({
   return (
     <BottomSheet open={open} onClose={onCancel} maxWidth={dialogMaxWidth}>
       <View style={{ gap: space.md }}>
-        <Text style={{ fontSize: fontSize.headingSm, fontWeight: "700", color: color.ink }}>
-          {productName}
-        </Text>
+        <View style={{ gap: space.xs }}>
+          <Text style={{ fontSize: fontSize.headingSm, fontWeight: "700", color: color.ink }}>
+            {productName}
+          </Text>
+          {productBrandName ? (
+            <View style={{ alignSelf: "flex-start" }}>
+              <Badge tone="neutral" label={productBrandName} />
+            </View>
+          ) : null}
+        </View>
 
         {variants.length > 1 ? (
           <View style={{ gap: space.xs }}>
