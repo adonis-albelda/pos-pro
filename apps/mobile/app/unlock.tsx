@@ -242,18 +242,20 @@ export default function UnlockScreen() {
             </Text>
           )}
         </View>
-        <Text
-          numberOfLines={1}
-          style={{ flex: 1, fontSize: fontSize.bodyLg, fontWeight: "700", color: color.ink }}
-        >
-          {store.name}
-        </Text>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text
+            numberOfLines={1}
+            style={{ fontSize: fontSize.bodyLg, fontWeight: "700", color: color.ink }}
+          >
+            {store.name}
+          </Text>
+          {enrolled?.email ? (
+            <Text numberOfLines={1} style={{ fontSize: fontSize.caption, color: color.inkMuted, marginTop: 2 }}>
+              Signed in as {enrolled.email}
+            </Text>
+          ) : null}
+        </View>
       </View>
-      {enrolled?.email ? (
-        <Text style={{ fontSize: fontSize.body, color: color.inkMuted, marginTop: -space.sm }}>
-          Terminal signed in as {enrolled.email}. Shift unlock uses a 4–6 digit PIN, not this password.
-        </Text>
-      ) : null}
 
       <Button
         label="Use a different shop account"

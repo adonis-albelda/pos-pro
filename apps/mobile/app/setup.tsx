@@ -43,7 +43,7 @@ import { Button, ErrorNote } from "@/components/ui";
 import { useKeyboardHeight } from "@/components/bottom-sheet";
 import { FeatureOnboarding } from "@/components/feature-onboarding";
 import { WaveBackdrop } from "@/components/wave-backdrop";
-import { hasSeenFeatureOnboarding } from "@/lib/onboarding";
+import { hasSeenBusinessTypeStep, hasSeenFeatureOnboarding, markBusinessTypeStepSeen } from "@/lib/onboarding";
 import { circleRadius, color, fontSize, radius, space } from "@/theme";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- same asset-require pattern as company-intro.tsx; no *.png module declaration in this project
@@ -208,8 +208,12 @@ export default function SetupScreen() {
     // cashier can sell, and may not reach the Sync tab first. Either way
     // the deferred pull (next visit to the Sync tab) still comes down as
     // a full pull, since no watermark gets set here.
+    // "One Last Thing" (business-type survey) shows once per device, ever —
+    // not once per sign-in. A returning admin who already answered (or
+    // skipped) it here goes straight to "done".
+    const seenBusinessType = await hasSeenBusinessTypeStep();
     const nextStep: SetupFlowStep =
-      profile.role === ROLES.ADMIN ? "business-type" : "first-pull";
+      profile.role === ROLES.ADMIN ? (seenBusinessType ? "done" : "business-type") : "first-pull";
     if (profile.role === ROLES.ADMIN) {
       await markFirstPullSkipped();
     }
@@ -484,6 +488,7 @@ export default function SetupScreen() {
     } catch {
       // Best-effort — a survey answer is not worth blocking setup over.
     } finally {
+      await markBusinessTypeStepSeen();
       setBusinessTypeBusy(false);
       setStep("done");
       notifyEnrollmentChanged();
@@ -491,6 +496,8 @@ export default function SetupScreen() {
   }
 
   function skipBusinessType() {
+    // Not marked seen — only picking a type retires this prompt for good
+    // (see the comment above nextStep); skipping just defers to next sign-in.
     setStep("done");
     notifyEnrollmentChanged();
   }
