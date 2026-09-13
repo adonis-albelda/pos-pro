@@ -1,19 +1,15 @@
 "use client";
 
-import { useState } from "react";
 import type { Route } from "next";
 import { useRouter } from "next/navigation";
 import {
   CheckCircle2,
   ChevronDown,
   CircleAlert,
-  PackagePlus,
   Pencil,
   RotateCcw,
-  Search,
   Trash2,
   WandSparkles,
-  X,
 } from "lucide-react";
 import { formatMoney, formatQuantity, roundMoney } from "@double-a/shared-types";
 import type { Product } from "@double-a/shared-types";
@@ -21,7 +17,6 @@ import type { ProductVariantListRow } from "@double-a/api-client/queries";
 import {
   Badge,
   Button,
-  Combobox,
   Field,
   IconButton,
   Input,
@@ -29,17 +24,11 @@ import {
   MoneyInput,
 } from "@/components/ui";
 import { MatchProductCombobox } from "./match-product-combobox";
-import type { CategoryOption } from "@/lib/category-options";
-import { indentLabel } from "@/lib/category-options";
 import { useSkuAvailability } from "@/lib/use-sku-check";
 import {
-  categoryComboboxValue,
-  categoryHintFromPendingValue,
   headerDisplayName,
   headerSkuSnippet,
   internalSkuDisplay,
-  pendingCategoryValue,
-  receiptCategoryIsNew,
   supplierSkuHint,
   supplierSkuInputValue,
   supplierSkuUsesAiExtraction,
@@ -53,53 +42,52 @@ import {
 const HALF_ROW = "grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-4 max-sm:grid-cols-1";
 const HALF_CELL = "min-w-0 w-full";
 
-function NewProductChoice({
-  productName,
+function SelectProductGate({
+  locationId,
+  excludeVariantIds,
+  value,
+  selectedLabel,
+  onPick,
+  onClear,
   disabled,
-  onCreate,
-  onExisting,
+  onCreateNew,
 }: {
-  productName: string;
+  locationId?: string;
+  excludeVariantIds: string[];
+  value: string;
+  selectedLabel: string | undefined;
+  onPick: (variant: ProductVariantListRow) => void;
+  onClear: () => void;
   disabled: boolean;
-  onCreate: () => void;
-  onExisting: () => void;
+  onCreateNew: () => void;
 }) {
   return (
-    <div className="flex w-full flex-col items-center justify-center gap-5 px-4 py-10 text-center sm:px-8 sm:py-12">
-      <span className="flex size-12 items-center justify-center rounded-full border border-dashed border-border text-ink-muted">
-        <PackagePlus size={22} strokeWidth={1.75} />
-      </span>
-      <div className="max-w-md space-y-2">
-        <p className="text-body-lg font-medium text-ink">This product looks new</p>
-        <p className="text-body text-ink-muted">
-          {productName.trim()
-            ? `“${productName.trim()}” isn’t in your catalogue yet. Create it first, then come back here to finish matching — or confirm it already exists.`
-            : "This line isn’t linked to a catalogue product yet. Create it first, then come back here to finish matching — or confirm it already exists."}
-        </p>
-      </div>
-      <div className="flex w-full max-w-md flex-col gap-2 sm:flex-row sm:justify-center">
-        <Button
-          type="button"
-          icon={PackagePlus}
-          onClick={onCreate}
+    <div className="rounded-md border border-dashed border-primary/50 bg-primary/5 px-3 py-3 sm:px-4">
+      <p className="text-caption font-medium text-ink">Select a product</p>
+      <p className="mt-1 text-caption leading-relaxed text-ink-muted">
+        Pick the catalogue product this receipt line belongs to — the rest of this line fills in
+        once you do.
+      </p>
+      <div className="mt-3 w-full">
+        <MatchProductCombobox
+          locationId={locationId}
+          excludeVariantIds={excludeVariantIds}
+          value={value}
+          selectedLabel={selectedLabel}
+          onPick={onPick}
+          onClear={onClear}
+          placeholder="Search your catalogue…"
           disabled={disabled}
-          className="w-full whitespace-nowrap sm:w-auto"
-          style={{ height: "auto", paddingTop: "0.625rem", paddingBottom: "0.625rem" }}
-        >
-          Yes, I&apos;ll create the product
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          icon={Search}
-          onClick={onExisting}
-          disabled={disabled}
-          className="w-full whitespace-nowrap sm:w-auto"
-          style={{ height: "auto", paddingTop: "0.625rem", paddingBottom: "0.625rem" }}
-        >
-          No, it&apos;s existing already
-        </Button>
+        />
       </div>
+      <button
+        type="button"
+        onClick={onCreateNew}
+        disabled={disabled}
+        className="mt-3 cursor-pointer text-caption font-medium text-primary hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        Can&apos;t find it? Create it as a new product
+      </button>
     </div>
   );
 }
@@ -208,7 +196,6 @@ export function ReceivingLineAccordion({
   expanded,
   onToggle,
   hasSupplier,
-  showMatchPicker,
   showInternalSku,
   supplierId,
   supplierName,
@@ -217,9 +204,6 @@ export function ReceivingLineAccordion({
   currentStock,
   matchLocationId,
   excludeMatchVariantIds,
-  categoryOptions,
-  creatingCategory,
-  onCreateCategory,
   onUpdate,
   onPickVariant,
   onClearProduct,
@@ -231,7 +215,6 @@ export function ReceivingLineAccordion({
   expanded: boolean;
   onToggle: () => void;
   hasSupplier: boolean;
-  showMatchPicker: boolean;
   /** When true, show the editable internal SKU field (new products). */
   showInternalSku: boolean;
   /** Real id of the receipt's supplier, or null while it's only a typed name not yet created. */
@@ -246,9 +229,6 @@ export function ReceivingLineAccordion({
   currentStock: number | null;
   matchLocationId?: string;
   excludeMatchVariantIds: string[];
-  categoryOptions: CategoryOption[];
-  creatingCategory: boolean;
-  onCreateCategory: (name: string) => void;
   onUpdate: (patch: Partial<LineRow>) => void;
   onPickVariant: (variant: ProductVariantListRow) => void;
   onClearProduct: () => void;
@@ -256,7 +236,6 @@ export function ReceivingLineAccordion({
   onToggleExcluded: () => void;
 }) {
   const router = useRouter();
-  const [matchAsExisting, setMatchAsExisting] = useState(false);
   const flagged = lineIsFlagged(row);
   const resolved = lineIsResolved(row);
   const displayName = headerDisplayName(row);
@@ -283,58 +262,6 @@ export function ReceivingLineAccordion({
   // deadlock it — disabled until picked, but picking is what it's for).
   const inputsDisabled = !row.productId || row.excluded;
   const isNewProduct = !row.productId;
-  const showNewProductGate = isNewProduct && !matchAsExisting && !row.excluded;
-
-  const categoryValue = categoryComboboxValue(row, categoryOptions);
-  const pendingHint = row.categoryHint.trim();
-  const showReceiptCategoryOption = receiptCategoryIsNew(pendingHint, categoryOptions);
-  const selectedCategory = row.categoryId
-    ? categoryOptions.find((option) => option.id === row.categoryId)
-    : undefined;
-
-  const categoryComboboxOptions = [
-    { value: "", label: "No category" },
-    ...(showReceiptCategoryOption
-      ? [
-          {
-            value: pendingCategoryValue(pendingHint),
-            label: pendingHint,
-            sublabel: "From receipt — create on save",
-          },
-        ]
-      : []),
-    ...categoryOptions.map((category) => ({
-      value: category.id,
-      label: `${indentLabel(category)}${category.isActive ? "" : " (hidden)"}${
-        category.markupApplied ? ` (+${category.markupPercent}%)` : ""
-      }`,
-    })),
-  ];
-
-  function applyCategorySelection(nextValue: string) {
-    const pending = categoryHintFromPendingValue(nextValue);
-    if (pending !== null) {
-      onUpdate({ categoryId: null, categoryHint: pending });
-      return;
-    }
-    if (!nextValue) {
-      onUpdate({ categoryId: null, categoryHint: "" });
-      return;
-    }
-
-    const option = categoryOptions.find((entry) => entry.id === nextValue);
-    const patch: Partial<LineRow> = {
-      categoryId: nextValue,
-      categoryHint: option?.name ?? "",
-    };
-    if (option?.markupApplied && row.unitCost.trim()) {
-      const cost = Number(row.unitCost);
-      if (Number.isFinite(cost)) {
-        patch.appliedPrice = String(roundMoney(cost * (1 + option.markupPercent / 100)));
-      }
-    }
-    onUpdate(patch);
-  }
 
   return (
     <div
@@ -412,12 +339,16 @@ export function ReceivingLineAccordion({
 
       {expanded ? (
         <div className="space-y-4 border-t border-border px-4 py-4">
-          {showNewProductGate ? (
-            <NewProductChoice
-              productName={row.name}
+          {isNewProduct ? (
+            <SelectProductGate
+              locationId={matchLocationId}
+              excludeVariantIds={excludeMatchVariantIds}
+              value={row.variantId ?? ""}
+              selectedLabel={matchedVariantLabel}
+              onPick={onPickVariant}
+              onClear={onClearProduct}
               disabled={row.excluded}
-              onCreate={() => router.push("/products/new" as Route)}
-              onExisting={() => setMatchAsExisting(true)}
+              onCreateNew={() => router.push("/products/new" as Route)}
             />
           ) : (
             <>
@@ -550,28 +481,24 @@ export function ReceivingLineAccordion({
               </div>
             </div>
 
-            {showMatchPicker ? (
-              <div className="rounded-md border border-dashed border-primary/50 bg-primary/5 px-3 py-3 sm:px-4">
-                <p className="text-caption font-medium text-ink">Match product</p>
-                <p className="mt-1 text-caption leading-relaxed text-ink-muted">
-                  {matchAsExisting
-                    ? "Pick the catalogue product this receipt line already belongs to. Stock and prices apply to that item."
-                    : "Link this line to a product you already sell. Stock and prices apply to that item — use this when the receipt item is not new. Leave empty only if you are adding a brand-new product."}
-                </p>
-                <div className="mt-3 w-full">
-                  <MatchProductCombobox
-                    locationId={matchLocationId}
-                    excludeVariantIds={excludeMatchVariantIds}
-                    value={row.variantId ?? ""}
-                    selectedLabel={matchedVariantLabel}
-                    onPick={onPickVariant}
-                    onClear={onClearProduct}
-                    placeholder="Search your catalogue…"
-                    disabled={row.excluded}
-                  />
-                </div>
+            <div className="rounded-md border border-dashed border-primary/50 bg-primary/5 px-3 py-3 sm:px-4">
+              <p className="text-caption font-medium text-ink">Matched product</p>
+              <p className="mt-1 text-caption leading-relaxed text-ink-muted">
+                Stock and prices apply to this catalogue item. Pick a different one to change it.
+              </p>
+              <div className="mt-3 w-full">
+                <MatchProductCombobox
+                  locationId={matchLocationId}
+                  excludeVariantIds={excludeMatchVariantIds}
+                  value={row.variantId ?? ""}
+                  selectedLabel={matchedVariantLabel}
+                  onPick={onPickVariant}
+                  onClear={onClearProduct}
+                  placeholder="Search your catalogue…"
+                  disabled={row.excluded}
+                />
               </div>
-            ) : null}
+            </div>
 
             <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2.5">
               <p className="mb-1.5 text-caption font-semibold text-ink">After this receipt</p>
@@ -725,55 +652,6 @@ export function ReceivingLineAccordion({
                 ) : null}
               </Field>
               </div>
-            </div>
-
-            <div className={isNewProduct && !matchAsExisting ? HALF_ROW : "w-full"}>
-              <div className={isNewProduct && !matchAsExisting ? HALF_CELL : "w-full"}>
-                <Field
-                  label="Category"
-                  hint={
-                    selectedCategory?.markupApplied
-                      ? `Markup ${selectedCategory.markupPercent}% fills shelf from cost.`
-                      : pendingHint && showReceiptCategoryOption
-                        ? "From the receipt — pick an existing category or create this one."
-                        : "Optional. Type to search or create a new category."
-                  }
-                >
-                  <Combobox
-                    value={categoryValue}
-                    onChange={applyCategorySelection}
-                    creatable
-                    createOptionLabel={(typed) => `Create “${typed}”`}
-                    onCreate={onCreateCategory}
-                    disabled={inputsDisabled || creatingCategory}
-                    placeholder={creatingCategory ? "Creating…" : "No category"}
-                    options={categoryComboboxOptions}
-                  />
-                </Field>
-              </div>
-              {isNewProduct && !matchAsExisting ? (
-                <div className={HALF_CELL}>
-                  <Field
-                    label="Shop visibility"
-                    hint={
-                      row.createHidden
-                        ? "Hidden from the shop floor until you finish the full product details."
-                        : "Will show on terminals right away after this receipt saves."
-                    }
-                  >
-                    <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-sm border border-border bg-surface px-3">
-                      <input
-                        type="checkbox"
-                        checked={row.createHidden}
-                        onChange={(event) => onUpdate({ createHidden: event.target.checked })}
-                        disabled={inputsDisabled}
-                        className="h-4 w-4 accent-primary"
-                      />
-                      <span className="text-body">Hide from shop</span>
-                    </label>
-                  </Field>
-                </div>
-              ) : null}
             </div>
 
             <Field label="Note">

@@ -1,6 +1,12 @@
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { ImageBackground, Pressable, StyleSheet, Text, View } from "react-native";
-import Animated, { FadeInDown, SlideInUp } from "react-native-reanimated";
+import Animated, {
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withTiming,
+} from "react-native-reanimated";
 import { Image } from "expo-image";
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
 import { Minus, Package, Tag, Trash2, Truck, X } from "lucide-react-native";
@@ -358,30 +364,103 @@ export function ProductTile({
 
   // entering fires once on this Animated.View's mount. FlatList recycle /
   // scroll must not wrap, or every reused row replays the slide.
+  //
+  // Soft shade over the bottom half of the card face (not a full box shadow).
+  // Overlay sits above the tile; pointerEvents none so taps still hit the
+  // Pressable underneath.
+  const floating = (
+    <View
+      style={{
+        flex: 1,
+        borderRadius: radius.lg,
+        backgroundColor: color.surface,
+        overflow: "hidden",
+      }}
+    >
+      {tile}
+      <BottomShade />
+    </View>
+  );
+
   if (justCreated) {
     return (
       <Animated.View entering={FadeInDown.springify().damping(16)} style={{ flex: 1 }}>
-        {tile}
+        {floating}
       </Animated.View>
     );
   }
 
   if (enterIndex != null) {
-    // Strict sequence: tile N starts only after tile N-1's slide finishes
-    // (step === duration). Caps at 12 tiles so a full first screen is ~2.4s.
-    const slideMs = 200;
-    const delay = Math.min(enterIndex, 11) * slideMs;
-    return (
-      <Animated.View
-        entering={SlideInUp.delay(delay).duration(slideMs)}
-        style={{ flex: 1 }}
-      >
-        {tile}
-      </Animated.View>
-    );
+    return <TileEnter index={enterIndex}>{floating}</TileEnter>;
   }
 
-  return tile;
+  return floating;
+}
+
+/**
+ * Alternate L→R / R→L slide on mount. Outer View owns flex layout so the cell
+ * is always full width; presets like FadeInLeft left translateX stuck at -25
+ * (~10% of a tile) when FlatList interrupted the entering animation.
+ */
+function TileEnter({ index, children }: { index: number; children: ReactNode }) {
+  const slideMs = 100;
+  const delay = Math.min(index, 11) * slideMs;
+  const fromX = index % 2 === 0 ? -16 : 16;
+  const tx = useSharedValue(fromX);
+  const opacity = useSharedValue(0);
+
+  useEffect(() => {
+    opacity.value = withDelay(delay, withTiming(1, { duration: slideMs }));
+    tx.value = withDelay(delay, withTiming(0, { duration: slideMs }));
+  }, [delay, opacity, tx]);
+
+  const animStyle = useAnimatedStyle(() => ({
+    flex: 1,
+    opacity: opacity.value,
+    transform: [{ translateX: tx.value }],
+  }));
+
+  return (
+    <View style={{ flex: 1, overflow: "hidden" }}>
+      <Animated.View style={animStyle}>{children}</Animated.View>
+    </View>
+  );
+}
+
+/**
+ * Soft dark wash dominant on the bottom half of a product tile — top stays
+ * clean, bottom reads slightly lifted/shadowed. SVG same as CardThemeGradient
+ * so we skip an extra native gradient module.
+ */
+function BottomShade() {
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  const gradId = `tile-bottom-shade-${useId().replace(/:/g, "")}`;
+
+  return (
+    <View
+      pointerEvents="none"
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        if (width !== size.w || height !== size.h) {
+          setSize({ w: width, h: height });
+        }
+      }}
+      style={StyleSheet.absoluteFill}
+    >
+      {size.w > 0 && size.h > 0 ? (
+        <Svg width={size.w} height={size.h}>
+          <Defs>
+            <SvgLinearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor="#000" stopOpacity="0" />
+              <Stop offset="0.55" stopColor="#000" stopOpacity="0" />
+              <Stop offset="1" stopColor="#000" stopOpacity="0.07" />
+            </SvgLinearGradient>
+          </Defs>
+          <Rect x={0} y={0} width={size.w} height={size.h} fill={`url(#${gradId})`} />
+        </Svg>
+      ) : null}
+    </View>
+  );
 }
 
 /**

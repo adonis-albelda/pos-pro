@@ -163,10 +163,8 @@ function buildStyles() {
   },
   /**
    * Opt-in shadow for a lone or small handful of cards on a screen (e.g. sync,
-   * settings) — matches setup/unlock's floating-card look. Never apply this to
-   * a repeating list/grid (product tiles, cashier picker): shadows on many
-   * simultaneous items cost real battery on the shop floor, which is exactly
-   * why styles.card itself stays flat.
+   * settings) — matches setup/unlock's floating-card look. Prefer this over
+   * `tileShadow` when only one/few cards sit on the page.
    */
   floatShadow: {
     shadowColor: "#000",
@@ -174,6 +172,19 @@ function buildStyles() {
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 6 },
     elevation: 3,
+  },
+  /**
+   * Product tiles cast right only (see product-tile right-edge strip). Kept
+   * for any caller that still spreads it — offset to the right, no downward
+   * float. Prefer the edge strip for a true one-sided look on Android too
+   * (elevation is always omnidirectional).
+   */
+  tileShadow: {
+    shadowColor: "#000",
+    shadowOpacity: 0.14,
+    shadowRadius: 5,
+    shadowOffset: { width: 4, height: 0 },
+    elevation: 0,
   },
   });
 }

@@ -91,7 +91,6 @@ import {
   receiptSupplierSkuAfterMatch,
   resolveRowPatch,
   showInternalSkuField,
-  showProductMatchPicker,
   suggestPrice,
   unresolvedCount,
   supplierSkuForSubmit,
@@ -600,7 +599,6 @@ export function ReceivingForm({
   const productsById = pickedProducts;
 
   const hasLinkedOrder = Boolean(linkedOrder);
-  const showMatchPicker = showProductMatchPicker();
   const hasSupplier = hasSupplierSelected(supplierId, supplierName, hasLinkedOrder);
   const pendingCount = unresolvedCount(rows);
   const canSave = allRowsResolved(rows);
@@ -655,27 +653,6 @@ export function ReceivingForm({
 
   function updateRow(key: string, patch: Partial<LineRow>) {
     setRows((previous) => previous.map((row) => (row.key === key ? { ...row, ...patch } : row)));
-  }
-
-  async function createCategoryForRow(key: string, name: string) {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-
-    const existing = categoryOptions.find(
-      (option) => option.name.trim().toLowerCase() === trimmed.toLowerCase(),
-    );
-    if (existing) {
-      updateRow(key, { categoryId: existing.id, categoryHint: existing.name });
-      return;
-    }
-
-    try {
-      const created = await createCategoryMutation.mutateAsync({ name: trimmed });
-      updateRow(key, { categoryId: created.id, categoryHint: created.name });
-      toast.success(`Category “${created.name}” created.`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not create category.");
-    }
   }
 
   /** Soft-remove — the row stays put, grayed out, and can be restored; only excluded from submit. */
@@ -1800,7 +1777,6 @@ export function ReceivingForm({
                     expanded={expandedKey === row.key}
                     onToggle={() => setExpandedKey(expandedKey === row.key ? null : row.key)}
                     hasSupplier={hasSupplier}
-                    showMatchPicker={showMatchPicker}
                     showInternalSku={showInternalSkuField(row)}
                     supplierId={effectiveSupplierId}
                     supplierName={supplierLabel === "—" ? "" : supplierLabel}
@@ -1809,9 +1785,6 @@ export function ReceivingForm({
                     currentStock={variant?.stockQuantity ?? product?.stockQuantity ?? null}
                     matchLocationId={locationId || undefined}
                     excludeMatchVariantIds={excludeMatchVariantIds(row.key)}
-                    categoryOptions={categoryOptions}
-                    creatingCategory={createCategoryMutation.isPending}
-                    onCreateCategory={(name) => void createCategoryForRow(row.key, name)}
                     onUpdate={(patch) => updateRow(row.key, patch)}
                     onPickVariant={(picked) => pickVariantForRow(row.key, picked)}
                     onClearProduct={() => clearProductForRow(row.key)}

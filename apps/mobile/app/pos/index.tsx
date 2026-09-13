@@ -1547,21 +1547,26 @@ export default function SellScreen() {
               }
               // numColumns cannot change on a mounted list, so the column count is
               // part of the key and a rotation remounts the grid. listEnterKey
-              // remounts on search/category so SlideInUp entering can fire once.
+              // remounts on search/category so alternate SlideIn entering can fire once.
               key={`grid-${columns}-${listEnterKey}`}
               numColumns={columns}
-              // RN forbids columnWrapperStyle when numColumns is 1 (row layout).
-              columnWrapperStyle={columns > 1 ? { gap: layout.gap } : undefined}
+              // Floating tile shadows eat into space between rows but sit open
+              // at the top edge. Half-gap on every cell handles between + sides;
+              // no content paddingTop — that double-counted and made the first
+              // row look extra tall.
               contentContainerStyle={{
-                gap: layout.gap,
-                paddingBottom: space.sm,
+                paddingHorizontal: layout.gap / 2,
+                paddingBottom: layout.gap / 2,
+                paddingTop: 0,
                 flexGrow: 1,
               }}
               keyboardShouldPersistTaps="handled"
               initialNumToRender={PRODUCT_PAGE_SIZE}
               maxToRenderPerBatch={PRODUCT_PAGE_SIZE}
               windowSize={5}
-              removeClippedSubviews
+              // Entering slides travel off-cell; clipping mid-animation leaves
+              // the first tile stuck partially off-screen on Android.
+              removeClippedSubviews={false}
               onEndReached={loadMore}
               onEndReachedThreshold={0.4}
               ListFooterComponent={
@@ -1580,30 +1585,48 @@ export default function SellScreen() {
               }
               renderItem={({ item, index }) =>
                 item ? (
-                  <ProductTile
-                    product={item.display}
-                    inCart={
-                      item.variant
-                        ? (inCartByVariant.get(item.variant.id) ?? 0)
-                        : (inCart.get(item.display.id) ?? 0)
-                    }
-                    compact={compact}
-                    minHeight={layout.tileMinHeight}
-                    padding={space.md}
-                    justCreated={justCreatedProductIds.has(item.display.id)}
-                    enterIndex={index < LIST_ENTER_MAX ? index : null}
-                    onPress={(sourceRect) => void handleTilePress(item, sourceRect)}
-                    onRemove={() => changeQuantity(item.realProduct.id, -1, item.variant?.id)}
-                    onHoldRemove={() =>
-                      confirmRemoveLine(item.realProduct.id, item.display.name, item.variant?.id)
-                    }
-                    onHoldView={() => setViewingProduct(item.realProduct)}
-                  />
+                  <View
+                    style={{
+                      flex: 1,
+                      paddingHorizontal: layout.gap / 2,
+                      paddingBottom: layout.gap / 2,
+                      // First row: no paddingTop so top inset matches between
+                      // (shadow already softens the gap above).
+                      paddingTop: index < columns ? 0 : layout.gap / 2,
+                    }}
+                  >
+                    <ProductTile
+                      product={item.display}
+                      inCart={
+                        item.variant
+                          ? (inCartByVariant.get(item.variant.id) ?? 0)
+                          : (inCart.get(item.display.id) ?? 0)
+                      }
+                      compact={compact}
+                      minHeight={layout.tileMinHeight}
+                      padding={space.md}
+                      justCreated={justCreatedProductIds.has(item.display.id)}
+                      enterIndex={index < LIST_ENTER_MAX ? index : null}
+                      onPress={(sourceRect) => void handleTilePress(item, sourceRect)}
+                      onRemove={() => changeQuantity(item.realProduct.id, -1, item.variant?.id)}
+                      onHoldRemove={() =>
+                        confirmRemoveLine(item.realProduct.id, item.display.name, item.variant?.id)
+                      }
+                      onHoldView={() => setViewingProduct(item.realProduct)}
+                    />
+                  </View>
                 ) : (
                   // Invisible filler so an incomplete last row keeps every
                   // real tile at the same column width instead of the lone
                   // survivor stretching flex:1 across the whole row.
-                  <View style={{ flex: 1 }} />
+                  <View
+                    style={{
+                      flex: 1,
+                      paddingHorizontal: layout.gap / 2,
+                      paddingBottom: layout.gap / 2,
+                      paddingTop: index < columns ? 0 : layout.gap / 2,
+                    }}
+                  />
                 )
               }
             />
