@@ -213,14 +213,16 @@ export function isWalkInSupplier(supplierId: string, supplierName: string, hasLi
   return !hasLinkedOrder && !supplierId && Boolean(supplierName.trim());
 }
 
-/** Show the match-product combobox for this delivery header. */
-export function showProductMatchPicker(
-  supplierId: string,
-  supplierName: string,
-  hasLinkedOrder: boolean,
-): boolean {
-  if (hasLinkedOrder || supplierId) return true;
-  if (supplierName.trim()) return false;
+/**
+ * Always true — every line needs a way to say "this is an existing catalogue
+ * item," regardless of whether the supplier is a formal record, a linked PO,
+ * or just a typed name (a "walk-in" delivery). Matching a product and
+ * choosing/typing a supplier are independent decisions; gating one on the
+ * other left walk-in lines with no way to link to an existing product at
+ * all. Kept as a function (not inlined at the one call site) in case that
+ * changes again.
+ */
+export function showProductMatchPicker(): boolean {
   return true;
 }
 

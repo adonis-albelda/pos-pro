@@ -600,7 +600,7 @@ export function ReceivingForm({
   const productsById = pickedProducts;
 
   const hasLinkedOrder = Boolean(linkedOrder);
-  const showMatchPicker = showProductMatchPicker(supplierId, supplierName, hasLinkedOrder);
+  const showMatchPicker = showProductMatchPicker();
   const hasSupplier = hasSupplierSelected(supplierId, supplierName, hasLinkedOrder);
   const pendingCount = unresolvedCount(rows);
   const canSave = allRowsResolved(rows);

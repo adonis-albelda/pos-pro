@@ -276,7 +276,12 @@ export function ReceivingLineAccordion({
   const newCost = row.unitCost.trim() !== "" ? Number(row.unitCost) : null;
   const newShelf = row.appliedPrice.trim() !== "" ? Number(row.appliedPrice) : null;
   const nextStock = row.productId ? stockAfterReceive(currentStock, qty) : null;
-  const inputsDisabled = !hasSupplier || row.excluded;
+  // Matching a product is the one thing that must always stay reachable —
+  // everything else (name, SKUs, quantity, category, price) only makes
+  // sense once that's settled, so gates on it instead of on supplier state.
+  // Deliberately not applied to the match combobox itself below (that would
+  // deadlock it — disabled until picked, but picking is what it's for).
+  const inputsDisabled = !row.productId || row.excluded;
   const isNewProduct = !row.productId;
   const showNewProductGate = isNewProduct && !matchAsExisting && !row.excluded;
 
@@ -410,7 +415,7 @@ export function ReceivingLineAccordion({
           {showNewProductGate ? (
             <NewProductChoice
               productName={row.name}
-              disabled={!hasSupplier}
+              disabled={row.excluded}
               onCreate={() => router.push("/products/new" as Route)}
               onExisting={() => setMatchAsExisting(true)}
             />
@@ -562,7 +567,7 @@ export function ReceivingLineAccordion({
                     onPick={onPickVariant}
                     onClear={onClearProduct}
                     placeholder="Search your catalogue…"
-                    disabled={inputsDisabled}
+                    disabled={row.excluded}
                   />
                 </div>
               </div>
