@@ -2,9 +2,16 @@ import {
   isProductUnit,
   type Product,
   type ProductUnit,
+  type ProductVariant,
   type ProductWithEstimatedStock,
 } from "@double-a/shared-types";
 import { getDb } from "./index";
+import {
+  getLocalVariant,
+  getVariantPendingQuantity,
+  listLocalVariantsForProducts,
+  variantAttributeLabel,
+} from "./product-variants";
 
 interface ProductRow {
   id: string;
@@ -260,9 +267,40 @@ export async function findLocalProductByBarcode(code: string): Promise<ProductBa
   return { product: toProductWithEstimate(productRow), variantId: variantRow.id };
 }
 
+/** Projects a variant onto its parent product's row shape — the display shape everywhere in the POS that shows one variant as if it were its own product (grid tiles, cart lines, this file). */
+function toVariantAsProduct(
+  product: ProductWithEstimatedStock,
+  variant: ProductVariant,
+  estimatedStock: number,
+): ProductWithEstimatedStock {
+  const label = variantAttributeLabel(variant);
+  return {
+    ...product,
+    id: variant.id,
+    name: label ? `${product.name} — ${label}` : product.name,
+    sku: variant.sku ?? product.sku,
+    barcode: variant.barcode ?? product.barcode,
+    photoUrl: variant.photoUrl ?? product.photoUrl,
+    price: variant.price,
+    costPrice: variant.costPrice,
+    stockQuantity: variant.stockQuantity,
+    isBundle: variant.isBundle,
+    estimatedStock,
+  };
+}
+
 /**
  * Name, SKU or barcode. A scanned code is an exact hit and jumps to the front,
  * ahead of anything that merely contains the typed text.
+ *
+ * Never returns a bare product-level row for a product that actually has
+ * more than one variant — CLAUDE.md's variant model means each combination
+ * can carry its own code/price/stock the product/default row never sees
+ * (same reasoning as the Sell grid's "By variant" mode and
+ * findLocalProductByBarcode's scanner path), so a multi-variant product
+ * expands into one row per variant here too, instead of one row whose
+ * price/stock only ever reflected its default variant. A single-variant
+ * product is unaffected — its one variant already mirrors the product row.
  */
 export async function searchLocalProducts(
   term: string,
@@ -272,7 +310,40 @@ export async function searchLocalProducts(
 
   const { sql, params } = buildListQuery({ search: needle });
   const rows = await getDb().getAllAsync<ProductRow>(sql, ...params);
-  return rows.map(toProductWithEstimate);
+  const results = rows.map(toProductWithEstimate);
+
+  // An exact variant-level sku/barcode is the strongest possible signal —
+  // that one variant leads the list even ahead of the general expansion
+  // below, same "scanned code jumps to the front" precedent as the
+  // product-level query's own ORDER BY.
+  let leadingVariantProductId: string | null = null;
+  const variantRow = await getDb().getFirstAsync<{ id: string; product_id: string }>(
+    VARIANT_BY_BARCODE_SQL,
+    needle,
+    needle,
+  );
+  let leading: ProductWithEstimatedStock | null = null;
+  if (variantRow) {
+    const variant = await getLocalVariant(variantRow.id);
+    const productRow = variant
+      ? await getDb().getFirstAsync<ProductRow>(BY_PRODUCT_ID_SQL, variantRow.product_id)
+      : null;
+    if (variant && productRow) {
+      const pending = await getVariantPendingQuantity(variant.id);
+      leading = toVariantAsProduct(toProductWithEstimate(productRow), variant, variant.stockQuantity - pending);
+      leadingVariantProductId = variantRow.product_id;
+    }
+  }
+
+  const remaining = results.filter((row) => row.id !== leadingVariantProductId);
+  const variantsByProduct = await listLocalVariantsForProducts(remaining.map((row) => row.id));
+  const expanded = remaining.flatMap((product) => {
+    const variants = variantsByProduct.get(product.id);
+    if (!variants || variants.length <= 1) return [product];
+    return variants.map(({ variant, estimatedStock }) => toVariantAsProduct(product, variant, estimatedStock));
+  });
+
+  return leading ? [leading, ...expanded] : expanded;
 }
 
 /** Reports rows written so far against the total — drives the pull progress modal. */

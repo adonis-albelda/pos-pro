@@ -5,7 +5,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { ArrowLeft, Camera, Loader2, Package, Search, Tag, Truck, Warehouse } from "lucide-react";
 import { formatMoney } from "@double-a/shared-types";
 import type { Product } from "@double-a/shared-types";
-import { listProductsPage } from "@double-a/api-client/queries";
+import { listProductsPage, listProductVariants, type ProductVariant } from "@double-a/api-client/queries";
 import { Button, Input, Money } from "@/components/ui";
 import { Dialog } from "@/components/overlay";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
@@ -19,6 +19,52 @@ const DRAG_THRESHOLD_PX = 5;
 const POSITION_STORAGE_KEY = "price-inquiry-fab-position";
 
 type FabPosition = { x: number; y: number };
+
+/** "L / Red", or "" for a variant with no attributes. */
+function variantLabel(variant: ProductVariant): string {
+  return variant.attributeValues
+    .map((value) => value.value)
+    .filter((value): value is string => Boolean(value))
+    .join(" / ");
+}
+
+/** A row in the results list — either a plain product, or one specific variant of a multi-variant product, projected onto the product's own shape for price/cost/stock/sku. */
+interface PriceInquiryRow {
+  key: string;
+  product: Product;
+  variant: ProductVariant | null;
+  name: string;
+  sku: string | null;
+  price: number;
+  costPrice: number;
+  stockQuantity: number;
+}
+
+function toRow(product: Product, variant: ProductVariant | null): PriceInquiryRow {
+  if (!variant) {
+    return {
+      key: product.id,
+      product,
+      variant: null,
+      name: product.name,
+      sku: product.sku,
+      price: product.price,
+      costPrice: product.costPrice,
+      stockQuantity: product.stockQuantity,
+    };
+  }
+  const label = variantLabel(variant);
+  return {
+    key: variant.id,
+    product,
+    variant,
+    name: label ? `${product.name} — ${label}` : product.name,
+    sku: variant.sku ?? product.sku,
+    price: variant.price,
+    costPrice: variant.costPrice,
+    stockQuantity: variant.stockQuantity ?? product.stockQuantity,
+  };
+}
 
 function defaultFabPosition(): FabPosition {
   return {
@@ -66,7 +112,8 @@ export function PriceInquiryFab() {
   const [open, setOpen] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [selected, setSelected] = useState<Product | null>(null);
+  const [selected, setSelected] = useState<PriceInquiryRow | null>(null);
+  const [variantsByProduct, setVariantsByProduct] = useState<Map<string, ProductVariant[]>>(new Map());
   const [position, setPosition] = useState<FabPosition | null>(null);
   const [dragging, setDragging] = useState(false);
   const dragRef = useRef<{
@@ -106,6 +153,42 @@ export function PriceInquiryFab() {
   });
   const results = query.data?.pages.flatMap((page) => page.products) ?? [];
   const totalMatches = query.data?.pages[0]?.total ?? 0;
+
+  // IndexProductsController's own search stays product-level (name/sku/
+  // barcode on the products row) — a real attribute-combo variant can carry
+  // its own code/price the product/default row never sees (CLAUDE.md's
+  // variant model), so this fills that in per visible result rather than
+  // showing every multi-variant product as one row with only its default
+  // variant's numbers. Bounded to whatever page(s) are actually on screen,
+  // not the whole match count.
+  useEffect(() => {
+    const missingIds = results.map((product) => product.id).filter((id) => !variantsByProduct.has(id));
+    if (missingIds.length === 0) return;
+
+    let cancelled = false;
+    void Promise.all(
+      missingIds.map((id) =>
+        listProductVariants(getBrowserApiClient(), id).catch(() => [] as ProductVariant[]),
+      ),
+    ).then((lists) => {
+      if (cancelled) return;
+      setVariantsByProduct((previous) => {
+        const next = new Map(previous);
+        missingIds.forEach((id, index) => next.set(id, lists[index] ?? []));
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- variantsByProduct is read only to compute missingIds, not to react to; including it would refetch everything it just fetched.
+  }, [results]);
+
+  const rows: PriceInquiryRow[] = results.flatMap((product) => {
+    const variants = (variantsByProduct.get(product.id) ?? []).filter((variant) => variant.isActive);
+    if (variants.length <= 1) return [toRow(product, null)];
+    return variants.map((variant) => toRow(product, variant));
+  });
 
   function onResultsScroll(event: React.UIEvent<HTMLDivElement>) {
     const el = event.currentTarget;
@@ -229,8 +312,12 @@ export function PriceInquiryFab() {
 
             <div className="flex items-center gap-3">
               <span className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-paper">
-                {selected.photoUrl ? (
-                  <img src={selected.photoUrl} alt="" className="size-full object-cover" />
+                {(selected.variant?.photoUrl ?? selected.product.photoUrl) ? (
+                  <img
+                    src={selected.variant?.photoUrl ?? selected.product.photoUrl ?? undefined}
+                    alt=""
+                    className="size-full object-cover"
+                  />
                 ) : (
                   <Camera size={22} strokeWidth={1.75} className="text-ink-muted" />
                 )}
@@ -239,7 +326,7 @@ export function PriceInquiryFab() {
                 <p className="text-body font-semibold text-ink">{selected.name}</p>
                 <p className="mt-0.5 text-caption text-ink-muted">
                   {selected.sku ?? "No SKU"}
-                  {selected.category ? ` · ${selected.category}` : ""}
+                  {selected.product.category ? ` · ${selected.product.category}` : ""}
                 </p>
               </div>
             </div>
@@ -267,7 +354,7 @@ export function PriceInquiryFab() {
                   Total stock
                 </p>
                 <p className="mt-1 text-body-lg font-semibold text-ink">
-                  {selected.stockQuantity} {selected.unit}
+                  {selected.stockQuantity} {selected.product.unit}
                 </p>
               </div>
               <div className="col-span-2 rounded-md border border-border px-3 py-3">
@@ -276,7 +363,7 @@ export function PriceInquiryFab() {
                   Supplier
                 </p>
                 <p className="mt-1 text-body font-medium text-ink">
-                  {selected.supplierNames || "No supplier on file"}
+                  {selected.product.supplierNames || "No supplier on file"}
                 </p>
               </div>
             </div>
@@ -314,32 +401,36 @@ export function PriceInquiryFab() {
                   onScroll={onResultsScroll}
                   className="max-h-80 space-y-1 overflow-y-auto"
                 >
-                  {results.map((product) => (
+                  {rows.map((row) => (
                     <button
-                      key={product.id}
+                      key={row.key}
                       type="button"
-                      onClick={() => setSelected(product)}
+                      onClick={() => setSelected(row)}
                       className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-sm px-3 py-2 text-left transition-colors hover:bg-paper"
                     >
                       <span className="flex min-w-0 items-center gap-2.5">
                         <span className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border bg-paper">
-                          {product.photoUrl ? (
-                            <img src={product.photoUrl} alt="" className="size-full object-cover" />
+                          {(row.variant?.photoUrl ?? row.product.photoUrl) ? (
+                            <img
+                              src={row.variant?.photoUrl ?? row.product.photoUrl ?? undefined}
+                              alt=""
+                              className="size-full object-cover"
+                            />
                           ) : (
                             <Camera size={14} strokeWidth={2} className="text-ink-muted" />
                           )}
                         </span>
                         <span className="min-w-0">
                           <span className="block truncate text-body font-medium text-ink">
-                            {product.name}
+                            {row.name}
                           </span>
                           <span className="block text-caption text-ink-muted">
-                            {product.sku ?? "No SKU"}
+                            {row.sku ?? "No SKU"}
                           </span>
                         </span>
                       </span>
                       <span className="shrink-0 text-body font-semibold text-ink">
-                        <Money value={product.price} />
+                        <Money value={row.price} />
                       </span>
                     </button>
                   ))}
