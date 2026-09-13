@@ -495,6 +495,17 @@ function readFormDraft(form: HTMLFormElement): Record<string, string | boolean> 
   return draft;
 }
 
+/** True when two readFormDraft() snapshots hold the same values — a draft this shallow-equal to the form's own mount state isn't a real edit. */
+function draftFieldsEqual(
+  a: Record<string, string | boolean>,
+  b: Record<string, string | boolean>,
+): boolean {
+  for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    if ((a[key] ?? "") !== (b[key] ?? "")) return false;
+  }
+  return true;
+}
+
 /** Below the SKU field — the 3s-debounced realtime duplicate check's result. */
 function SkuFeedback({
   checking,
@@ -2452,18 +2463,36 @@ export function ProductForm({
   const pendingPhotosRef = useRef<DraftPhotosState | null>(null);
   const [draftAvailable, setDraftAvailable] = useState(false);
   const [draftConfirmAction, setDraftConfirmAction] = useState<"reload" | "clear" | null>(null);
+  // The form's own plain-field values the instant it mounts — for an
+  // existing product this is exactly what's already saved. A stored draft
+  // that's shallow-equal to this was never a real edit (a stray input/change
+  // event with no actual value change, or a leftover from a visit where
+  // nothing changed) and must not surface the "restore" banner or get
+  // rewritten by autosave below.
+  const initialFormSnapshotRef = useRef<Record<string, string | boolean> | null>(null);
 
   // A leftover draft only ever means something at the moment this page first
   // opens — captured once, into a ref, so autosave below (which starts
   // overwriting the same storage key right away) can't erase what "Restore"
   // is supposed to bring back. Photos live in IndexedDB beside the JSON.
   useEffect(() => {
+    initialFormSnapshotRef.current = formRef.current ? readFormDraft(formRef.current) : null;
     let cancelled = false;
     void (async () => {
       const draft = readStoredDraft(draftKey);
       const photos = await readDraftPhotos(draftKey);
       if (cancelled) return;
       if (!draft && !draftPhotosHaveContent(photos)) return;
+      const noRealChange =
+        product &&
+        draft &&
+        !draftPhotosHaveContent(photos) &&
+        initialFormSnapshotRef.current &&
+        draftFieldsEqual(draft.fields, initialFormSnapshotRef.current);
+      if (noRealChange) {
+        window.localStorage.removeItem(draftKey);
+        return;
+      }
       pendingDraftRef.current = draft ?? { version: 2, fields: {} };
       pendingPhotosRef.current = photos;
       setDraftAvailable(true);
@@ -2527,7 +2556,15 @@ export function ProductForm({
     function save() {
       clearTimeout(timeout);
       timeout = setTimeout(() => {
-        writeStoredDraft(draftKey, { fields: readFormDraft(form!) });
+        const next = readFormDraft(form!);
+        if (
+          initialFormSnapshotRef.current &&
+          draftFieldsEqual(next, initialFormSnapshotRef.current)
+        ) {
+          window.localStorage.removeItem(draftKey);
+          return;
+        }
+        writeStoredDraft(draftKey, { fields: next });
       }, 600);
     }
     form.addEventListener("input", save);
