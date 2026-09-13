@@ -16,6 +16,7 @@ import {
   useRestoreProduct,
   useSetProductActive,
 } from "@/lib/query/products";
+import { useProductVariants } from "@/lib/query/attributes";
 import { MoveIntoProductDialog } from "./move-into-product-dialog";
 import { ProductRowActionsMenu } from "./product-row-actions-menu";
 
@@ -81,6 +82,8 @@ export function ProductVariantsTable({
   const cloneProduct = useCloneProduct();
   const deleteProduct = useDeleteProduct();
   const restoreProduct = useRestoreProduct();
+  const deletingVariantsQuery = useProductVariants(deleting?.productId ?? null);
+  const deletingVariantCount = deletingVariantsQuery.data?.length ?? 0;
 
   function clone(variant: ProductVariantListRow) {
     cloneProduct.mutate(variant.productId, {
@@ -294,7 +297,11 @@ export function ProductVariantsTable({
         title="Delete product?"
         description={
           deleting
-            ? `${deleting.productName} stops appearing on terminals after their next sync. Stock and sales history stay — restore it from the Deleted filter any time.`
+            ? `${deleting.productName} stops appearing on terminals after their next sync. Stock and sales history stay — restore it from the Deleted filter any time.${
+                deletingVariantCount > 1
+                  ? ` This product has ${deletingVariantCount} variants — all of them will be deleted too.`
+                  : ""
+              }`
             : ""
         }
         confirmLabel="Delete product"
