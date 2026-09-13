@@ -42,7 +42,9 @@ export default function PosLayout() {
   const subPageTitle = DRAWER_SUBPAGE_TITLES[pathname];
   // A drawer sub-page is a dead end reached to go do one thing, not a tab to
   // jump out of mid-task — SubPageHeader's back arrow is the only way out.
-  const showBottomTabBar = compact && !subPageTitle;
+  // Shown at every width/orientation now, not just phone — a tablet held
+  // sideways still benefits from one-tap Sell/Delivery/History/Attendance.
+  const showBottomTabBar = !subPageTitle;
 
   if (!cashier) return <Redirect href="/unlock" />;
 

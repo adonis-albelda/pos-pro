@@ -37,6 +37,8 @@ interface ProductRow {
   addon_group_ids: string | null;
   updated_at: string | null;
   pending_quantity: number;
+  brand_id: string | null;
+  brand_name: string | null;
 }
 
 function parseAddonGroupIds(json: string | null): string[] {
@@ -83,6 +85,8 @@ function toProductWithEstimate(row: ProductRow): ProductWithEstimatedStock {
     // when assembled, which is an admin action, not a POS one).
     bundleItems: [],
     addonGroupIds: parseAddonGroupIds(row.addon_group_ids),
+    brandId: row.brand_id,
+    brandName: row.brand_name,
     updatedAt: row.updated_at ?? "",
     // Deleted products never sync to a device — deletion is admin-only.
     deletedAt: null,
@@ -122,6 +126,8 @@ SELECT p.id,
        p.is_bundle,
        p.addon_group_ids,
        p.updated_at,
+       p.brand_id,
+       p.brand_name,
        COALESCE((
          SELECT SUM(si.quantity)
            FROM sale_items si
@@ -357,8 +363,9 @@ async function insertOrReplaceProduct(
     `INSERT INTO products
        (id, name, sku, supplier_names, price, cost_price, stock_quantity, category, category_id,
         unit, allow_decimal, barcode, reorder_point, replenish_quantity, description,
-        bulk_price, bulk_min_quantity, is_active, photo_url, is_bundle, addon_group_ids, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        bulk_price, bulk_min_quantity, is_active, photo_url, is_bundle, addon_group_ids, updated_at,
+        brand_id, brand_name)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (id) DO UPDATE SET
        name = excluded.name,
        sku = excluded.sku,
@@ -380,7 +387,9 @@ async function insertOrReplaceProduct(
        photo_url = excluded.photo_url,
        is_bundle = excluded.is_bundle,
        addon_group_ids = excluded.addon_group_ids,
-       updated_at = excluded.updated_at`,
+       updated_at = excluded.updated_at,
+       brand_id = excluded.brand_id,
+       brand_name = excluded.brand_name`,
     product.id,
     product.name,
     product.sku,
@@ -405,6 +414,8 @@ async function insertOrReplaceProduct(
     product.isBundle ? 1 : 0,
     JSON.stringify(product.addonGroupIds),
     product.updatedAt,
+    product.brandId ?? null,
+    product.brandName ?? null,
   );
 }
 
@@ -478,6 +489,21 @@ export async function updateProductStock(productId: string, quantity: number): P
 }
 
 /**
+ * BrandUpdated (backend) — a brand rename touches zero product rows
+ * server-side (brand_name is a relation lookup there, only denormalized
+ * here for offline display), so this is the one write that patches every
+ * local product carrying this brand_id in one shot instead of one
+ * ProductUpdated per affected product.
+ */
+export async function updateProductsBrandName(brandId: string, brandName: string): Promise<void> {
+  await getDb().runAsync(
+    "UPDATE products SET brand_name = ? WHERE brand_id = ?",
+    brandName,
+    brandId,
+  );
+}
+
+/**
  * The live-broadcast write for a catalogue field change (ProductUpdated,
  * backend) — name/price/unit/etc, everything except stock_quantity.
  * Deliberately excludes it: this event's payload carries a company-wide
@@ -492,7 +518,7 @@ export async function updateProductCatalogFields(product: Product): Promise<void
        name = ?, sku = ?, supplier_names = ?, price = ?, cost_price = ?, category = ?, category_id = ?,
        unit = ?, allow_decimal = ?, barcode = ?, reorder_point = ?, replenish_quantity = ?,
        description = ?, bulk_price = ?, bulk_min_quantity = ?, is_active = ?, photo_url = ?,
-       is_bundle = ?, addon_group_ids = ?, updated_at = ?
+       is_bundle = ?, addon_group_ids = ?, updated_at = ?, brand_id = ?, brand_name = ?
      WHERE id = ?`,
     product.name,
     product.sku,
@@ -514,6 +540,8 @@ export async function updateProductCatalogFields(product: Product): Promise<void
     product.isBundle ? 1 : 0,
     JSON.stringify(product.addonGroupIds),
     product.updatedAt,
+    product.brandId ?? null,
+    product.brandName ?? null,
     product.id,
   );
 }

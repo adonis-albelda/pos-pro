@@ -606,6 +606,21 @@ const V31_REPULL_FOR_VARIANT_SUPPLIERS = `
 UPDATE sync_meta SET high_water_mark = NULL WHERE id = 1;
 `;
 
+const V32_PRODUCT_BRAND = `
+ALTER TABLE products ADD COLUMN brand_id TEXT;
+ALTER TABLE products ADD COLUMN brand_name TEXT;
+`;
+
+/**
+ * v33: v32 only adds the columns — every product already on-device keeps
+ * them null until its own next incremental update, same reasoning as v28/v31.
+ * Forces one more unfiltered pull so a brand already on file server-side
+ * shows up on the Sell grid without waiting on an unrelated edit.
+ */
+const V33_REPULL_FOR_PRODUCT_BRAND = `
+UPDATE sync_meta SET high_water_mark = NULL WHERE id = 1;
+`;
+
 /** Ordered, append-only. Never edit a step that has shipped. */
 export const MIGRATIONS: Migration[] = [
   { version: 1, sql: V1_INITIAL },
@@ -639,6 +654,8 @@ export const MIGRATIONS: Migration[] = [
   { version: 29, sql: V29_REPULL_FOR_STALE_DELETES },
   { version: 30, sql: V30_VARIANT_SUPPLIERS },
   { version: 31, sql: V31_REPULL_FOR_VARIANT_SUPPLIERS },
+  { version: 32, sql: V32_PRODUCT_BRAND },
+  { version: 33, sql: V33_REPULL_FOR_PRODUCT_BRAND },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.reduce(

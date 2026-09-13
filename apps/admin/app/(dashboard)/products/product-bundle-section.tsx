@@ -251,17 +251,23 @@ export function AssembleBundleSection({ product }: { product: Product }) {
   );
 }
 
-/** Persist recipe rows via setBundleItems — empty list clears when not a kit. */
+/**
+ * Persist recipe rows via setBundleItems — caller must only call this when
+ * the product/variant is (or is becoming) a bundle. The backend flatly
+ * refuses this endpoint for a non-bundle one: SetBundleItemsRequest requires
+ * `items` to be a non-empty array, and SetBundleItemsController throws on a
+ * non-bundle default variant regardless — there is no "send an empty list to
+ * clear" shape it accepts, so this used to 422 ("The given data was
+ * invalid") on every ordinary non-bundle product save. Turning a bundle back
+ * into a plain product leaves its old BundleItem rows in place, unread,
+ * until it becomes a bundle again — a known, accepted gap, not something
+ * this call was ever able to fix.
+ */
 export async function persistBundleRows(
   setBundleItems: ReturnType<typeof useSetBundleItems>,
   productId: string,
-  isBundle: boolean,
   rows: BundleRow[],
 ): Promise<void> {
-  if (!isBundle) {
-    await setBundleItems.mutateAsync({ id: productId, items: [] });
-    return;
-  }
   const validRows = rows.filter((row) => row.productId && Number(row.quantity) > 0);
   await setBundleItems.mutateAsync({
     id: productId,

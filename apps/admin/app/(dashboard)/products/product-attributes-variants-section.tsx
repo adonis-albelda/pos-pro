@@ -15,6 +15,7 @@ import {
   MoreVertical,
   Pencil,
   Plus,
+  RotateCcw,
   ScanBarcode,
   Sparkles,
   Tag,
@@ -24,7 +25,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { ApiError } from "@double-a/api-client";
-import { shelfPriceFromMarkup } from "@double-a/shared-types";
+import { formatMoney, roundMoney, shelfPriceFromMarkup } from "@double-a/shared-types";
 import type { Product, Supplier } from "@double-a/shared-types";
 import type { CompanyAttribute, MarginType, ProductVariant, VariantSupplierLink } from "@double-a/api-client/queries";
 import {
@@ -364,12 +365,22 @@ export function VariantSupplierLinksEditor({
   const suppliersQuery = useSuppliers();
   const createSupplier = useCreateSupplier();
   const add = useAddProductVariantSupplier(productId);
+  const updateVariant = useUpdateProductVariant(productId);
   const [picking, setPicking] = useState("");
   const [pendingSku, setPendingSku] = useState("");
   const [pendingPrice, setPendingPrice] = useState("");
   // Bridges a just-created supplier and useSuppliers()'s own refetch landing
   // — same reasoning as product-form.tsx's PendingSupplierLinksEditor.
   const [justCreated, setJustCreated] = useState<Supplier | null>(null);
+  // The new link's own recalculate() (ProductVariantSupplierObserver,
+  // Laravel) always applies the suggested cost price server-side the
+  // instant this add lands — this is the "manual approval" step: shown
+  // right after, "Keep" leaves that already-applied value, "Revert" writes
+  // the old cost price back over it.
+  const [costPricePrompt, setCostPricePrompt] = useState<{
+    previousCostPrice: number;
+    suggestedCostPrice: number;
+  } | null>(null);
 
   const linkedSupplierIds = new Set(variant.suppliers.map((link) => link.supplierId));
   const knownSuppliers = suppliersQuery.data ?? [];
@@ -404,12 +415,19 @@ export function VariantSupplierLinksEditor({
     if (!picking) return;
     const supplierName = available.find((supplier) => supplier.id === picking)?.name ?? "Supplier";
     const trimmedPrice = pendingPrice.trim();
+    const newSupplierPrice = trimmedPrice === "" ? null : Number(trimmedPrice);
+    const previousCostPrice = variant.costPrice;
+    const suggestedCostPrice = suggestVariantCostPrice(variant.pricingStrategy, [
+      ...variant.suppliers,
+      { supplierPrice: newSupplierPrice },
+    ]);
+
     add.mutate(
       {
         variantId: variant.id,
         supplierId: picking,
         supplierSku: pendingSku.trim() || null,
-        supplierPrice: trimmedPrice === "" ? null : Number(trimmedPrice),
+        supplierPrice: newSupplierPrice,
       },
       {
         // Fields stay populated on failure — nothing to retype, just retry.
@@ -418,6 +436,9 @@ export function VariantSupplierLinksEditor({
           setPendingSku("");
           setPendingPrice("");
           toast.success(`${supplierName} added.`);
+          if (null !== suggestedCostPrice && suggestedCostPrice !== previousCostPrice) {
+            setCostPricePrompt({ previousCostPrice, suggestedCostPrice });
+          }
         },
         onError: (error) => toast.error(errorMessage(error, "Could not add this supplier.")),
       },
@@ -502,6 +523,41 @@ export function VariantSupplierLinksEditor({
           <p className="text-body text-ink-muted">No suppliers linked yet.</p>
         ) : null}
       </div>
+
+      <Dialog
+        open={null !== costPricePrompt}
+        onClose={() => setCostPricePrompt(null)}
+        title="Update this variant's cost price too?"
+        description={
+          costPricePrompt
+            ? `Based on the "${pricingStrategyLabel(variant.pricingStrategy)}" strategy, this new supplier changes cost price from ${formatMoney(costPricePrompt.previousCostPrice)} to ${formatMoney(costPricePrompt.suggestedCostPrice)} — already applied. Keep it, or revert to the previous cost price?`
+            : undefined
+        }
+      >
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button
+            type="button"
+            variant="secondary"
+            icon={RotateCcw}
+            loading={updateVariant.isPending}
+            onClick={() => {
+              if (!costPricePrompt) return;
+              updateVariant.mutate(
+                { variantId: variant.id, costPrice: costPricePrompt.previousCostPrice },
+                {
+                  onSuccess: () => setCostPricePrompt(null),
+                  onError: (error) => toast.error(errorMessage(error, "Could not revert the cost price.")),
+                },
+              );
+            }}
+          >
+            Revert to {costPricePrompt ? formatMoney(costPricePrompt.previousCostPrice) : ""}
+          </Button>
+          <Button type="button" icon={Check} onClick={() => setCostPricePrompt(null)}>
+            Keep {costPricePrompt ? formatMoney(costPricePrompt.suggestedCostPrice) : ""}
+          </Button>
+        </div>
+      </Dialog>
     </div>
   );
 }
@@ -898,6 +954,35 @@ function shelfPriceFromFixedMargin(costPrice: number, amount: number): number {
 }
 
 /**
+ * Client-side preview of what ProductVariantCostResolver::resolve() (Laravel)
+ * will compute server-side once this is saved — same three strategies, same
+ * "ignore unpriced links" filter. Null with no linked suppliers (or none of
+ * them priced) — nothing to suggest, keep whatever cost price is already
+ * there rather than suggesting zero.
+ */
+function suggestVariantCostPrice(
+  strategy: ProductVariant["pricingStrategy"],
+  suppliers: { supplierPrice: number | null }[],
+): number | null {
+  const prices = suppliers
+    .map((link) => link.supplierPrice)
+    .filter((price): price is number => null !== price);
+  if (0 === prices.length) return null;
+
+  if ("lowest" === strategy) return Math.min(...prices);
+  if ("weighted_average" === strategy) {
+    return roundMoney(prices.reduce((sum, price) => sum + price, 0) / prices.length);
+  }
+  return Math.max(...prices); // 'highest'
+}
+
+function pricingStrategyLabel(strategy: ProductVariant["pricingStrategy"]): string {
+  if ("lowest" === strategy) return "Lowest";
+  if ("weighted_average" === strategy) return "Weighted average";
+  return "Highest";
+}
+
+/**
  * Reorder point / replenish quantity (per-variant restocking thresholds,
  * moved here from the product form) plus a margin-based selling-price
  * suggestion: pick percent (cost price × (1 + margin/100), same formula as
@@ -1066,6 +1151,14 @@ function VariantDetailPanel({
   const [price, setPrice] = useState(String(variant.price));
   const [costPrice, setCostPrice] = useState(String(variant.costPrice));
   const [pricingStrategy, setPricingStrategy] = useState(variant.pricingStrategy);
+  const suggestedCostPrice = suggestVariantCostPrice(pricingStrategy, variant.suppliers);
+
+  /** Same force-recompute the backend does when pricing_strategy itself changes (UpdateProductVariantController) — preview it immediately instead of waiting for the round trip. */
+  function onPricingStrategyChange(next: ProductVariant["pricingStrategy"]) {
+    setPricingStrategy(next);
+    const suggestion = suggestVariantCostPrice(next, variant.suppliers);
+    if (null !== suggestion) setCostPrice(String(suggestion));
+  }
   const [unitId, setUnitId] = useState(variant.unitId ?? "");
   const [reorderPoint, setReorderPoint] = useState(String(variant.reorderPoint));
   const [replenishQuantity, setReplenishQuantity] = useState(String(variant.replenishQuantity));
@@ -1150,13 +1243,14 @@ function VariantDetailPanel({
       {
         onSuccess: async () => {
           if (showBundleSection) {
-            // Recipe is product-scoped — only write when this SKU is a kit,
-            // or when clearing after turning kit off. Never wipe siblings'
-            // shared recipe on a price-only save of a non-kit variant.
-            const shouldWriteRecipe = isBundle || variant.isBundle;
-            if (shouldWriteRecipe) {
+            // Recipe is product-scoped — only write when this SKU is a kit.
+            // The backend has no "clear" shape for a non-bundle product (see
+            // persistBundleRows's own comment), so turning kit off here just
+            // leaves the old recipe rows in place, unread, until it's a kit
+            // again — never attempt to write on a non-kit save.
+            if (isBundle) {
               try {
-                await persistBundleRows(setBundleItems, productId, isBundle, bundleRows);
+                await persistBundleRows(setBundleItems, productId, bundleRows);
               } catch (error) {
                 toast.error(
                   error instanceof Error
@@ -1296,6 +1390,18 @@ function VariantDetailPanel({
                   onChange={(event) => setCostPrice(event.target.value)}
                 />
               </Field>
+              {null !== suggestedCostPrice && suggestedCostPrice !== Number(costPrice) ? (
+                <p className="mt-1 text-caption text-ink-muted">
+                  Suggested from linked suppliers: {formatMoney(suggestedCostPrice)}.{" "}
+                  <button
+                    type="button"
+                    className="cursor-pointer font-medium text-primary hover:underline"
+                    onClick={() => setCostPrice(String(suggestedCostPrice))}
+                  >
+                    Use it
+                  </button>
+                </p>
+              ) : null}
             </div>
           </div>
 
@@ -1308,7 +1414,7 @@ function VariantDetailPanel({
                 <Select
                   value={pricingStrategy}
                   onChange={(event) =>
-                    setPricingStrategy(event.target.value as ProductVariant["pricingStrategy"])
+                    onPricingStrategyChange(event.target.value as ProductVariant["pricingStrategy"])
                   }
                 >
                   <option value="highest">Highest</option>

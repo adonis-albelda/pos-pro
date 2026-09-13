@@ -23,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { ApiError } from "@double-a/api-client";
 import type { CreateFullProductInput } from "@double-a/api-client/queries";
 import type { Product } from "@double-a/shared-types";
 import {
@@ -1921,6 +1922,23 @@ function WizardVariantSuppliersStep({
   );
 }
 
+/**
+ * A 422 from createFullProduct always carries the real reason on
+ * error.errors (per-field) — error.message is only ever Laravel's generic
+ * "The given data was invalid." wrapper text, so surfacing that alone reads
+ * as a dead end. Same pattern as actions.ts's own describeSaveError (the
+ * edit path) — duplicated here rather than imported since that file is a
+ * Server Actions module and can't export a plain sync helper to a client
+ * component.
+ */
+function describeCreateError(error: unknown): string {
+  if (error instanceof ApiError && error.isValidation) {
+    const first = Object.values(error.errors ?? {})[0]?.[0];
+    if (first) return first;
+  }
+  return error instanceof Error ? error.message : "Could not save the product.";
+}
+
 function plainPreviewText(value: string | null | undefined): string {
   if (!value) return "—";
   const stripped = value.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
@@ -2722,8 +2740,8 @@ export function ProductForm({
   useEffect(() => {
     if (!state.ok || !product) return;
     toast.success("Product updated.");
-    if (!isSingleProductUi) return;
-    void persistBundleRows(setBundleItems, product.id, isBundle, bundleRows).catch((error) => {
+    if (!isSingleProductUi || !isBundle) return;
+    void persistBundleRows(setBundleItems, product.id, bundleRows).catch((error) => {
       toast.error(
         error instanceof Error
           ? error.message
@@ -2924,7 +2942,7 @@ export function ProductForm({
             router.push(saveRedirectHref as Route);
           }
         },
-        onError: (error) => toast.error(error instanceof Error ? error.message : "Could not save the product."),
+        onError: (error) => toast.error(describeCreateError(error)),
       },
     );
   }
@@ -3003,7 +3021,7 @@ export function ProductForm({
         },
         onError: (error) => {
           setCreateProgressComplete(false);
-          toast.error(error instanceof Error ? error.message : "Could not save the product.");
+          toast.error(describeCreateError(error));
         },
       },
     );

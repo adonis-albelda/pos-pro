@@ -3,7 +3,6 @@ import { Redirect, Stack, usePathname, useRouter } from "expo-router";
 import { Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ROLES } from "@double-a/shared-types";
-import { useLayout } from "@/lib/layout";
 import { useLocationScope } from "@/lib/location-scope";
 import { useSession } from "@/lib/session";
 import { useStoreSettings } from "@/lib/store";
@@ -40,7 +39,6 @@ export default function AdminLayout() {
   // dashboard is reached from the same shift and must not stay unlocked here
   // just because the cashier tapped away from the Sell screen first.
   const recordActivity = useIdleLock(idleTimeoutMinutes);
-  const { compact } = useLayout();
   // "Account used to login is admin" (device.ts EnrolledRole) also opens the
   // dashboard, regardless of which PIN shift user is on — same rule as
   // account-drawer.tsx's ADMIN_TAB gate, kept in sync with it.
@@ -87,8 +85,9 @@ export default function AdminLayout() {
   // The embedded web dashboard is a dead end to go look at, not a tab to
   // jump out of mid-task — same reasoning as the drawer's own detail screens
   // (see app/pos/_layout.tsx's showBottomTabBar). Native admin subpages
-  // (/admin/native/...) keep the bar.
-  const showBottomTabBar = compact && pathname !== "/admin";
+  // (/admin/native/...) keep the bar. Shown at every width/orientation now,
+  // not just phone — same reasoning as pos/_layout.tsx's own change.
+  const showBottomTabBar = pathname !== "/admin";
 
   if (check === "error") {
     return (

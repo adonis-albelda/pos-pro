@@ -115,7 +115,12 @@ export function DashboardPageClient() {
       (sum, sale) => sum + sale.items.reduce((n, item) => n + item.quantity, 0),
       0,
     );
-    const net = expensesTotal === null ? null : revenue - expensesTotal;
+    // The true bottom line — revenue minus BOTH supplier cost and operating
+    // expenses, same formula as Reports' own "Net profit" (reports-page-client.tsx).
+    // Deliberately not "revenue minus expenses only" — that number can land
+    // above Gross profit and reads as a bug even though it technically isn't
+    // one; Net profit is always <= Gross profit since it subtracts more.
+    const net = expensesTotal === null || !profit ? null : profit.grossProfit - expensesTotal;
 
     const salesByHour = Array.from({ length: 24 }, (_, hour) => {
       const count = completed.filter((sale) => new Date(sale.createdAt).getHours() === hour).length;
@@ -142,7 +147,7 @@ export function DashboardPageClient() {
       ...(net !== null
         ? [
             {
-              label: "Net",
+              label: "Net profit",
               value: Math.abs(net),
               display: formatMoney(net),
               barClassName: net < 0 ? "bg-danger" : "bg-success",
@@ -281,11 +286,15 @@ export function DashboardPageClient() {
         />
         <StatCard
           icon={TrendingDown}
-          label="Net"
+          label="Net profit"
           value={net === null ? "—" : formatMoney(net)}
-          hint={net === null ? "Revenue minus expenses" : "Revenue minus today's expenses"}
+          hint={
+            net === null
+              ? "Revenue minus supplier cost minus expenses"
+              : "Today's true bottom line — always at or below Gross profit"
+          }
           tone={net !== null && net < 0 ? "danger" : "success"}
-          loading={salesQuery.isPending || expensesQuery.isPending}
+          loading={salesQuery.isPending || expensesQuery.isPending || profitQuery.isPending}
         />
         <StatCard
           icon={Coins}

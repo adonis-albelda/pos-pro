@@ -240,8 +240,13 @@ sale lines keep snapshotted prices.
 ### 14. Operating expenses are admin-only and subtract from revenue
 The owner logs rent, utilities, wages and similar outlays in admin (`expenses` table). Not
 COGS — that stays on `sale_items.unit_cost`. Never written from the POS and never synced to
-SQLite. Dashboard and reports **Net** = revenue − sum of expenses whose `expense_date` falls
-in the same shop-day range. Gross profit (revenue − supplier cost) stays a separate figure.
+SQLite. Reports and the Dashboard both surface three separate profit figures, not one derived
+from another: **Gross profit** = revenue − supplier cost. **Net** = revenue − sum of expenses
+whose `expense_date` falls in the same shop-day range (Reports only — expenses alone, nothing
+to do with supplier cost). **Net profit** = revenue − supplier cost − expenses, the true bottom
+line — always at or below Gross profit, unlike plain Net. The Dashboard's single "Net profit"
+stat uses this last formula (`gross profit − expenses`), not plain Net, precisely so it can
+never read higher than Gross profit sitting right next to it.
 
 ### 15. Company is the isolation key (multi-tenant); locations split stock
 Every business row carries `company_id`. Under a company, `locations` (`branch` | `warehouse`)

@@ -10,7 +10,11 @@ import {
 import { variantAttributeLabel } from "@/db/product-variants";
 import { BottomSheet } from "@/components/bottom-sheet";
 import { Badge, Button, Money } from "@/components/ui";
+import { useLayout } from "@/lib/layout";
 import { color, fontSize, radius, space } from "@/theme";
+
+/** Wider than BottomSheet's own 560 default — tablet held sideways has room to spare, and this dialog's variant list is worth spreading out instead of staying phone-width. */
+const TABLET_LANDSCAPE_MAX_WIDTH = 720;
 
 export interface PickedAddon {
   addonGroupItemId: string;
@@ -51,6 +55,8 @@ export function VariantAddonPicker({
   const [variantId, setVariantId] = useState<string | null>(null);
   // groupId -> selected addon_group_item ids
   const [picks, setPicks] = useState<Record<string, string[]>>({});
+  const { compact, landscape } = useLayout();
+  const dialogMaxWidth = !compact && landscape ? TABLET_LANDSCAPE_MAX_WIDTH : undefined;
 
   useEffect(() => {
     if (!open) return;
@@ -107,7 +113,7 @@ export function VariantAddonPicker({
   }
 
   return (
-    <BottomSheet open={open} onClose={onCancel}>
+    <BottomSheet open={open} onClose={onCancel} maxWidth={dialogMaxWidth}>
       <View style={{ gap: space.md }}>
         <Text style={{ fontSize: fontSize.headingSm, fontWeight: "700", color: color.ink }}>
           {productName}
@@ -155,16 +161,25 @@ export function VariantAddonPicker({
                       style={{ width: 32, height: 32, borderRadius: radius.sm }}
                     />
                   ) : null}
-                  <Text
-                    style={{
-                      flex: 1,
-                      fontSize: fontSize.body,
-                      fontWeight: selected ? "700" : "500",
-                      color: color.ink,
-                    }}
-                  >
-                    {label}
-                  </Text>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text
+                      style={{
+                        fontSize: fontSize.body,
+                        fontWeight: selected ? "700" : "500",
+                        color: color.ink,
+                      }}
+                    >
+                      {label}
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: fontSize.caption,
+                        color: variant.stockQuantity <= 0 ? color.danger : color.inkMuted,
+                      }}
+                    >
+                      {variant.stockQuantity <= 0 ? "Out of stock" : `${variant.stockQuantity} in stock`}
+                    </Text>
+                  </View>
                   <Text style={[{ fontSize: fontSize.body, color: color.inkMuted }]}>
                     {formatMoney(variant.price)}
                   </Text>

@@ -29,7 +29,13 @@ import {
   upsertLocalDiscountRule,
 } from "@/db/discounts";
 import { deleteLocalLoyaltyReward, saveLocalLoyaltyProgram, upsertLocalLoyaltyReward } from "@/db/loyalty";
-import { deleteProducts, updateProductCatalogFields, updateProductStock, upsertProducts } from "@/db/products";
+import {
+  deleteProducts,
+  updateProductCatalogFields,
+  updateProductsBrandName,
+  updateProductStock,
+  upsertProducts,
+} from "@/db/products";
 import { updateVariantCatalogFields, updateVariantStock, upsertVariants } from "@/db/product-variants";
 import {
   deleteLocalScheduleAssignment,
@@ -115,6 +121,11 @@ interface ProductCreatedPayload {
 
 interface ProductDeletedPayload {
   id: string;
+}
+
+interface BrandUpdatedPayload {
+  id: string;
+  name: string;
 }
 
 interface VariantCreatedPayload {
@@ -384,6 +395,13 @@ export async function connectRealtime(
     // deletedProductIds — this is just that same removal arriving live
     // instead of waiting for the next Sync/Refresh.
     void serialized(() => deleteProducts([payload.id])).then(onStockTick);
+  });
+  catalogChannel.listen(".brand.updated", (payload: BrandUpdatedPayload) => {
+    if (__DEV__) console.warn("[realtime] brand.updated", payload);
+    // Patches every local product carrying this brand_id in one UPDATE —
+    // see updateProductsBrandName's own comment for why this can't be a
+    // per-product ProductUpdated instead.
+    void serialized(() => updateProductsBrandName(payload.id, payload.name)).then(onStockTick);
   });
   catalogChannel.listen(".discount-rule.updated", (payload: DiscountRuleUpdatedPayload) => {
     if (__DEV__) console.warn("[realtime] discount-rule.updated", payload);

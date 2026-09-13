@@ -229,6 +229,11 @@ export function ProductTile({
             {product.name}
           </Text>
         )}
+        {product.brandName ? (
+          <View style={{ alignSelf: "flex-start" }}>
+            <Badge tone="neutral" label={product.brandName} />
+          </View>
+        ) : null}
         <View style={{ flexDirection: "row", alignItems: "baseline", gap: space.xs }}>
           <Text
             numberOfLines={1}
@@ -587,6 +592,11 @@ function RowLayoutBody({
           >
             {product.name}
           </Text>
+          {product.brandName ? (
+            <View style={{ alignSelf: "flex-start" }}>
+              <Badge tone="neutral" label={product.brandName} />
+            </View>
+          ) : null}
           <View style={{ flexDirection: "row", alignItems: "baseline", gap: space.xs }}>
             <Text
               numberOfLines={1}
@@ -899,7 +909,10 @@ export function ProductDetailSheet({
             </Text>
           ) : null}
 
-          {product.isBundle ? <Badge tone="neutral" label="Bundle" /> : null}
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space.xs }}>
+            {product.brandName ? <Badge tone="neutral" label={product.brandName} /> : null}
+            {product.isBundle ? <Badge tone="neutral" label="Bundle" /> : null}
+          </View>
 
           <Text
             style={[

@@ -17,13 +17,14 @@ const CENTER_BUTTON_SIZE = 52;
 /**
  * Persistent bottom navigation for Sell/Delivery/History/Attendance —
  * previously only reachable from the account drawer (a few taps away from
- * whatever screen a cashier was on). Phone only (compact) — a tablet already
- * has room for the drawer and its own tablet-specific chrome (CartShell's
- * side panel, StoreHeader's sales stat), so this doesn't touch that layout.
- * Mounted in both app/pos/_layout.tsx and app/admin/_layout.tsx so it stays
- * visible switching between the two, not just within one. Admin dashboard
- * moved back to being drawer-only (AccountDrawer) — this bar's 4 slots go to
- * the screens a shift actually rotates through, not an occasional destination.
+ * whatever screen a cashier was on). Shown at every width and orientation
+ * (phone and tablet, portrait or landscape) — a tablet's own chrome
+ * (CartShell's side panel, StoreHeader's sales stat) sits above this, not in
+ * place of it. Mounted in both app/pos/_layout.tsx and app/admin/_layout.tsx
+ * so it stays visible switching between the two, not just within one. Admin
+ * dashboard moved back to being drawer-only (AccountDrawer) — this bar's 4
+ * slots go to the screens a shift actually rotates through, not an
+ * occasional destination.
  */
 export function BottomTabBar() {
   const router = useRouter();
