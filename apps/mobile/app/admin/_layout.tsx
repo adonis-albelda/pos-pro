@@ -4,6 +4,7 @@ import { Image, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ArrowLeft } from "lucide-react-native";
 import { ROLES } from "@double-a/shared-types";
+import { useLayout } from "@/lib/layout";
 import { useLocationScope } from "@/lib/location-scope";
 import { useSession } from "@/lib/session";
 import { useStoreSettings } from "@/lib/store";
@@ -12,6 +13,7 @@ import { ensureFreshSession } from "@/lib/api/session";
 import { Button } from "@/components/ui";
 import { LoadingState } from "@/components/loading-state";
 import { PinRelockOverlay } from "@/components/pin-relock-overlay";
+import { BottomTabBar } from "@/components/bottom-tab-bar";
 import { color, fontSize, radius, space, styles } from "@/theme";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- same asset-require pattern as setup.tsx; no *.png module declaration in this project
@@ -33,6 +35,7 @@ export default function AdminLayout() {
   // dashboard is reached from the same shift and must not stay unlocked here
   // just because the cashier tapped away from the Sell screen first.
   const recordActivity = useIdleLock(idleTimeoutMinutes);
+  const { compact } = useLayout();
   // "Account used to login is admin" (device.ts EnrolledRole) also opens the
   // dashboard, regardless of which PIN shift user is on — same rule as
   // account-drawer.tsx's ADMIN_TAB gate, kept in sync with it.
@@ -93,7 +96,10 @@ export default function AdminLayout() {
 
   return (
     <View
-      style={[styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]}
+      style={[
+        styles.screen,
+        { paddingTop: insets.top, paddingBottom: compact ? 0 : insets.bottom },
+      ]}
       // Catches taps on the header row and any native (non-WebView) screen
       // under here. A tap inside the WebView itself (app/admin/index.tsx)
       // does not bubble to RN's touch responder system, so it can't reset
@@ -147,6 +153,7 @@ export default function AdminLayout() {
         />
       </View>
       <PinRelockOverlay />
+      {compact ? <BottomTabBar /> : null}
     </View>
   );
 }

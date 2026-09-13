@@ -58,3 +58,9 @@ export function usePriceInquiry(): PriceInquiryContextValue {
   if (!context) throw new Error("usePriceInquiry must be used inside PriceInquiryProvider");
   return context;
 }
+
+/** Same context, no throw — for spots (e.g. BottomTabBar) mounted both inside
+ * the POS tree (has PriceInquiryProvider) and the admin tree (does not). */
+export function usePriceInquiryOptional(): PriceInquiryContextValue | null {
+  return useContext(PriceInquiryContext);
+}

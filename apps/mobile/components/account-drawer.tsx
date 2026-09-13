@@ -14,17 +14,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePathname, useRouter } from "expo-router";
 import { ROLES } from "@double-a/shared-types";
 import {
-  Building2,
   CalendarClock,
   CloudUpload,
   LogOut,
   Palette,
-  Receipt,
   Settings,
   Shield,
-  ShoppingCart,
   Tag,
-  Truck,
   UserRound,
   WifiOff,
   X,
@@ -32,7 +28,6 @@ import {
 } from "lucide-react-native";
 import { APP_VERSION } from "@/lib/api/client";
 import { useLayout } from "@/lib/layout";
-import { useLocationScope } from "@/lib/location-scope";
 import { usePriceInquiry } from "@/lib/price-inquiry";
 import { useSession } from "@/lib/session";
 import { useStoreSettings } from "@/lib/store";
@@ -41,30 +36,16 @@ import { Button } from "@/components/ui";
 import { LocationSwitcher } from "@/components/location-switcher";
 import { circleRadius, color, fontSize, radius, space, styles } from "@/theme";
 
+// Sell / Delivery / History / Admin dashboard moved to BottomTabBar
+// (components/bottom-tab-bar.tsx, phone only) — reachable in one tap from
+// anywhere instead of opening this drawer first. What's left here doesn't
+// need that: Theme/Settings/Sync are occasional visits, not
+// switched-between-all-shift destinations.
 const POS_TABS = [
-  { href: "/pos", label: "Sell", icon: ShoppingCart },
-  { href: "/pos/delivery", label: "Delivery", icon: Truck },
-  { href: "/pos/history", label: "History", icon: Receipt },
   { href: "/pos/theme", label: "Theme", icon: Palette },
   { href: "/pos/settings", label: "Settings", icon: Settings },
   { href: "/pos/sync", label: "Sync", icon: CloudUpload },
 ] as const;
-
-/**
- * Admin dashboard mode — every domain apps/admin manages, online-only (see
- * app/admin/_layout.tsx). Shown when either the enrolled login (this
- * device's own admin/manager account) or the current PIN shift user is
- * admin/manager — an owner's own tablet keeps the tile no matter which
- * cashier is on shift. Building2 (not Shield, already used for the role
- * badge above) so this reads as "the office", not a repeat of "you are an
- * admin".
- */
-const ADMIN_TAB = {
-  href: "/admin",
-  label: "Admin dashboard",
-  description: "Products, reports, users, and settings",
-  icon: Building2,
-} as const;
 
 const DRAWER_WIDTH_RATIO = 0.82;
 const DRAWER_MAX_WIDTH = 360;
@@ -90,13 +71,6 @@ export function AccountDrawer({
   const { cashier, lock } = useSession();
   const store = useStoreSettings();
   const { offlineModeEnabled, setOfflineModeEnabled } = useSync();
-  // "Account used to login is admin" (device.ts EnrolledRole, set at
-  // enrollment) — distinct from the PIN-unlocked shift user's own role.
-  // Either grants the admin dashboard, so an admin's own tablet keeps
-  // showing it no matter which cashier is on shift.
-  const { role: enrolledRole } = useLocationScope();
-  const canOpenAdminDashboard =
-    enrolledRole === ROLES.ADMIN || cashier?.role === ROLES.ADMIN || cashier?.role === ROLES.MANAGER;
   const { style: priceInquiryStyle, open: openPriceInquiryModal } = usePriceInquiry();
   const { compact } = useLayout();
   const { width } = useWindowDimensions();
@@ -131,7 +105,7 @@ export function AccountDrawer({
   // Close the drawer first and let its slide-out finish before the screen
   // underneath changes — running both animations at once is what reads as
   // the previous and next screen "mixing up".
-  function go(href: (typeof POS_TABS)[number]["href"] | typeof ADMIN_TAB.href) {
+  function go(href: (typeof POS_TABS)[number]["href"]) {
     onClose();
     setTimeout(() => router.replace(href), ANIM_MS);
   }
@@ -234,16 +208,6 @@ export function AccountDrawer({
                 onPress={() => go(tab.href)}
               />
             ))}
-            {canOpenAdminDashboard ? (
-              <DrawerTab
-                key={ADMIN_TAB.href}
-                icon={ADMIN_TAB.icon}
-                label={ADMIN_TAB.label}
-                description={ADMIN_TAB.description}
-                active={pathname === ADMIN_TAB.href}
-                onPress={() => go(ADMIN_TAB.href)}
-              />
-            ) : null}
             {priceInquiryStyle === "menu" ? (
               <DrawerTab
                 key="price-inquiry"

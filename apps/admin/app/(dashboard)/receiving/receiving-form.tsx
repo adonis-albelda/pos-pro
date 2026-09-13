@@ -90,7 +90,6 @@ import {
   normalizeHeldRow,
   receiptSupplierSkuAfterMatch,
   resolveRowPatch,
-  showInternalSkuField,
   suggestPrice,
   unresolvedCount,
   supplierSkuForSubmit,
@@ -1777,7 +1776,6 @@ export function ReceivingForm({
                     expanded={expandedKey === row.key}
                     onToggle={() => setExpandedKey(expandedKey === row.key ? null : row.key)}
                     hasSupplier={hasSupplier}
-                    showInternalSku={showInternalSkuField(row)}
                     supplierId={effectiveSupplierId}
                     supplierName={supplierLabel === "—" ? "" : supplierLabel}
                     matchedProduct={product}

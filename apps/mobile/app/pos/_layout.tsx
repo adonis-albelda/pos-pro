@@ -12,6 +12,7 @@ import { StoreHeader } from "@/components/store-header";
 import { PriceInquiryFab } from "@/components/price-inquiry-fab";
 import { PriceInquiryModal } from "@/components/price-inquiry-modal";
 import { PinRelockOverlay } from "@/components/pin-relock-overlay";
+import { BottomTabBar } from "@/components/bottom-tab-bar";
 import { styles } from "@/theme";
 
 export default function PosLayout() {
@@ -36,7 +37,10 @@ export default function PosLayout() {
       <FlyToCartProvider>
         <PriceInquiryProvider>
           <View
-            style={[styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]}
+            style={[
+              styles.screen,
+              { paddingTop: insets.top, paddingBottom: compact ? 0 : insets.bottom },
+            ]}
             onTouchStart={recordActivity}
           >
             {sellOwnsHeader ? null : <StoreHeader />}
@@ -57,6 +61,7 @@ export default function PosLayout() {
             <PriceInquiryFab />
             <PriceInquiryModal />
             <PinRelockOverlay />
+            {compact ? <BottomTabBar /> : null}
           </View>
         </PriceInquiryProvider>
       </FlyToCartProvider>

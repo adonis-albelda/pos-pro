@@ -196,7 +196,6 @@ export function ReceivingLineAccordion({
   expanded,
   onToggle,
   hasSupplier,
-  showInternalSku,
   supplierId,
   supplierName,
   matchedProduct,
@@ -215,8 +214,6 @@ export function ReceivingLineAccordion({
   expanded: boolean;
   onToggle: () => void;
   hasSupplier: boolean;
-  /** When true, show the editable internal SKU field (new products). */
-  showInternalSku: boolean;
   /** Real id of the receipt's supplier, or null while it's only a typed name not yet created. */
   supplierId: string | null;
   /** Display name of the receipt's supplier — used for the "SUP-{name}-" prefix, known and singular for the whole receipt. */
@@ -244,7 +241,6 @@ export function ReceivingLineAccordion({
   const usesAiSupplierSku = supplierSkuUsesAiExtraction(row, matchedProduct, supplierId);
   const internalSku = internalSkuDisplay(row, matchedProduct);
   const supplierPrefix = supplierName.trim() ? `SUP-${supplierName.trim()}-` : null;
-  const internalSkuCheck = useSkuAvailability({ kind: "sku", value: row.sku });
   const supplierSkuCheck = useSkuAvailability({
     kind: "supplier_sku",
     value: supplierSkuValue,
@@ -255,12 +251,6 @@ export function ReceivingLineAccordion({
   const newCost = row.unitCost.trim() !== "" ? Number(row.unitCost) : null;
   const newShelf = row.appliedPrice.trim() !== "" ? Number(row.appliedPrice) : null;
   const nextStock = row.productId ? stockAfterReceive(currentStock, qty) : null;
-  // Matching a product is the one thing that must always stay reachable —
-  // everything else (name, SKUs, quantity, category, price) only makes
-  // sense once that's settled, so gates on it instead of on supplier state.
-  // Deliberately not applied to the match combobox itself below (that would
-  // deadlock it — disabled until picked, but picking is what it's for).
-  const inputsDisabled = !row.productId || row.excluded;
   const isNewProduct = !row.productId;
 
   return (
@@ -353,131 +343,234 @@ export function ReceivingLineAccordion({
           ) : (
             <>
           <div
-            className={`space-y-4 ${inputsDisabled ? "pointer-events-none opacity-50" : ""}`}
-            aria-disabled={inputsDisabled}
+            className={`space-y-4 ${row.excluded ? "pointer-events-none opacity-50" : ""}`}
+            aria-disabled={row.excluded}
           >
-            <div
-              className={
-                showInternalSku || (row.productId && internalSku) ? HALF_ROW : "w-full"
-              }
-            >
-              <div className={showInternalSku || (row.productId && internalSku) ? HALF_CELL : "w-full"}>
-              <Field label="Item name" required>
-                <Input
-                  value={row.name}
-                  onChange={(event) => onUpdate({ name: event.target.value })}
-                  placeholder="As written on the receipt"
-                  disabled={inputsDisabled}
-                />
-              </Field>
-              </div>
+            <div className="space-y-4 rounded-md border border-border bg-canvas/40 px-3 py-3 sm:px-4">
+              <p className="text-caption font-semibold text-ink">Product Details</p>
 
-              {showInternalSku ? (
+              <div className={HALF_ROW}>
                 <div className={HALF_CELL}>
-                <Field label="Internal SKU" hint="Optional. Your store's product code.">
+                <Field label="Item name" required>
                   <Input
-                    value={row.sku}
-                    onChange={(event) => onUpdate({ sku: event.target.value })}
-                    placeholder="e.g. PIPE-001"
-                    disabled={inputsDisabled}
+                    value={row.name}
+                    onChange={(event) => onUpdate({ name: event.target.value })}
+                    placeholder="As written on the receipt"
+                    disabled={row.excluded}
                   />
                 </Field>
-                <SkuFeedback
-                  label="SKU"
-                  checking={internalSkuCheck.checking}
-                  conflict={internalSkuCheck.conflict}
-                />
                 </div>
-              ) : row.productId && internalSku ? (
+
                 <div className={HALF_CELL}>
                 <Field label="Internal SKU">
                   <div className="flex min-h-11 w-full items-center rounded-sm border border-border bg-canvas px-3 text-body text-ink-muted">
-                    {internalSku}
+                    {internalSku || "—"}
                   </div>
                 </Field>
                 </div>
-              ) : null}
-            </div>
-
-            <div className={HALF_ROW}>
-              <div className={HALF_CELL}>
-              <Field
-                label="Supplier SKU"
-                hint={
-                  usesAiSupplierSku
-                    ? "Exact code from AI extraction."
-                    : supplierSkuHint(row, matchedProduct, supplierId)
-                }
-              >
-                <div className="flex w-full items-center gap-1">
-                  <span className="relative min-w-0 flex-1">
-                    {supplierPrefix ? (
-                      <span
-                        className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 truncate text-body text-ink-muted"
-                        style={{ maxWidth: "60%" }}
-                      >
-                        {supplierPrefix}
-                      </span>
-                    ) : null}
-                    <Input
-                      value={supplierSkuValue}
-                      onChange={(event) => onUpdate({ receiptSupplierSku: event.target.value })}
-                      placeholder="Code from the receipt"
-                      disabled={inputsDisabled}
-                      className="w-full"
-                      style={
-                        supplierPrefix
-                          ? { paddingLeft: `${supplierPrefix.length * 0.5 + 1}rem` }
-                          : undefined
-                      }
-                    />
-                  </span>
-                  {row.originalReceiptSupplierSku.trim() ? (
-                    <IconButton
-                      icon={Pencil}
-                      label="Supplier SKU — exact one from AI extraction"
-                      tone={usesAiSupplierSku ? "primary" : "neutral"}
-                      disabled={inputsDisabled || usesAiSupplierSku}
-                      onClick={() =>
-                        onUpdate({ receiptSupplierSku: row.originalReceiptSupplierSku })
-                      }
-                    />
-                  ) : null}
-                </div>
-              </Field>
-              <SkuFeedback
-                label="Supplier SKU"
-                checking={supplierSkuCheck.checking}
-                conflict={supplierSkuCheck.conflict}
-              />
               </div>
 
-              <div className={HALF_CELL}>
-              <Field label="Quantity" required>
-                <div className="flex w-full items-center gap-1">
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.001"
-                    className="num w-full min-w-0 text-right"
-                    value={row.quantityReceived}
-                    onChange={(event) => onUpdate({ quantityReceived: event.target.value })}
-                    disabled={inputsDisabled}
-                  />
-                  {row.quantityReceived !== row.originalQuantityReceived ? (
-                    <IconButton
-                      icon={RotateCcw}
-                      label="Reset to original quantity"
-                      onClick={() => onUpdate({ quantityReceived: row.originalQuantityReceived })}
-                    />
-                  ) : null}
+              <div className={HALF_ROW}>
+                <ReadOnlyMoneyField
+                  label="Cost price"
+                  value={row.existingCostPrice ?? (Number(row.unitCost) || 0)}
+                />
+                <ReadOnlyMoneyField
+                  label="Shelf price"
+                  value={row.existingPrice ?? (Number(row.appliedPrice) || 0)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-4 rounded-md border border-border bg-canvas/40 px-3 py-3 sm:px-4">
+              <p className="text-caption font-semibold text-ink">Supplier details</p>
+
+              <div className={HALF_ROW}>
+                <div className={HALF_CELL}>
+                <Field
+                  label="Supplier SKU"
+                  hint={
+                    usesAiSupplierSku
+                      ? "Exact code from AI extraction."
+                      : supplierSkuHint(row, matchedProduct, supplierId)
+                  }
+                >
+                  <div className="flex w-full items-center gap-1">
+                    <span className="relative min-w-0 flex-1">
+                      {supplierPrefix ? (
+                        <span
+                          className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 truncate text-body text-ink-muted"
+                          style={{ maxWidth: "60%" }}
+                        >
+                          {supplierPrefix}
+                        </span>
+                      ) : null}
+                      <Input
+                        value={supplierSkuValue}
+                        onChange={(event) => onUpdate({ receiptSupplierSku: event.target.value })}
+                        placeholder="Code from the receipt"
+                        disabled={row.excluded}
+                        className="w-full"
+                        style={
+                          supplierPrefix
+                            ? { paddingLeft: `${supplierPrefix.length * 0.5 + 1}rem` }
+                            : undefined
+                        }
+                      />
+                    </span>
+                    {row.originalReceiptSupplierSku.trim() ? (
+                      <IconButton
+                        icon={Pencil}
+                        label="Supplier SKU — exact one from AI extraction"
+                        tone={usesAiSupplierSku ? "primary" : "neutral"}
+                        disabled={row.excluded || usesAiSupplierSku}
+                        onClick={() =>
+                          onUpdate({ receiptSupplierSku: row.originalReceiptSupplierSku })
+                        }
+                      />
+                    ) : null}
+                  </div>
+                </Field>
+                <SkuFeedback
+                  label="Supplier SKU"
+                  checking={supplierSkuCheck.checking}
+                  conflict={supplierSkuCheck.conflict}
+                />
                 </div>
-                {row.quantityOrdered !== null ? (
-                  <p className="mt-1 text-caption text-ink-muted">
-                    Ordered {formatQuantity(row.quantityOrdered)}
-                  </p>
-                ) : null}
-              </Field>
+
+                <div className={HALF_CELL}>
+                <Field label="Quantity" required>
+                  <div className="flex w-full items-center gap-1">
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.001"
+                      className="num w-full min-w-0 text-right"
+                      value={row.quantityReceived}
+                      onChange={(event) => onUpdate({ quantityReceived: event.target.value })}
+                      disabled={row.excluded}
+                    />
+                    {row.quantityReceived !== row.originalQuantityReceived ? (
+                      <IconButton
+                        icon={RotateCcw}
+                        label="Reset to original quantity"
+                        onClick={() => onUpdate({ quantityReceived: row.originalQuantityReceived })}
+                      />
+                    ) : null}
+                  </div>
+                  {row.quantityOrdered !== null ? (
+                    <p className="mt-1 text-caption text-ink-muted">
+                      Ordered {formatQuantity(row.quantityOrdered)}
+                    </p>
+                  ) : null}
+                </Field>
+                </div>
+              </div>
+
+              <div className={HALF_ROW}>
+                <div className={HALF_CELL}>
+                <Field label="New cost price" required>
+                  <div className="relative w-full">
+                    <MoneyInput
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="w-full min-w-0 pr-10 text-right"
+                      value={row.unitCost}
+                      disabled={row.excluded}
+                      onChange={(event) => {
+                        const unitCost = Number(event.target.value) || 0;
+                        const nextAppliedPrice =
+                          row.existingPrice !== null && row.existingCostPrice !== null
+                            ? String(suggestPrice(unitCost, row.existingPrice, row.existingCostPrice))
+                            : row.appliedPrice;
+                        onUpdate({ unitCost: event.target.value, appliedPrice: nextAppliedPrice });
+                      }}
+                    />
+                    {row.unitCost !== row.originalUnitCost ? (
+                      <IconButton
+                        icon={RotateCcw}
+                        label="Reset to original cost"
+                        className="absolute top-1/2 right-0 -translate-y-1/2"
+                        onClick={() => {
+                          const unitCost = Number(row.originalUnitCost) || 0;
+                          const nextAppliedPrice =
+                            row.existingPrice !== null && row.existingCostPrice !== null
+                              ? String(suggestPrice(unitCost, row.existingPrice, row.existingCostPrice))
+                              : row.originalAppliedPrice;
+                          onUpdate({ unitCost: row.originalUnitCost, appliedPrice: nextAppliedPrice });
+                        }}
+                      />
+                    ) : null}
+                  </div>
+                  {row.existingCostPrice !== null ? (
+                    (() => {
+                      const delta = roundMoney((Number(row.unitCost) || 0) - row.existingCostPrice!);
+                      if (delta === 0) {
+                        return <p className="mt-1 text-caption text-ink-muted">No change</p>;
+                      }
+                      return (
+                        <p className={`mt-1 text-caption ${delta > 0 ? "text-danger" : "text-success"}`}>
+                          {delta > 0 ? "+" : "−"}
+                          {formatMoney(Math.abs(delta))} vs current
+                        </p>
+                      );
+                    })()
+                  ) : (
+                    <p className="mt-1 text-caption text-ink-muted">New product</p>
+                  )}
+                  {row.discountPercent !== null && row.printedUnitCost !== null ? (
+                    <p className="mt-1 text-caption text-ink-muted">
+                      Receipt shows {formatMoney(row.printedUnitCost)} with a {row.discountPercent}% supplier
+                      discount — cost set to the price before the discount.
+                    </p>
+                  ) : null}
+                </Field>
+                </div>
+
+                <div className={HALF_CELL}>
+                <Field label="New shelf price" required>
+                  <div className="relative w-full">
+                    <MoneyInput
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className={`w-full min-w-0 pr-10 text-right ${
+                        !row.productId && !(Number(row.appliedPrice) > 0)
+                          ? "border-danger focus:ring-danger/30"
+                          : ""
+                      }`}
+                      value={row.appliedPrice}
+                      disabled={row.excluded}
+                      onChange={(event) => onUpdate({ appliedPrice: event.target.value })}
+                    />
+                    {row.appliedPrice !== row.originalAppliedPrice ? (
+                      <IconButton
+                        icon={RotateCcw}
+                        label="Reset to original selling price"
+                        className="absolute top-1/2 right-0 -translate-y-1/2"
+                        onClick={() => onUpdate({ appliedPrice: row.originalAppliedPrice })}
+                      />
+                    ) : null}
+                  </div>
+                  {!row.productId && !(Number(row.appliedPrice) > 0) ? (
+                    <p className="mt-1 text-caption font-medium text-danger">Needs a value</p>
+                  ) : row.existingPrice !== null ? (
+                    (() => {
+                      const delta = roundMoney((Number(row.appliedPrice) || 0) - row.existingPrice!);
+                      if (delta === 0) {
+                        return <p className="mt-1 text-caption text-ink-muted">No change</p>;
+                      }
+                      return (
+                        <p className={`mt-1 text-caption ${delta > 0 ? "text-success" : "text-danger"}`}>
+                          {delta > 0 ? "+" : "−"}
+                          {formatMoney(Math.abs(delta))} vs current
+                        </p>
+                      );
+                    })()
+                  ) : null}
+                </Field>
+                </div>
               </div>
             </div>
 
@@ -536,130 +629,12 @@ export function ReceivingLineAccordion({
               </div>
             </div>
 
-            <div className={HALF_ROW}>
-              <ReadOnlyMoneyField
-                label="Cost price"
-                value={row.existingCostPrice ?? (Number(row.unitCost) || 0)}
-              />
-
-              <div className={HALF_CELL}>
-              <Field label="New cost price" required>
-                <div className="relative w-full">
-                  <MoneyInput
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    className="w-full min-w-0 pr-10 text-right"
-                    value={row.unitCost}
-                    disabled={inputsDisabled}
-                    onChange={(event) => {
-                      const unitCost = Number(event.target.value) || 0;
-                      const nextAppliedPrice =
-                        row.existingPrice !== null && row.existingCostPrice !== null
-                          ? String(suggestPrice(unitCost, row.existingPrice, row.existingCostPrice))
-                          : row.appliedPrice;
-                      onUpdate({ unitCost: event.target.value, appliedPrice: nextAppliedPrice });
-                    }}
-                  />
-                  {row.unitCost !== row.originalUnitCost ? (
-                    <IconButton
-                      icon={RotateCcw}
-                      label="Reset to original cost"
-                      className="absolute top-1/2 right-0 -translate-y-1/2"
-                      onClick={() => {
-                        const unitCost = Number(row.originalUnitCost) || 0;
-                        const nextAppliedPrice =
-                          row.existingPrice !== null && row.existingCostPrice !== null
-                            ? String(suggestPrice(unitCost, row.existingPrice, row.existingCostPrice))
-                            : row.originalAppliedPrice;
-                        onUpdate({ unitCost: row.originalUnitCost, appliedPrice: nextAppliedPrice });
-                      }}
-                    />
-                  ) : null}
-                </div>
-                {row.existingCostPrice !== null ? (
-                  (() => {
-                    const delta = roundMoney((Number(row.unitCost) || 0) - row.existingCostPrice!);
-                    if (delta === 0) {
-                      return <p className="mt-1 text-caption text-ink-muted">No change</p>;
-                    }
-                    return (
-                      <p className={`mt-1 text-caption ${delta > 0 ? "text-danger" : "text-success"}`}>
-                        {delta > 0 ? "+" : "−"}
-                        {formatMoney(Math.abs(delta))} vs current
-                      </p>
-                    );
-                  })()
-                ) : (
-                  <p className="mt-1 text-caption text-ink-muted">New product</p>
-                )}
-                {row.discountPercent !== null && row.printedUnitCost !== null ? (
-                  <p className="mt-1 text-caption text-ink-muted">
-                    Receipt shows {formatMoney(row.printedUnitCost)} with a {row.discountPercent}% supplier
-                    discount — cost set to the price before the discount.
-                  </p>
-                ) : null}
-              </Field>
-              </div>
-            </div>
-
-            <div className={HALF_ROW}>
-              <ReadOnlyMoneyField
-                label="Shelf price"
-                value={row.existingPrice ?? (Number(row.appliedPrice) || 0)}
-              />
-
-              <div className={HALF_CELL}>
-              <Field label="New shelf price" required>
-                <div className="relative w-full">
-                  <MoneyInput
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    className={`w-full min-w-0 pr-10 text-right ${
-                      !row.productId && !(Number(row.appliedPrice) > 0)
-                        ? "border-danger focus:ring-danger/30"
-                        : ""
-                    }`}
-                    value={row.appliedPrice}
-                    disabled={inputsDisabled}
-                    onChange={(event) => onUpdate({ appliedPrice: event.target.value })}
-                  />
-                  {row.appliedPrice !== row.originalAppliedPrice ? (
-                    <IconButton
-                      icon={RotateCcw}
-                      label="Reset to original selling price"
-                      className="absolute top-1/2 right-0 -translate-y-1/2"
-                      onClick={() => onUpdate({ appliedPrice: row.originalAppliedPrice })}
-                    />
-                  ) : null}
-                </div>
-                {!row.productId && !(Number(row.appliedPrice) > 0) ? (
-                  <p className="mt-1 text-caption font-medium text-danger">Needs a value</p>
-                ) : row.existingPrice !== null ? (
-                  (() => {
-                    const delta = roundMoney((Number(row.appliedPrice) || 0) - row.existingPrice!);
-                    if (delta === 0) {
-                      return <p className="mt-1 text-caption text-ink-muted">No change</p>;
-                    }
-                    return (
-                      <p className={`mt-1 text-caption ${delta > 0 ? "text-success" : "text-danger"}`}>
-                        {delta > 0 ? "+" : "−"}
-                        {formatMoney(Math.abs(delta))} vs current
-                      </p>
-                    );
-                  })()
-                ) : null}
-              </Field>
-              </div>
-            </div>
-
             <Field label="Note">
               <Input
                 value={row.note}
                 onChange={(event) => onUpdate({ note: event.target.value })}
                 placeholder={flagged ? "Note (e.g. short by 2)" : "Optional note"}
-                disabled={inputsDisabled}
+                disabled={row.excluded}
               />
             </Field>
           </div>

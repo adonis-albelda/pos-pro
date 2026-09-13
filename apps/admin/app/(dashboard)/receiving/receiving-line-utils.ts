@@ -203,11 +203,6 @@ export function stockAfterReceive(
   return currentStock + quantityReceived;
 }
 
-/** Internal SKU field — editable entry for new products only. */
-export function showInternalSkuField(row: LineRow): boolean {
-  return !row.productId;
-}
-
 function normalizeSku(code: string): string {
   return code.trim().toLowerCase();
 }
