@@ -17,7 +17,6 @@ import { usePathname, useRouter } from "expo-router";
 import { ROLES } from "@double-a/shared-types";
 import {
   Building2,
-  CalendarClock,
   ChevronDown,
   CloudUpload,
   HelpCircle,
@@ -38,15 +37,15 @@ import { useSync } from "@/sync/sync-provider";
 import { BranchPickerDialog, useBranchPicker } from "@/components/location-switcher";
 import { circleRadius, color, fontSize, radius, space, styles } from "@/theme";
 
-// Sell / Delivery / History stay on BottomTabBar (phone only). Attendance is
-// also a bottom-tab route, but tablet has no bar — so it stays in this drawer
-// too, opened with replace (tab swap), not push (sub-page). Theme/Settings/Sync
-// are occasional push visits. Admin dashboard stays gated below.
+// Sell / Delivery / History / Attendance stay on BottomTabBar only (phone
+// only) — tablet has no bar, but attendance is a shift-start/end action, not
+// an occasional settings visit, so it doesn't belong duplicated in here.
+// Theme/Settings/Sync are occasional push visits. Admin dashboard stays
+// gated below.
 const POS_TABS = [
-  { href: "/pos/attendance", label: "Attendance", icon: CalendarClock, nav: "replace" as const },
-  { href: "/pos/theme", label: "Theme", icon: Palette, nav: "push" as const },
-  { href: "/pos/settings", label: "Settings", icon: Settings, nav: "push" as const },
-  { href: "/pos/sync", label: "Sync", icon: CloudUpload, nav: "push" as const },
+  { href: "/pos/theme", label: "Theme", icon: Palette },
+  { href: "/pos/settings", label: "Settings", icon: Settings },
+  { href: "/pos/sync", label: "Sync", icon: CloudUpload },
 ] as const;
 
 /** FAQ/About are plain in-app routes, same nav shape as POS_TABS above — kept
@@ -124,15 +123,9 @@ export function AccountDrawer({
   // Pushed, not replaced — these are dead-end detail screens (own header +
   // back arrow, see SubPageHeader/app/pos/_layout.tsx), not tabs to swap
   // between, so a real stack entry is what lets that back arrow pop.
-  function go(
-    href: (typeof POS_TABS)[number]["href"] | (typeof HELP_TABS)[number]["href"],
-    nav: "push" | "replace" = "push",
-  ) {
+  function go(href: (typeof POS_TABS)[number]["href"] | (typeof HELP_TABS)[number]["href"]) {
     onClose();
-    setTimeout(() => {
-      if (nav === "replace") router.replace(href);
-      else router.push(href);
-    }, ANIM_MS);
+    setTimeout(() => router.push(href), ANIM_MS);
   }
 
   function openAdmin() {
@@ -330,7 +323,7 @@ export function AccountDrawer({
                 icon={tab.icon}
                 label={tab.label}
                 active={pathname === tab.href}
-                onPress={() => go(tab.href, tab.nav)}
+                onPress={() => go(tab.href)}
               />
             ))}
             {canOpenAdminDashboard ? (

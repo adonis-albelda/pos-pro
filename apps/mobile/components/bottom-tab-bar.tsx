@@ -3,7 +3,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePathname, useRouter } from "expo-router";
 import { CalendarClock, Receipt, ShoppingCart, Tag, Truck, type LucideIcon } from "lucide-react-native";
 import { usePriceInquiryOptional } from "@/lib/price-inquiry";
-import { circleRadius, color, fontSize, space } from "@/theme";
+import { color, fontSize, space } from "@/theme";
 
 const TABS = [
   { href: "/pos", label: "POS", icon: ShoppingCart },
@@ -73,7 +73,10 @@ export function BottomTabBar() {
               bottom: CENTER_BUTTON_SIZE * 0.4,
               width: CENTER_BUTTON_SIZE,
               height: CENTER_BUTTON_SIZE,
-              borderRadius: circleRadius(CENTER_BUTTON_SIZE),
+              // Hardcoded, not circleRadius() — this floating bubble stays a
+              // true circle regardless of the Theme menu's Corners setting
+              // (flat/reduced would otherwise square it off).
+              borderRadius: CENTER_BUTTON_SIZE / 2,
               backgroundColor: color.primary,
               alignItems: "center",
               justifyContent: "center",

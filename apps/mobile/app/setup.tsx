@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Linking, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BUSINESS_TYPES, ROLES, type User } from "@double-a/shared-types";
@@ -27,11 +27,13 @@ import {
   Mail,
   Lock,
   CloudDownload,
+  Check,
   CheckCircle2,
   LogIn,
   RefreshCw,
   Play,
   Send,
+  Square,
   Store,
   UserPlus,
   UserX,
@@ -66,6 +68,9 @@ const VERIFY_POLL_INTERVAL_MS = 7000;
 
 /** Must match the API's AUTH_VERIFICATION_EXPIRE (config/auth.php). */
 const VERIFICATION_LINK_EXPIRE_MINUTES = 10;
+
+const TERMS_OF_SERVICE_URL = "https://www.doubleadigitalsolutions.store/pospro/terms-of-service?embedded=1";
+const PRIVACY_POLICY_URL = "https://www.doubleadigitalsolutions.store/pospro/privacy-policy?embedded=1";
 
 type SetupFlowStep = "first-pull" | "business-type" | "done";
 type Step = "sign-in" | "feature-onboarding" | SetupFlowStep;
@@ -113,6 +118,7 @@ export default function SetupScreen() {
   const [registerBusy, setRegisterBusy] = useState(false);
   const [registerSent, setRegisterSent] = useState(false);
   const [registerError, setRegisterError] = useState<string | null>(null);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [businessTypeBusy, setBusinessTypeBusy] = useState(false);
   // When the current verification link was sent — link dies
   // VERIFICATION_LINK_EXPIRE_MINUTES after this (must match the API's
@@ -300,6 +306,10 @@ export default function SetupScreen() {
       setRegisterError("Password must be at least 8 characters.");
       return;
     }
+    if (!acceptedTerms) {
+      setRegisterError("Accept the Terms of Service and Privacy Policy to continue.");
+      return;
+    }
 
     setRegisterBusy(true);
     setRegisterError(null);
@@ -339,6 +349,7 @@ export default function SetupScreen() {
     setRegisterEmail("");
     setRegisterPassword("");
     setRegisterBusinessName("");
+    setAcceptedTerms(false);
     setVerificationSentAt(null);
     setVerificationExpired(false);
     setResendError(null);
@@ -830,13 +841,43 @@ export default function SetupScreen() {
                       onChangeText={setRegisterBusinessName}
                       placeholder="Jane's Sari-Sari Store"
                     />
+                    <Pressable
+                      onPress={() => setAcceptedTerms((value) => !value)}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: acceptedTerms }}
+                      accessibilityLabel="I agree to the Terms of Service and Privacy Policy"
+                      style={{ flexDirection: "row", alignItems: "flex-start", gap: space.sm }}
+                    >
+                      {acceptedTerms ? (
+                        <Check size={18} color={color.primary} strokeWidth={2.5} />
+                      ) : (
+                        <Square size={18} color={color.inkMuted} strokeWidth={2} />
+                      )}
+                      <Text style={{ flex: 1, fontSize: fontSize.caption, color: color.ink, lineHeight: 18 }}>
+                        I agree to the{" "}
+                        <Text
+                          style={{ color: color.primary, fontWeight: "600" }}
+                          onPress={() => void Linking.openURL(TERMS_OF_SERVICE_URL)}
+                        >
+                          Terms of Service
+                        </Text>{" "}
+                        and{" "}
+                        <Text
+                          style={{ color: color.primary, fontWeight: "600" }}
+                          onPress={() => void Linking.openURL(PRIVACY_POLICY_URL)}
+                        >
+                          Privacy Policy
+                        </Text>
+                      </Text>
+                    </Pressable>
                     {registerError ? <ErrorNote>{registerError}</ErrorNote> : null}
                     <Button
                       label={registerBusy ? "Creating account..." : "Create Account"}
                       large
                       busy={registerBusy}
+                      disabled={!acceptedTerms}
                       onPress={() => void submitRegistration()}
-                     
+
                       icon={UserPlus}
                     />
                   </>
