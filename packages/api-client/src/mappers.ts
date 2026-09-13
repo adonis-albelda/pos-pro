@@ -420,6 +420,7 @@ export interface UserAttrs {
   must_enroll_mfa: boolean;
   is_demo: boolean;
   has_pin?: boolean;
+  skip_session_lock?: boolean;
   email_verified_at: string | null;
   last_login_at?: string | null;
   created_at: string | null;
@@ -443,6 +444,7 @@ export function toUser(resource: JsonApiResource<UserAttrs>): User {
     mustEnrollMfa: a.must_enroll_mfa,
     isDemo: a.is_demo,
     hasPin: Boolean(a.has_pin),
+    skipSessionLock: Boolean(a.skip_session_lock),
     companyId: a.company_id ?? null,
     locationId: a.location_id ?? null,
     companyIsActive: a.company_is_active ?? true,

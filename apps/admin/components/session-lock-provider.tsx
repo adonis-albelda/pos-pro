@@ -16,8 +16,9 @@ const CHECK_INTERVAL_MS = 15_000;
 /**
  * Soft-locks the admin dashboard after idle or when the browser tab is
  * hidden. Sanctum session stays; UI clears only after the signed-in user's
- * own PIN confirms. Skipped when `enabled` is false (mobile WebView embed)
- * or idle timeout is 0.
+ * own PIN confirms. Skipped when `enabled` is false (mobile WebView embed),
+ * idle timeout is 0, or the signed-in user has opted out on My Profile
+ * (`skip_session_lock` — per user, not per company).
  *
  * Pass `idleTimeoutMinutes` to skip the store_settings fetch (platform /
  * superadmin has no shop row). Shop dashboard omits it and reads the
@@ -44,6 +45,7 @@ export function SessionLockProvider({
     idleOverride ??
     storeQuery.data?.idleTimeoutMinutes ??
     DEFAULT_STORE_SETTINGS.idleTimeoutMinutes;
+  const active = enabled && idleTimeoutMinutes > 0 && user?.skipSessionLock !== true;
 
   const [locked, setLocked] = useState(false);
   const lastActivityRef = useRef(Date.now());
@@ -67,7 +69,7 @@ export function SessionLockProvider({
   }, []);
 
   useEffect(() => {
-    if (!enabled || idleTimeoutMinutes <= 0) return;
+    if (!active) return;
 
     recordActivity();
     const timeoutMs = idleTimeoutMinutes * 60_000;
@@ -93,18 +95,19 @@ export function SessionLockProvider({
       window.removeEventListener("scroll", recordActivity);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [enabled, idleTimeoutMinutes, lock, recordActivity]);
+  }, [active, idleTimeoutMinutes, lock, recordActivity]);
 
-  // Turning idle lock off mid-session must clear a stuck overlay.
+  // Turning idle lock off mid-session (company setting, or the user's own
+  // skip_session_lock toggle) must clear a stuck overlay.
   useEffect(() => {
-    if (enabled && idleTimeoutMinutes > 0) return;
+    if (active) return;
     unlock();
-  }, [enabled, idleTimeoutMinutes, unlock]);
+  }, [active, unlock]);
 
   return (
     <>
       {children}
-      {locked && enabled && idleTimeoutMinutes > 0 ? (
+      {locked && active ? (
         <SessionLockOverlay
           hasPin={user?.hasPin === true}
           userName={user?.name ?? null}

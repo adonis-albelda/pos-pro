@@ -296,7 +296,7 @@ export function PriceInquiryModal() {
                   data={results}
                   keyExtractor={(item) => item.id}
                   keyboardShouldPersistTaps="handled"
-                  style={{ maxHeight: compact ? 280 : 360, flexGrow: 0 }}
+                  style={{ maxHeight: compact ? 560 : 720, flexGrow: 0 }}
                   renderItem={({ item }) => (
                     <Pressable
                       onPress={() => setSelected(item)}

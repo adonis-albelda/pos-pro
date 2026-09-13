@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Animated,
   Image,
+  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -16,11 +17,13 @@ import { ROLES } from "@double-a/shared-types";
 import {
   CalendarClock,
   CloudUpload,
+  HelpCircle,
+  Info,
   LogOut,
+  MessageCircle,
   Palette,
   Settings,
   Shield,
-  Tag,
   UserRound,
   WifiOff,
   X,
@@ -28,7 +31,6 @@ import {
 } from "lucide-react-native";
 import { APP_VERSION } from "@/lib/api/client";
 import { useLayout } from "@/lib/layout";
-import { usePriceInquiry } from "@/lib/price-inquiry";
 import { useSession } from "@/lib/session";
 import { useStoreSettings } from "@/lib/store";
 import { useSync } from "@/sync/sync-provider";
@@ -46,6 +48,15 @@ const POS_TABS = [
   { href: "/pos/settings", label: "Settings", icon: Settings },
   { href: "/pos/sync", label: "Sync", icon: CloudUpload },
 ] as const;
+
+/** FAQ/About are plain in-app routes, same nav shape as POS_TABS above — kept
+ * separate only because they render after Attendance, not before it. */
+const HELP_TABS = [
+  { href: "/pos/faq", label: "FAQ", icon: HelpCircle },
+  { href: "/pos/about", label: "About", icon: Info },
+] as const;
+
+const CONTACT_SUPPORT_URL = "https://www.facebook.com/profile.php?id=61592584295878";
 
 const DRAWER_WIDTH_RATIO = 0.82;
 const DRAWER_MAX_WIDTH = 360;
@@ -71,7 +82,6 @@ export function AccountDrawer({
   const { cashier, lock } = useSession();
   const store = useStoreSettings();
   const { offlineModeEnabled, setOfflineModeEnabled } = useSync();
-  const { style: priceInquiryStyle, open: openPriceInquiryModal } = usePriceInquiry();
   const { compact } = useLayout();
   const { width } = useWindowDimensions();
   const panelWidth = Math.min(width * DRAWER_WIDTH_RATIO, DRAWER_MAX_WIDTH);
@@ -105,19 +115,19 @@ export function AccountDrawer({
   // Close the drawer first and let its slide-out finish before the screen
   // underneath changes — running both animations at once is what reads as
   // the previous and next screen "mixing up".
-  function go(href: (typeof POS_TABS)[number]["href"]) {
+  function go(href: (typeof POS_TABS)[number]["href"] | (typeof HELP_TABS)[number]["href"]) {
     onClose();
     setTimeout(() => router.replace(href), ANIM_MS);
-  }
-
-  function openPriceInquiry() {
-    onClose();
-    setTimeout(openPriceInquiryModal, ANIM_MS);
   }
 
   function openAttendance() {
     onClose();
     setTimeout(() => router.push("/attendance"), ANIM_MS);
+  }
+
+  function openContactSupport() {
+    onClose();
+    setTimeout(() => void Linking.openURL(CONTACT_SUPPORT_URL), ANIM_MS);
   }
 
   function endShift() {
@@ -208,21 +218,28 @@ export function AccountDrawer({
                 onPress={() => go(tab.href)}
               />
             ))}
-            {priceInquiryStyle === "menu" ? (
-              <DrawerTab
-                key="price-inquiry"
-                icon={Tag}
-                label="Price inquiry"
-                active={false}
-                onPress={openPriceInquiry}
-              />
-            ) : null}
             <DrawerTab
               key="attendance"
               icon={CalendarClock}
               label="Attendance"
               active={pathname === "/attendance"}
               onPress={openAttendance}
+            />
+            {HELP_TABS.map((tab) => (
+              <DrawerTab
+                key={tab.href}
+                icon={tab.icon}
+                label={tab.label}
+                active={pathname === tab.href}
+                onPress={() => go(tab.href)}
+              />
+            ))}
+            <DrawerTab
+              key="contact-support"
+              icon={MessageCircle}
+              label="Contact support"
+              active={false}
+              onPress={openContactSupport}
             />
           </View>
 

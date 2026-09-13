@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Check, KeyRound, Lock, Mail, Trash2, User as UserIcon, UserRound } from "lucide-react";
+import { Check, KeyRound, Lock, Mail, ShieldOff, Trash2, User as UserIcon, UserRound } from "lucide-react";
 import { ApiError } from "@double-a/api-client";
 import { changePassword } from "@double-a/api-client/queries";
 import {
@@ -89,6 +89,7 @@ export default function ProfilePage() {
             isActive={user.isActive}
             lastLoginAt={user.lastLoginAt ?? null}
           />
+          <SessionLockCard skipSessionLock={user.skipSessionLock} />
           <PasswordCard />
         </div>
       </div>
@@ -267,6 +268,51 @@ function DetailsCard({
             {updateMe.isPending ? "Saving..." : "Save changes"}
           </Button>
         </form>
+      </CardBody>
+    </Card>
+  );
+}
+
+function SessionLockCard({ skipSessionLock }: { skipSessionLock: boolean }) {
+  const updateMe = useUpdateMe();
+  const [checked, setChecked] = useState(skipSessionLock);
+
+  function onChange(next: boolean) {
+    setChecked(next);
+    updateMe.mutate(
+      { skipSessionLock: next },
+      {
+        onSuccess: () => toast.success(next ? "PIN prompt turned off." : "PIN prompt turned back on."),
+        onError: (cause) => {
+          setChecked(!next);
+          toast.error(errorMessage(cause, "Could not save this setting."));
+        },
+      },
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader
+        icon={ShieldOff}
+        title="Session lock"
+        description="The PIN prompt that appears after this dashboard sits idle."
+      />
+      <CardBody>
+        <label className="flex items-center gap-2 text-body text-ink">
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={(event) => onChange(event.currentTarget.checked)}
+            disabled={updateMe.isPending}
+            className="size-4 accent-primary"
+          />
+          Skip the PIN prompt on this account
+        </label>
+        <p className="mt-1 text-caption text-ink-muted">
+          Off by default. Turning this on lets your own sessions go idle without asking for your
+          PIN again — every other admin login keeps prompting as usual.
+        </p>
       </CardBody>
     </Card>
   );

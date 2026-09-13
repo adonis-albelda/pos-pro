@@ -72,6 +72,17 @@ export interface UpdateMeInput {
   email?: string | null;
   /** Nullable — clearing it is allowed as long as email stays set. Cannot look like an email address. */
   username?: string | null;
+  /** Opts this account out of admin web's idle-lock PIN prompt (SessionLockProvider). */
+  skipSessionLock?: boolean;
+}
+
+function toUpdateMePayload(input: UpdateMeInput): Record<string, unknown> {
+  const payload: Record<string, unknown> = {};
+  if (input.name !== undefined) payload.name = input.name;
+  if (input.email !== undefined) payload.email = input.email;
+  if (input.username !== undefined) payload.username = input.username;
+  if (input.skipSessionLock !== undefined) payload.skip_session_lock = input.skipSessionLock;
+  return payload;
 }
 
 /**
@@ -81,7 +92,7 @@ export interface UpdateMeInput {
  * can_sell/is_active/location_id stay on the owner-only updateUser() call.
  */
 export async function updateMe(client: ApiClient, input: UpdateMeInput): Promise<User> {
-  const { data } = await client.patch<JsonApiOne<UserAttrs>>("/auth/me", input);
+  const { data } = await client.patch<JsonApiOne<UserAttrs>>("/auth/me", toUpdateMePayload(input));
   return toUser(data);
 }
 

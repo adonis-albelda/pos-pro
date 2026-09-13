@@ -8,11 +8,8 @@ import { useSession } from "@/lib/session";
 import { usePriceInquiryOptional } from "@/lib/price-inquiry";
 import { circleRadius, color, fontSize, space } from "@/theme";
 
-const LEFT_TABS = [
-  { href: "/pos", label: "Sell", icon: ShoppingCart },
-] as const;
-
-const RIGHT_TABS = [
+const TABS = [
+  { href: "/pos", label: "POS", icon: ShoppingCart },
   { href: "/pos/delivery", label: "Delivery", icon: Truck },
   { href: "/pos/history", label: "History", icon: Receipt },
 ] as const;
@@ -42,20 +39,68 @@ export function BottomTabBar() {
   const { role: enrolledRole } = useLocationScope();
   const canOpenAdminDashboard =
     enrolledRole === ROLES.ADMIN || cashier?.role === ROLES.ADMIN || cashier?.role === ROLES.MANAGER;
+  // null outside the POS tree (this bar also mounts in app/admin/_layout.tsx,
+  // which has no PriceInquiryProvider) — center button just doesn't render
+  // there. This is now the ONLY entry point for price inquiry — the old
+  // draggable floating button and account-drawer menu item were retired.
+  const priceInquiry = usePriceInquiryOptional();
 
   const tabs = canOpenAdminDashboard ? [...TABS, ADMIN_TAB] : TABS;
+  // Split around the middle so the price-inquiry button lands visually
+  // centered regardless of tab count (3 plain, 4 with Admin granted).
+  const splitAt = Math.ceil(tabs.length / 2);
+  const leftTabs = tabs.slice(0, splitAt);
+  const rightTabs = tabs.slice(splitAt);
 
   return (
     <View
       style={{
         flexDirection: "row",
+        alignItems: "flex-end",
         borderTopWidth: 1,
         borderTopColor: color.border,
         backgroundColor: color.surface,
         paddingBottom: insets.bottom,
       }}
     >
-      {tabs.map((tab) => (
+      {leftTabs.map((tab) => (
+        <TabButton
+          key={tab.href}
+          icon={tab.icon}
+          label={tab.label}
+          active={pathname === tab.href}
+          onPress={() => router.replace(tab.href)}
+        />
+      ))}
+      {priceInquiry ? (
+        <View style={{ width: CENTER_BUTTON_SIZE + space.md, alignItems: "center", zIndex: 10 }}>
+          <Pressable
+            onPress={priceInquiry.open}
+            accessibilityRole="button"
+            accessibilityLabel="Price inquiry"
+            style={{
+              position: "absolute",
+              // Rises above the bar's top border — the "floating bubble
+              // centered on the tabs" look, not just another flush tab.
+              bottom: CENTER_BUTTON_SIZE * 0.4,
+              width: CENTER_BUTTON_SIZE,
+              height: CENTER_BUTTON_SIZE,
+              borderRadius: circleRadius(CENTER_BUTTON_SIZE),
+              backgroundColor: color.primary,
+              alignItems: "center",
+              justifyContent: "center",
+              shadowColor: color.ink,
+              shadowOpacity: 0.25,
+              shadowRadius: 8,
+              shadowOffset: { width: 0, height: 3 },
+              elevation: 8,
+            }}
+          >
+            <Tag size={24} color="#FFFFFF" strokeWidth={2} />
+          </Pressable>
+        </View>
+      ) : null}
+      {rightTabs.map((tab) => (
         <TabButton
           key={tab.href}
           icon={tab.icon}

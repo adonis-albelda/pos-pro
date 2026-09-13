@@ -9,7 +9,6 @@ import { CartSummaryProvider } from "@/lib/cart-summary";
 import { FlyToCartProvider } from "@/lib/fly-to-cart";
 import { PriceInquiryProvider } from "@/lib/price-inquiry";
 import { StoreHeader } from "@/components/store-header";
-import { PriceInquiryFab } from "@/components/price-inquiry-fab";
 import { PriceInquiryModal } from "@/components/price-inquiry-modal";
 import { PinRelockOverlay } from "@/components/pin-relock-overlay";
 import { BottomTabBar } from "@/components/bottom-tab-bar";
@@ -58,7 +57,6 @@ export default function PosLayout() {
                 }}
               />
             </View>
-            <PriceInquiryFab />
             <PriceInquiryModal />
             <PinRelockOverlay />
             {compact ? <BottomTabBar /> : null}

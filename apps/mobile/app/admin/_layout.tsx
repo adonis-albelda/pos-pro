@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { Redirect, Stack, useRouter } from "expo-router";
-import { Image, Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ArrowLeft } from "lucide-react-native";
 import { ROLES } from "@double-a/shared-types";
 import { useLayout } from "@/lib/layout";
 import { useLocationScope } from "@/lib/location-scope";
@@ -10,21 +9,25 @@ import { useSession } from "@/lib/session";
 import { useStoreSettings } from "@/lib/store";
 import { useIdleLock } from "@/lib/idle-lock";
 import { ensureFreshSession } from "@/lib/api/session";
+import { CartSummaryProvider } from "@/lib/cart-summary";
+import { FlyToCartProvider } from "@/lib/fly-to-cart";
 import { Button } from "@/components/ui";
 import { LoadingState } from "@/components/loading-state";
 import { PinRelockOverlay } from "@/components/pin-relock-overlay";
 import { BottomTabBar } from "@/components/bottom-tab-bar";
-import { color, fontSize, radius, space, styles } from "@/theme";
-
-// eslint-disable-next-line @typescript-eslint/no-require-imports -- same asset-require pattern as setup.tsx; no *.png module declaration in this project
-const LOGO = require("../../assets/logo.webp");
+import { StoreHeader } from "@/components/store-header";
+import { space, styles } from "@/theme";
 
 type SessionCheck = "checking" | "ready" | "error";
 
 /**
  * Admin mode: web dashboard in a WebView at /admin (default), with native
  * screens kept aside under /admin/native and /admin/*. Online-only — same as
- * apps/admin (CLAUDE.md §5).
+ * apps/admin (CLAUDE.md §5). Same chrome as the POS tabs (StoreHeader +
+ * BottomTabBar, see app/pos/_layout.tsx) — Admin is just another tab, not a
+ * separate app-within-an-app, so it carries its own CartSummary/FlyToCart
+ * providers only because StoreHeader needs them, not because either does
+ * anything here (no cart on this tab; the chip stays hidden off /pos).
  */
 export default function AdminLayout() {
   const { cashier } = useSession();
@@ -95,65 +98,35 @@ export default function AdminLayout() {
   }
 
   return (
-    <View
-      style={[
-        styles.screen,
-        { paddingTop: insets.top, paddingBottom: compact ? 0 : insets.bottom },
-      ]}
-      // Catches taps on the header row and any native (non-WebView) screen
-      // under here. A tap inside the WebView itself (app/admin/index.tsx)
-      // does not bubble to RN's touch responder system, so it can't reset
-      // this clock — background/foreground locking (AppState, see
-      // lib/idle-lock.ts) still fires regardless and is the part that matters
-      // most for "walked away with the dashboard open."
-      onTouchStart={recordActivity}
-    >
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          gap: space.sm,
-          paddingHorizontal: space.md,
-          paddingVertical: space.sm,
-          backgroundColor: color.primary,
-        }}
-      >
-        <Pressable
-          onPress={() => (router.canGoBack() ? router.back() : router.replace("/pos"))}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-          style={styles.tapTarget}
-        >
-          <ArrowLeft size={20} color={color.onPrimary} strokeWidth={2} />
-        </Pressable>
+    <CartSummaryProvider>
+      <FlyToCartProvider>
         <View
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: radius.sm,
-            backgroundColor: color.surface,
-            alignItems: "center",
-            justifyContent: "center",
-            overflow: "hidden",
-          }}
+          style={[
+            styles.screen,
+            { paddingTop: insets.top, paddingBottom: compact ? 0 : insets.bottom },
+          ]}
+          // Catches taps on any native (non-WebView) screen under here. A tap
+          // inside the WebView itself (app/admin/index.tsx) does not bubble to
+          // RN's touch responder system, so it can't reset this clock —
+          // background/foreground locking (AppState, see lib/idle-lock.ts)
+          // still fires regardless and is the part that matters most for
+          // "walked away with the dashboard open."
+          onTouchStart={recordActivity}
         >
-          <Image source={LOGO} style={{ width: 20, height: 20 }} resizeMode="contain" />
-        </View>
-        <Text style={{ fontSize: fontSize.bodyLg, fontWeight: "700", color: color.onPrimary }}>
-          Admin dashboard
-        </Text>
-      </View>
+          <StoreHeader />
 
-      <View style={{ flex: 1, minHeight: 0 }}>
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: "transparent" },
-          }}
-        />
-      </View>
-      <PinRelockOverlay />
-      {compact ? <BottomTabBar /> : null}
-    </View>
+          <View style={{ flex: 1, minHeight: 0 }}>
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: "transparent" },
+              }}
+            />
+          </View>
+          <PinRelockOverlay />
+          {compact ? <BottomTabBar /> : null}
+        </View>
+      </FlyToCartProvider>
+    </CartSummaryProvider>
   );
 }
