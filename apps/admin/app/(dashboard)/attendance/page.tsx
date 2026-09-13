@@ -674,21 +674,31 @@ function HistoryTab() {
         </Field>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3 border-t border-border pt-4">
-        <Field label="Employee" hint="Add a manual clock in/out record for any employee and date.">
-          <Select value={manualUserId} onChange={(event) => setManualUserId(event.currentTarget.value)}>
-            <option value="">Pick an employee…</option>
-            {(usersQuery.data ?? []).map((user) => (
-              <option key={user.id} value={user.id}>
-                {user.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Date">
-          <Input type="date" value={manualDate} onChange={(event) => setManualDate(event.currentTarget.value)} />
-        </Field>
-        <Button type="button" icon={Plus} loading={materialize.isPending} onClick={addManualRecord}>
+      <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-end">
+        <div className="min-w-0 flex-1">
+          <Field label="Employee" hint="Add a manual clock in/out record for any employee and date.">
+            <Select value={manualUserId} onChange={(event) => setManualUserId(event.currentTarget.value)}>
+              <option value="">Pick an employee…</option>
+              {(usersQuery.data ?? []).map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </div>
+        <div className="w-full sm:w-48">
+          <Field label="Date">
+            <Input type="date" value={manualDate} onChange={(event) => setManualDate(event.currentTarget.value)} />
+          </Field>
+        </div>
+        <Button
+          type="button"
+          icon={Plus}
+          loading={materialize.isPending}
+          onClick={addManualRecord}
+          className="w-full sm:w-auto"
+        >
           Add manual record
         </Button>
       </div>

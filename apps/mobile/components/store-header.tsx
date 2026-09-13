@@ -6,6 +6,7 @@ import { formatMoney, storeInitial, type SyncPhase } from "@double-a/shared-type
 import { AccountDrawer } from "@/components/account-drawer";
 import { LocationSwitcher } from "@/components/location-switcher";
 import { summariseToday, type LocalDaySummary } from "@/db/sales";
+import { useAccountDrawer } from "@/lib/account-drawer";
 import { useCartSummary } from "@/lib/cart-summary";
 import { useFlyToCart } from "@/lib/fly-to-cart";
 import { useStoreSettings } from "@/lib/store";
@@ -26,9 +27,13 @@ export function StoreHeader() {
   const router = useRouter();
   const pathname = usePathname();
   const { compact } = useLayout();
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const { open: drawerOpen, openDrawer, closeDrawer } = useAccountDrawer();
   const [daySummary, setDaySummary] = useState<LocalDaySummary | null>(null);
   const onSellScreen = pathname === "/pos";
+  // The embedded web dashboard has its own live data — this chrome's time/
+  // sync/cart readouts describe the terminal's own SQLite state, which
+  // doesn't apply there and reads as confusing noise on top of it.
+  const onAdminScreen = pathname === "/admin";
 
   // Where a "flying" product lands (lib/fly-to-cart.tsx) — phone only.
   // Tablet cart panel (CartShell) registers itself as the landing spot;
@@ -131,7 +136,7 @@ export function StoreHeader() {
       >
         {/* Explicit hamburger — the logo alone opened the drawer but read as a brand mark, not a control. */}
         <Pressable
-          onPress={() => setDrawerOpen(true)}
+          onPress={openDrawer}
           accessibilityRole="button"
           accessibilityLabel="Open menu"
           hitSlop={4}
@@ -147,7 +152,7 @@ export function StoreHeader() {
         </Pressable>
 
         <Pressable
-          onPress={() => setDrawerOpen(true)}
+          onPress={openDrawer}
           accessibilityRole="button"
           accessibilityLabel={`${store.name}. Open menu.`}
           style={({ pressed }) => ({
@@ -181,31 +186,45 @@ export function StoreHeader() {
           )}
         </Pressable>
 
-        {/* Time + sync as HeaderStat twins, then a rule before cart/sales. */}
-        <View
-          accessibilityLabel={`${dateLabel}, ${timeLabel}. ${look.text}. ${pendingLabel(state.pendingSales)}.`}
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: space.md,
-            flexShrink: 0,
-            paddingRight: space.sm,
-            borderRightWidth: 1,
-            borderRightColor: "rgba(255,255,255,0.25)",
-          }}
-        >
-          <HeaderStat value={timeLabel} label={dateLabel} />
-          <HeaderStatDivider />
-          <SyncStat
-            look={look}
-            pendingSales={state.pendingSales}
-            onPress={() => router.replace("/pos/sync")}
-          />
-        </View>
+        {/* Time + sync as HeaderStat twins, then a rule before cart/sales —
+            swapped for a plain label on the admin dashboard, where none of
+            this terminal-local state applies. */}
+        {onAdminScreen ? (
+          <View style={{ flex: 1, minWidth: 0, paddingHorizontal: space.xs }}>
+            <Text
+              numberOfLines={1}
+              style={{ fontSize: fontSize.body, fontWeight: "700", color: color.onPrimary }}
+            >
+              Viewing the Admin Live Dashboard
+            </Text>
+          </View>
+        ) : (
+          <View
+            accessibilityLabel={`${dateLabel}, ${timeLabel}. ${look.text}. ${pendingLabel(state.pendingSales)}.`}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: space.md,
+              flexShrink: 0,
+              paddingRight: space.sm,
+              borderRightWidth: 1,
+              borderRightColor: "rgba(255,255,255,0.25)",
+            }}
+          >
+            <HeaderStat value={timeLabel} label={dateLabel} />
+            <HeaderStatDivider />
+            <SyncStat
+              look={look}
+              pendingSales={state.pendingSales}
+              onPress={() => router.replace("/pos/sync")}
+            />
+          </View>
+        )}
 
         {/* Phone Sell: cart chip. Tablet: today's sales (CartShell already shows
-            the cart — this chip was redundant). Other phone tabs: spacer. */}
-        {onSellScreen && compact ? (
+            the cart — this chip was redundant). Other phone tabs: spacer.
+            Admin dashboard: nothing — the label above already took the flex slot. */}
+        {onAdminScreen ? null : onSellScreen && compact ? (
           <Pressable
             ref={cartChipRef}
             onLayout={measureCartChip}
@@ -308,7 +327,7 @@ export function StoreHeader() {
         </View>
       ) : null}
 
-      <AccountDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+      <AccountDrawer open={drawerOpen} onClose={closeDrawer} />
     </>
   );
 }

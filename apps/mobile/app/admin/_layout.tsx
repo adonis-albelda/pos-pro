@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Redirect, Stack, useRouter } from "expo-router";
+import { Redirect, Stack, usePathname, useRouter } from "expo-router";
 import { Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ROLES } from "@double-a/shared-types";
@@ -9,6 +9,7 @@ import { useSession } from "@/lib/session";
 import { useStoreSettings } from "@/lib/store";
 import { useIdleLock } from "@/lib/idle-lock";
 import { ensureFreshSession } from "@/lib/api/session";
+import { AccountDrawerProvider } from "@/lib/account-drawer";
 import { CartSummaryProvider } from "@/lib/cart-summary";
 import { FlyToCartProvider } from "@/lib/fly-to-cart";
 import { Button } from "@/components/ui";
@@ -33,6 +34,7 @@ export default function AdminLayout() {
   const { cashier } = useSession();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const pathname = usePathname();
   const { idleTimeoutMinutes } = useStoreSettings();
   // Same idle/background lock as the POS tabs (lib/idle-lock.ts) — the admin
   // dashboard is reached from the same shift and must not stay unlocked here
@@ -82,6 +84,12 @@ export default function AdminLayout() {
     return <LoadingState text="Opening admin dashboard…" />;
   }
 
+  // The embedded web dashboard is a dead end to go look at, not a tab to
+  // jump out of mid-task — same reasoning as the drawer's own detail screens
+  // (see app/pos/_layout.tsx's showBottomTabBar). Native admin subpages
+  // (/admin/native/...) keep the bar.
+  const showBottomTabBar = compact && pathname !== "/admin";
+
   if (check === "error") {
     return (
       <View
@@ -98,35 +106,37 @@ export default function AdminLayout() {
   }
 
   return (
-    <CartSummaryProvider>
-      <FlyToCartProvider>
-        <View
-          style={[
-            styles.screen,
-            { paddingTop: insets.top, paddingBottom: compact ? 0 : insets.bottom },
-          ]}
-          // Catches taps on any native (non-WebView) screen under here. A tap
-          // inside the WebView itself (app/admin/index.tsx) does not bubble to
-          // RN's touch responder system, so it can't reset this clock —
-          // background/foreground locking (AppState, see lib/idle-lock.ts)
-          // still fires regardless and is the part that matters most for
-          // "walked away with the dashboard open."
-          onTouchStart={recordActivity}
-        >
-          <StoreHeader />
+    <AccountDrawerProvider>
+      <CartSummaryProvider>
+        <FlyToCartProvider>
+          <View
+            style={[
+              styles.screen,
+              { paddingTop: insets.top, paddingBottom: showBottomTabBar ? 0 : insets.bottom },
+            ]}
+            // Catches taps on any native (non-WebView) screen under here. A tap
+            // inside the WebView itself (app/admin/index.tsx) does not bubble to
+            // RN's touch responder system, so it can't reset this clock —
+            // background/foreground locking (AppState, see lib/idle-lock.ts)
+            // still fires regardless and is the part that matters most for
+            // "walked away with the dashboard open."
+            onTouchStart={recordActivity}
+          >
+            <StoreHeader />
 
-          <View style={{ flex: 1, minHeight: 0 }}>
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                contentStyle: { backgroundColor: "transparent" },
-              }}
-            />
+            <View style={{ flex: 1, minHeight: 0 }}>
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  contentStyle: { backgroundColor: "transparent" },
+                }}
+              />
+            </View>
+            <PinRelockOverlay />
+            {showBottomTabBar ? <BottomTabBar /> : null}
           </View>
-          <PinRelockOverlay />
-          {compact ? <BottomTabBar /> : null}
-        </View>
-      </FlyToCartProvider>
-    </CartSummaryProvider>
+        </FlyToCartProvider>
+      </CartSummaryProvider>
+    </AccountDrawerProvider>
   );
 }

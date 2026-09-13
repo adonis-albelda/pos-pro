@@ -152,10 +152,10 @@ export default function UnlockScreen() {
         return;
       }
 
-      // The attendance screen itself decides whether there's anything to
-      // gate on (enforcement off, rest day, already clocked in all skip
-      // straight through to /pos) — see app/attendance.tsx.
-      router.replace("/attendance");
+      // Attendance is mid-shift only (/pos/attendance) — unlock never gates
+      // the shift on a clock-in. Punch happens from the Attendance tab when
+      // the company has the feature on.
+      router.replace("/pos");
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Could not reach the server.";

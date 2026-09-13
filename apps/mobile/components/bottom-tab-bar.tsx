@@ -1,10 +1,7 @@
 import { Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePathname, useRouter } from "expo-router";
-import { ROLES } from "@double-a/shared-types";
-import { Building2, Receipt, ShoppingCart, Tag, Truck, type LucideIcon } from "lucide-react-native";
-import { useLocationScope } from "@/lib/location-scope";
-import { useSession } from "@/lib/session";
+import { CalendarClock, Receipt, ShoppingCart, Tag, Truck, type LucideIcon } from "lucide-react-native";
 import { usePriceInquiryOptional } from "@/lib/price-inquiry";
 import { circleRadius, color, fontSize, space } from "@/theme";
 
@@ -12,45 +9,36 @@ const TABS = [
   { href: "/pos", label: "POS", icon: ShoppingCart },
   { href: "/pos/delivery", label: "Delivery", icon: Truck },
   { href: "/pos/history", label: "History", icon: Receipt },
+  { href: "/pos/attendance", label: "Attendance", icon: CalendarClock },
 ] as const;
-
-/** Same grant rule as AccountDrawer's own admin-dashboard tile — kept in sync with it. */
-const ADMIN_TAB = { href: "/admin", label: "Admin", icon: Building2 } as const;
 
 const CENTER_BUTTON_SIZE = 52;
 
 /**
- * Persistent bottom navigation for Sell/Delivery/History/Admin — previously
- * only reachable from the account drawer (a few taps away from whatever
- * screen a cashier was on). Phone only (compact) — a tablet already has
- * room for the drawer and its own tablet-specific chrome (CartShell's side
- * panel, StoreHeader's sales stat), so this doesn't touch that layout.
+ * Persistent bottom navigation for Sell/Delivery/History/Attendance —
+ * previously only reachable from the account drawer (a few taps away from
+ * whatever screen a cashier was on). Phone only (compact) — a tablet already
+ * has room for the drawer and its own tablet-specific chrome (CartShell's
+ * side panel, StoreHeader's sales stat), so this doesn't touch that layout.
  * Mounted in both app/pos/_layout.tsx and app/admin/_layout.tsx so it stays
- * visible switching between the two, not just within one.
+ * visible switching between the two, not just within one. Admin dashboard
+ * moved back to being drawer-only (AccountDrawer) — this bar's 4 slots go to
+ * the screens a shift actually rotates through, not an occasional destination.
  */
 export function BottomTabBar() {
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
-  const { cashier } = useSession();
-  // "Account used to login is admin" (device.ts EnrolledRole) also opens the
-  // dashboard, regardless of which PIN shift user is on — same rule as
-  // account-drawer.tsx's ADMIN_TAB gate and admin/_layout.tsx's own check.
-  const { role: enrolledRole } = useLocationScope();
-  const canOpenAdminDashboard =
-    enrolledRole === ROLES.ADMIN || cashier?.role === ROLES.ADMIN || cashier?.role === ROLES.MANAGER;
   // null outside the POS tree (this bar also mounts in app/admin/_layout.tsx,
   // which has no PriceInquiryProvider) — center button just doesn't render
   // there. This is now the ONLY entry point for price inquiry — the old
   // draggable floating button and account-drawer menu item were retired.
   const priceInquiry = usePriceInquiryOptional();
 
-  const tabs = canOpenAdminDashboard ? [...TABS, ADMIN_TAB] : TABS;
-  // Split around the middle so the price-inquiry button lands visually
-  // centered regardless of tab count (3 plain, 4 with Admin granted).
-  const splitAt = Math.ceil(tabs.length / 2);
-  const leftTabs = tabs.slice(0, splitAt);
-  const rightTabs = tabs.slice(splitAt);
+  // Split around the middle so the price-inquiry button lands visually centered.
+  const splitAt = Math.ceil(TABS.length / 2);
+  const leftTabs = TABS.slice(0, splitAt);
+  const rightTabs = TABS.slice(splitAt);
 
   return (
     <View
