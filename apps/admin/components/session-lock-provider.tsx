@@ -78,8 +78,14 @@ export function SessionLockProvider({
       if (Date.now() - lastActivityRef.current >= timeoutMs) lock();
     }
 
+    // Hiding the tab used to lock instantly, regardless of how long it was
+    // away — a one-second alt-tab (checking another window, copy-pasting)
+    // re-prompted for the PIN just as hard as an hour idle. Elapsed time is
+    // what the idle timeout actually means, so a hide just leaves the clock
+    // running; only becoming visible again is worth an immediate check, so a
+    // real overstay doesn't wait out the next 15s poll before it locks.
     function onVisibility() {
-      if (document.visibilityState === "hidden") lock();
+      if (document.visibilityState === "visible") checkIdle();
     }
 
     const interval = window.setInterval(checkIdle, CHECK_INTERVAL_MS);
