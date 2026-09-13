@@ -31,6 +31,14 @@ const SEARCH_DEBOUNCE_MS = 250;
 const DIALOG_MAX_WIDTH = 896;
 const DIALOG_MIN_WIDTH = 720;
 
+/**
+ * Empty docked sheet used to hug content (~220dp — title + search + a short
+ * hint). Triple that so the idle / no-match copy can sit vertically centered
+ * instead of in a thin strip at the bottom of the screen.
+ */
+const DOCKED_EMPTY_BASE_HEIGHT = 220;
+const DOCKED_MIN_HEIGHT = DOCKED_EMPTY_BASE_HEIGHT * 3;
+
 function ResultThumbnail({ photoUrl, size }: { photoUrl: string | null; size: number }) {
   return (
     <View
@@ -89,7 +97,7 @@ function DetailBox({
  */
 export function PriceInquiryModal() {
   const { isOpen, close } = usePriceInquiry();
-  const { width, compact, landscape, gutter } = useLayout();
+  const { width, height, compact, landscape, gutter } = useLayout();
   const insets = useSafeAreaInsets();
   const keyboardHeight = useKeyboardHeight();
   const [query, setQuery] = useState("");
@@ -100,6 +108,10 @@ export function PriceInquiryModal() {
   // Phone or upright tablet: dock at the bottom, same as BottomSheet. Tablet
   // held sideways: keep the centered dialog box — there's width to spare.
   const centered = !compact && landscape;
+  const dockedMinHeight = Math.min(
+    DOCKED_MIN_HEIGHT,
+    Math.max(0, height - insets.top - space.md),
+  );
   const horizontalPad = centered ? Math.max(gutter, space.md) : 0;
   const available = Math.max(0, width - horizontalPad * 2);
   // Tablet with room: at least DIALOG_MIN_WIDTH. Low-res / phone: fill available
@@ -166,6 +178,7 @@ export function PriceInquiryModal() {
           style={{
             width: panelWidth,
             maxWidth: DIALOG_MAX_WIDTH,
+            minHeight: centered || selected ? undefined : dockedMinHeight,
             maxHeight: centered ? (keyboardHeight > 0 ? "88%" : "82%") : "92%",
             backgroundColor: color.surface,
             borderTopLeftRadius: radius.lg,
@@ -255,7 +268,16 @@ export function PriceInquiryModal() {
               </DetailBox>
             </ScrollView>
           ) : (
-            <View style={{ gap: space.md, minHeight: 0, flexShrink: 1 }}>
+            <View
+              style={{
+                gap: space.md,
+                minHeight: 0,
+                flexShrink: 1,
+                // Fill the tripled docked sheet so idle / empty copy can center.
+                flexGrow: centered || results.length > 0 ? 0 : 1,
+                flex: centered || results.length > 0 ? undefined : 1,
+              }}
+            >
               <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
                 <Text style={{ flex: 1, fontSize: fontSize.headingSm, fontWeight: "700", color: color.ink, minWidth: 0 }}>
                   Price inquiry
@@ -286,11 +308,15 @@ export function PriceInquiryModal() {
               </View>
 
               {loading ? (
-                <ActivityIndicator color={color.primary} style={{ paddingVertical: space.xl }} />
+                <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+                  <ActivityIndicator color={color.primary} />
+                </View>
               ) : query.trim() && results.length === 0 ? (
-                <Text style={{ textAlign: "center", color: color.inkMuted, paddingVertical: space.xl }}>
-                  Nothing matches &quot;{query.trim()}&quot;.
-                </Text>
+                <View style={{ flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: space.md }}>
+                  <Text style={{ textAlign: "center", color: color.inkMuted, fontSize: fontSize.body }}>
+                    Nothing matches &quot;{query.trim()}&quot;.
+                  </Text>
+                </View>
               ) : results.length > 0 ? (
                 <FlatList
                   data={results}
@@ -324,9 +350,11 @@ export function PriceInquiryModal() {
                   )}
                 />
               ) : (
-                <Text style={{ textAlign: "center", color: color.inkMuted, paddingVertical: space.xl }}>
-                  Search by name, SKU or barcode to see its price.
-                </Text>
+                <View style={{ flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: space.md }}>
+                  <Text style={{ textAlign: "center", color: color.inkMuted, fontSize: fontSize.body }}>
+                    Search by name, SKU or barcode to see its price.
+                  </Text>
+                </View>
               )}
             </View>
           )}

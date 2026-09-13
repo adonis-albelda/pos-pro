@@ -29,7 +29,7 @@ import {
   upsertLocalDiscountRule,
 } from "@/db/discounts";
 import { deleteLocalLoyaltyReward, saveLocalLoyaltyProgram, upsertLocalLoyaltyReward } from "@/db/loyalty";
-import { updateProductCatalogFields, updateProductStock, upsertProducts } from "@/db/products";
+import { deleteProducts, updateProductCatalogFields, updateProductStock, upsertProducts } from "@/db/products";
 import { updateVariantCatalogFields, updateVariantStock, upsertVariants } from "@/db/product-variants";
 import {
   deleteLocalScheduleAssignment,
@@ -110,6 +110,10 @@ interface VariantUpdatedPayload {
  * just named. See refetchAndUpsertProduct below.
  */
 interface ProductCreatedPayload {
+  id: string;
+}
+
+interface ProductDeletedPayload {
   id: string;
 }
 
@@ -373,6 +377,13 @@ export async function connectRealtime(
     if (__DEV__) console.warn("[realtime] variant.created", payload);
     onProductCreated?.(payload.product_id);
     void refetchAndUpsertProduct(payload.product_id, locationId, onStockTick);
+  });
+  catalogChannel.listen(".product.deleted", (payload: ProductDeletedPayload) => {
+    if (__DEV__) console.warn("[realtime] product.deleted", payload);
+    // Same reconciliation deleteProducts() already does for a pull's
+    // deletedProductIds — this is just that same removal arriving live
+    // instead of waiting for the next Sync/Refresh.
+    void serialized(() => deleteProducts([payload.id])).then(onStockTick);
   });
   catalogChannel.listen(".discount-rule.updated", (payload: DiscountRuleUpdatedPayload) => {
     if (__DEV__) console.warn("[realtime] discount-rule.updated", payload);

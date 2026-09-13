@@ -136,7 +136,30 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
       observer.observe(el);
     }
 
-    return () => observer.disconnect();
+    // Safety net: a row can end up stuck "pending" (permanently opacity-0)
+    // if the observer never reports it intersecting — the nav container not
+    // being its final size yet at mount is the usual cause, which throws off
+    // the inView rect check above too. Force everything visible after a
+    // beat regardless, so a real layout hiccup can never hide a menu item
+    // for good — worst case it just skips its slide-up animation.
+    const fallback = window.setTimeout(() => {
+      setMotion((prev) => {
+        let changed = false;
+        const updated = new Map(prev);
+        for (const [id, row] of updated) {
+          if (row.kind === "pending") {
+            updated.set(id, { kind: "slide-up" });
+            changed = true;
+          }
+        }
+        return changed ? updated : prev;
+      });
+    }, 500);
+
+    return () => {
+      observer.disconnect();
+      window.clearTimeout(fallback);
+    };
   }, [itemKeysSig]);
 
   function renderItem({ href, label, icon: Icon }: NavItem) {

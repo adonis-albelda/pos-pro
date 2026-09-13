@@ -29,6 +29,7 @@ import {
   defaultAllowDecimal,
   formatMoney,
   formatPercent,
+  formatQuantity,
   isProductUnit,
   isValidQuantity,
   marginPercent,
@@ -2177,6 +2178,171 @@ function WizardCreatePreviewDialog({
   );
 }
 
+/** Same "check before creating" gate as WizardCreatePreviewDialog above, sized for a single row instead of per-variant. */
+function SingleProductPreviewDialog({
+  open,
+  onClose,
+  onConfirm,
+  pending,
+  input,
+  categoryLabel,
+  brandLabel,
+  photos,
+  branches,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  pending: boolean;
+  input: CreateFullProductInput | null;
+  categoryLabel: string;
+  brandLabel: string;
+  photos: File[];
+  branches: { id: string; name: string }[];
+}) {
+  const product = input?.product;
+  const stockLines = (input?.openingStock ?? [])
+    .map((row) => {
+      const name = branches.find((branch) => branch.id === row.locationId)?.name ?? "—";
+      return `${name}: ${formatQuantity(row.quantity)}`;
+    });
+  const suppliers = input?.suppliers ?? [];
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="Review product before creating"
+      description="Check every detail below. Creating cannot be undone from this screen."
+      className="!max-h-[min(92vh,900px)] !max-w-3xl"
+      footer={
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button type="button" variant="secondary" onClick={onClose} disabled={pending}>
+            Back to edit
+          </Button>
+          <Button type="button" icon={Check} loading={pending} onClick={onConfirm}>
+            Create product
+          </Button>
+        </div>
+      }
+    >
+      {!product ? null : (
+        <div className="space-y-5 text-body leading-relaxed text-ink">
+          <section className="grid gap-5 border-b border-border pb-5 sm:grid-cols-3">
+            <div className="space-y-1 sm:col-span-2">
+              <p className="text-caption font-semibold uppercase tracking-wide text-ink-muted">Product</p>
+              <div className="mt-2 grid gap-x-6 gap-y-1 sm:grid-cols-2">
+                <p>
+                  <span className="text-ink-muted">Name: </span>
+                  {product.name || "—"}
+                </p>
+                <p>
+                  <span className="text-ink-muted">Type: </span>
+                  {product.productType || "—"}
+                </p>
+                <p>
+                  <span className="text-ink-muted">Category: </span>
+                  {categoryLabel}
+                </p>
+                <p>
+                  <span className="text-ink-muted">Brand: </span>
+                  {brandLabel}
+                </p>
+                <p>
+                  <span className="text-ink-muted">SKU: </span>
+                  {product.sku?.trim() || "—"}
+                </p>
+                <p>
+                  <span className="text-ink-muted">Barcode: </span>
+                  {product.barcode?.trim() || "—"}
+                </p>
+                <p className="sm:col-span-2">
+                  <span className="text-ink-muted">Description: </span>
+                  {plainPreviewText(product.description)}
+                </p>
+                <p className="sm:col-span-2">
+                  <span className="text-ink-muted">Notes: </span>
+                  {plainPreviewText(product.notes)}
+                </p>
+              </div>
+            </div>
+            <div>
+              <p className="text-caption font-semibold uppercase tracking-wide text-ink-muted">Photos</p>
+              <PreviewPhotoThumbs files={photos} />
+            </div>
+          </section>
+
+          <section className="grid gap-x-6 gap-y-1 border-b border-border pb-5 sm:grid-cols-2">
+            <p>
+              <span className="text-ink-muted">Shelf price: </span>
+              <Money value={product.price ?? 0} />
+            </p>
+            <p>
+              <span className="text-ink-muted">Cost price: </span>
+              <Money value={product.costPrice ?? 0} />
+            </p>
+            <p>
+              <span className="text-ink-muted">Bulk price: </span>
+              {undefined !== product.bulkPrice && null !== product.bulkPrice ? (
+                <Money value={product.bulkPrice} />
+              ) : (
+                "—"
+              )}
+              {product.bulkMinQuantity ? ` (min ${product.bulkMinQuantity})` : ""}
+            </p>
+            <p>
+              <span className="text-ink-muted">Track inventory: </span>
+              {product.isTrackInventory ? "Yes" : "No"}
+            </p>
+            {product.isTrackInventory ? (
+              <>
+                <p>
+                  <span className="text-ink-muted">Reorder / replenish: </span>
+                  {product.reorderPoint ?? "—"}
+                  {" / "}
+                  {product.replenishQuantity ?? "—"}
+                </p>
+                <p>
+                  <span className="text-ink-muted">Opening stock: </span>
+                  {stockLines.length > 0 ? stockLines.join(" · ") : "—"}
+                </p>
+              </>
+            ) : null}
+            <p>
+              <span className="text-ink-muted">Sellable / Purchasable: </span>
+              {product.isSellable ? "Yes" : "No"} / {product.isPurchasable ? "Yes" : "No"}
+            </p>
+            <p>
+              <span className="text-ink-muted">Shop visibility: </span>
+              {product.isActive ? "Visible" : "Hidden"}
+            </p>
+          </section>
+
+          <section className="space-y-1">
+            <p className="text-caption font-semibold uppercase tracking-wide text-ink-muted">
+              Suppliers ({suppliers.length})
+            </p>
+            {0 === suppliers.length ? (
+              <p className="text-ink-muted">—</p>
+            ) : (
+              <ul className="list-disc space-y-0.5 pl-5">
+                {suppliers.map((link, index) => (
+                  <li key={`${link.supplierId}-${index}`}>
+                    {link.supplierSku ? `SKU ${link.supplierSku}` : "No SKU"}
+                    {undefined !== link.supplierPrice && null !== link.supplierPrice
+                      ? ` · ${formatMoney(link.supplierPrice)}`
+                      : ""}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+      )}
+    </Dialog>
+  );
+}
+
 export function ProductForm({
   product,
   categories,
@@ -2198,6 +2364,13 @@ export function ProductForm({
   const setBundleItems = useSetBundleItems();
   const [pendingGalleryFiles, setPendingGalleryFiles] = useState<File[]>([]);
   const [pendingSupplierLinks, setPendingSupplierLinks] = useState<PendingSupplierLink[]>([]);
+  // "Simple product" create — same review-before-create gate the with-variants
+  // wizard already has at step 3 (WizardCreatePreviewDialog), just one shot
+  // instead of per-variant, since there's only one row to check.
+  const [singleCreatePreview, setSingleCreatePreview] = useState<{
+    input: CreateFullProductInput;
+    photos: File[];
+  } | null>(null);
   const [stockQuantities, setStockQuantities] = useState<Record<string, string>>({});
   const [stockNote, setStockNote] = useState("");
   const [description, setDescription] = useState(product?.descriptionHtml ?? product?.description ?? "");
@@ -2706,8 +2879,16 @@ export function ProductForm({
       })),
     };
 
+    setSingleCreatePreview({ input, photos: pendingGalleryFiles });
+  }
+
+  /** Simple-product preview's "Create product" — the one and only API call for that flow. */
+  function confirmSingleCreate() {
+    if (!singleCreatePreview) return;
+    const { input, photos } = singleCreatePreview;
+
     createFullProductMutation.mutate(
-      { input, photos: pendingGalleryFiles },
+      { input, photos },
       {
         onSuccess: async ({ product: created }) => {
           try {
@@ -2837,6 +3018,12 @@ export function ProductForm({
     Number.isFinite(costValue);
   const belowCost = bothSet && priceValue < costValue;
   const selectedCategory = categories.find((entry) => entry.id === categoryId);
+  // For SingleProductPreviewDialog below — same lookup pattern as the
+  // with-variants wizard's own categoryLabel/brandLabel (line ~3105).
+  const singleCategoryLabel = selectedCategory
+    ? indentLabel(selectedCategory).trim() || selectedCategory.name
+    : "—";
+  const singleBrandLabel = brandsQuery.data?.find((brand) => brand.id === brandId)?.name ?? "—";
 
   function applyCategoryMarkup(nextCategoryId: string, nextCost: string) {
     const category = categories.find((entry) => entry.id === nextCategoryId);
@@ -3658,6 +3845,23 @@ export function ProductForm({
           </Button>
         </div>
       </Dialog>
+
+      {!product ? (
+        <SingleProductPreviewDialog
+          open={singleCreatePreview !== null}
+          onClose={() => {
+            if (createFullProductMutation.isPending) return;
+            setSingleCreatePreview(null);
+          }}
+          onConfirm={confirmSingleCreate}
+          pending={createFullProductMutation.isPending}
+          input={singleCreatePreview?.input ?? null}
+          categoryLabel={singleCategoryLabel}
+          brandLabel={singleBrandLabel}
+          photos={singleCreatePreview?.photos ?? []}
+          branches={branches}
+        />
+      ) : null}
     </div>
   );
 }
