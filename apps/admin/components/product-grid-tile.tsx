@@ -43,7 +43,12 @@ export function ProductGridTile({
           <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-sm bg-primary/10 text-primary">
             <Package size={14} strokeWidth={2} />
           </span>
-          <span className="line-clamp-2 text-body font-semibold text-ink">{product.name}</span>
+          <span className="min-w-0">
+            <span className="line-clamp-2 block text-body font-semibold text-ink">{product.name}</span>
+            {product.brandName ? (
+              <Badge tone="neutral">{product.brandName}</Badge>
+            ) : null}
+          </span>
         </div>
         <div className="flex items-baseline gap-1">
           <span className="num text-body-lg font-bold text-primary-dark">

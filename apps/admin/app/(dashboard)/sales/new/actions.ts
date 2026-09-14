@@ -6,8 +6,11 @@ import { getAuthedClient } from "@/lib/api/session";
 
 export interface CreateSaleLine {
   productId: string;
+  /** Defaults to the product's default variant. */
+  variantId?: string | null;
   quantity: number;
   unitPrice?: number;
+  addons?: { addonGroupItemId: string; quantity?: number }[];
 }
 
 /**

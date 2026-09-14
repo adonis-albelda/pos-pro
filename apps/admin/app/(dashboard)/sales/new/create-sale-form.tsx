@@ -36,7 +36,14 @@ import {
   QUANTITY_DECIMALS,
   roundMoney,
 } from "@double-a/shared-types";
-import { extractProductsFromPhoto, listProductsByIds, listProductsPage } from "@double-a/api-client/queries";
+import {
+  extractProductsFromPhoto,
+  listProductsByIds,
+  listProductsPage,
+  listProductVariants,
+  type AddonGroup,
+  type ProductVariant,
+} from "@double-a/api-client/queries";
 import {
   Badge,
   Button,
@@ -60,6 +67,7 @@ import { ProductGridTile } from "@/components/product-grid-tile";
 import { CropPhoto } from "../../products/from-photo/crop-photo";
 import { VoiceSearchModal, voiceSearchSupported } from "@/components/voice-search-modal";
 import { isImageFile, NOT_AN_IMAGE_MESSAGE } from "@/lib/is-image-file";
+import { useAddonGroups } from "@/lib/query/addon-groups";
 import { useCategories } from "@/lib/query/categories";
 import { useCustomers } from "@/lib/query/customers";
 import { useFeatureFlags } from "@/lib/query/features";
@@ -72,6 +80,11 @@ import {
   type SaleDraft,
   type SaleDraftItem,
 } from "@/lib/sale-drafts";
+import {
+  SaleVariantAddonPicker,
+  variantLabel,
+  type SaleVariantAddonSelection,
+} from "./sale-variant-addon-picker";
 import { createSaleAction } from "./actions";
 
 const PAYMENT_METHODS = [
@@ -98,6 +111,7 @@ export function CreateSaleForm() {
   const { data: currentUser } = useCurrentUser();
   const customersQuery = useCustomers();
   const categoriesQuery = useCategories();
+  const addonGroupsQuery = useAddonGroups();
   const { isEnabled } = useFeatureFlags();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -141,8 +155,20 @@ export function CreateSaleForm() {
   const [photoReading, setPhotoReading] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
 
-  const [outOfStockConfirm, setOutOfStockConfirm] = useState<Product | null>(null);
+  const [outOfStockConfirm, setOutOfStockConfirm] = useState<{
+    product: Product;
+    selection?: SaleVariantAddonSelection;
+  } | null>(null);
   const [createConfirmOpen, setCreateConfirmOpen] = useState(false);
+  // Set only for a product with >1 variant and/or attached add-on groups —
+  // addToCart decides whether this ever opens; a plain product never does.
+  // See apps/mobile/app/pos/index.tsx's own pickerState for the mobile
+  // equivalent this mirrors.
+  const [pickerState, setPickerState] = useState<{
+    product: Product;
+    variants: ProductVariant[];
+    addonGroups: AddonGroup[];
+  } | null>(null);
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [customerId, setCustomerId] = useState("");
@@ -273,26 +299,68 @@ export function CreateSaleForm() {
   }
 
   function repricedFor(line: CartLine, quantity: number, product?: Product): CartLine {
+    if (isOverridden(line.productId)) return { ...line, quantity };
+    // A variant/add-on line's price is fixed at add time (the picker's own
+    // resolved total), not re-derived from the product's bulk-pricing math —
+    // same split as mobile's own repricedFor.
+    if (line.naturalPrice !== undefined) return { ...line, quantity, unitPrice: line.naturalPrice };
     const p = product ?? byId.get(line.productId);
-    if (!p || isOverridden(line.productId)) return { ...line, quantity };
+    if (!p) return { ...line, quantity };
     return { ...line, quantity, unitPrice: priceForQuantity(p, quantity) };
   }
 
-  function commitAddToCart(product: Product) {
+  /**
+   * Product-level mode never creates more than one line per product (the
+   * variant/add-on picker only ever runs on the first click), so a repeat
+   * click always has exactly one existing line to bump.
+   */
+  function commitAddToCart(product: Product, selection?: SaleVariantAddonSelection) {
     rememberProducts([product]);
-    const cap = stockCapFor(product.stockQuantity, product.allowDecimal);
 
     setLines((current) => {
       const existing = current.find((line) => line.productId === product.id);
       if (existing) {
+        const cap = existing.variantId
+          ? stockCapFor(existing.availableStock, existing.allowDecimal)
+          : stockCapFor(product.stockQuantity, product.allowDecimal);
         if (existing.quantity >= cap) return current;
         return current.map((line) =>
-          line.productId === product.id
-            ? repricedFor(line, Math.min(line.quantity + 1, cap), product)
-            : line,
+          line.productId === product.id ? repricedFor(line, Math.min(line.quantity + 1, cap), product) : line,
         );
       }
 
+      if (selection) {
+        const addonsTotal = roundMoney(selection.addons.reduce((sum, addon) => sum + addon.price, 0));
+        const naturalPrice = roundMoney(selection.variant.price + addonsTotal);
+        const cap = stockCapFor(selection.variant.stockQuantity ?? 0, product.allowDecimal);
+
+        return [
+          ...current,
+          {
+            productId: product.id,
+            variantId: selection.variant.id,
+            variantLabel: variantLabel(selection.variant) || null,
+            productName: product.name,
+            unitPrice: naturalPrice,
+            listPrice: naturalPrice,
+            naturalPrice,
+            unitCost: selection.variant.costPrice,
+            unit: product.unit,
+            allowDecimal: product.allowDecimal,
+            quantity: 1,
+            availableStock: cap,
+            categoryId: product.categoryId ?? null,
+            addons: selection.addons.map((addon) => ({
+              addonGroupItemId: addon.addonGroupItemId,
+              name: addon.name,
+              price: addon.price,
+              quantity: 1,
+            })),
+          },
+        ];
+      }
+
+      const cap = stockCapFor(product.stockQuantity, product.allowDecimal);
       return [
         ...current,
         {
@@ -305,6 +373,7 @@ export function CreateSaleForm() {
           allowDecimal: product.allowDecimal,
           quantity: 1,
           availableStock: cap,
+          categoryId: product.categoryId ?? null,
         },
       ];
     });
@@ -435,13 +504,58 @@ export function CreateSaleForm() {
   }
 
   /** No confirmation for a normal add — the one exception is the first tap on a zero-stock product, a backorder decision. */
-  function addToCart(product: Product) {
-    const alreadyInCart = lines.some((line) => line.productId === product.id);
-    if (product.stockQuantity <= 0 && !alreadyInCart) {
-      setOutOfStockConfirm(product);
+  function addonGroupsFor(product: Product): AddonGroup[] {
+    const ids = new Set(product.addonGroupIds);
+    return (addonGroupsQuery.data ?? []).filter((group) => ids.has(group.id));
+  }
+
+  /**
+   * A product with more than one variant, and/or one or more attached
+   * add-on groups, opens the picker instead of adding directly — mirrors
+   * apps/mobile/app/pos/index.tsx's own addToCart.
+   */
+  async function addToCart(product: Product) {
+    const existing = lines.find((line) => line.productId === product.id);
+    if (existing) {
+      changeQuantity(product.id, 1);
+      return;
+    }
+
+    const variants = await listProductVariants(getBrowserApiClient(), product.id);
+    const addonGroups = addonGroupsFor(product);
+
+    if (variants.length > 1 || addonGroups.length > 0) {
+      setPickerState({ product, variants, addonGroups });
+      return;
+    }
+
+    const [onlyVariant] = variants;
+    if (onlyVariant) {
+      commitVariantSelection(product, { variant: onlyVariant, addons: [] });
+      return;
+    }
+
+    if (product.stockQuantity <= 0) {
+      setOutOfStockConfirm({ product });
       return;
     }
     commitAddToCart(product);
+  }
+
+  /** Shared by the picker's own confirm and the "exactly one variant" auto-resolve path above. */
+  function commitVariantSelection(product: Product, selection: SaleVariantAddonSelection) {
+    if ((selection.variant.stockQuantity ?? 0) <= 0) {
+      setOutOfStockConfirm({ product, selection });
+      return;
+    }
+    commitAddToCart(product, selection);
+  }
+
+  function onPickerConfirm(selection: SaleVariantAddonSelection) {
+    if (!pickerState) return;
+    const { product } = pickerState;
+    setPickerState(null);
+    commitVariantSelection(product, selection);
   }
 
   function changeQuantity(productId: string, delta: number) {
@@ -551,7 +665,7 @@ export function CreateSaleForm() {
     });
     const top = products[0];
     if (top && (top.barcode === code || top.sku === code)) {
-      addToCart(top);
+      void addToCart(top);
       applyManualSearch("");
     }
   }
@@ -571,8 +685,10 @@ export function CreateSaleForm() {
       .filter((line) => line.quantity > 0)
       .map((line) => ({
         productId: line.productId,
+        variantId: line.variantId ?? undefined,
         quantity: line.quantity,
         unitPrice: isOverridden(line.productId) ? effectiveUnitPrice(line) : undefined,
+        addons: line.addons?.map((addon) => ({ addonGroupItemId: addon.addonGroupItemId, quantity: addon.quantity })),
       }));
 
     if (cleanItems.length === 0) {
@@ -622,6 +738,12 @@ export function CreateSaleForm() {
       product: byId.get(line.productId) ?? null,
       quantity: String(line.quantity),
       unitPrice: priceDrafts[line.productId] ?? "",
+      variantId: line.variantId ?? null,
+      variantLabel: line.variantLabel ?? null,
+      naturalPrice: line.naturalPrice ?? null,
+      unitCost: line.variantId ? line.unitCost : null,
+      availableStock: line.variantId ? line.availableStock : null,
+      addons: line.addons ?? [],
     }));
     saveSaleDraft({ items, paymentMethod, customerId, fulfillment });
     setDrafts(listSaleDrafts());
@@ -641,17 +763,37 @@ export function CreateSaleForm() {
       const quantity = Number(item.quantity) || 0;
       if (quantity <= 0) continue;
 
-      nextLines.push({
-        productId: product.id,
-        productName: product.name,
-        unitPrice: priceForQuantity(product, quantity),
-        listPrice: product.price,
-        unitCost: product.costPrice,
-        unit: product.unit,
-        allowDecimal: product.allowDecimal,
-        quantity,
-        availableStock: stockCapFor(product.stockQuantity, product.allowDecimal),
-      });
+      if (item.variantId) {
+        const naturalPrice = item.naturalPrice ?? product.price;
+        nextLines.push({
+          productId: product.id,
+          variantId: item.variantId,
+          variantLabel: item.variantLabel,
+          productName: product.name,
+          unitPrice: naturalPrice,
+          listPrice: naturalPrice,
+          naturalPrice,
+          unitCost: item.unitCost ?? product.costPrice,
+          unit: product.unit,
+          allowDecimal: product.allowDecimal,
+          quantity,
+          availableStock: item.availableStock ?? stockCapFor(product.stockQuantity, product.allowDecimal),
+          categoryId: product.categoryId ?? null,
+          addons: item.addons,
+        });
+      } else {
+        nextLines.push({
+          productId: product.id,
+          productName: product.name,
+          unitPrice: priceForQuantity(product, quantity),
+          listPrice: product.price,
+          unitCost: product.costPrice,
+          unit: product.unit,
+          allowDecimal: product.allowDecimal,
+          quantity,
+          availableStock: stockCapFor(product.stockQuantity, product.allowDecimal),
+        });
+      }
       if (item.unitPrice.trim()) nextDrafts[product.id] = item.unitPrice;
     }
 
@@ -785,7 +927,7 @@ export function CreateSaleForm() {
                       key={product.id}
                       product={product}
                       quantityInCart={lines.find((line) => line.productId === product.id)?.quantity ?? 0}
-                      onAdd={() => addToCart(product)}
+                      onAdd={() => void addToCart(product)}
                       onRemove={() => changeQuantity(product.id, -1)}
                     />
                   ))}
@@ -866,9 +1008,17 @@ export function CreateSaleForm() {
                     className="rounded-sm border border-border bg-paper p-3"
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <p className="min-w-0 truncate text-body font-semibold text-ink">
-                        {line.productName}
-                      </p>
+                      <div className="min-w-0">
+                        <p className="truncate text-body font-semibold text-ink">{line.productName}</p>
+                        {line.variantLabel ? (
+                          <p className="truncate text-caption text-ink-muted">{line.variantLabel}</p>
+                        ) : null}
+                        {line.addons && line.addons.length > 0 ? (
+                          <p className="truncate text-caption text-ink-muted">
+                            + {line.addons.map((addon) => addon.name).join(", ")}
+                          </p>
+                        ) : null}
+                      </div>
                       <Button
                         type="button"
                         variant="ghost"
@@ -1183,17 +1333,29 @@ export function CreateSaleForm() {
         open={outOfStockConfirm !== null}
         onClose={() => setOutOfStockConfirm(null)}
         onConfirm={() => {
-          if (outOfStockConfirm) commitAddToCart(outOfStockConfirm);
+          if (outOfStockConfirm) commitAddToCart(outOfStockConfirm.product, outOfStockConfirm.selection);
           setOutOfStockConfirm(null);
         }}
         title="Out of stock"
         description={
           outOfStockConfirm
-            ? `${outOfStockConfirm.name} shows none on hand. Sell it anyway? New stock added later settles this automatically.`
+            ? `${outOfStockConfirm.product.name}${
+                outOfStockConfirm.selection ? ` (${variantLabel(outOfStockConfirm.selection.variant)})` : ""
+              } shows none on hand. Sell it anyway? New stock added later settles this automatically.`
             : ""
         }
         confirmLabel="Sell anyway"
         confirmIcon={CheckCircle2}
+      />
+
+      <SaleVariantAddonPicker
+        open={pickerState !== null}
+        productName={pickerState?.product.name ?? ""}
+        productBrandName={pickerState?.product.brandName ?? null}
+        variants={pickerState?.variants ?? []}
+        addonGroups={pickerState?.addonGroups ?? []}
+        onCancel={() => setPickerState(null)}
+        onConfirm={onPickerConfirm}
       />
 
       <AiSearchModal

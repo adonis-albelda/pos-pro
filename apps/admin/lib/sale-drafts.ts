@@ -1,4 +1,4 @@
-import type { Product } from "@double-a/shared-types";
+import type { CartLineAddon, Product } from "@double-a/shared-types";
 
 /**
  * Sales have no draft status server-side (only completed/voided/refunded — draft
@@ -12,6 +12,20 @@ export interface SaleDraftItem {
   product: Product | null;
   quantity: string;
   unitPrice: string;
+  /**
+   * A cart line built from the variant/add-on picker (create-sale-form.tsx's
+   * SaleVariantAddonPicker) snapshots its own price/cost/stock, same as
+   * CartLine itself — the parent `product` above is only ever the default
+   * variant's mirror, so a plain product reload can't stand in for a
+   * specific picked variant the way it can for a plain product-level line.
+   * Null/empty on every draft saved before variants existed here.
+   */
+  variantId: string | null;
+  variantLabel: string | null;
+  naturalPrice: number | null;
+  unitCost: number | null;
+  availableStock: number | null;
+  addons: CartLineAddon[];
 }
 
 export interface SaleDraft {

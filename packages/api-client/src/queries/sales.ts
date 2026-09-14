@@ -86,11 +86,20 @@ export async function listSales(
   return result.sales;
 }
 
+export interface CreateSaleItemAddonInput {
+  addonGroupItemId: string;
+  /** Defaults to 1. */
+  quantity?: number;
+}
+
 export interface CreateSaleItemInput {
   productId: string;
+  /** Defaults to the product's default variant. */
+  variantId?: string | null;
   quantity: number;
-  /** Defaults to the product's shelf price — set to log a counter discount, same as the POS. */
+  /** Defaults to the variant's (or product's) shelf price plus any add-ons — set to log a counter discount, same as the POS. */
   unitPrice?: number;
+  addons?: CreateSaleItemAddonInput[];
 }
 
 export interface CreateSaleInput {
@@ -109,8 +118,13 @@ export async function createSale(client: ApiClient, input: CreateSaleInput): Pro
     {
       items: input.items.map((item) => ({
         product_id: item.productId,
+        variant_id: item.variantId,
         quantity: item.quantity,
         unit_price: item.unitPrice,
+        addons: item.addons?.map((addon) => ({
+          addon_group_item_id: addon.addonGroupItemId,
+          quantity: addon.quantity,
+        })),
       })),
       payment_method: input.paymentMethod,
       customer_id: input.customerId,
