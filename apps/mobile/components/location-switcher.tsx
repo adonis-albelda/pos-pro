@@ -29,9 +29,6 @@ export function useBranchPicker() {
   const [switching, setSwitching] = useState(false);
 
   const selected = locations.find((row) => row.id === locationId) ?? locations[0] ?? null;
-  // Admin tablets always show the active branch name, even with a single
-  // branch (still useful label) — the picker only opens when there is
-  // something to switch to.
   const canPick = locations.length > 1;
 
   async function pick(nextId: string) {
@@ -194,7 +191,9 @@ export function LocationSwitcher() {
   const { canSwitch, canPick, locations, locationId, selectedName, open, setOpen, switching, pick } =
     useBranchPicker();
 
-  if (!canSwitch) return null;
+  // A single-branch shop has nothing to switch between — the label read as
+  // an unexplained bit of chrome rather than a useful control.
+  if (!canSwitch || !canPick) return null;
 
   return (
     <>

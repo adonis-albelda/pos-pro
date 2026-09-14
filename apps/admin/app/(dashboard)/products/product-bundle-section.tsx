@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Info, Package, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { Product } from "@double-a/shared-types";
@@ -184,6 +184,11 @@ export function AssembleBundleSection({ product }: { product: Product }) {
   const [quantity, setQuantity] = useState("1");
   const [locationId, setLocationId] = useState("");
 
+  useEffect(() => {
+    if (!locationId && branches[0]) setLocationId(branches[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only ever needs to fill in the initial default once branches load.
+  }, [branches]);
+
   async function onAssemble() {
     const qty = Number(quantity);
     if (!Number.isFinite(qty) || qty <= 0) {
@@ -214,7 +219,7 @@ export function AssembleBundleSection({ product }: { product: Product }) {
         description="Converts component stock into bundle stock at one location, right now."
       />
       <CardBody>
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className={`grid gap-4 ${branches.length > 1 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
           <Field label="Quantity to assemble" required>
             <Input
               type="number"
@@ -224,16 +229,18 @@ export function AssembleBundleSection({ product }: { product: Product }) {
               onChange={(event) => setQuantity(event.target.value)}
             />
           </Field>
-          <Field label="Location" required>
-            <Select value={locationId} onChange={(event) => setLocationId(event.target.value)}>
-              <option value="">Choose branch</option>
-              {branches.map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {branch.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          {branches.length > 1 ? (
+            <Field label="Location" required>
+              <Select value={locationId} onChange={(event) => setLocationId(event.target.value)}>
+                <option value="">Choose branch</option>
+                {branches.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          ) : null}
           <div className="flex items-end">
             <Button
               type="button"

@@ -1,4 +1,4 @@
-import type { Customer, SyncStatus } from "@double-a/shared-types";
+import type { Customer, CustomerGender, SyncStatus } from "@double-a/shared-types";
 import { getDb } from "./index";
 
 interface CustomerRow {
@@ -6,6 +6,10 @@ interface CustomerRow {
   name: string;
   address: string | null;
   contact: string | null;
+  email: string | null;
+  date_of_birth: string | null;
+  gender: string | null;
+  notes: string | null;
   loyalty_points_balance: number;
   updated_at: string | null;
   sync_status: string;
@@ -21,13 +25,10 @@ function toLocal(row: CustomerRow): LocalCustomer {
     name: row.name,
     address: row.address,
     contact: row.contact,
-    // Not synced to this device yet — admin-only profile fields (see
-    // create_2026_09_14_000003_add_profile_fields_to_customers_table),
-    // no local schema column for them.
-    email: null,
-    dateOfBirth: null,
-    gender: null,
-    notes: null,
+    email: row.email,
+    dateOfBirth: row.date_of_birth,
+    gender: (row.gender as CustomerGender | null) ?? null,
+    notes: row.notes,
     isActive: true,
     loyaltyPointsBalance: row.loyalty_points_balance,
     lifetimePointsEarned: 0,
@@ -62,8 +63,10 @@ export async function searchLocalCustomers(query: string): Promise<LocalCustomer
       WHERE lower(name) LIKE ?
          OR lower(coalesce(contact, '')) LIKE ?
          OR lower(coalesce(address, '')) LIKE ?
+         OR lower(coalesce(email, '')) LIKE ?
       ORDER BY name COLLATE NOCASE
       LIMIT 40`,
+    needle,
     needle,
     needle,
     needle,
@@ -74,26 +77,50 @@ export async function searchLocalCustomers(query: string): Promise<LocalCustomer
 /**
  * Create or update a customer on-device. New rows and edits are pending until
  * the next push; a pull must not wipe them.
+ *
+ * Profile fields (email/DOB/gender/notes) are optional — omit them on a sale
+ * finish upsert so an earlier sheet save is not wiped to null. Push still only
+ * sends name/address/contact (PushCustomersRequest); profile fields round-trip
+ * via pull after admin edits.
  */
 export async function upsertLocalCustomer(input: {
   id: string;
   name: string;
   address: string | null;
   contact: string | null;
+  email?: string | null;
+  dateOfBirth?: string | null;
+  gender?: CustomerGender | null;
+  notes?: string | null;
   /** Fresh local write — always pending. Pulls write with synced. */
   pending?: boolean;
   updatedAt?: string;
 }): Promise<LocalCustomer> {
   const updatedAt = input.updatedAt ?? new Date().toISOString();
   const syncStatus = input.pending === false ? "synced" : "pending";
+  const existing = await getLocalCustomer(input.id);
+
+  const email = input.email !== undefined ? input.email : (existing?.email ?? null);
+  const dateOfBirth =
+    input.dateOfBirth !== undefined ? input.dateOfBirth : (existing?.dateOfBirth ?? null);
+  const gender = input.gender !== undefined ? input.gender : (existing?.gender ?? null);
+  const notes = input.notes !== undefined ? input.notes : (existing?.notes ?? null);
+  const loyaltyPointsBalance = existing?.loyaltyPointsBalance ?? 0;
 
   await getDb().runAsync(
-    `INSERT INTO customers (id, name, address, contact, updated_at, sync_status)
-     VALUES (?, ?, ?, ?, ?, ?)
+    `INSERT INTO customers (
+       id, name, address, contact, email, date_of_birth, gender, notes,
+       loyalty_points_balance, updated_at, sync_status
+     )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        name = excluded.name,
        address = excluded.address,
        contact = excluded.contact,
+       email = excluded.email,
+       date_of_birth = excluded.date_of_birth,
+       gender = excluded.gender,
+       notes = excluded.notes,
        updated_at = excluded.updated_at,
        sync_status = CASE
          WHEN excluded.sync_status = 'pending' THEN 'pending'
@@ -103,6 +130,11 @@ export async function upsertLocalCustomer(input: {
     input.name,
     input.address,
     input.contact,
+    email,
+    dateOfBirth,
+    gender,
+    notes,
+    loyaltyPointsBalance,
     updatedAt,
     syncStatus,
   );
@@ -112,14 +144,14 @@ export async function upsertLocalCustomer(input: {
     name: input.name,
     address: input.address,
     contact: input.contact,
-    email: null,
-    dateOfBirth: null,
-    gender: null,
-    notes: null,
+    email,
+    dateOfBirth,
+    gender,
+    notes,
     isActive: true,
-    loyaltyPointsBalance: 0,
-    lifetimePointsEarned: 0,
-    lifetimePointsRedeemed: 0,
+    loyaltyPointsBalance,
+    lifetimePointsEarned: existing?.lifetimePointsEarned ?? 0,
+    lifetimePointsRedeemed: existing?.lifetimePointsRedeemed ?? 0,
     updatedAt,
     syncStatus: syncStatus as SyncStatus,
   };
@@ -170,12 +202,19 @@ export async function replaceSyncedCustomers(customers: Customer[]): Promise<voi
       if (local?.sync_status === "pending") continue;
 
       await db.runAsync(
-        `INSERT INTO customers (id, name, address, contact, loyalty_points_balance, updated_at, sync_status)
-         VALUES (?, ?, ?, ?, ?, ?, 'synced')
+        `INSERT INTO customers (
+           id, name, address, contact, email, date_of_birth, gender, notes,
+           loyalty_points_balance, updated_at, sync_status
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced')
          ON CONFLICT(id) DO UPDATE SET
            name = excluded.name,
            address = excluded.address,
            contact = excluded.contact,
+           email = excluded.email,
+           date_of_birth = excluded.date_of_birth,
+           gender = excluded.gender,
+           notes = excluded.notes,
            loyalty_points_balance = excluded.loyalty_points_balance,
            updated_at = excluded.updated_at,
            sync_status = 'synced'`,
@@ -183,6 +222,10 @@ export async function replaceSyncedCustomers(customers: Customer[]): Promise<voi
         customer.name,
         customer.address,
         customer.contact,
+        customer.email,
+        customer.dateOfBirth,
+        customer.gender,
+        customer.notes,
         customer.loyaltyPointsBalance,
         customer.updatedAt,
       );

@@ -1,7 +1,17 @@
 "use client";
 
 import { useActionState, useEffect, useId } from "react";
-import { Check, UserPlus, X } from "lucide-react";
+import {
+  Cake,
+  Check,
+  Mail,
+  MapPin,
+  Phone,
+  StickyNote,
+  UserPlus,
+  UserRound,
+  X,
+} from "lucide-react";
 import { CUSTOMER_FIELD_MAX_LENGTH, CUSTOMER_GENDER_LABELS } from "@double-a/shared-types";
 import type { Customer } from "@double-a/shared-types";
 import { SheetFooter, useSheetChrome } from "@/components/overlay";
@@ -58,6 +68,7 @@ export function CustomerForm({
           <Field label="Name" required>
             <Input
               name="name"
+              icon={UserRound}
               defaultValue={customer?.name}
               required
               maxLength={CUSTOMER_FIELD_MAX_LENGTH}
@@ -66,6 +77,7 @@ export function CustomerForm({
           <Field label="Contact" required={false}>
             <Input
               name="contact"
+              icon={Phone}
               defaultValue={customer?.contact ?? ""}
               maxLength={CUSTOMER_FIELD_MAX_LENGTH}
             />
@@ -74,6 +86,7 @@ export function CustomerForm({
             <Input
               type="email"
               name="email"
+              icon={Mail}
               defaultValue={customer?.email ?? ""}
               maxLength={CUSTOMER_FIELD_MAX_LENGTH}
             />
@@ -81,12 +94,18 @@ export function CustomerForm({
           <Field label="Address" required={false}>
             <Input
               name="address"
+              icon={MapPin}
               defaultValue={customer?.address ?? ""}
               maxLength={CUSTOMER_FIELD_MAX_LENGTH}
             />
           </Field>
           <Field label="Date of birth" required={false}>
-            <Input type="date" name="date_of_birth" defaultValue={customer?.dateOfBirth ?? ""} />
+            <Input
+              type="date"
+              name="date_of_birth"
+              icon={Cake}
+              defaultValue={customer?.dateOfBirth ?? ""}
+            />
           </Field>
           <Field label="Gender" required={false}>
             <Select name="gender" defaultValue={customer?.gender ?? ""}>
@@ -101,7 +120,12 @@ export function CustomerForm({
         </div>
 
         <Field label="Notes" required={false} hint="Staff-only — never shown to the customer.">
-          <Input name="notes" defaultValue={customer?.notes ?? ""} maxLength={2000} />
+          <Input
+            name="notes"
+            icon={StickyNote}
+            defaultValue={customer?.notes ?? ""}
+            maxLength={2000}
+          />
         </Field>
 
         {customer ? (

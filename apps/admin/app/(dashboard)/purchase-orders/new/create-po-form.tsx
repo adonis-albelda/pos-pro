@@ -177,14 +177,16 @@ export function CreatePurchaseOrderForm({
               placeholder="Search suppliers…"
             />
           </Field>
-          <Field label="Location" hint="Which branch this order is for." required={false}>
-            <Combobox
-              value={locationId}
-              onChange={setLocationId}
-              options={locations.map((location) => ({ value: location.id, label: location.name }))}
-              placeholder="Search branches…"
-            />
-          </Field>
+          {locations.length > 1 ? (
+            <Field label="Location" hint="Which branch this order is for." required={false}>
+              <Combobox
+                value={locationId}
+                onChange={setLocationId}
+                options={locations.map((location) => ({ value: location.id, label: location.name }))}
+                placeholder="Search branches…"
+              />
+            </Field>
+          ) : null}
           <Field label="Order date" required>
             <Input
               type="date"

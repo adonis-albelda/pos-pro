@@ -437,19 +437,25 @@ function CreateUserSheet({ open, onClose }: { open: boolean; onClose: () => void
             <Field label="Device identifier" hint="Optional hardware id.">
               <Input name="device_identifier" placeholder="Optional hardware id" />
             </Field>
-            <Field label="Branch" hint="Stock for this terminal comes from this branch only." required>
-              <Select name="location_id" defaultValue={branches[0]?.id ?? ""}>
-                {branches.length === 0 ? (
-                  <option value="">No branches yet — add one under Locations</option>
-                ) : (
-                  branches.map((branch) => (
+            {branches.length > 1 ? (
+              <Field label="Branch" hint="Stock for this terminal comes from this branch only." required>
+                <Select name="location_id" defaultValue={branches[0]?.id ?? ""}>
+                  {branches.map((branch) => (
                     <option key={branch.id} value={branch.id}>
                       {branch.name}
                     </option>
-                  ))
-                )}
-              </Select>
-            </Field>
+                  ))}
+                </Select>
+              </Field>
+            ) : branches.length === 0 ? (
+              <Field label="Branch" required>
+                <Select name="location_id" defaultValue="" disabled>
+                  <option value="">No branches yet — add one under Locations</option>
+                </Select>
+              </Field>
+            ) : (
+              <input type="hidden" name="location_id" value={branches[0]?.id ?? ""} />
+            )}
           </>
         ) : null}
         <Field
@@ -740,18 +746,28 @@ function EditUserSheet({ userId, onClose }: { userId: string | null; onClose: ()
               <Field label="Device identifier">
                 <Input name="device_identifier" placeholder="Optional hardware id" />
               </Field>
-              <Field label="Branch">
-                <Select name="location_id" defaultValue="">
-                  <option value="">—</option>
-                  {(locationsQuery.data ?? [])
-                    .filter((location) => location.type === "branch")
-                    .map((location) => (
-                      <option key={location.id} value={location.id}>
-                        {location.name}
-                      </option>
-                    ))}
-                </Select>
-              </Field>
+              {(() => {
+                const terminalBranches = (locationsQuery.data ?? []).filter(
+                  (location) => location.type === "branch",
+                );
+                if (terminalBranches.length > 1) {
+                  return (
+                    <Field label="Branch">
+                      <Select name="location_id" defaultValue="">
+                        <option value="">—</option>
+                        {terminalBranches.map((location) => (
+                          <option key={location.id} value={location.id}>
+                            {location.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                  );
+                }
+                return terminalBranches[0] ? (
+                  <input type="hidden" name="location_id" value={terminalBranches[0].id} />
+                ) : null;
+              })()}
               <div className="sm:col-span-2 flex justify-end">
                 <Button type="submit" variant="secondary" size="sm" icon={Smartphone}>
                   Add terminal

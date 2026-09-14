@@ -666,26 +666,28 @@ function VariantStockAdjustForm({
           ))}
         </Select>
       </Field>
-      <div className={HALF_ROW}>
-        <div className={HALF_CELL}>
-          <Field label="Branch" required>
-            <Select
-              value={locationId}
-              onChange={(event) => {
-                setLocationId(event.target.value);
-                setBranchError(null);
-              }}
-            >
-              <option value="">Choose branch</option>
-              {(locationsQuery.data ?? []).map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {branch.name}
-                </option>
-              ))}
-            </Select>
-            {branchError ? <p className="mt-1 text-caption text-danger">{branchError}</p> : null}
-          </Field>
-        </div>
+      <div className={(locationsQuery.data ?? []).length > 1 ? HALF_ROW : undefined}>
+        {(locationsQuery.data ?? []).length > 1 ? (
+          <div className={HALF_CELL}>
+            <Field label="Branch" required>
+              <Select
+                value={locationId}
+                onChange={(event) => {
+                  setLocationId(event.target.value);
+                  setBranchError(null);
+                }}
+              >
+                <option value="">Choose branch</option>
+                {(locationsQuery.data ?? []).map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.name}
+                  </option>
+                ))}
+              </Select>
+              {branchError ? <p className="mt-1 text-caption text-danger">{branchError}</p> : null}
+            </Field>
+          </div>
+        ) : null}
         <div className={HALF_CELL}>
           <Field label="Quantity" required>
             <Input

@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
-  Image,
   Linking,
   Modal,
   Pressable,
@@ -61,9 +60,6 @@ const CONTACT_SUPPORT_URL = "https://www.facebook.com/profile.php?id=61592584295
 const DRAWER_WIDTH_RATIO = 0.82;
 const DRAWER_MAX_WIDTH = 360;
 const ANIM_MS = 220;
-
-// eslint-disable-next-line @typescript-eslint/no-require-imports -- same asset-require pattern as setup.tsx/company-intro.tsx; no *.png module declaration in this project
-const LOGO = require("../assets/logo.webp");
 
 /**
  * Account panel opened from the store logo. Nav tabs, shift identity, and
@@ -186,51 +182,27 @@ export function AccountDrawer({
             }}
             showsVerticalScrollIndicator={false}
           >
-          <View style={{ alignItems: "center", gap: space.sm }}>
+          <View style={{ flexDirection: "row", justifyContent: "flex-end" }}>
             <Pressable
               onPress={onClose}
               accessibilityRole="button"
               accessibilityLabel="Close"
-              style={[styles.tapTarget, { position: "absolute", top: -space.xs, right: -space.xs }]}
+              style={styles.tapTarget}
             >
               <X size={22} color={color.inkMuted} strokeWidth={2} />
             </Pressable>
-
-            <View
-              style={{
-                width: 56,
-                height: 56,
-                borderRadius: radius.md,
-                backgroundColor: color.primarySoft,
-                alignItems: "center",
-                justifyContent: "center",
-                overflow: "hidden",
-              }}
-            >
-              <Image
-                source={LOGO}
-                style={{ width: 40, height: 40 }}
-                resizeMode="contain"
-                accessibilityIgnoresInvertColors
-              />
-            </View>
-            <Text
-              numberOfLines={1}
-              style={{ fontSize: fontSize.headingSm, fontWeight: "700", color: color.ink, textAlign: "center" }}
-            >
-              {store.name}
-            </Text>
           </View>
 
+          {/* Identity: avatar + cashier name on top, business name (and branch,
+              only once there is more than one to name) underneath — no logo,
+              no separate store-name block above this. A single-branch shop
+              never sees a branch name here at all, since there is nothing to
+              switch between and naming it just reads as unexplained chrome. */}
           <View
             style={{
               flexDirection: "row",
               alignItems: "center",
               gap: space.sm,
-              paddingHorizontal: space.sm,
-              paddingVertical: space.sm,
-              borderRadius: radius.md,
-              backgroundColor: color.primaryTint,
             }}
           >
             <Pressable
@@ -241,8 +213,8 @@ export function AccountDrawer({
               accessibilityRole="button"
               accessibilityLabel={
                 branchPicker.canSwitch && branchPicker.canPick
-                  ? `On shift: ${cashier.name}, ${branchPicker.selectedName}. Change branch.`
-                  : `On shift: ${cashier.name}, ${branchPicker.selectedName}.`
+                  ? `${cashier.name}, ${store.name}, ${branchPicker.selectedName}. Change branch.`
+                  : `${cashier.name}, ${store.name}.`
               }
               style={({ pressed }) => ({
                 flex: 1,
@@ -260,9 +232,9 @@ export function AccountDrawer({
             >
               <View
                 style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: circleRadius(36),
+                  width: 40,
+                  height: 40,
+                  borderRadius: circleRadius(40),
                   backgroundColor: color.primary,
                   alignItems: "center",
                   justifyContent: "center",
@@ -282,7 +254,9 @@ export function AccountDrawer({
                 </Text>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
                   <Text numberOfLines={1} style={{ flexShrink: 1, fontSize: fontSize.caption, color: color.inkMuted }}>
-                    {branchPicker.selectedName}
+                    {branchPicker.locations.length > 1
+                      ? `${store.name} - ${branchPicker.selectedName}`
+                      : store.name}
                   </Text>
                   {branchPicker.switching ? (
                     <ActivityIndicator size="small" color={color.inkMuted} />

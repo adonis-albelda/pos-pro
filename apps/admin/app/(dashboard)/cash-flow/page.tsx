@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -141,20 +141,22 @@ function CashFlowPageClient() {
             <option value="out">Cash out</option>
           </Select>
         </Field>
-        <Field label="Location" required={false}>
-          <Combobox
-            value={locationId}
-            onChange={(value) => {
-              setLocationId(value);
-              setPage(1);
-            }}
-            placeholder="All locations"
-            options={[
-              { value: "", label: "All locations" },
-              ...(locationsQuery.data ?? []).map((l) => ({ value: l.id, label: l.name })),
-            ]}
-          />
-        </Field>
+        {(locationsQuery.data ?? []).length > 1 ? (
+          <Field label="Location" required={false}>
+            <Combobox
+              value={locationId}
+              onChange={(value) => {
+                setLocationId(value);
+                setPage(1);
+              }}
+              placeholder="All locations"
+              options={[
+                { value: "", label: "All locations" },
+                ...(locationsQuery.data ?? []).map((l) => ({ value: l.id, label: l.name })),
+              ]}
+            />
+          </Field>
+        ) : null}
         <Field label="Terminal" required={false}>
           <Combobox
             value={terminalId}
@@ -362,9 +364,14 @@ function AddCashMovementDialog({
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!locationId && 1 === locations.length && locations[0]) setLocationId(locations[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only ever needs to fill in the initial default once locations load.
+  }, [locations]);
+
   function reset() {
     setType("adjustment_in");
-    setLocationId("");
+    setLocationId(1 === locations.length ? (locations[0]?.id ?? "") : "");
     setTerminalId("");
     setAmount("");
     setReason("");
@@ -429,14 +436,16 @@ function AddCashMovementDialog({
             <option value="other_income">Other income</option>
           </Select>
         </Field>
-        <Field label="Location" required>
-          <Combobox
-            value={locationId}
-            onChange={setLocationId}
-            placeholder="Select location"
-            options={locations.map((l) => ({ value: l.id, label: l.name }))}
-          />
-        </Field>
+        {locations.length > 1 ? (
+          <Field label="Location" required>
+            <Combobox
+              value={locationId}
+              onChange={setLocationId}
+              placeholder="Select location"
+              options={locations.map((l) => ({ value: l.id, label: l.name }))}
+            />
+          </Field>
+        ) : null}
         <Field label="Terminal" required={false} hint="Optional.">
           <Combobox
             value={terminalId}

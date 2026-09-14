@@ -93,17 +93,19 @@ function ReceivingFiltersForm({
           ]}
         />
       </Field>
-      <Field label="Branch">
-        <Combobox
-          name="locationId"
-          defaultValue={params.get("locationId") ?? ""}
-          placeholder="Every branch"
-          options={[
-            { value: "", label: "Every branch" },
-            ...locations.map((location) => ({ value: location.id, label: location.name })),
-          ]}
-        />
-      </Field>
+      {locations.length > 1 ? (
+        <Field label="Branch">
+          <Combobox
+            name="locationId"
+            defaultValue={params.get("locationId") ?? ""}
+            placeholder="Every branch"
+            options={[
+              { value: "", label: "Every branch" },
+              ...locations.map((location) => ({ value: location.id, label: location.name })),
+            ]}
+          />
+        </Field>
+      ) : null}
       <Field label="Status">
         <Select name="status" defaultValue={params.get("status") ?? ""}>
           <option value="">Any</option>

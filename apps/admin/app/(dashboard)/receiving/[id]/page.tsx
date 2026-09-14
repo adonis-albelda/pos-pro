@@ -109,10 +109,12 @@ export default function GoodsReceiptDetailPage() {
             <dt className="text-caption font-medium text-ink-muted">Received at</dt>
             <dd className="mt-0.5 text-body text-ink">{receivedTime}</dd>
           </div>
-          <div>
-            <dt className="text-caption font-medium text-ink-muted">Branch</dt>
-            <dd className="mt-0.5 text-body text-ink">{locationName}</dd>
-          </div>
+          {(locationsQuery.data ?? []).length > 1 ? (
+            <div>
+              <dt className="text-caption font-medium text-ink-muted">Branch</dt>
+              <dd className="mt-0.5 text-body text-ink">{locationName}</dd>
+            </div>
+          ) : null}
           <div>
             <dt className="text-caption font-medium text-ink-muted">Invoice No.</dt>
             <dd className="mt-0.5 text-body text-ink">{receipt.referenceNo ?? "—"}</dd>

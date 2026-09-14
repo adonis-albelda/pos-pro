@@ -636,6 +636,19 @@ const V35_REPULL_FOR_SUBCATEGORY = `
 UPDATE sync_meta SET high_water_mark = NULL WHERE id = 1;
 `;
 
+/**
+ * v36: customer profile fields (email / DOB / gender / notes) — admin form has
+ * had these since the 2026-09-14 migration; POS SQLite only mirrored
+ * name/address/contact until now, so a pull discarded the rest and the sale
+ * customer sheet could not match the admin Add customer form.
+ */
+const V36_CUSTOMER_PROFILE = `
+ALTER TABLE customers ADD COLUMN email TEXT;
+ALTER TABLE customers ADD COLUMN date_of_birth TEXT;
+ALTER TABLE customers ADD COLUMN gender TEXT;
+ALTER TABLE customers ADD COLUMN notes TEXT;
+`;
+
 /** Ordered, append-only. Never edit a step that has shipped. */
 export const MIGRATIONS: Migration[] = [
   { version: 1, sql: V1_INITIAL },
@@ -673,6 +686,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 33, sql: V33_REPULL_FOR_PRODUCT_BRAND },
   { version: 34, sql: V34_SUBCATEGORY },
   { version: 35, sql: V35_REPULL_FOR_SUBCATEGORY },
+  { version: 36, sql: V36_CUSTOMER_PROFILE },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.reduce(

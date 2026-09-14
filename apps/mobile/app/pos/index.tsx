@@ -35,6 +35,10 @@ import {
   Images,
   Info,
   MapPin,
+  Mail,
+  Cake,
+  Users,
+  StickyNote,
   Mic,
   Minus,
   Package,
@@ -61,6 +65,7 @@ import {
   cartTotal,
   computeSimpleDiscount,
   CUSTOMER_FIELD_MAX_LENGTH,
+  CUSTOMER_GENDER_LABELS,
   formatMoney,
   formatQuantity,
   hasCustomerDetails,
@@ -73,6 +78,7 @@ import {
   type CartLine,
   type ComplexDiscountRule,
   type CustomerDetails,
+  type CustomerGender,
   type DiscountRule,
   type Fulfillment,
   type LoyaltyReward,
@@ -3428,9 +3434,10 @@ function CustomerButton({
 }
 
 /**
- * Pick an existing customer or type a new one. Saving with details creates or
- * updates a local customer row (client UUID) so later sales can reuse them and
- * the office can see every order under one person after sync.
+ * Pick an existing customer or type a new one. Field set mirrors admin
+ * CustomerForm (name/contact/email/address/DOB/gender/notes) with icons.
+ * Saving upserts a local customer row (client UUID) so later sales reuse them;
+ * sale snapshot still only carries name/address/contact (CustomerDetails).
  */
 function CustomerSheet({
   open,
@@ -3443,15 +3450,22 @@ function CustomerSheet({
   onClose: () => void;
   onApply: (next: CustomerDetails) => void;
 }) {
+  const layout = useLayout();
   const [name, setName] = useState(customer.name ?? "");
   const [contact, setContact] = useState(customer.contact ?? "");
+  const [email, setEmail] = useState("");
   const [address, setAddress] = useState(customer.address ?? "");
+  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [gender, setGender] = useState<CustomerGender | "">("");
+  const [notes, setNotes] = useState("");
   const [customerId, setCustomerId] = useState<string | null>(customer.customerId);
   const [query, setQuery] = useState("");
   const [matches, setMatches] = useState<
     Awaited<ReturnType<typeof searchLocalCustomers>>
   >([]);
   const [searching, setSearching] = useState(false);
+  const [genderOpen, setGenderOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -3473,6 +3487,27 @@ function CustomerSheet({
     };
   }, [open, query]);
 
+  // Prefill profile fields when the sale already has a linked customer, or
+  // when the cashier picks one from the list.
+  useEffect(() => {
+    if (!open || !customer.customerId) return;
+    let cancelled = false;
+    void getLocalCustomer(customer.customerId).then((row) => {
+      if (cancelled || !row) return;
+      setCustomerId(row.id);
+      setName(row.name);
+      setContact(row.contact ?? "");
+      setEmail(row.email ?? "");
+      setAddress(row.address ?? "");
+      setDateOfBirth(row.dateOfBirth ?? "");
+      setGender(row.gender ?? "");
+      setNotes(row.notes ?? "");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, customer.customerId]);
+
   if (!open) return null;
 
   const draft = normaliseCustomerDetails({
@@ -3482,106 +3517,183 @@ function CustomerSheet({
     address,
   });
   const needle = query.trim();
-  const shown = matches.slice(0, 8);
+  const shown = matches.slice(0, 12);
+  const twoCol = !layout.compact;
+
+  function pickExisting(match: Awaited<ReturnType<typeof searchLocalCustomers>>[number]) {
+    setCustomerId(match.id);
+    setName(match.name);
+    setContact(match.contact ?? "");
+    setEmail(match.email ?? "");
+    setAddress(match.address ?? "");
+    setDateOfBirth(match.dateOfBirth ?? "");
+    setGender(match.gender ?? "");
+    setNotes(match.notes ?? "");
+    setQuery("");
+  }
+
+  async function save() {
+    const next = normaliseCustomerDetails({
+      customerId,
+      name,
+      contact,
+      address,
+    });
+    if (!hasCustomerDetails(next)) {
+      onApply(NO_CUSTOMER);
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const id = next.customerId ?? Crypto.randomUUID();
+      const displayName =
+        next.name ?? next.contact ?? next.address ?? "Customer";
+      await upsertLocalCustomer({
+        id,
+        name: displayName,
+        address: next.address,
+        contact: next.contact,
+        email: email.trim() || null,
+        dateOfBirth: dateOfBirth.trim() || null,
+        gender: gender || null,
+        notes: notes.trim() || null,
+      });
+      onApply({ ...next, customerId: id, name: displayName });
+    } catch (error: unknown) {
+      console.warn("Customer save failed", error);
+      Alert.alert(
+        "Could not save customer",
+        error instanceof Error ? error.message : "Try again.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <BottomSheet open={open} onClose={onClose}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
-              <View style={[styles.iconWell, { width: 34, height: 34 }]}>
-                <UserRound size={18} color={color.primary} strokeWidth={2} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.subheading}>Customer</Text>
-                <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
-                  Reuse an existing account, or type a new one.
-                </Text>
-              </View>
-              <IconButton icon={X} label="Close" onPress={onClose} />
-            </View>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
+        <View style={[styles.iconWell, { width: 34, height: 34 }]}>
+          <UserRound size={18} color={color.primary} strokeWidth={2} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.subheading}>Customer</Text>
+          <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
+            Reuse an existing account, or fill the form — same fields as admin.
+          </Text>
+        </View>
+        <IconButton icon={X} label="Close" onPress={onClose} />
+      </View>
 
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: space.sm,
-                minHeight: 48,
-                borderWidth: 1,
-                borderColor: color.border,
-                borderRadius: radius.sm,
-                paddingHorizontal: space.md,
-                backgroundColor: color.paper,
-              }}
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: space.sm,
+          minHeight: 48,
+          borderWidth: 1,
+          borderColor: color.border,
+          borderRadius: radius.sm,
+          paddingHorizontal: space.md,
+          backgroundColor: color.paper,
+        }}
+      >
+        <Search size={16} color={color.inkMuted} strokeWidth={2} />
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search name, contact, address, email…"
+          placeholderTextColor={color.inkMuted}
+          autoFocus={!customer.customerId}
+          autoCorrect={false}
+          autoCapitalize="none"
+          returnKeyType="search"
+          style={{
+            flex: 1,
+            fontSize: fontSize.body,
+            color: color.ink,
+            paddingVertical: space.sm,
+          }}
+        />
+        {query ? (
+          <Pressable
+            onPress={() => setQuery("")}
+            accessibilityRole="button"
+            accessibilityLabel="Clear search"
+            hitSlop={8}
+          >
+            <X size={16} color={color.inkMuted} strokeWidth={2} />
+          </Pressable>
+        ) : null}
+      </View>
+
+      <View style={{ gap: space.xs }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: space.xs }}>
+          <Users size={14} color={color.inkMuted} strokeWidth={2} />
+          <Text
+            style={{
+              fontSize: fontSize.caption,
+              fontWeight: "600",
+              color: color.inkMuted,
+            }}
+          >
+            {needle ? "Matches" : "Existing customers"}
+            {shown.length > 0 ? ` (${shown.length}${matches.length > shown.length ? "+" : ""})` : ""}
+          </Text>
+        </View>
+
+        {searching && shown.length === 0 ? (
+          <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
+            Searching…
+          </Text>
+        ) : shown.length > 0 ? (
+          <View style={{ gap: space.xs, maxHeight: 200 }}>
+            <ScrollView
+              nestedScrollEnabled
+              keyboardShouldPersistTaps="handled"
+              style={{ maxHeight: 200 }}
             >
-              <Search size={16} color={color.inkMuted} strokeWidth={2} />
-              <TextInput
-                value={query}
-                onChangeText={setQuery}
-                placeholder="Search by name, contact, or address"
-                placeholderTextColor={color.inkMuted}
-                autoFocus
-                autoCorrect={false}
-                autoCapitalize="none"
-                returnKeyType="search"
-                style={{
-                  flex: 1,
-                  fontSize: fontSize.body,
-                  color: color.ink,
-                  paddingVertical: space.sm,
-                }}
-              />
-              {query ? (
+              {shown.map((match) => (
                 <Pressable
-                  onPress={() => setQuery("")}
-                  accessibilityRole="button"
-                  accessibilityLabel="Clear search"
-                  hitSlop={8}
+                  key={match.id}
+                  onPress={() => pickExisting(match)}
+                  style={({ pressed }) => ({
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: space.sm,
+                    paddingVertical: space.sm,
+                    paddingHorizontal: space.md,
+                    marginBottom: space.xs,
+                    borderRadius: radius.sm,
+                    backgroundColor: pressed
+                      ? color.surfacePressed
+                      : customerId === match.id
+                        ? color.primaryTint
+                        : color.paper,
+                    borderWidth: 1,
+                    borderColor:
+                      customerId === match.id ? color.primarySoft : color.border,
+                  })}
                 >
-                  <X size={16} color={color.inkMuted} strokeWidth={2} />
-                </Pressable>
-              ) : null}
-            </View>
-
-            {searching && shown.length === 0 ? (
-              <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
-                Searching…
-              </Text>
-            ) : shown.length > 0 ? (
-              <View style={{ gap: space.xs }}>
-                <Text
-                  style={{
-                    fontSize: fontSize.caption,
-                    fontWeight: "600",
-                    color: color.inkMuted,
-                  }}
-                >
-                  {needle ? "Matches" : "Saved customers"}
-                </Text>
-                {shown.map((match) => (
-                  <Pressable
-                    key={match.id}
-                    onPress={() => {
-                      setCustomerId(match.id);
-                      setName(match.name);
-                      setContact(match.contact ?? "");
-                      setAddress(match.address ?? "");
-                      setQuery("");
+                  <View
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: circleRadius(36),
+                      backgroundColor: color.primarySoft,
+                      alignItems: "center",
+                      justifyContent: "center",
                     }}
-                    style={({ pressed }) => ({
-                      paddingVertical: space.sm,
-                      paddingHorizontal: space.md,
-                      borderRadius: radius.sm,
-                      backgroundColor: pressed
-                        ? color.surfacePressed
-                        : customerId === match.id
-                          ? color.primaryTint
-                          : color.paper,
-                      borderWidth: 1,
-                      borderColor:
-                        customerId === match.id ? color.primarySoft : color.border,
-                    })}
                   >
+                    <Text style={{ fontSize: fontSize.body, fontWeight: "700", color: color.primary }}>
+                      {match.name.trim().slice(0, 1).toUpperCase() || "?"}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
                     <Text
                       style={{ fontSize: fontSize.body, fontWeight: "600", color: color.ink }}
+                      numberOfLines={1}
                     >
                       {match.name}
                     </Text>
@@ -3589,63 +3701,153 @@ function CustomerSheet({
                       style={{ fontSize: fontSize.caption, color: color.inkMuted }}
                       numberOfLines={1}
                     >
-                      {[match.contact, match.address].filter(Boolean).join(" · ") ||
+                      {[match.contact, match.email, match.address].filter(Boolean).join(" · ") ||
                         "No contact"}
                     </Text>
-                  </Pressable>
-                ))}
-              </View>
-            ) : (
-              <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
-                {needle
-                  ? "No saved customer matches that. Type a new one below."
-                  : "No saved customers yet. Sync, or type a new one below."}
-              </Text>
-            )}
+                  </View>
+                  {customerId === match.id ? (
+                    <Check size={16} color={color.primary} strokeWidth={2.5} />
+                  ) : null}
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        ) : (
+          <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
+            {needle
+              ? "No saved customer matches that. Fill the form below for a new one."
+              : "No saved customers yet. Sync, or fill the form below."}
+          </Text>
+        )}
+      </View>
 
-            <CustomerField
-              icon={UserRound}
-              label="Name"
-              value={name}
-              onChangeText={(next) => {
-                setName(next);
-                // Typing a different name means this is no longer the picked row.
-                if (customerId) setCustomerId(null);
-              }}
-              placeholder="Who the sale is for"
-              autoCapitalize="words"
-            />
-            <CustomerField
-              icon={Phone}
-              label="Contact number"
-              value={contact}
-              onChangeText={setContact}
-              placeholder="09XX XXX XXXX"
-              keyboardType="phone-pad"
-            />
-            <CustomerField
-              icon={MapPin}
-              label="Address"
-              value={address}
-              onChangeText={setAddress}
-              placeholder="Where the delivery goes"
-              autoCapitalize="words"
-              multiline
-            />
+      <Text
+        style={{
+          fontSize: fontSize.caption,
+          fontWeight: "600",
+          color: color.inkMuted,
+          marginTop: space.xs,
+        }}
+      >
+        {customerId ? "Edit details" : "New customer"}
+      </Text>
 
-            <Button
-              label="Save customer"
-              large
-              icon={CheckCircle2}
-              onPress={() => onApply(draft)}
-            />
-            {hasCustomerDetails(draft) ? (
-              <Button
-                label="Leave blank"
-                variant="secondary"
-                onPress={() => onApply(NO_CUSTOMER)}
-              />
-            ) : null}
+      <View
+        style={{
+          flexDirection: twoCol ? "row" : "column",
+          flexWrap: "wrap",
+          gap: space.md,
+        }}
+      >
+        <View style={{ flexGrow: 1, flexBasis: twoCol ? "30%" : "100%", minWidth: twoCol ? 160 : undefined }}>
+          <CustomerField
+            icon={UserRound}
+            label="Name"
+            value={name}
+            onChangeText={(next) => {
+              setName(next);
+              if (customerId) setCustomerId(null);
+            }}
+            placeholder="Who the sale is for"
+            autoCapitalize="words"
+            required
+          />
+        </View>
+        <View style={{ flexGrow: 1, flexBasis: twoCol ? "30%" : "100%", minWidth: twoCol ? 160 : undefined }}>
+          <CustomerField
+            icon={Phone}
+            label="Contact"
+            value={contact}
+            onChangeText={setContact}
+            placeholder="09XX XXX XXXX"
+            keyboardType="phone-pad"
+          />
+        </View>
+        <View style={{ flexGrow: 1, flexBasis: twoCol ? "30%" : "100%", minWidth: twoCol ? 160 : undefined }}>
+          <CustomerField
+            icon={Mail}
+            label="Email"
+            value={email}
+            onChangeText={setEmail}
+            placeholder="name@example.com"
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
+        </View>
+        <View style={{ flexGrow: 1, flexBasis: twoCol ? "30%" : "100%", minWidth: twoCol ? 160 : undefined }}>
+          <CustomerField
+            icon={MapPin}
+            label="Address"
+            value={address}
+            onChangeText={setAddress}
+            placeholder="Where the delivery goes"
+            autoCapitalize="words"
+          />
+        </View>
+        <View style={{ flexGrow: 1, flexBasis: twoCol ? "30%" : "100%", minWidth: twoCol ? 160 : undefined }}>
+          <CustomerField
+            icon={Cake}
+            label="Date of birth"
+            value={dateOfBirth}
+            onChangeText={setDateOfBirth}
+            placeholder="YYYY-MM-DD"
+            keyboardType="numbers-and-punctuation"
+            autoCapitalize="none"
+            maxLength={10}
+          />
+        </View>
+        <View style={{ flexGrow: 1, flexBasis: twoCol ? "30%" : "100%", minWidth: twoCol ? 160 : undefined, gap: space.xs }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: space.xs }}>
+            <Users size={14} color={color.inkMuted} strokeWidth={2} />
+            <Text style={{ fontSize: fontSize.body, fontWeight: "600" }}>Gender</Text>
+          </View>
+          <SelectField<CustomerGender | "unspecified">
+            label="Gender"
+            icon={Users}
+            value={gender || "unspecified"}
+            options={[
+              { value: "unspecified", label: "Not specified" },
+              ...(Object.entries(CUSTOMER_GENDER_LABELS) as [CustomerGender, string][]).map(
+                ([value, label]) => ({ value, label }),
+              ),
+            ]}
+            open={genderOpen}
+            onOpen={() => setGenderOpen(true)}
+            onClose={() => setGenderOpen(false)}
+            onChange={(value) => {
+              setGender(value === "unspecified" ? "" : value);
+              setGenderOpen(false);
+            }}
+          />
+        </View>
+      </View>
+
+      <CustomerField
+        icon={StickyNote}
+        label="Notes"
+        value={notes}
+        onChangeText={setNotes}
+        placeholder="Staff-only — never shown to the customer"
+        autoCapitalize="sentences"
+        multiline
+        maxLength={2000}
+      />
+
+      <Button
+        label={saving ? "Saving…" : "Save customer"}
+        large
+        icon={CheckCircle2}
+        busy={saving}
+        disabled={saving}
+        onPress={() => void save()}
+      />
+      {hasCustomerDetails(draft) || customerId ? (
+        <Button
+          label="Leave blank"
+          variant="secondary"
+          onPress={() => onApply(NO_CUSTOMER)}
+        />
+      ) : null}
     </BottomSheet>
   );
 }
@@ -3660,6 +3862,8 @@ function CustomerField({
   autoCapitalize = "none",
   keyboardType = "default",
   multiline = false,
+  required = false,
+  maxLength = CUSTOMER_FIELD_MAX_LENGTH,
 }: {
   icon: LucideIcon;
   label: string;
@@ -3667,9 +3871,11 @@ function CustomerField({
   onChangeText: (next: string) => void;
   placeholder: string;
   autoFocus?: boolean;
-  autoCapitalize?: "none" | "words";
-  keyboardType?: "default" | "phone-pad";
+  autoCapitalize?: "none" | "words" | "sentences";
+  keyboardType?: "default" | "phone-pad" | "email-address" | "numbers-and-punctuation";
   multiline?: boolean;
+  required?: boolean;
+  maxLength?: number;
 }) {
   return (
     <View style={{ gap: space.xs }}>
@@ -3687,10 +3893,8 @@ function CustomerField({
         autoCorrect={false}
         keyboardType={keyboardType}
         multiline={multiline}
-        // The same cap the sale is stored with, so nothing is silently lost
-        // between the field and the receipt.
-        maxLength={CUSTOMER_FIELD_MAX_LENGTH}
-        accessibilityLabel={`${label}, optional`}
+        maxLength={maxLength}
+        accessibilityLabel={`${label}${required ? "" : ", optional"}`}
         style={{
           minHeight: multiline ? 72 : 52,
           borderWidth: 1,

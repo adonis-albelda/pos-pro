@@ -239,7 +239,7 @@ export function UserForm({
             </Select>
           </Field>
 
-          {role === ROLES.TERMINAL ? (
+          {role === ROLES.TERMINAL && branches.length > 1 ? (
             <Field
               label="Branch"
               hint={
@@ -255,17 +255,21 @@ export function UserForm({
                 value={branchId || branches[0]?.id || ""}
                 onChange={(event) => setBranchId(event.target.value)}
               >
-                {branches.length === 0 ? (
-                  <option value="">No branches yet — add one under Locations</option>
-                ) : (
-                  branches.map((branch) => (
-                    <option key={branch.id} value={branch.id}>
-                      {branch.name}
-                    </option>
-                  ))
-                )}
+                {branches.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.name}
+                  </option>
+                ))}
               </Select>
             </Field>
+          ) : role === ROLES.TERMINAL && branches.length === 0 ? (
+            <Field label="Branch" required>
+              <Select name="location_id" required value="" disabled>
+                <option value="">No branches yet — add one under Locations</option>
+              </Select>
+            </Field>
+          ) : role === ROLES.TERMINAL ? (
+            <input type="hidden" name="location_id" value={branchId || branches[0]?.id || ""} />
           ) : null}
 
           {role === ROLES.CASHIER || role === ROLES.ADMIN || role === ROLES.MANAGER ? (

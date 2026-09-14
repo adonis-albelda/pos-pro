@@ -270,16 +270,20 @@ function CorrectionSheet({
             <Field label="Break minutes">
               <Input type="number" min={0} name="break_minutes" defaultValue={record.breakMinutes} />
             </Field>
-            <Field label="Location">
-              <Select name="location_id" defaultValue={record.locationId ?? ""}>
-                <option value="">—</option>
-                {locations.map((location) => (
-                  <option key={location.id} value={location.id}>
-                    {location.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
+            {locations.length > 1 ? (
+              <Field label="Location">
+                <Select name="location_id" defaultValue={record.locationId ?? ""}>
+                  <option value="">—</option>
+                  {locations.map((location) => (
+                    <option key={location.id} value={location.id}>
+                      {location.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            ) : (
+              <input type="hidden" name="location_id" value={record.locationId ?? ""} />
+            )}
           </div>
           <Field label="Reason" required>
             <Input name="reason" placeholder="Forgot to clock in" required />

@@ -1055,12 +1055,13 @@ export default function SetupScreen() {
           left: 0,
           right: 0,
           bottom: insets.bottom + space.lg,
+          paddingHorizontal: layout.gutter,
           gap: space.xs,
         }}
       >
         <Text
           style={{
-            textAlign: "center",
+            textAlign: "right",
             fontSize: fontSize.caption,
             color: color.sageLight,
             opacity: 0.8,
