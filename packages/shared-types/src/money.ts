@@ -75,19 +75,3 @@ export function shelfPriceFromMarkup(costPrice: number, percent: number): number
   return roundMoney(costPrice * (1 + percent / 100));
 }
 
-/**
- * The price a product sells at for a given quantity. Contractors buying a
- * whole box get the bulk price without the attendant having to remember it.
- */
-export function priceForQuantity(
-  product: { price: number; bulkPrice: number | null; bulkMinQuantity: number | null },
-  quantity: number,
-): number {
-  const { bulkPrice, bulkMinQuantity } = product;
-
-  if (bulkPrice !== null && bulkMinQuantity !== null && quantity >= bulkMinQuantity) {
-    return bulkPrice;
-  }
-
-  return product.price;
-}

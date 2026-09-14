@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -22,7 +22,9 @@ const PIN_ICON = require("../assets/password-protection.webp");
  *
  * Renders nothing when not locked — mount unconditionally in a layout
  * (app/pos/_layout.tsx, app/admin/_layout.tsx) right after the screen
- * content it should sit on top of.
+ * content it should sit on top of. Staying mounted means useState survives
+ * across lock cycles: clear pin whenever `locked` flips on, or the previous
+ * digits still paint as filled dots and look like autofill.
  */
 export function PinRelockOverlay() {
   const router = useRouter();
@@ -31,6 +33,13 @@ export function PinRelockOverlay() {
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!locked) return;
+    setPin("");
+    setError(null);
+    setBusy(false);
+  }, [locked]);
 
   if (!locked || !cashier) return null;
 

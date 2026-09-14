@@ -23,14 +23,13 @@ interface ProductRow {
   stock_quantity: number;
   category: string | null;
   category_id: string | null;
+  subcategory: string | null;
+  subcategory_id: string | null;
   unit: string;
-  allow_decimal: number;
   barcode: string | null;
   reorder_point: number;
   replenish_quantity: number;
   description: string | null;
-  bulk_price: number | null;
-  bulk_min_quantity: number | null;
   is_active: number;
   photo_url: string | null;
   is_bundle: number;
@@ -69,14 +68,13 @@ function toProductWithEstimate(row: ProductRow): ProductWithEstimatedStock {
     stockQuantity: row.stock_quantity,
     category: row.category,
     categoryId: row.category_id,
+    subcategory: row.subcategory,
+    subcategoryId: row.subcategory_id,
     unit: toUnit(row.unit),
-    allowDecimal: row.allow_decimal === 1,
     barcode: row.barcode,
     reorderPoint: row.reorder_point,
     replenishQuantity: row.replenish_quantity ?? 0,
     description: row.description,
-    bulkPrice: row.bulk_price,
-    bulkMinQuantity: row.bulk_min_quantity,
     isActive: row.is_active === 1,
     photoUrl: row.photo_url,
     isBundle: row.is_bundle === 1,
@@ -113,14 +111,13 @@ SELECT p.id,
        p.stock_quantity,
        p.category,
        p.category_id,
+       p.subcategory,
+       p.subcategory_id,
        p.unit,
-       p.allow_decimal,
        p.barcode,
        p.reorder_point,
        p.replenish_quantity,
        p.description,
-       p.bulk_price,
-       p.bulk_min_quantity,
        p.is_active,
        p.photo_url,
        p.is_bundle,
@@ -362,10 +359,11 @@ async function insertOrReplaceProduct(
   await db.runAsync(
     `INSERT INTO products
        (id, name, sku, supplier_names, price, cost_price, stock_quantity, category, category_id,
-        unit, allow_decimal, barcode, reorder_point, replenish_quantity, description,
-        bulk_price, bulk_min_quantity, is_active, photo_url, is_bundle, addon_group_ids, updated_at,
+        subcategory, subcategory_id,
+        unit, barcode, reorder_point, replenish_quantity, description,
+        is_active, photo_url, is_bundle, addon_group_ids, updated_at,
         brand_id, brand_name)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (id) DO UPDATE SET
        name = excluded.name,
        sku = excluded.sku,
@@ -375,14 +373,13 @@ async function insertOrReplaceProduct(
        stock_quantity = excluded.stock_quantity,
        category = excluded.category,
        category_id = excluded.category_id,
+       subcategory = excluded.subcategory,
+       subcategory_id = excluded.subcategory_id,
        unit = excluded.unit,
-       allow_decimal = excluded.allow_decimal,
        barcode = excluded.barcode,
        reorder_point = excluded.reorder_point,
        replenish_quantity = excluded.replenish_quantity,
        description = excluded.description,
-       bulk_price = excluded.bulk_price,
-       bulk_min_quantity = excluded.bulk_min_quantity,
        is_active = excluded.is_active,
        photo_url = excluded.photo_url,
        is_bundle = excluded.is_bundle,
@@ -399,14 +396,13 @@ async function insertOrReplaceProduct(
     product.stockQuantity,
     product.category,
     product.categoryId,
+    product.subcategory,
+    product.subcategoryId,
     product.unit,
-    product.allowDecimal ? 1 : 0,
     product.barcode,
     product.reorderPoint,
     product.replenishQuantity,
     product.description,
-    product.bulkPrice,
-    product.bulkMinQuantity,
     product.isActive ? 1 : 0,
     // expo-sqlite's native bind rejects `undefined` (only null/string/number/
     // Uint8Array are valid) — guard here too, not just at the API mapper.
@@ -516,8 +512,9 @@ export async function updateProductCatalogFields(product: Product): Promise<void
   await getDb().runAsync(
     `UPDATE products SET
        name = ?, sku = ?, supplier_names = ?, price = ?, cost_price = ?, category = ?, category_id = ?,
-       unit = ?, allow_decimal = ?, barcode = ?, reorder_point = ?, replenish_quantity = ?,
-       description = ?, bulk_price = ?, bulk_min_quantity = ?, is_active = ?, photo_url = ?,
+       subcategory = ?, subcategory_id = ?,
+       unit = ?, barcode = ?, reorder_point = ?, replenish_quantity = ?,
+       description = ?, is_active = ?, photo_url = ?,
        is_bundle = ?, addon_group_ids = ?, updated_at = ?, brand_id = ?, brand_name = ?
      WHERE id = ?`,
     product.name,
@@ -527,14 +524,13 @@ export async function updateProductCatalogFields(product: Product): Promise<void
     product.costPrice,
     product.category,
     product.categoryId,
+    product.subcategory,
+    product.subcategoryId,
     product.unit,
-    product.allowDecimal ? 1 : 0,
     product.barcode,
     product.reorderPoint,
     product.replenishQuantity,
     product.description,
-    product.bulkPrice,
-    product.bulkMinQuantity,
     product.isActive ? 1 : 0,
     product.photoUrl ?? null,
     product.isBundle ? 1 : 0,

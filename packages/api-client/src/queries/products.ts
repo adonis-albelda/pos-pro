@@ -10,13 +10,11 @@ export interface ProductInput {
   price: number;
   costPrice: number;
   categoryId?: string | null;
+  subcategoryId?: string | null;
   unit: string;
   barcode?: string | null;
   reorderPoint?: number;
   replenishQuantity?: number;
-  bulkPrice?: number | null;
-  bulkMinQuantity?: number | null;
-  allowDecimal?: boolean;
   isActive?: boolean;
   isBundle?: boolean;
   brandId?: string | null;
@@ -37,13 +35,11 @@ function toPayload(input: Partial<ProductInput>): Record<string, unknown> {
   if (input.price !== undefined) payload.price = input.price;
   if (input.costPrice !== undefined) payload.cost_price = input.costPrice;
   if (input.categoryId !== undefined) payload.category_id = input.categoryId;
+  if (input.subcategoryId !== undefined) payload.subcategory_id = input.subcategoryId;
   if (input.unit !== undefined) payload.unit = input.unit;
   if (input.barcode !== undefined) payload.barcode = input.barcode;
   if (input.reorderPoint !== undefined) payload.reorder_point = input.reorderPoint;
   if (input.replenishQuantity !== undefined) payload.replenish_quantity = input.replenishQuantity;
-  if (input.bulkPrice !== undefined) payload.bulk_price = input.bulkPrice;
-  if (input.bulkMinQuantity !== undefined) payload.bulk_min_quantity = input.bulkMinQuantity;
-  if (input.allowDecimal !== undefined) payload.allow_decimal = input.allowDecimal;
   if (input.isActive !== undefined) payload.is_active = input.isActive;
   if (input.isBundle !== undefined) payload.is_bundle = input.isBundle;
   if (input.brandId !== undefined) payload.brand_id = input.brandId;
@@ -488,13 +484,11 @@ export interface CreateFullProductInput {
     price?: number;
     costPrice?: number;
     categoryId?: string | null;
+    subcategoryId?: string | null;
     unit?: string;
     barcode?: string | null;
     reorderPoint?: number;
     replenishQuantity?: number;
-    bulkPrice?: number | null;
-    bulkMinQuantity?: number | null;
-    allowDecimal?: boolean;
     isBundle?: boolean;
     productType?: string;
     notes?: string | null;
@@ -533,8 +527,6 @@ export interface CreateFullProductInput {
     barcode?: string | null;
     reorderPoint?: number;
     replenishQuantity?: number;
-    bulkPrice?: number | null;
-    bulkMinQuantity?: number | null;
     /** Defaults true when omitted — hide from terminals when false. */
     isActive?: boolean;
     /** Kit flag on this generated SKU (product_variants.is_bundle). */
@@ -559,13 +551,11 @@ function toFullProductPayload(input: CreateFullProductInput): Record<string, unk
       price: input.product.price,
       cost_price: input.product.costPrice,
       category_id: input.product.categoryId ?? null,
+      subcategory_id: input.product.subcategoryId ?? null,
       unit: input.product.unit,
       barcode: input.product.barcode ?? null,
       reorder_point: input.product.reorderPoint,
       replenish_quantity: input.product.replenishQuantity,
-      bulk_price: input.product.bulkPrice ?? null,
-      bulk_min_quantity: input.product.bulkMinQuantity ?? null,
-      allow_decimal: input.product.allowDecimal,
       is_bundle: input.product.isBundle,
       product_type: input.product.productType,
       notes: input.product.notes ?? null,
@@ -594,8 +584,6 @@ function toFullProductPayload(input: CreateFullProductInput): Record<string, unk
       barcode: variant.barcode ?? null,
       reorder_point: variant.reorderPoint,
       replenish_quantity: variant.replenishQuantity,
-      bulk_price: variant.bulkPrice ?? null,
-      bulk_min_quantity: variant.bulkMinQuantity ?? null,
       is_active: variant.isActive ?? true,
       is_bundle: variant.isBundle ?? false,
       opening_stock: (variant.openingStock ?? []).map((row) => ({
@@ -860,9 +848,6 @@ export interface ProductImportRowPayload {
   barcode?: string | null;
   reorder_point?: number;
   replenish_quantity?: number;
-  bulk_price?: number | null;
-  bulk_min_quantity?: number | null;
-  allow_decimal?: boolean;
   is_active?: boolean;
   category_path?: string | null;
   supplier_name?: string | null;
@@ -936,9 +921,6 @@ export async function startProductImport(
       barcode: row.barcode,
       reorder_point: row.reorder_point,
       replenish_quantity: row.replenish_quantity,
-      bulk_price: row.bulk_price,
-      bulk_min_quantity: row.bulk_min_quantity,
-      allow_decimal: row.allow_decimal,
       is_active: row.is_active,
       category_path: row.category_path,
       supplier_name: row.supplier_name,

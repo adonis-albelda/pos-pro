@@ -106,7 +106,6 @@ export function StockForm({
     });
   }, [defaultProductId]);
 
-  const allowDecimal = product?.allowDecimal ?? false;
   const typed = Number(quantity);
   const magnitude =
     quantity.trim() !== "" && Number.isFinite(typed) ? typed : null;
@@ -208,9 +207,9 @@ export function StockForm({
             <Input
               name="quantity"
               type="number"
-              inputMode={allowDecimal ? "decimal" : "numeric"}
-              min={mode === "count" ? 0 : allowDecimal ? 0.001 : 1}
-              step={allowDecimal ? "0.001" : "1"}
+              inputMode="numeric"
+              min={mode === "count" ? 0 : 1}
+              step="1"
               required
               value={quantity}
               onChange={(event) => setQuantity(event.target.value)}

@@ -88,13 +88,6 @@ export const IMPORT_FIELD_META: ImportFieldMeta[] = [
     aliases: ["unit", "uom", "unit_of_measure", "measure"],
   },
   {
-    key: "allow_decimal",
-    label: "Allow decimal qty",
-    required: false,
-    hint: "yes / no",
-    aliases: ["allow_decimal", "decimal", "fractional"],
-  },
-  {
     key: "barcode",
     label: "Barcode",
     required: false,
@@ -120,20 +113,6 @@ export const IMPORT_FIELD_META: ImportFieldMeta[] = [
       "replenish",
       "replenish_qty",
     ],
-  },
-  {
-    key: "bulk_price",
-    label: "Bulk / contractor price",
-    required: false,
-    hint: "Needs bulk minimum quantity too.",
-    aliases: ["bulk_price", "wholesale_price", "contractor_price"],
-  },
-  {
-    key: "bulk_min_quantity",
-    label: "Bulk minimum qty",
-    required: false,
-    hint: "Quantity that unlocks bulk price.",
-    aliases: ["bulk_min_quantity", "bulk_min", "bulk_qty", "wholesale_min"],
   },
   {
     key: "category",

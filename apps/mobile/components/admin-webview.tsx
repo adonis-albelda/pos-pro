@@ -7,6 +7,7 @@ import type {
   IOSWebViewProps,
   WebViewErrorEvent,
   WebViewHttpErrorEvent,
+  WebViewMessageEvent,
   WebViewNavigation,
   WindowsWebViewProps,
 } from "react-native-webview/lib/WebViewTypes";
@@ -17,10 +18,40 @@ import {
 } from "@/lib/admin-web-url";
 import { buildAdminBootstrapHtml } from "@/lib/admin-web-cookies";
 import { getAdminToken, getAdminTokenExpiresAt } from "@/lib/api/session";
+import { useIdleActivity } from "@/lib/idle-lock";
 import { useSession } from "@/lib/session";
 import { Button } from "@/components/ui";
 import { LoadingState } from "@/components/loading-state";
 import { color, space, styles } from "@/theme";
+
+/** WebView → RN idle ping. Kept short so postMessage spam stays cheap. */
+const IDLE_ACTIVITY_MESSAGE = "idle-activity";
+
+/**
+ * Touch/scroll inside the dashboard never reaches the admin layout's
+ * onTouchStart — inject listeners that ping the idle clock instead.
+ * Re-run on every SPA navigation (SPA pages replace document).
+ */
+const IDLE_ACTIVITY_SCRIPT = `
+(function () {
+  if (window.__doubleAIdleArmed) return true;
+  window.__doubleAIdleArmed = true;
+  var last = 0;
+  function ping() {
+    var now = Date.now();
+    if (now - last < 1000) return;
+    last = now;
+    if (window.ReactNativeWebView) {
+      window.ReactNativeWebView.postMessage("${IDLE_ACTIVITY_MESSAGE}");
+    }
+  }
+  document.addEventListener("touchstart", ping, { passive: true, capture: true });
+  document.addEventListener("mousedown", ping, { passive: true, capture: true });
+  document.addEventListener("scroll", ping, { passive: true, capture: true });
+  document.addEventListener("keydown", ping, { passive: true, capture: true });
+  true;
+})();
+`;
 
 type AdminWebViewRef = {
   stopLoading: () => void;
@@ -39,6 +70,7 @@ const WebView = RNWebView as unknown as ForwardRefExoticComponent<
 export function AdminWebView() {
   const router = useRouter();
   const webRef = useRef<AdminWebViewRef>(null);
+  const recordActivity = useIdleActivity();
   const { cashier } = useSession();
   const isDemo = cashier?.isDemo ?? false;
   const adminOrigin = adminWebUrl(isDemo);
@@ -69,6 +101,12 @@ export function AdminWebView() {
     }
     if (nav.url.includes("/login") && nav.loading === false) {
       setError("Admin session was not accepted. Unlock again with an admin PIN.");
+    }
+  }
+
+  function onMessage(event: WebViewMessageEvent) {
+    if (event.nativeEvent.data === IDLE_ACTIVITY_MESSAGE) {
+      recordActivity();
     }
   }
 
@@ -145,6 +183,9 @@ export function AdminWebView() {
         onShouldStartLoadWithRequest={(request: WebViewNavigation) => guardNavigation(request.url)}
         onNavigationStateChange={onNavigationChange}
         onLoadEnd={() => setReady(true)}
+        onMessage={onMessage}
+        injectedJavaScript={IDLE_ACTIVITY_SCRIPT}
+        injectedJavaScriptBeforeContentLoaded={IDLE_ACTIVITY_SCRIPT}
         onHttpError={(event: WebViewHttpErrorEvent) => {
           const { statusCode, url } = event.nativeEvent;
           if (statusCode >= 400 && guardNavigation(url)) {

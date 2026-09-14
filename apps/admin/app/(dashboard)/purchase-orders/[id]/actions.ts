@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import type { PurchaseOrderStatus, User } from "@double-a/shared-types";
 import { isValidQuantity, QUANTITY_DECIMALS } from "@double-a/shared-types";
 import {
-  getProduct,
   markPaymentPaid,
   markPaymentUnpaid,
   receivePurchaseOrderItem,
@@ -36,7 +35,6 @@ export async function receivePurchaseOrderItemAction(
 ): Promise<{ error: string | null }> {
   const itemId = String(formData.get("item_id") ?? "");
   const purchaseOrderId = String(formData.get("purchase_order_id") ?? "");
-  const productId = String(formData.get("product_id") ?? "") || null;
   const currentReceived = Number(formData.get("current_received") ?? 0);
   const quantity = Number(formData.get("quantity") ?? 0);
 
@@ -48,17 +46,9 @@ export async function receivePurchaseOrderItemAction(
   const ctx = await adminContext();
   if (!ctx) return { error: "Only the owner can receive stock on a purchase order." };
 
-  // The product decides whether a fraction is allowed. Whole-number products
-  // reject a decimal rather than silently rounding what actually arrived.
-  const product = productId ? await getProduct(ctx.client, productId) : null;
-  const allowDecimal = product?.allowDecimal ?? false;
   const received = Number(quantity.toFixed(QUANTITY_DECIMALS));
-  if (!isValidQuantity(received, allowDecimal, 0.001)) {
-    return {
-      error: allowDecimal
-        ? "Enter how many actually arrived."
-        : "This product is sold in whole numbers — enter a whole quantity.",
-    };
+  if (!isValidQuantity(received, 1)) {
+    return { error: "This product is sold in whole numbers — enter a whole quantity." };
   }
 
   try {

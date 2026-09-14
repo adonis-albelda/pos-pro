@@ -15,8 +15,6 @@ const COLUMN_NOTES: Record<string, string> = {
   barcode: "Optional. Must be unique across products.",
   reorder_point: "Flag it for restocking at or below this count.",
   replenish_quantity: "Suggested quantity to order when restocking.",
-  bulk_price: "Optional contractor price. Needs a bulk minimum quantity too.",
-  bulk_min_quantity: "Quantity that unlocks the bulk price. Two or more.",
   category: "Full path, e.g. Plumbing / Pipes / PVC. Created if it does not exist.",
   supplier: "Supplier name. Created and linked to the product if it does not exist yet.",
   supplier_sku: "Optional vendor item code. Import and photo scan also match on this when internal SKU differs.",

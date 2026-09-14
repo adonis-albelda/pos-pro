@@ -11,7 +11,7 @@ import {
 import { useMutation } from "@tanstack/react-query";
 import { Package, PackagePlus, PackageSearch, Pencil, Warehouse } from "lucide-react-native";
 import type { Product } from "@double-a/shared-types";
-import { PRODUCT_UNITS, UNIT_LABELS, defaultAllowDecimal, stockLevel } from "@double-a/shared-types";
+import { PRODUCT_UNITS, UNIT_LABELS, stockLevel } from "@double-a/shared-types";
 import {
   createProduct,
   updateProduct,
@@ -234,19 +234,8 @@ function ProductForm({ product, onDone }: { product: Product | null; onDone: () 
   const [price, setPrice] = useState(product ? String(product.price) : "");
   const [costPrice, setCostPrice] = useState(product ? String(product.costPrice) : "");
   const [unit, setUnit] = useState(product?.unit ?? "pc");
-  const [allowDecimal, setAllowDecimal] = useState(
-    product?.allowDecimal ?? defaultAllowDecimal("pc"),
-  );
   const [categoryId, setCategoryId] = useState<string | null>(product?.categoryId ?? null);
   const [reorderPoint, setReorderPoint] = useState(String(product?.reorderPoint ?? 5));
-  const [bulkPrice, setBulkPrice] = useState(
-    product?.bulkPrice !== null && product?.bulkPrice !== undefined ? String(product.bulkPrice) : "",
-  );
-  const [bulkMinQuantity, setBulkMinQuantity] = useState(
-    product?.bulkMinQuantity !== null && product?.bulkMinQuantity !== undefined
-      ? String(product.bulkMinQuantity)
-      : "",
-  );
   const [error, setError] = useState<string | null>(null);
 
   const categories = categoriesQuery.data ?? [];
@@ -268,10 +257,7 @@ function ProductForm({ product, onDone }: { product: Product | null; onDone: () 
         costPrice: costValue,
         categoryId,
         unit,
-        allowDecimal,
         reorderPoint: Number(reorderPoint) || 0,
-        bulkPrice: bulkPrice.trim() ? Number(bulkPrice) : null,
-        bulkMinQuantity: bulkMinQuantity.trim() ? Number(bulkMinQuantity) : null,
       };
 
       const client = getAdminApiClient();
@@ -341,10 +327,7 @@ function ProductForm({ product, onDone }: { product: Product | null; onDone: () 
           {PRODUCT_UNITS.map((option) => (
             <Pressable
               key={option}
-              onPress={() => {
-                setUnit(option);
-                setAllowDecimal(defaultAllowDecimal(option));
-              }}
+              onPress={() => setUnit(option)}
               style={{
                 paddingHorizontal: space.md,
                 paddingVertical: space.sm,
@@ -425,14 +408,6 @@ function ProductForm({ product, onDone }: { product: Product | null; onDone: () 
         </>
       ) : null}
 
-      <Pressable
-        onPress={() => setAllowDecimal((v) => !v)}
-        style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}
-      >
-        <Switch value={allowDecimal} onValueChange={setAllowDecimal} />
-        <Text style={{ color: color.ink }}>Allow decimal quantities</Text>
-      </Pressable>
-
       <TextInput
         value={reorderPoint}
         onChangeText={setReorderPoint}
@@ -441,25 +416,6 @@ function ProductForm({ product, onDone }: { product: Product | null; onDone: () 
         placeholderTextColor={color.inkMuted}
         style={inputStyle}
       />
-
-      <View style={{ flexDirection: "row", gap: space.sm }}>
-        <TextInput
-          value={bulkPrice}
-          onChangeText={setBulkPrice}
-          placeholder="Bulk price (optional)"
-          keyboardType="decimal-pad"
-          placeholderTextColor={color.inkMuted}
-          style={[inputStyle, { flex: 1 }]}
-        />
-        <TextInput
-          value={bulkMinQuantity}
-          onChangeText={setBulkMinQuantity}
-          placeholder="Bulk starts at (qty)"
-          keyboardType="number-pad"
-          placeholderTextColor={color.inkMuted}
-          style={[inputStyle, { flex: 1 }]}
-        />
-      </View>
 
       <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
         Stock is not edited here. Use "Adjust stock" so every change is recorded as a movement.

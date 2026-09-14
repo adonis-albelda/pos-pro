@@ -30,9 +30,6 @@ function describeSaveError(error: unknown): string {
     if (error.errors?.supplier_sku) return "That supplier SKU is already used by another product.";
     if (error.errors?.barcode) return "That barcode is already on another product.";
     if (error.errors?.name) return "A product with that name already exists.";
-    if (error.errors?.bulk_price || error.errors?.bulk_min_quantity) {
-      return "Bulk pricing needs both a bulk price and a minimum quantity.";
-    }
     const first = Object.values(error.errors ?? {})[0]?.[0];
     if (first) return first;
   }
@@ -74,8 +71,6 @@ function lineToDraft(
     categoryId: matchCategoryId(`${line.name} ${line.sku ?? ""}`, categories),
     unit: isProductUnit(line.unit) ? line.unit : "pc",
     reorderPoint: "5",
-    bulkPrice: "",
-    bulkMinQuantity: "",
     existingProductId: line.existingProductId,
     matchedBy: line.matchedBy,
     stockApplied: line.stockApplied,
@@ -90,9 +85,6 @@ function escapePlainTextForHtml(text: string): string {
 }
 
 function draftToInput(draft: ScannedProductDraft) {
-  const optionalNumber = (raw: string): number | null =>
-    raw.trim() === "" ? null : Number(raw);
-
   return {
     name: draft.name.trim(),
     sku: draft.sku.trim() || null,
@@ -104,8 +96,6 @@ function draftToInput(draft: ScannedProductDraft) {
     barcode: draft.barcode.trim() || null,
     description: draft.description.trim() ? escapePlainTextForHtml(draft.description.trim()) : null,
     reorderPoint: Number(draft.reorderPoint || 0),
-    bulkPrice: optionalNumber(draft.bulkPrice),
-    bulkMinQuantity: optionalNumber(draft.bulkMinQuantity),
   };
 }
 
@@ -135,8 +125,6 @@ async function insertDraft(draft: ScannedProductDraft): Promise<string | null> {
       barcode: input.barcode,
       description: input.description,
       reorderPoint: input.reorderPoint,
-      bulkPrice: input.bulkPrice,
-      bulkMinQuantity: input.bulkMinQuantity,
     });
   } catch (error) {
     return describeSaveError(error);

@@ -6,7 +6,7 @@ import { ROLES } from "@double-a/shared-types";
 import { useLocationScope } from "@/lib/location-scope";
 import { useSession } from "@/lib/session";
 import { useStoreSettings } from "@/lib/store";
-import { useIdleLock } from "@/lib/idle-lock";
+import { useIdleLock, IdleActivityProvider } from "@/lib/idle-lock";
 import { ensureFreshSession } from "@/lib/api/session";
 import { AccountDrawerProvider } from "@/lib/account-drawer";
 import { CartSummaryProvider } from "@/lib/cart-summary";
@@ -120,25 +120,26 @@ export default function AdminLayout() {
     <AccountDrawerProvider>
       <CartSummaryProvider>
         <FlyToCartProvider>
-          <View
-            style={[
-              styles.screen,
-              { paddingTop: insets.top, paddingBottom: showBottomTabBar ? 0 : insets.bottom },
-            ]}
-            // Catches taps on any native (non-WebView) screen under here. A tap
-            // inside the WebView itself (app/admin/index.tsx) does not bubble to
-            // RN's touch responder system, so it can't reset this clock —
-            // background/foreground locking (AppState, see lib/idle-lock.ts)
-            // still fires regardless and is the part that matters most for
-            // "walked away with the dashboard open."
-            onTouchStart={recordActivity}
-          >
-            <StoreHeader />
+          <IdleActivityProvider recordActivity={recordActivity}>
+            <View
+              style={[
+                styles.screen,
+                { paddingTop: insets.top, paddingBottom: showBottomTabBar ? 0 : insets.bottom },
+              ]}
+              // Catches taps on any native (non-WebView) screen under here. A tap
+              // inside the WebView itself posts idle-activity via useIdleActivity
+              // (see components/admin-webview.tsx) — RN's touch responder never
+              // sees those. Background/foreground locking (AppState) still fires
+              // from useIdleLock regardless.
+              onTouchStart={recordActivity}
+            >
+              <StoreHeader />
 
-            <View style={{ flex: 1, minHeight: 0 }}>{content}</View>
-            <PinRelockOverlay />
-            {showBottomTabBar ? <BottomTabBar /> : null}
-          </View>
+              <View style={{ flex: 1, minHeight: 0 }}>{content}</View>
+              <PinRelockOverlay />
+              {showBottomTabBar ? <BottomTabBar /> : null}
+            </View>
+          </IdleActivityProvider>
         </FlyToCartProvider>
       </CartSummaryProvider>
     </AccountDrawerProvider>

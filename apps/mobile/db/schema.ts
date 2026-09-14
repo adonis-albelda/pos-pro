@@ -621,6 +621,21 @@ const V33_REPULL_FOR_PRODUCT_BRAND = `
 UPDATE sync_meta SET high_water_mark = NULL WHERE id = 1;
 `;
 
+// bulk_price/bulk_min_quantity (v2) and allow_decimal (v9) are retired
+// server-side — admin no longer writes them and the pull payload stops
+// sending them, but the columns themselves stay (additive-only rule above),
+// simply unused from here on.
+
+/** A second, independent pick from the same categories tree as category/category_id. */
+const V34_SUBCATEGORY = `
+ALTER TABLE products ADD COLUMN subcategory_id TEXT;
+ALTER TABLE products ADD COLUMN subcategory TEXT;
+`;
+
+const V35_REPULL_FOR_SUBCATEGORY = `
+UPDATE sync_meta SET high_water_mark = NULL WHERE id = 1;
+`;
+
 /** Ordered, append-only. Never edit a step that has shipped. */
 export const MIGRATIONS: Migration[] = [
   { version: 1, sql: V1_INITIAL },
@@ -656,6 +671,8 @@ export const MIGRATIONS: Migration[] = [
   { version: 31, sql: V31_REPULL_FOR_VARIANT_SUPPLIERS },
   { version: 32, sql: V32_PRODUCT_BRAND },
   { version: 33, sql: V33_REPULL_FOR_PRODUCT_BRAND },
+  { version: 34, sql: V34_SUBCATEGORY },
+  { version: 35, sql: V35_REPULL_FOR_SUBCATEGORY },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.reduce(

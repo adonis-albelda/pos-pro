@@ -357,26 +357,6 @@ function DraftRow({
             onChange={(event) => onChange({ reorderPoint: event.target.value })}
           />
         </Field>
-        <Field label="Bulk price">
-          <MoneyInput
-            type="number"
-            step="0.01"
-            min="0"
-            value={draft.bulkPrice}
-            onChange={(event) => onChange({ bulkPrice: event.target.value })}
-          />
-        </Field>
-        <Field label="Bulk starts at">
-          <Input
-            type="number"
-            step="1"
-            min="2"
-            value={draft.bulkMinQuantity}
-            onChange={(event) =>
-              onChange({ bulkMinQuantity: event.target.value })
-            }
-          />
-        </Field>
       </div>
 
       {skuMatch && !draft.stockApplied ? <ExistingSkuBanner match={skuMatch} /> : null}

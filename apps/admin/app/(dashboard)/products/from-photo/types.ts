@@ -16,8 +16,6 @@ export interface ScannedProductDraft {
   categoryId: string;
   unit: string;
   reorderPoint: string;
-  bulkPrice: string;
-  bulkMinQuantity: string;
   /** Set when the API matched an existing catalogue SKU. */
   existingProductId: string | null;
   /** internal or supplier — how the line matched an existing product. */

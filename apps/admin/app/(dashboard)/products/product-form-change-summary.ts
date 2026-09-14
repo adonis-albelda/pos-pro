@@ -15,11 +15,6 @@ function has(form: HTMLFormElement, key: string): boolean {
   return new FormData(form).has(key);
 }
 
-function optionalNumber(form: HTMLFormElement, key: string): number | null {
-  const raw = text(form, key);
-  return raw === "" ? null : Number(raw);
-}
-
 function displayText(value: string | null | undefined): string {
   const trimmed = (value ?? "").trim();
   return trimmed === "" ? "—" : trimmed;
@@ -116,23 +111,6 @@ export function collectProductFormChanges(
     );
   }
 
-  if (has(form, "bulk_price") || has(form, "bulk_min_quantity")) {
-    pushChange(
-      changes,
-      "Bulk price",
-      displayMoney(product.bulkPrice),
-      displayMoney(optionalNumber(form, "bulk_price")),
-    );
-    pushChange(
-      changes,
-      "Bulk min quantity",
-      product.bulkMinQuantity === null ? "—" : String(product.bulkMinQuantity),
-      optionalNumber(form, "bulk_min_quantity") === null
-        ? "—"
-        : String(optionalNumber(form, "bulk_min_quantity")),
-    );
-  }
-
   if (has(form, "sku") || has(form, "barcode") || has(form, "unit")) {
     pushChange(changes, "SKU", displayText(product.sku), displayText(text(form, "sku") || null));
     pushChange(
@@ -142,16 +120,6 @@ export function collectProductFormChanges(
       displayText(text(form, "barcode") || null),
     );
     pushChange(changes, "Sold by", displayUnit(product.unit), displayUnit(text(form, "unit") || "pc"));
-  }
-
-  const allowDecimalEl = form.querySelector<HTMLInputElement>('[name="allow_decimal"]');
-  if (allowDecimalEl) {
-    pushChange(
-      changes,
-      "Allow decimal quantities",
-      displayBool(product.allowDecimal),
-      displayBool(allowDecimalEl.checked),
-    );
   }
 
   if (has(form, "reorder_point")) {

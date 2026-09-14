@@ -10,7 +10,15 @@ import { LocationSwitcher } from "@/components/location-switcher";
 import { LocationMutationsBanner } from "@/components/location-mutations-banner";
 import { BrandFooter } from "@/components/brand-footer";
 import { UiModeToggle } from "@/components/ui-mode-toggle";
-import { filterNavGroupsByFeatures, filterNavGroupsByPermissions, isNavItemActive, NAV_GROUPS } from "@/lib/nav";
+import {
+  filterNavGroupsByFeatures,
+  filterNavGroupsByPermissions,
+  filterNavSectionsByFeatures,
+  filterNavSectionsByPermissions,
+  isNavItemActive,
+  NAV_GROUPS,
+  NAV_SECTIONS,
+} from "@/lib/nav";
 import { useNavFeatureEnabled } from "@/lib/query/nav-features";
 import { useCurrentUser } from "@/lib/query/session";
 import { canPermission } from "@/lib/authz";
@@ -43,6 +51,14 @@ export function ClassicShell({
   const { data: user } = useCurrentUser();
   const navGroups = filterNavGroupsByPermissions(
     filterNavGroupsByFeatures(NAV_GROUPS, isEnabled),
+    (key) => canPermission(user, key),
+  );
+  // Classic top bar groups by section (Sales Management, Finance Management,
+  // ...), not the finer-grained sub-groups the drawer uses — a dropdown per
+  // section keeps the whole area's items together instead of the sub-groups
+  // and ungrouped items scattering one-by-one across the bar.
+  const navSections = filterNavSectionsByPermissions(
+    filterNavSectionsByFeatures(NAV_SECTIONS, isEnabled),
     (key) => canPermission(user, key),
   );
 
@@ -159,29 +175,11 @@ export function ClassicShell({
             Main menu
           </Link>
 
-          {navGroups.map((group) => {
-            // Ungrouped items (label: null — Sales, Company, Users, etc.) have
-            // no dropdown to live in, so each renders as its own top-bar link
-            // instead of vanishing (they used to be filtered out entirely).
-            if (!group.label) {
-              return group.items.map(({ href, label: itemLabel, icon: Icon }) => (
-                <Link
-                  key={href}
-                  href={href}
-                  className={[
-                    "inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1.5 text-caption transition-colors",
-                    isActive(href) ? "bg-border/70 font-medium text-ink" : "text-ink hover:bg-border/60",
-                  ].join(" ")}
-                >
-                  <Icon size={14} strokeWidth={2} className="text-ink-muted" />
-                  {itemLabel}
-                </Link>
-              ));
-            }
-
-            const label = group.label;
+          {navSections.map((section) => {
+            const label = section.label ?? "Dashboards";
             const open = openGroup === label;
-            const active = group.items.some((item) => isActive(item.href));
+            const items = section.groups.flatMap((group) => group.items);
+            const active = items.some((item) => isActive(item.href));
 
             return (
               <div key={label} className="relative">
@@ -201,16 +199,22 @@ export function ClassicShell({
                 </button>
 
                 {open ? (
-                  <div className="absolute top-full left-0 z-30 mt-0.5 min-w-52 rounded-sm border border-border bg-surface py-1 shadow-md">
-                    {group.items.map(({ href, label: itemLabel, icon: Icon }) => (
+                  <div className="absolute top-full left-0 z-30 mt-0.5 grid w-[min(90vw,640px)] grid-cols-1 gap-x-6 gap-y-3 rounded-sm border border-border bg-surface p-4 shadow-md sm:grid-cols-2">
+                    {items.map(({ href, label: itemLabel, blurb, icon: Icon }) => (
                       <Link
                         key={href}
                         href={href}
                         onClick={() => setOpenGroup(null)}
-                        className="flex items-center gap-2.5 px-3 py-2 text-caption text-ink transition-colors hover:bg-primary-tint"
+                        className={[
+                          "flex items-start gap-2.5 rounded-sm p-2 text-left transition-colors hover:bg-primary-tint",
+                          isActive(href) ? "bg-border/50" : "",
+                        ].join(" ")}
                       >
-                        <Icon size={15} strokeWidth={2} className="text-ink-muted" />
-                        {itemLabel}
+                        <Icon size={17} strokeWidth={2} className="mt-0.5 shrink-0 text-ink-muted" />
+                        <span className="min-w-0">
+                          <span className="block text-body font-semibold text-ink">{itemLabel}</span>
+                          <span className="block text-caption text-ink-muted">{blurb}</span>
+                        </span>
                       </Link>
                     ))}
                   </div>

@@ -1,6 +1,5 @@
 import type { Category, Product, Supplier } from "@double-a/shared-types";
 import {
-  defaultAllowDecimal,
   formatMoney,
   isProductUnit,
   validateProductInput,
@@ -24,12 +23,9 @@ export const OPTIONAL_COLUMNS = [
   "supplier_sku",
   "cost_price",
   "unit",
-  "allow_decimal",
   "barcode",
   "reorder_point",
   "replenish_quantity",
-  "bulk_price",
-  "bulk_min_quantity",
   "category",
   "supplier",
   "description",
@@ -49,12 +45,9 @@ export const TEMPLATE_EXAMPLE = [
   "185.00",
   "132.50",
   "pc",
-  "false",
   "4806501234567",
   "12",
   "0",
-  "170.00",
-  "10",
   "Plumbing / Pipes / PVC",
   "",
   "true",
@@ -79,12 +72,9 @@ export interface ProductImportRow {
   price: number;
   cost_price: number;
   unit: string;
-  allow_decimal: boolean;
   barcode: string | null;
   reorder_point: number;
   replenish_quantity: number;
-  bulk_price: number | null;
-  bulk_min_quantity: number | null;
   category_id: string | null;
   description: string | null;
   is_active: boolean;
@@ -313,22 +303,6 @@ export function planProductImportFromTable(
       problems.push(`"${cell("unit")}" is not a unit we sell by.`);
     }
 
-    // Follows the unit for a new product unless the sheet says otherwise; an
-    // existing product keeps its setting when the cell is blank.
-    let allowDecimal = existing
-      ? existing.allowDecimal
-      : isProductUnit(unit)
-        ? defaultAllowDecimal(unit as ProductUnit)
-        : false;
-    if (given("allow_decimal")) {
-      const parsed = parseBoolean(cell("allow_decimal"));
-      if (parsed === null) {
-        problems.push(`"${cell("allow_decimal")}" is not a yes or no.`);
-      } else {
-        allowDecimal = parsed;
-      }
-    }
-
     const barcode = given("barcode") ? cell("barcode") : (existing?.barcode ?? null);
 
     const reorderPoint = given("reorder_point")
@@ -348,23 +322,6 @@ export function planProductImportFromTable(
     const description = given("description")
       ? importTextValue(cell("description"))
       : (existing?.description ?? null);
-
-    // The pair moves together: filling in one and leaving the other blank is
-    // rejected below rather than silently written as half a tier.
-    const bulkPriceGiven = given("bulk_price");
-    const bulkMinGiven = given("bulk_min_quantity");
-    const bulkTouched = bulkPriceGiven || bulkMinGiven;
-
-    const bulkPrice = bulkPriceGiven
-      ? Number(cell("bulk_price"))
-      : bulkTouched
-        ? null
-        : (existing?.bulkPrice ?? null);
-    const bulkMinQuantity = bulkMinGiven
-      ? Number(cell("bulk_min_quantity"))
-      : bulkTouched
-        ? null
-        : (existing?.bulkMinQuantity ?? null);
 
     let isActive = existing?.isActive ?? true;
     if (given("is_active")) {
@@ -402,8 +359,6 @@ export function planProductImportFromTable(
       sku,
       costPrice: Number.isFinite(costPrice) ? costPrice : undefined,
       reorderPoint: Number.isInteger(reorderPoint) ? reorderPoint : undefined,
-      bulkPrice,
-      bulkMinQuantity,
       unit,
     });
     problems.push(...validation.errors);
@@ -439,12 +394,9 @@ export function planProductImportFromTable(
       price: price!,
       cost_price: costPrice,
       unit,
-      allow_decimal: allowDecimal,
       barcode,
       reorder_point: reorderPoint,
       replenish_quantity: replenishQuantity,
-      bulk_price: bulkPrice,
-      bulk_min_quantity: bulkMinQuantity,
       category_id: existing?.categoryId ?? null,
       description,
       is_active: isActive,
@@ -529,11 +481,6 @@ function describeChanges(
     );
   }
   if (existing.unit !== values.unit) changes.push(`Sold by → ${values.unit}`);
-  if (existing.allowDecimal !== (values.allow_decimal ?? false)) {
-    changes.push(
-      values.allow_decimal ? "Decimal quantities on" : "Decimal quantities off",
-    );
-  }
   if (existing.barcode !== values.barcode) changes.push("Barcode changes");
   if (existing.reorderPoint !== values.reorder_point) {
     changes.push(`Reorder point ${existing.reorderPoint} → ${values.reorder_point}`);
@@ -545,17 +492,6 @@ function describeChanges(
   }
   if ((existing.description ?? null) !== (values.description ?? null)) {
     changes.push(values.description ? "Description updated" : "Description cleared");
-  }
-  const bulkPrice = values.bulk_price ?? null;
-  if (
-    existing.bulkPrice !== bulkPrice ||
-    existing.bulkMinQuantity !== (values.bulk_min_quantity ?? null)
-  ) {
-    changes.push(
-      bulkPrice === null
-        ? "Bulk price removed"
-        : `Bulk price ${formatMoney(bulkPrice)} from ${values.bulk_min_quantity}`,
-    );
   }
   if (existing.isActive !== values.is_active) {
     changes.push(values.is_active ? "Shown on terminals" : "Hidden from terminals");

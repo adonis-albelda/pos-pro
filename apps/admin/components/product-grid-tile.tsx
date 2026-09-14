@@ -1,6 +1,6 @@
 "use client";
 
-import { Minus, Package, Tag, Trash2 } from "lucide-react";
+import { Minus, Package, Trash2 } from "lucide-react";
 import type { Product } from "@double-a/shared-types";
 import { formatMoney, formatQuantity, stockLevel } from "@double-a/shared-types";
 import { Badge } from "@/components/ui";
@@ -58,15 +58,6 @@ export function ProductGridTile({
             <span className="text-caption text-ink-muted">/{product.unit}</span>
           )}
         </div>
-        {product.bulkPrice !== null && product.bulkMinQuantity !== null ? (
-          <div className="flex items-center gap-1 text-caption text-accent-ink">
-            <Tag size={11} strokeWidth={2.5} />
-            <span className="num">
-              {formatMoney(product.bulkPrice)} from {product.bulkMinQuantity}
-              {unitSuffix}
-            </span>
-          </div>
-        ) : null}
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">

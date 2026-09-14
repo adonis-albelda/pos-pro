@@ -9,7 +9,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { Image } from "expo-image";
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
-import { Minus, Package, Tag, Trash2, Truck, X } from "lucide-react-native";
+import { Minus, Package, Trash2, Truck, X } from "lucide-react-native";
 import { formatMoney, stockLevel, type ProductWithEstimatedStock } from "@double-a/shared-types";
 import { type FlyRect } from "@/lib/fly-to-cart";
 import { useThemePreferences } from "@/lib/theme-preferences";
@@ -278,22 +278,6 @@ export function ProductTile({
           )}
         </View>
 
-        {/* The contractor price, where there is room to say it. */}
-        {!compact && product.bulkPrice !== null && product.bulkMinQuantity !== null ? (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: space.xs }}>
-            <Tag size={12} color={color.accentInk} strokeWidth={2.5} />
-            <Text
-              numberOfLines={1}
-              style={[
-                styles.numeric,
-                { fontSize: fontSize.caption, color: color.accentInk },
-              ]}
-            >
-              {formatMoney(product.bulkPrice)} from {product.bulkMinQuantity}{" "}
-              {product.unit}
-            </Text>
-          </View>
-        ) : null}
       </View>
       {/* The real product photo — separate from the generic package icon
           above, which stays put as the name's icon either way. Only worth
@@ -650,21 +634,6 @@ function RowLayoutBody({
               </Text>
             )}
           </View>
-          {!compact && product.bulkPrice !== null && product.bulkMinQuantity !== null ? (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: space.xs }}>
-              <Tag size={12} color={color.accentInk} strokeWidth={2.5} />
-              <Text
-                numberOfLines={1}
-                style={[
-                  styles.numeric,
-                  { fontSize: fontSize.caption, color: color.accentInk },
-                ]}
-              >
-                {formatMoney(product.bulkPrice)} from {product.bulkMinQuantity}{" "}
-                {product.unit}
-              </Text>
-            </View>
-          ) : null}
         </View>
       </View>
 

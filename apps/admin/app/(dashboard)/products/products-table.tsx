@@ -192,11 +192,6 @@ export function ProductsTable({
                 </Td>
                 <Td numeric>
                   <Money value={product.price} />
-                  {product.bulkPrice !== null && product.bulkMinQuantity !== null ? (
-                    <span className="mt-0.5 block text-caption text-ink-muted">
-                      {product.bulkMinQuantity}+ at <Money value={product.bulkPrice} />
-                    </span>
-                  ) : null}
                 </Td>
                 <Td numeric className={margin < 0 ? "font-semibold text-danger" : ""}>
                   {formatPercent(margin)}

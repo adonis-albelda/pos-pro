@@ -59,15 +59,14 @@ export interface ProductAttrs {
   stock_quantity: number;
   category: string | null;
   category_id: string | null;
+  subcategory?: string | null;
+  subcategory_id?: string | null;
   is_active: boolean;
   cost_price: number;
   unit: string;
   barcode: string | null;
   reorder_point: number;
   replenish_quantity: number;
-  bulk_price: number | null;
-  bulk_min_quantity: number | null;
-  allow_decimal: boolean;
   photo_url: string | null;
   is_bundle?: boolean;
   bundle_items?: {
@@ -110,13 +109,12 @@ export function toProduct(resource: JsonApiResource<ProductAttrs>): Product {
     stockQuantity: Number(a.stock_quantity),
     category: a.category,
     categoryId: a.category_id,
+    subcategory: a.subcategory ?? null,
+    subcategoryId: a.subcategory_id ?? null,
     unit: a.unit as ProductUnit,
-    allowDecimal: a.allow_decimal,
     barcode: a.barcode,
     reorderPoint: a.reorder_point,
     replenishQuantity: a.replenish_quantity ?? 0,
-    bulkPrice: a.bulk_price === null ? null : Number(a.bulk_price),
-    bulkMinQuantity: a.bulk_min_quantity === null ? null : Number(a.bulk_min_quantity),
     isActive: a.is_active,
     // Coerced explicitly: an un-migrated/older server simply omits this key,
     // which is `undefined` at runtime despite the `string | null` type — and

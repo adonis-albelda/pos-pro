@@ -66,8 +66,6 @@ import {
   hasCustomerDetails,
   lineSubtotal,
   normaliseCustomerDetails,
-  priceForQuantity,
-  QUANTITY_DECIMALS,
   requiresCustomerForPayment,
   roundMoney,
   timeAgo,
@@ -206,14 +204,11 @@ const FULFILLMENT_OPTIONS: { value: Fulfillment; label: string; icon?: LucideIco
 const BACKORDER_CAP = 9999;
 
 /**
- * The most a line may sell. A whole-number product floors its estimated stock
- * (you cannot sell half a box); a decimal one keeps the fraction (2.5 kg is a
- * real amount on the shelf). At zero or below, the product is out of stock —
- * see BACKORDER_CAP.
+ * The most a line may sell — floors the estimated stock (you cannot sell half
+ * a box). At zero or below, the product is out of stock — see BACKORDER_CAP.
  */
-function stockCapFor(estimatedStock: number, allowDecimal: boolean): number {
+function stockCapFor(estimatedStock: number): number {
   if (estimatedStock <= 0) return BACKORDER_CAP;
-  if (allowDecimal) return Number(estimatedStock.toFixed(QUANTITY_DECIMALS));
   return Math.floor(estimatedStock);
 }
 
@@ -742,7 +737,7 @@ export default function SellScreen() {
     const product = byId.get(line.productId);
     if (!product) return { ...line, quantity };
 
-    return { ...line, quantity, unitPrice: priceForQuantity(product, quantity) };
+    return { ...line, quantity, unitPrice: product.price };
   }
 
   /**
@@ -901,8 +896,8 @@ export default function SellScreen() {
         // A variant/add-on line's cap was fixed at add time rather than
         // re-derived from live stock on every tap — see ResolvedSelection.
         const stockCap = existing.variantId
-          ? stockCapFor(existing.availableStock, existing.allowDecimal)
-          : stockCapFor(product.estimatedStock, product.allowDecimal);
+          ? stockCapFor(existing.availableStock)
+          : stockCapFor(product.estimatedStock);
         if (existing.quantity >= stockCap) return current;
         return current.map((line) =>
           isTarget(line) ? repricedFor(line, Math.min(line.quantity + 1, stockCap)) : line,
@@ -914,7 +909,7 @@ export default function SellScreen() {
           selection.addons.reduce((sum, addon) => sum + addon.price, 0),
         );
         const naturalPrice = roundMoney(selection.variant.price + addonsTotal);
-        const stockCap = stockCapFor(selection.estimatedStock, product.allowDecimal);
+        const stockCap = stockCapFor(selection.estimatedStock);
 
         return [
           ...current,
@@ -928,7 +923,6 @@ export default function SellScreen() {
             naturalPrice,
             unitCost: selection.variant.costPrice,
             unit: product.unit,
-            allowDecimal: product.allowDecimal,
             quantity: 1,
             availableStock: stockCap,
             categoryId: product.categoryId ?? null,
@@ -942,19 +936,18 @@ export default function SellScreen() {
         ];
       }
 
-      const stockCap = stockCapFor(product.estimatedStock, product.allowDecimal);
+      const stockCap = stockCapFor(product.estimatedStock);
       return [
         ...current,
         {
           productId: product.id,
           productName: product.name,
-          unitPrice: priceForQuantity(product, 1),
+          unitPrice: product.price,
           // The shelf price, kept whatever the line ends up selling at, so the
           // office can see exactly what was given away.
           listPrice: product.price,
           unitCost: product.costPrice,
           unit: product.unit,
-          allowDecimal: product.allowDecimal,
           quantity: 1,
           availableStock: stockCap,
           categoryId: product.categoryId ?? null,
@@ -991,7 +984,7 @@ export default function SellScreen() {
       current
         .map((line) => {
           if (!matches(line)) return line;
-          const stockCap = stockCapFor(line.availableStock, line.allowDecimal);
+          const stockCap = stockCapFor(line.availableStock);
           const next = line.quantity + delta;
           if (delta > 0 && next > stockCap) return line;
           return repricedFor(line, next);
@@ -1035,10 +1028,8 @@ export default function SellScreen() {
       current
         .map((line) => {
           if (line.productId !== productId) return line;
-          const stockCap = stockCapFor(line.availableStock, line.allowDecimal);
-          const asked = line.allowDecimal
-            ? Number(quantity.toFixed(QUANTITY_DECIMALS))
-            : Math.floor(quantity);
+          const stockCap = stockCapFor(line.availableStock);
+          const asked = Math.floor(quantity);
           const next = Math.min(asked, stockCap);
           if (next <= 0) return { ...line, quantity: 0 };
           return repricedFor(line, next);
@@ -1100,7 +1091,7 @@ export default function SellScreen() {
       current.map((line) => {
         if (line.naturalPrice !== undefined) return { ...line, unitPrice: line.naturalPrice };
         const product = byId.get(line.productId);
-        return product ? { ...line, unitPrice: priceForQuantity(product, line.quantity) } : line;
+        return product ? { ...line, unitPrice: product.price } : line;
       }),
     );
     setOverridden([]);
@@ -1779,7 +1770,6 @@ export default function SellScreen() {
                   <CartRow
                     line={item}
                     product={byId.get(item.productId)}
-                    priceLocked={overridden.includes(item.productId)}
                     displayUnitPrice={
                       globalDiscountIds.includes(item.productId)
                         ? (preDiscountPrices[item.productId] ?? item.unitPrice)
@@ -2174,7 +2164,6 @@ export default function SellScreen() {
 function CartRow({
   line,
   product,
-  priceLocked,
   displayUnitPrice,
   onChange,
   onEditQuantity,
@@ -2182,15 +2171,13 @@ function CartRow({
 }: {
   line: CartLine;
   product: ProductWithEstimatedStock | undefined;
-  /** True when a global discount (or draft override) froze bulk reprice on this line. */
-  priceLocked: boolean;
   /** Frozen pre-discount unit price when a global discount touched this line. */
   displayUnitPrice: number;
   onChange: (delta: number) => void;
   onEditQuantity: () => void;
   onRemove: () => void;
 }) {
-  const stockCap = stockCapFor(line.availableStock, line.allowDecimal);
+  const stockCap = stockCapFor(line.availableStock);
   const remaining = Math.max(0, stockCap - line.quantity);
   const atMax = line.quantity >= stockCap;
   // A line added while its product showed none on hand gets its cap fixed
@@ -2200,11 +2187,9 @@ function CartRow({
   // cashier the opposite of what's true.
   const backordered = line.availableStock === BACKORDER_CAP;
   const oversell = !backordered && line.quantity > stockCap;
-  const bulkMin = product?.bulkMinQuantity ?? null;
-  const bulkApplied = !priceLocked && bulkMin !== null && line.quantity >= bulkMin;
   // At one, decrementing drops the line entirely, so the control says so.
   const RemoveIcon = line.quantity === 1 ? Trash2 : Minus;
-  const showFlags = bulkApplied || oversell;
+  const showFlags = oversell;
   const photoUrl = product?.photoUrl ?? null;
   const lineTotal = lineSubtotal(displayUnitPrice, line.quantity);
   const stockLabel = backordered
@@ -2330,9 +2315,6 @@ function CartRow({
                 marginTop: 2,
               }}
             >
-              {bulkApplied ? (
-                <Badge tone="success" icon={Tag} label={`Bulk from ${bulkMin}`} />
-              ) : null}
               {oversell ? <Badge tone="warning" label="Over stock" /> : null}
             </View>
           ) : null}
@@ -2418,21 +2400,14 @@ function QuantitySheet({
 
   if (!line) return null;
 
-  const allowDecimal = line.allowDecimal;
-  const stockCap = stockCapFor(line.availableStock, allowDecimal);
+  const stockCap = stockCapFor(line.availableStock);
   // See CartRow — a line added while its product showed none on hand gets
   // its cap fixed at BACKORDER_CAP as sell-anyway room, not real stock.
   const backordered = line.availableStock === BACKORDER_CAP;
   const typed = Number(draft);
-  const value = allowDecimal
-    ? Number(typed.toFixed(QUANTITY_DECIMALS))
-    : Math.floor(typed);
+  const value = Math.floor(typed);
   const empty = draft.trim() === "";
-  const valid =
-    !empty &&
-    Number.isFinite(typed) &&
-    (allowDecimal || Number.isInteger(typed)) &&
-    value >= 0;
+  const valid = !empty && Number.isFinite(typed) && Number.isInteger(typed) && value >= 0;
   const overStock = valid && value > stockCap;
   const willRemove = valid && value === 0;
 
@@ -2457,14 +2432,8 @@ function QuantitySheet({
 
       <TextInput
         value={draft}
-        onChangeText={(next) =>
-          setDraft(
-            allowDecimal
-              ? next.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1")
-              : next.replace(/[^0-9]/g, ""),
-          )
-        }
-        keyboardType={allowDecimal ? "decimal-pad" : "number-pad"}
+        onChangeText={(next) => setDraft(next.replace(/[^0-9]/g, ""))}
+        keyboardType="number-pad"
         autoFocus
         selectTextOnFocus
         accessibilityLabel={`Quantity of ${line.productName}`}

@@ -154,39 +154,7 @@ export const UNIT_LABELS: Record<ProductUnit, string> = {
   tube: "Tube",
 };
 
-/**
- * Units a shop sells in fractions of: wire by the metre, sand by the kilo,
- * paint by the litre. A product on one of these accepts a decimal quantity by
- * default; every other unit defaults to whole numbers but the owner can still
- * turn decimals on per product (see `Product.allowDecimal`).
- */
-export const FRACTIONAL_UNITS = [
-  "m",
-  "ft",
-  "in",
-  "cm",
-  "yd",
-  "kg",
-  "l",
-  "gal",
-  "roll",
-  "sqm",
-  "sqft",
-  "cum",
-  "cuft",
-  "ton",
-] as const;
-
-export function isFractionalUnit(unit: ProductUnit): boolean {
-  return (FRACTIONAL_UNITS as readonly string[]).includes(unit);
-}
-
-/** The `allow_decimal` a new product gets before the owner touches it. */
-export function defaultAllowDecimal(unit: ProductUnit): boolean {
-  return isFractionalUnit(unit);
-}
-
-/** How many decimal places a decimal quantity is kept to, matching numeric(12,3). */
+/** How many decimal places a quantity is kept to for display rounding, matching numeric(12,3). */
 export const QUANTITY_DECIMALS = 3;
 
 /**
@@ -598,13 +566,10 @@ export interface Product {
   /** Flattened path of `categoryId`, kept in sync by a Postgres trigger. */
   category: string | null;
   categoryId: string | null;
+  /** A second, independent pick from the same categories tree as `categoryId`. */
+  subcategory: string | null;
+  subcategoryId: string | null;
   unit: ProductUnit;
-  /**
-   * Whether this product can be sold and stocked in fractional quantities
-   * (2.5 kg, 1.75 m). Defaults from the unit — see `defaultAllowDecimal` — but
-   * the owner may override it either way per product.
-   */
-  allowDecimal: boolean;
   barcode: string | null;
   /** At or below this count the product lands on the reorder report. */
   reorderPoint: number;
@@ -614,9 +579,6 @@ export interface Product {
   description: string | null;
   /** Raw HTML as authored in the admin rich-text editor. Writes still go through `description` on the wire — this is read-only. */
   descriptionHtml: string | null;
-  /** Contractor price, offered once the line reaches `bulkMinQuantity`. */
-  bulkPrice: number | null;
-  bulkMinQuantity: number | null;
   isActive: boolean;
   /** Public URL of a resized WebP, or null if no photo was uploaded. */
   photoUrl: string | null;
@@ -1297,9 +1259,9 @@ export interface CartLine {
   /**
    * The un-overridden price for this exact configuration — the variant's
    * price plus its add-ons, before any cashier discount. Absent means "use
-   * the product's own bulk-pricing math" (repricedFor/resetPrice fall back
-   * to that when this is unset), which is every line before variants/addons
-   * existed and every line the picker never touched.
+   * the product's own price" (repricedFor/resetPrice fall back to that when
+   * this is unset), which is every line before variants/addons existed and
+   * every line the picker never touched.
    */
   naturalPrice?: number;
   /** What this line is selling at. Editable at the counter. */
@@ -1309,8 +1271,6 @@ export interface CartLine {
   /** Supplier cost, so the attendant can see the floor before discounting. */
   unitCost: number;
   unit: ProductUnit;
-  /** Whether this line can carry a fractional quantity (2.5 kg). From the product. */
-  allowDecimal: boolean;
   quantity: number;
   /** Last synced stock, kept so the cart can warn when a line exceeds it. */
   availableStock: number;

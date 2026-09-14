@@ -21,8 +21,6 @@ export function validateProductInput(input: {
   reorderPoint?: number;
   replenishQuantity?: number;
   description?: string | null;
-  bulkPrice?: number | null;
-  bulkMinQuantity?: number | null;
   unit?: string;
 }): ValidationResult {
   const errors: string[] = [];
@@ -53,41 +51,15 @@ export function validateProductInput(input: {
     errors.push("Unit is not one we sell by.");
   }
 
-  // The two bulk fields only mean something together: a price with no minimum
-  // quantity would silently never apply.
-  const hasBulkPrice = input.bulkPrice !== null && input.bulkPrice !== undefined;
-  const hasBulkMin =
-    input.bulkMinQuantity !== null && input.bulkMinQuantity !== undefined;
-
-  if (hasBulkPrice !== hasBulkMin) {
-    errors.push("Bulk pricing needs both a bulk price and a minimum quantity.");
-  }
-  if (hasBulkPrice && (!Number.isFinite(input.bulkPrice!) || input.bulkPrice! < 0)) {
-    errors.push("Bulk price must be zero or more.");
-  }
-  if (hasBulkMin && (!Number.isInteger(input.bulkMinQuantity!) || input.bulkMinQuantity! < 2)) {
-    errors.push("Bulk minimum quantity must be a whole number of 2 or more.");
-  }
-  if (hasBulkPrice && input.bulkPrice! > input.price) {
-    errors.push("Bulk price is higher than the normal price.");
-  }
-
   return { ok: errors.length === 0, errors };
 }
 
 /**
- * A stock or sale quantity. Fractional only when the product allows it; whole
- * numbers otherwise. `min` is the floor (1 for a sale line, 0 for a stock
- * count). Rounding to QUANTITY_DECIMALS happens elsewhere — this only judges.
+ * A stock or sale quantity — always a whole number. `min` is the floor (1 for
+ * a sale line, 0 for a stock count).
  */
-export function isValidQuantity(
-  value: number,
-  allowDecimal: boolean,
-  min = 0,
-): boolean {
-  if (!Number.isFinite(value) || value < min) return false;
-  if (!allowDecimal && !Number.isInteger(value)) return false;
-  return true;
+export function isValidQuantity(value: number, min = 0): boolean {
+  return Number.isFinite(value) && value >= min && Number.isInteger(value);
 }
 
 export function validateCart(lines: CartLine[]): ValidationResult {

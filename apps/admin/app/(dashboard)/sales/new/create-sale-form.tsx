@@ -44,8 +44,6 @@ import {
   marginPercent,
   matchingEarningRule,
   pointsForEarningRule,
-  priceForQuantity,
-  QUANTITY_DECIMALS,
   roundMoney,
 } from "@double-a/shared-types";
 import {
@@ -139,9 +137,9 @@ const NEW_CUSTOMER_OPTION = "__new_customer__";
 // on the shelf, so there's nothing left to cap against (mirrors mobile POS).
 const BACKORDER_CAP = 9999;
 
-function stockCapFor(stock: number, allowDecimal: boolean): number {
+function stockCapFor(stock: number): number {
   if (stock <= 0) return BACKORDER_CAP;
-  return allowDecimal ? Number(stock.toFixed(QUANTITY_DECIMALS)) : Math.floor(stock);
+  return Math.floor(stock);
 }
 
 /**
@@ -181,7 +179,7 @@ export function CreateSaleForm() {
   const [error, setError] = useState<string | null>(null);
 
   // Cart state — the exact CartLine shape the mobile POS uses, so the same
-  // shared-types money math (cartTotal, priceForQuantity, ...) applies as-is.
+  // shared-types money math (cartTotal, cartDiscount, ...) applies as-is.
   const [lines, setLines] = useState<CartLine[]>([]);
   // Raw typed override text per productId — empty/absent means "shelf price".
   // Kept separate from CartLine.unitPrice so bulk repricing can keep moving
@@ -461,7 +459,7 @@ export function CreateSaleForm() {
     if (line.naturalPrice !== undefined) return { ...line, quantity, unitPrice: line.naturalPrice };
     const p = product ?? byId.get(line.productId);
     if (!p) return { ...line, quantity };
-    return { ...line, quantity, unitPrice: priceForQuantity(p, quantity) };
+    return { ...line, quantity, unitPrice: p.price };
   }
 
   /**
@@ -482,8 +480,8 @@ export function CreateSaleForm() {
       const existing = current.find(isTarget);
       if (existing) {
         const cap = existing.variantId
-          ? stockCapFor(existing.availableStock, existing.allowDecimal)
-          : stockCapFor(product.stockQuantity, product.allowDecimal);
+          ? stockCapFor(existing.availableStock)
+          : stockCapFor(product.stockQuantity);
         if (existing.quantity >= cap) return current;
         return current.map((line) =>
           isTarget(line) ? repricedFor(line, Math.min(line.quantity + 1, cap), product) : line,
@@ -493,7 +491,7 @@ export function CreateSaleForm() {
       if (selection) {
         const addonsTotal = roundMoney(selection.addons.reduce((sum, addon) => sum + addon.price, 0));
         const naturalPrice = roundMoney(selection.variant.price + addonsTotal);
-        const cap = stockCapFor(selection.variant.stockQuantity ?? 0, product.allowDecimal);
+        const cap = stockCapFor(selection.variant.stockQuantity ?? 0);
 
         return [
           ...current,
@@ -507,7 +505,6 @@ export function CreateSaleForm() {
             naturalPrice,
             unitCost: selection.variant.costPrice,
             unit: product.unit,
-            allowDecimal: product.allowDecimal,
             quantity: 1,
             availableStock: cap,
             categoryId: product.categoryId ?? null,
@@ -521,17 +518,16 @@ export function CreateSaleForm() {
         ];
       }
 
-      const cap = stockCapFor(product.stockQuantity, product.allowDecimal);
+      const cap = stockCapFor(product.stockQuantity);
       return [
         ...current,
         {
           productId: product.id,
           productName: product.name,
-          unitPrice: priceForQuantity(product, 1),
+          unitPrice: product.price,
           listPrice: product.price,
           unitCost: product.costPrice,
           unit: product.unit,
-          allowDecimal: product.allowDecimal,
           quantity: 1,
           availableStock: cap,
           categoryId: product.categoryId ?? null,
@@ -547,7 +543,7 @@ export function CreateSaleForm() {
    */
   function addPhotoLineToCart(product: Product, quantity: number) {
     rememberProducts([product]);
-    const cap = stockCapFor(product.stockQuantity, product.allowDecimal);
+    const cap = stockCapFor(product.stockQuantity);
 
     setLines((current) => {
       const existing = current.find((line) => line.productId === product.id);
@@ -564,11 +560,10 @@ export function CreateSaleForm() {
         {
           productId: product.id,
           productName: product.name,
-          unitPrice: priceForQuantity(product, initial),
+          unitPrice: product.price,
           listPrice: product.price,
           unitCost: product.costPrice,
           unit: product.unit,
-          allowDecimal: product.allowDecimal,
           quantity: initial,
           availableStock: cap,
         },
@@ -767,7 +762,7 @@ export function CreateSaleForm() {
       current
         .map((line) => {
           if (!isTarget(line)) return line;
-          const cap = stockCapFor(line.availableStock, line.allowDecimal);
+          const cap = stockCapFor(line.availableStock);
           const next = line.quantity + delta;
           if (delta > 0 && next > cap) return line;
           return repricedFor(line, next);
@@ -786,8 +781,8 @@ export function CreateSaleForm() {
         if (raw.trim() === "" || !Number.isFinite(typed) || typed < 0) {
           return { ...line, quantity: 0 };
         }
-        const cap = stockCapFor(line.availableStock, line.allowDecimal);
-        const asked = line.allowDecimal ? typed : Math.floor(typed);
+        const cap = stockCapFor(line.availableStock);
+        const asked = Math.floor(typed);
         return repricedFor(line, Math.min(asked, cap));
       }),
     );
@@ -809,7 +804,7 @@ export function CreateSaleForm() {
           if (!isTarget(line)) return line;
           if (line.naturalPrice !== undefined) return { ...line, unitPrice: line.naturalPrice };
           const product = byId.get(productId);
-          return product ? { ...line, unitPrice: priceForQuantity(product, line.quantity) } : line;
+          return product ? { ...line, unitPrice: product.price } : line;
         }),
       );
     }
@@ -824,7 +819,7 @@ export function CreateSaleForm() {
         if (!isTarget(line)) return line;
         if (line.naturalPrice !== undefined) return { ...line, unitPrice: line.naturalPrice };
         const product = byId.get(productId);
-        return product ? { ...line, unitPrice: priceForQuantity(product, line.quantity) } : line;
+        return product ? { ...line, unitPrice: product.price } : line;
       }),
     );
   }
@@ -854,7 +849,7 @@ export function CreateSaleForm() {
       current.map((line) => {
         if (line.naturalPrice !== undefined) return { ...line, unitPrice: line.naturalPrice };
         const product = byId.get(line.productId);
-        return product ? { ...line, unitPrice: priceForQuantity(product, line.quantity) } : line;
+        return product ? { ...line, unitPrice: product.price } : line;
       }),
     );
     setDiscountDraft("");
@@ -1020,9 +1015,8 @@ export function CreateSaleForm() {
           naturalPrice,
           unitCost: item.unitCost ?? product.costPrice,
           unit: product.unit,
-          allowDecimal: product.allowDecimal,
           quantity,
-          availableStock: item.availableStock ?? stockCapFor(product.stockQuantity, product.allowDecimal),
+          availableStock: item.availableStock ?? stockCapFor(product.stockQuantity),
           categoryId: product.categoryId ?? null,
           addons: item.addons,
         });
@@ -1030,13 +1024,12 @@ export function CreateSaleForm() {
         nextLines.push({
           productId: product.id,
           productName: product.name,
-          unitPrice: priceForQuantity(product, quantity),
+          unitPrice: product.price,
           listPrice: product.price,
           unitCost: product.costPrice,
           unit: product.unit,
-          allowDecimal: product.allowDecimal,
           quantity,
-          availableStock: stockCapFor(product.stockQuantity, product.allowDecimal),
+          availableStock: stockCapFor(product.stockQuantity),
         });
       }
       if (item.unitPrice.trim()) nextDrafts[lineKey({ productId: product.id, variantId: item.variantId })] = item.unitPrice;
@@ -1383,9 +1376,9 @@ export function CreateSaleForm() {
                           </Button>
                           <Input
                             type="number"
-                            inputMode="decimal"
+                            inputMode="numeric"
                             min={0}
-                            step={line.allowDecimal ? "0.001" : "1"}
+                            step="1"
                             value={quantity}
                             onChange={(event) => updateQuantity(line.productId, event.target.value, line.variantId)}
                             className="num text-center"

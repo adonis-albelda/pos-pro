@@ -49,8 +49,7 @@ export async function moveStock(
 
   const client = getAuthedClient();
 
-  // The product's decimal mode decides whether a fraction is allowed here, so
-  // it is always fetched — count mode needs its stock anyway.
+  // Count mode needs the product's stock regardless.
   const product = await getProduct(client, productId);
   if (!product) return { error: "That product no longer exists.", ok: false };
 
@@ -59,15 +58,14 @@ export async function moveStock(
   // back to the company-wide total on the product row.
   const recordedStock = baselineQuantity ?? product.stockQuantity;
 
-  const floor = mode === "count" ? 0 : product.allowDecimal ? 0.001 : 1;
+  const floor = mode === "count" ? 0 : 1;
   const magnitude = roundQuantity(rawMagnitude);
-  if (!isValidQuantity(magnitude, product.allowDecimal, floor)) {
-    const wholeOnly = product.allowDecimal ? "" : " whole";
+  if (!isValidQuantity(magnitude, floor)) {
     return {
       error:
         mode === "count"
-          ? `Counted quantity must be a${wholeOnly} number, 0 or more.`
-          : `Quantity must be a${wholeOnly} number greater than zero.`,
+          ? "Counted quantity must be a whole number, 0 or more."
+          : "Quantity must be a whole number greater than zero.",
       ok: false,
     };
   }

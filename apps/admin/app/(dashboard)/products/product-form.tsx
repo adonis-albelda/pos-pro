@@ -27,7 +27,6 @@ import { ApiError } from "@double-a/api-client";
 import type { CreateFullProductInput } from "@double-a/api-client/queries";
 import type { Product } from "@double-a/shared-types";
 import {
-  defaultAllowDecimal,
   formatMoney,
   formatPercent,
   formatQuantity,
@@ -774,6 +773,7 @@ interface WizardProductDetails {
   description: string | null;
   notes: string | null;
   categoryId: string | null;
+  subcategoryId: string | null;
   brandId: string | null;
   productType: string;
   tags: { id: string; name: string }[];
@@ -802,8 +802,6 @@ interface WizardVariantConfig {
   barcode: string;
   reorderPoint: string;
   replenishQuantity: string;
-  bulkPrice: string;
-  bulkMinQuantity: string;
   trackInventory: boolean;
   /** Show on terminals — false hides this SKU after sync (same idea as product isActive). */
   isActive: boolean;
@@ -819,8 +817,6 @@ function emptyVariantConfig(): WizardVariantConfig {
     barcode: "",
     reorderPoint: "5",
     replenishQuantity: "0",
-    bulkPrice: "",
-    bulkMinQuantity: "",
     trackInventory: true,
     isActive: true,
     isBundle: false,
@@ -1006,7 +1002,6 @@ function PendingSupplierLinksEditor({
 function StockByLocationCreateTable({
   branches,
   loading,
-  allowDecimal,
   quantities,
   onChange,
   note,
@@ -1015,7 +1010,6 @@ function StockByLocationCreateTable({
 }: {
   branches: { id: string; name: string }[];
   loading: boolean;
-  allowDecimal: boolean;
   quantities: Record<string, string>;
   onChange: (locationId: string, value: string) => void;
   note?: string;
@@ -1033,12 +1027,41 @@ function StockByLocationCreateTable({
       </div>
     );
   }
+  // One branch (the common case) is just "Current stock" and an input — no
+  // branch name shown at all, since a lone "Main Branch" label only read as
+  // confusing extra chrome for owners who don't think in branches.
+  if (1 === branches.length && branches[0]) {
+    const branch = branches[0];
+    return (
+      <>
+        <div className="sm:col-span-2">
+          <Field label="Current stock" required={false}>
+            <Input
+              type="number"
+              step="1"
+              min="0"
+              placeholder="0"
+              value={quantities[branch.id] ?? ""}
+              onChange={(event) => onChange(branch.id, event.target.value)}
+            />
+          </Field>
+        </div>
+        {showNote && note !== undefined && onNoteChange ? (
+          <div className="sm:col-span-2">
+            <Field label="Note" hint="Optional. Shown on each movement in Inventory history." required={false}>
+              <Input value={note} onChange={(event) => onNoteChange(event.target.value)} placeholder="Opening stock" />
+            </Field>
+          </div>
+        ) : null}
+      </>
+    );
+  }
   return (
     <>
       <div className="sm:col-span-2 space-y-2">
         <div className="flex items-center gap-3 px-3">
           <span className="w-[120px] text-caption font-medium text-ink-muted">Branch</span>
-          <span className="w-full text-left text-caption font-medium text-ink-muted">Current Stock Quantity</span>
+          <span className="w-full text-left text-caption font-medium text-ink-muted">Current stock</span>
         </div>
         {branches.map((branch) => (
           <div
@@ -1048,7 +1071,7 @@ function StockByLocationCreateTable({
             <span className="font-medium text-body text-ink w-[120px]">{branch.name}</span>
             <Input
               type="number"
-              step={allowDecimal ? "0.001" : "1"}
+              step="1"
               min="0"
               placeholder="0"
               value={quantities[branch.id] ?? ""}
@@ -1695,32 +1718,6 @@ function WizardAttributesStep({
                               onChange={(event) => setConfig({ costPrice: event.target.value })}
                             />
                           </Field>
-                          <Field
-                            label="Bulk / contractor price"
-                            hint="Optional. Needs a minimum quantity."
-                            required={false}
-                          >
-                            <MoneyInput
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              value={config.bulkPrice}
-                              onChange={(event) => setConfig({ bulkPrice: event.target.value })}
-                            />
-                          </Field>
-                          <Field
-                            label="Bulk minimum quantity"
-                            hint="Quantity that unlocks the bulk price."
-                            required={false}
-                          >
-                            <Input
-                              type="number"
-                              step="1"
-                              min="2"
-                              value={config.bulkMinQuantity}
-                              onChange={(event) => setConfig({ bulkMinQuantity: event.target.value })}
-                            />
-                          </Field>
                         </FormSection>
 
                         <FormSection
@@ -1807,7 +1804,6 @@ function WizardAttributesStep({
                           <StockByLocationCreateTable
                             branches={branches}
                             loading={branchesLoading}
-                            allowDecimal={false}
                             quantities={config.stockByLocation}
                             onChange={(locationId, value) =>
                               setConfig({
@@ -2144,13 +2140,6 @@ function WizardCreatePreviewDialog({
                       {previewMoney(config.costPrice)}
                     </p>
                     <p>
-                      <span className="text-ink-muted">Bulk: </span>
-                      {previewMoney(config.bulkPrice)}
-                      {config.bulkMinQuantity.trim()
-                        ? ` (min ${config.bulkMinQuantity.trim()})`
-                        : ""}
-                    </p>
-                    <p>
                       <span className="text-ink-muted">Barcode: </span>
                       {config.barcode.trim() || "—"}
                     </p>
@@ -2311,15 +2300,6 @@ function SingleProductPreviewDialog({
               <Money value={product.costPrice ?? 0} />
             </p>
             <p>
-              <span className="text-ink-muted">Bulk price: </span>
-              {undefined !== product.bulkPrice && null !== product.bulkPrice ? (
-                <Money value={product.bulkPrice} />
-              ) : (
-                "—"
-              )}
-              {product.bulkMinQuantity ? ` (min ${product.bulkMinQuantity})` : ""}
-            </p>
-            <p>
               <span className="text-ink-muted">Track inventory: </span>
               {product.isTrackInventory ? "Yes" : "No"}
             </p>
@@ -2411,11 +2391,8 @@ export function ProductForm({
     product ? String(product.costPrice) : "",
   );
   const [categoryId, setCategoryId] = useState(product?.categoryId ?? "");
+  const [subcategoryId, setSubcategoryId] = useState(product?.subcategoryId ?? "");
   const [unit, setUnit] = useState(product?.unit ?? "pc");
-  const [allowDecimal, setAllowDecimal] = useState(
-    product?.allowDecimal ?? defaultAllowDecimal("pc"),
-  );
-  const [decimalTouched, setDecimalTouched] = useState(false);
   const [isBundle, setIsBundle] = useState(product?.isBundle ?? false);
   const [trackInventory, setTrackInventory] = useState(product?.isTrackInventory ?? true);
   const [productIsActive, setProductIsActive] = useState(product?.isActive ?? true);
@@ -2647,12 +2624,10 @@ export function ProductForm({
     if ("string" === typeof fields.brand_id) setBrandId(fields.brand_id);
     if ("string" === typeof fields.product_type) setValue("product_type", fields.product_type);
     if ("string" === typeof fields.category_id) setCategoryId(fields.category_id);
+    if ("string" === typeof fields.subcategory_id) setSubcategoryId(fields.subcategory_id);
     if ("string" === typeof fields.unit && isProductUnit(fields.unit)) setUnit(fields.unit);
-    if ("boolean" === typeof fields.allow_decimal) setAllowDecimal(fields.allow_decimal);
     if ("string" === typeof fields.cost_price) setCostPrice(fields.cost_price);
     if ("string" === typeof fields.price) setPrice(fields.price);
-    if ("string" === typeof fields.bulk_price) setValue("bulk_price", fields.bulk_price);
-    if ("string" === typeof fields.bulk_min_quantity) setValue("bulk_min_quantity", fields.bulk_min_quantity);
     if ("boolean" === typeof fields.is_bundle) setIsBundle(fields.is_bundle);
     if ("boolean" === typeof fields.is_sellable) setChecked("is_sellable", fields.is_sellable);
     if ("boolean" === typeof fields.is_purchasable) setChecked("is_purchasable", fields.is_purchasable);
@@ -2848,7 +2823,6 @@ export function ProductForm({
   function onUnitChange(next: string) {
     if (!isProductUnit(next)) return;
     setUnit(next);
-    if (!decimalTouched) setAllowDecimal(defaultAllowDecimal(next));
   }
 
   /**
@@ -2874,6 +2848,7 @@ export function ProductForm({
         description: description.trim() || null,
         notes: String(formData.get("notes") ?? "").trim() || null,
         categoryId: categoryId || null,
+        subcategoryId: subcategoryId || null,
         brandId: brandId || null,
         productType: String(formData.get("product_type") ?? "physical"),
         tags,
@@ -2887,13 +2862,8 @@ export function ProductForm({
       const trimmed = raw.trim();
       if (!trimmed) continue;
       const quantity = Number(trimmed);
-      const floor = allowDecimal ? 0.001 : 1;
-      if (!Number.isFinite(quantity) || quantity <= 0 || !isValidQuantity(quantity, allowDecimal, floor)) {
-        toast.error(
-          allowDecimal
-            ? "Opening stock must be greater than zero."
-            : "Opening stock must be a whole number greater than zero.",
-        );
+      if (!Number.isFinite(quantity) || quantity <= 0 || !isValidQuantity(quantity, 1)) {
+        toast.error("Opening stock must be a whole number greater than zero.");
         return;
       }
       openingStock.push({ locationId, quantity });
@@ -2908,13 +2878,11 @@ export function ProductForm({
         price: Number(price || 0),
         costPrice: Number(costPrice || 0),
         categoryId: categoryId || null,
+        subcategoryId: subcategoryId || null,
         unit,
         barcode: String(formData.get("barcode") ?? "").trim() || null,
         reorderPoint: formData.has("reorder_point") ? Number(formData.get("reorder_point")) : undefined,
         replenishQuantity: formData.has("replenish_quantity") ? Number(formData.get("replenish_quantity")) : undefined,
-        bulkPrice: formData.get("bulk_price") ? Number(formData.get("bulk_price")) : null,
-        bulkMinQuantity: formData.get("bulk_min_quantity") ? Number(formData.get("bulk_min_quantity")) : null,
-        allowDecimal,
         isBundle,
         productType: String(formData.get("product_type") ?? "physical"),
         notes: String(formData.get("notes") ?? "").trim() || null,
@@ -2999,6 +2967,7 @@ export function ProductForm({
         description: wizardProduct.description,
         notes: wizardProduct.notes,
         categoryId: wizardProduct.categoryId,
+        subcategoryId: wizardProduct.subcategoryId,
         productType: wizardProduct.productType,
       },
       brand: wizardProduct.brandId ? { id: wizardProduct.brandId } : null,
@@ -3023,8 +2992,6 @@ export function ProductForm({
           barcode: config.barcode.trim() || null,
           reorderPoint: config.reorderPoint.trim() ? Number(config.reorderPoint) : undefined,
           replenishQuantity: config.replenishQuantity.trim() ? Number(config.replenishQuantity) : undefined,
-          bulkPrice: config.bulkPrice.trim() ? Number(config.bulkPrice) : null,
-          bulkMinQuantity: config.bulkMinQuantity.trim() ? Number(config.bulkMinQuantity) : null,
           isActive: false !== config.isActive,
           isBundle: true === config.isBundle,
           openingStock: trackInventory
@@ -3394,6 +3361,21 @@ export function ProductForm({
                   ]}
                 />
               </Field>
+              <Field label="Subcategory" required={false}>
+                <Combobox
+                  name="subcategory_id"
+                  value={subcategoryId}
+                  onChange={setSubcategoryId}
+                  placeholder="No subcategory"
+                  options={[
+                    { value: "", label: "No subcategory" },
+                    ...categories.map((category) => ({
+                      value: category.id,
+                      label: `${indentLabel(category)}${category.isActive ? "" : " (hidden)"}`,
+                    })),
+                  ]}
+                />
+              </Field>
             </FormSection>
 
             <FormSection
@@ -3482,32 +3464,6 @@ export function ProductForm({
                     ))}
                   </Select>
                 </Field>
-                <div className="sm:col-span-2">
-                  <Field
-                    label="Quantity mode"
-                    hint={
-                      allowDecimal
-                        ? "Fractional quantities allowed (e.g. 2.5 kg)."
-                        : "Whole numbers only."
-                    }
-                    required={false}
-                  >
-                    <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-sm border border-border bg-surface px-3">
-                      <input
-                        type="checkbox"
-                        name="allow_decimal"
-                        checked={allowDecimal}
-                        onChange={(event) => {
-                          setAllowDecimal(event.target.checked);
-                          setDecimalTouched(true);
-                        }}
-                        className="h-4 w-4 accent-primary"
-                      />
-                      <span className="text-body">Allow decimal quantities</span>
-                    </label>
-                  </Field>
-                </div>
-
                 <div className="sm:col-span-2 border-t border-border pt-4">
                   <p className="text-body font-medium text-ink">Minimum Stock (Replenish)</p>
                   <p className="text-caption text-ink-muted">
@@ -3562,7 +3518,6 @@ export function ProductForm({
                   <StockByLocationCreateTable
                     branches={branches}
                     loading={locationsQuery.isPending}
-                    allowDecimal={allowDecimal}
                     quantities={stockQuantities}
                     onChange={(locationId, value) =>
                       setStockQuantities((current) => ({ ...current, [locationId]: value }))
@@ -3752,32 +3707,6 @@ export function ProductForm({
                     )}
                   </div>
                 </div>
-                <Field
-                  label="Bulk / contractor price"
-                  hint="Optional. Needs a minimum quantity."
-                  required={false}
-                >
-                  <MoneyInput
-                    name="bulk_price"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    defaultValue={product?.bulkPrice ?? ""}
-                  />
-                </Field>
-                <Field
-                  label="Bulk minimum quantity"
-                  hint="Quantity that unlocks the bulk price."
-                  required={false}
-                >
-                  <Input
-                    name="bulk_min_quantity"
-                    type="number"
-                    step="1"
-                    min="2"
-                    defaultValue={product?.bulkMinQuantity ?? ""}
-                  />
-                </Field>
               </FormSection>
             ) : (
               // Price still required server-side — set for real per variant next.
