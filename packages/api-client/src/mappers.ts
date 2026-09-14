@@ -7,6 +7,7 @@ import type {
   Company,
   CompanyStats,
   Customer,
+  CustomerGender,
   CustomerOpenSale,
   CustomerPayment,
   Expense,
@@ -278,7 +279,7 @@ export interface CustomerAttrs {
   contact: string | null;
   email?: string | null;
   date_of_birth?: string | null;
-  gender?: string | null;
+  gender?: CustomerGender | null;
   notes?: string | null;
   is_active?: boolean;
   loyalty_points_balance?: number;

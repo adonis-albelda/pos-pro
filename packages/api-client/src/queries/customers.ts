@@ -1,4 +1,4 @@
-import type { Customer, CustomerOpenSale, CustomerPayment } from "@double-a/shared-types";
+import type { Customer, CustomerGender, CustomerOpenSale, CustomerPayment } from "@double-a/shared-types";
 import { ApiError, type ApiClient, type JsonApiResource } from "../http";
 import {
   type CustomerAttrs,
@@ -25,7 +25,7 @@ export interface CustomerInput {
   email?: string | null;
   /** YYYY-MM-DD. */
   dateOfBirth?: string | null;
-  gender?: string | null;
+  gender?: CustomerGender | null;
   notes?: string | null;
   isActive?: boolean;
 }

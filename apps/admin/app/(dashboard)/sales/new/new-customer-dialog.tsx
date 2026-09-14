@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { UserPlus } from "lucide-react";
-import { Button, ErrorNote, Field, Input } from "@/components/ui";
+import { CUSTOMER_GENDER_LABELS, type CustomerGender } from "@double-a/shared-types";
+import { Button, ErrorNote, Field, Input, Select } from "@/components/ui";
 import { Dialog } from "@/components/overlay";
 import { useCreateCustomer } from "@/lib/query/customers";
 
@@ -22,7 +23,7 @@ export function NewCustomerDialog({
   const [address, setAddress] = useState("");
   const [email, setEmail] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
-  const [gender, setGender] = useState("");
+  const [gender, setGender] = useState<CustomerGender | "">("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -53,7 +54,7 @@ export function NewCustomerDialog({
         address: address.trim() || null,
         email: email.trim() || null,
         dateOfBirth: dateOfBirth || null,
-        gender: gender.trim() || null,
+        gender: gender || null,
         notes: notes.trim() || null,
       },
       {
@@ -64,7 +65,7 @@ export function NewCustomerDialog({
   }
 
   return (
-    <Dialog open={open} onClose={onClose} title="Add new customer" className="!w-[90vw] max-w-none">
+    <Dialog open={open} onClose={onClose} title="Add new customer" className="!w-[60vw] max-w-none">
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Name" required>
@@ -100,7 +101,17 @@ export function NewCustomerDialog({
             />
           </Field>
           <Field label="Gender" required={false}>
-            <Input value={gender} onChange={(event) => setGender(event.target.value)} placeholder="Optional" />
+            <Select
+              value={gender}
+              onChange={(event) => setGender(event.target.value as CustomerGender | "")}
+            >
+              <option value="">Not specified</option>
+              {(Object.entries(CUSTOMER_GENDER_LABELS) as [CustomerGender, string][]).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </Select>
           </Field>
         </div>
 

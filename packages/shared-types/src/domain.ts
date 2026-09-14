@@ -740,6 +740,15 @@ export interface ProductWithEstimatedStock extends Product {
  * Pulled to every terminal like products; the POS never treats local SQLite as
  * the source of truth once a sync has landed.
  */
+export type CustomerGender = "male" | "female" | "lgbtq" | "other";
+
+export const CUSTOMER_GENDER_LABELS: Record<CustomerGender, string> = {
+  male: "Male",
+  female: "Female",
+  lgbtq: "LGBTQ+",
+  other: "Other",
+};
+
 export interface Customer {
   id: string;
   name: string;
@@ -749,8 +758,8 @@ export interface Customer {
   email: string | null;
   /** For birthday rewards — optional. YYYY-MM-DD. */
   dateOfBirth: string | null;
-  /** Marketing/analytics — optional, free text. */
-  gender: string | null;
+  /** Marketing/analytics — optional. */
+  gender: CustomerGender | null;
   /** Staff notes — never shown to the customer. */
   notes: string | null;
   isActive: boolean;

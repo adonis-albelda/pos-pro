@@ -2,10 +2,10 @@
 
 import { useActionState, useEffect, useId } from "react";
 import { Check, UserPlus, X } from "lucide-react";
-import { CUSTOMER_FIELD_MAX_LENGTH } from "@double-a/shared-types";
+import { CUSTOMER_FIELD_MAX_LENGTH, CUSTOMER_GENDER_LABELS } from "@double-a/shared-types";
 import type { Customer } from "@double-a/shared-types";
 import { SheetFooter, useSheetChrome } from "@/components/overlay";
-import { Button, ErrorNote, Field, Input, SuccessNote } from "@/components/ui";
+import { Button, ErrorNote, Field, Input, Select, SuccessNote } from "@/components/ui";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
 import { useInvalidateCustomers } from "@/lib/query/customers";
 import { saveCustomer } from "./actions";
@@ -89,7 +89,14 @@ export function CustomerForm({
             <Input type="date" name="date_of_birth" defaultValue={customer?.dateOfBirth ?? ""} />
           </Field>
           <Field label="Gender" required={false}>
-            <Input name="gender" defaultValue={customer?.gender ?? ""} maxLength={30} />
+            <Select name="gender" defaultValue={customer?.gender ?? ""}>
+              <option value="">Not specified</option>
+              {Object.entries(CUSTOMER_GENDER_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </Select>
           </Field>
         </div>
 

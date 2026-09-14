@@ -10,7 +10,9 @@ import {
 } from "@double-a/api-client/queries";
 import {
   CUSTOMER_FIELD_MAX_LENGTH,
+  CUSTOMER_GENDER_LABELS,
   normaliseCustomerDetails,
+  type CustomerGender,
 } from "@double-a/shared-types";
 import type { FormState } from "@/lib/form-state";
 import { getAuthedClient } from "@/lib/api/session";
@@ -38,7 +40,14 @@ export async function saveCustomer(
 
   const email = String(formData.get("email") ?? "").trim();
   const dateOfBirth = String(formData.get("date_of_birth") ?? "").trim();
-  const gender = String(formData.get("gender") ?? "").trim();
+  const genderRaw = String(formData.get("gender") ?? "").trim();
+  // The <select> only ever submits one of these keys or "" — a stray value
+  // here would mean tampered form data, so it's dropped rather than sent on.
+  const gender = (
+    Object.keys(CUSTOMER_GENDER_LABELS) as CustomerGender[]
+  ).includes(genderRaw as CustomerGender)
+    ? (genderRaw as CustomerGender)
+    : null;
   const notes = String(formData.get("notes") ?? "").trim();
 
   const client = getAuthedClient();
@@ -48,7 +57,7 @@ export async function saveCustomer(
     contact: details.contact,
     email: email || null,
     dateOfBirth: dateOfBirth || null,
-    gender: gender || null,
+    gender,
     notes: notes || null,
     // Absent on a new-customer submit (no checkbox rendered there) means
     // "leave the server default" — id present is the edit form, which does
