@@ -70,6 +70,14 @@ export function CustomerForm({
               maxLength={CUSTOMER_FIELD_MAX_LENGTH}
             />
           </Field>
+          <Field label="Email" required={false}>
+            <Input
+              type="email"
+              name="email"
+              defaultValue={customer?.email ?? ""}
+              maxLength={CUSTOMER_FIELD_MAX_LENGTH}
+            />
+          </Field>
           <Field label="Address" required={false}>
             <Input
               name="address"
@@ -77,7 +85,29 @@ export function CustomerForm({
               maxLength={CUSTOMER_FIELD_MAX_LENGTH}
             />
           </Field>
+          <Field label="Date of birth" required={false}>
+            <Input type="date" name="date_of_birth" defaultValue={customer?.dateOfBirth ?? ""} />
+          </Field>
+          <Field label="Gender" required={false}>
+            <Input name="gender" defaultValue={customer?.gender ?? ""} maxLength={30} />
+          </Field>
         </div>
+
+        <Field label="Notes" required={false} hint="Staff-only — never shown to the customer.">
+          <Input name="notes" defaultValue={customer?.notes ?? ""} maxLength={2000} />
+        </Field>
+
+        {customer ? (
+          <label className="flex items-center gap-2 text-body text-ink">
+            <input
+              type="checkbox"
+              name="is_active"
+              defaultChecked={customer.isActive}
+              className="size-4 rounded border-border"
+            />
+            Active
+          </label>
+        ) : null}
 
         {state.error ? <ErrorNote>{state.error}</ErrorNote> : null}
         {state.ok ? <SuccessNote>Saved.</SuccessNote> : null}

@@ -745,8 +745,21 @@ export interface Customer {
   name: string;
   address: string | null;
   contact: string | null;
+  /** For receipts, promotions, account — optional. */
+  email: string | null;
+  /** For birthday rewards — optional. YYYY-MM-DD. */
+  dateOfBirth: string | null;
+  /** Marketing/analytics — optional, free text. */
+  gender: string | null;
+  /** Staff notes — never shown to the customer. */
+  notes: string | null;
+  isActive: boolean;
   /** Cached from loyalty_points_ledger — see LoyaltyLedgerEntry (loyalty.ts) for the source of truth. */
   loyaltyPointsBalance: number;
+  /** Running total ever earned — never decreases, unlike loyaltyPointsBalance. */
+  lifetimePointsEarned: number;
+  /** Running total ever redeemed — never decreases. */
+  lifetimePointsRedeemed: number;
   updatedAt: string;
 }
 

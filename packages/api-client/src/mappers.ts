@@ -276,7 +276,14 @@ export interface CustomerAttrs {
   name: string;
   address: string | null;
   contact: string | null;
+  email?: string | null;
+  date_of_birth?: string | null;
+  gender?: string | null;
+  notes?: string | null;
+  is_active?: boolean;
   loyalty_points_balance?: number;
+  lifetime_points_earned?: number;
+  lifetime_points_redeemed?: number;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -288,7 +295,14 @@ export function toCustomer(resource: JsonApiResource<CustomerAttrs>): Customer {
     name: a.name,
     address: a.address,
     contact: a.contact,
+    email: a.email ?? null,
+    dateOfBirth: a.date_of_birth ?? null,
+    gender: a.gender ?? null,
+    notes: a.notes ?? null,
+    isActive: a.is_active ?? true,
     loyaltyPointsBalance: a.loyalty_points_balance ?? 0,
+    lifetimePointsEarned: a.lifetime_points_earned ?? 0,
+    lifetimePointsRedeemed: a.lifetime_points_redeemed ?? 0,
     updatedAt: a.updated_at ?? "",
   };
 }

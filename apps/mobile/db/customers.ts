@@ -21,7 +21,17 @@ function toLocal(row: CustomerRow): LocalCustomer {
     name: row.name,
     address: row.address,
     contact: row.contact,
+    // Not synced to this device yet — admin-only profile fields (see
+    // create_2026_09_14_000003_add_profile_fields_to_customers_table),
+    // no local schema column for them.
+    email: null,
+    dateOfBirth: null,
+    gender: null,
+    notes: null,
+    isActive: true,
     loyaltyPointsBalance: row.loyalty_points_balance,
+    lifetimePointsEarned: 0,
+    lifetimePointsRedeemed: 0,
     updatedAt: row.updated_at ?? "",
     syncStatus: row.sync_status as SyncStatus,
   };
@@ -102,7 +112,14 @@ export async function upsertLocalCustomer(input: {
     name: input.name,
     address: input.address,
     contact: input.contact,
+    email: null,
+    dateOfBirth: null,
+    gender: null,
+    notes: null,
+    isActive: true,
     loyaltyPointsBalance: 0,
+    lifetimePointsEarned: 0,
+    lifetimePointsRedeemed: 0,
     updatedAt,
     syncStatus: syncStatus as SyncStatus,
   };

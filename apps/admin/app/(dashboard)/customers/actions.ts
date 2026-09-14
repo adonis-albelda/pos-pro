@@ -36,11 +36,24 @@ export async function saveCustomer(
     return { error: "Give the customer a name.", ok: false };
   }
 
+  const email = String(formData.get("email") ?? "").trim();
+  const dateOfBirth = String(formData.get("date_of_birth") ?? "").trim();
+  const gender = String(formData.get("gender") ?? "").trim();
+  const notes = String(formData.get("notes") ?? "").trim();
+
   const client = getAuthedClient();
   const row = {
     name: details.name.slice(0, CUSTOMER_FIELD_MAX_LENGTH),
     address: details.address,
     contact: details.contact,
+    email: email || null,
+    dateOfBirth: dateOfBirth || null,
+    gender: gender || null,
+    notes: notes || null,
+    // Absent on a new-customer submit (no checkbox rendered there) means
+    // "leave the server default" — id present is the edit form, which does
+    // render the checkbox, so its absence there means unchecked.
+    isActive: id ? formData.has("is_active") : undefined,
   };
 
   try {

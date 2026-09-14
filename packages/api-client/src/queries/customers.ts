@@ -22,6 +22,12 @@ export interface CustomerInput {
   name: string;
   address?: string | null;
   contact?: string | null;
+  email?: string | null;
+  /** YYYY-MM-DD. */
+  dateOfBirth?: string | null;
+  gender?: string | null;
+  notes?: string | null;
+  isActive?: boolean;
 }
 
 function toPayload(input: Partial<CustomerInput>): Record<string, unknown> {
@@ -30,6 +36,11 @@ function toPayload(input: Partial<CustomerInput>): Record<string, unknown> {
   if (input.name !== undefined) payload.name = input.name;
   if (input.address !== undefined) payload.address = input.address;
   if (input.contact !== undefined) payload.contact = input.contact;
+  if (input.email !== undefined) payload.email = input.email;
+  if (input.dateOfBirth !== undefined) payload.date_of_birth = input.dateOfBirth;
+  if (input.gender !== undefined) payload.gender = input.gender;
+  if (input.notes !== undefined) payload.notes = input.notes;
+  if (input.isActive !== undefined) payload.is_active = input.isActive;
   return payload;
 }
 

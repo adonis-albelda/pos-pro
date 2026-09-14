@@ -20,6 +20,10 @@ export function NewCustomerDialog({
   const [name, setName] = useState("");
   const [contact, setContact] = useState("");
   const [address, setAddress] = useState("");
+  const [email, setEmail] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [gender, setGender] = useState("");
+  const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -27,6 +31,10 @@ export function NewCustomerDialog({
       setName("");
       setContact("");
       setAddress("");
+      setEmail("");
+      setDateOfBirth("");
+      setGender("");
+      setNotes("");
       setError(null);
     }
   }, [open]);
@@ -39,7 +47,15 @@ export function NewCustomerDialog({
     }
     setError(null);
     create.mutate(
-      { name: trimmed, contact: contact.trim() || null, address: address.trim() || null },
+      {
+        name: trimmed,
+        contact: contact.trim() || null,
+        address: address.trim() || null,
+        email: email.trim() || null,
+        dateOfBirth: dateOfBirth || null,
+        gender: gender.trim() || null,
+        notes: notes.trim() || null,
+      },
       {
         onSuccess: (customer) => onCreated(customer.id),
         onError: (cause) => setError(cause instanceof Error ? cause.message : "Could not create this customer."),
@@ -50,7 +66,7 @@ export function NewCustomerDialog({
   return (
     <Dialog open={open} onClose={onClose} title="Add new customer" className="!w-[90vw] max-w-none">
       <div className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Name" required>
             <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Customer name" autoFocus />
           </Field>
@@ -58,7 +74,15 @@ export function NewCustomerDialog({
             <Input
               value={contact}
               onChange={(event) => setContact(event.target.value)}
-              placeholder="Phone or e-mail"
+              placeholder="Phone number"
+            />
+          </Field>
+          <Field label="Email" required={false}>
+            <Input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="name@example.com"
             />
           </Field>
           <Field label="Address" required={false}>
@@ -68,7 +92,21 @@ export function NewCustomerDialog({
               placeholder="Delivery address"
             />
           </Field>
+          <Field label="Date of birth" required={false}>
+            <Input
+              type="date"
+              value={dateOfBirth}
+              onChange={(event) => setDateOfBirth(event.target.value)}
+            />
+          </Field>
+          <Field label="Gender" required={false}>
+            <Input value={gender} onChange={(event) => setGender(event.target.value)} placeholder="Optional" />
+          </Field>
         </div>
+
+        <Field label="Notes" required={false} hint="Staff-only — never shown to the customer.">
+          <Input value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Optional" />
+        </Field>
 
         {error ? <ErrorNote>{error}</ErrorNote> : null}
 
