@@ -159,8 +159,27 @@ export function ClassicShell({
             Main menu
           </Link>
 
-          {navGroups.filter((group) => group.label).map((group) => {
-            const label = group.label as string;
+          {navGroups.map((group) => {
+            // Ungrouped items (label: null — Sales, Company, Users, etc.) have
+            // no dropdown to live in, so each renders as its own top-bar link
+            // instead of vanishing (they used to be filtered out entirely).
+            if (!group.label) {
+              return group.items.map(({ href, label: itemLabel, icon: Icon }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className={[
+                    "inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1.5 text-caption transition-colors",
+                    isActive(href) ? "bg-border/70 font-medium text-ink" : "text-ink hover:bg-border/60",
+                  ].join(" ")}
+                >
+                  <Icon size={14} strokeWidth={2} className="text-ink-muted" />
+                  {itemLabel}
+                </Link>
+              ));
+            }
+
+            const label = group.label;
             const open = openGroup === label;
             const active = group.items.some((item) => isActive(item.href));
 

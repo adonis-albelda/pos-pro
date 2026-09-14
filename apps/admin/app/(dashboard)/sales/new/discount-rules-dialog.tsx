@@ -144,7 +144,7 @@ export function DiscountRulesDialog({
       }}
       title="Discount this sale"
       description="Every discount the system currently detects for this cart, plus a manual whole-cart amount."
-      className="!w-[80vw] max-w-none"
+      className="sm:!max-w-2xl lg:!w-[80vw] lg:!max-w-none"
     >
       <div className="grid gap-6 sm:grid-cols-2">
         <div className="space-y-5">

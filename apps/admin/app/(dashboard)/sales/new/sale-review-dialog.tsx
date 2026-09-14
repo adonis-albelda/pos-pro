@@ -138,7 +138,7 @@ export function SaleReviewDialog({
       open={open}
       onClose={pending ? noop : onClose}
       title={succeeded ? "Sale complete" : "Confirm sale"}
-      className="!w-[80vw] max-w-none"
+      className="sm:!max-w-2xl lg:!w-[80vw] lg:!max-w-none"
     >
       {succeeded ? (
         <div className="flex flex-col items-center gap-4 px-2 py-6 text-center">

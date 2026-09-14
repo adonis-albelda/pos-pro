@@ -1289,8 +1289,8 @@ export function CreateSaleForm() {
         </Card>
       </div>
 
-      {/* Cart — right column on desktop, pinned full-height and never scrolls with the product grid. Stacked below on narrow widths. */}
-      <div className="flex min-h-0 w-full flex-col gap-4 lg:h-full lg:w-[420px] lg:shrink-0">
+      {/* Cart — right column on desktop, pinned full-height and never scrolls with the product grid. Stacked below on narrow widths, sharing height with the product column so it scrolls internally instead of overflowing the page. */}
+      <div className="flex min-h-0 flex-1 w-full flex-col gap-4 lg:h-full lg:w-[420px] lg:flex-none lg:shrink-0">
         <Card className="flex min-h-0 flex-1 flex-col">
           <CardHeader
             icon={ShoppingCart}

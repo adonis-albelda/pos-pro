@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Redirect, Stack, usePathname, useRouter } from "expo-router";
 import { Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -78,10 +78,6 @@ export default function AdminLayout() {
   // driver, helper) on a plain terminal never reaches here.
   if (!canOpenAdminDashboard) return <Redirect href="/pos" />;
 
-  if (check === "checking") {
-    return <LoadingState text="Opening admin dashboard…" />;
-  }
-
   // The embedded web dashboard is a dead end to go look at, not a tab to
   // jump out of mid-task — same reasoning as the drawer's own detail screens
   // (see app/pos/_layout.tsx's showBottomTabBar). Native admin subpages
@@ -89,8 +85,15 @@ export default function AdminLayout() {
   // not just phone — same reasoning as pos/_layout.tsx's own change.
   const showBottomTabBar = pathname !== "/admin";
 
-  if (check === "error") {
-    return (
+  // StoreHeader stays mounted through "checking"/"error" too — it used to be
+  // swapped out for a bare LoadingState/error screen, which made the header
+  // flash away and back on every open instead of just showing its own state
+  // underneath a chrome that never moves.
+  let content: ReactNode;
+  if (check === "checking") {
+    content = <LoadingState text="Opening admin dashboard…" />;
+  } else if (check === "error") {
+    content = (
       <View
         style={[
           styles.screen,
@@ -101,6 +104,15 @@ export default function AdminLayout() {
         <Text style={[styles.muted, { textAlign: "center" }]}>{error}</Text>
         <Button label="Back to POS" onPress={() => router.replace("/pos")} />
       </View>
+    );
+  } else {
+    content = (
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: "transparent" },
+        }}
+      />
     );
   }
 
@@ -123,14 +135,7 @@ export default function AdminLayout() {
           >
             <StoreHeader />
 
-            <View style={{ flex: 1, minHeight: 0 }}>
-              <Stack
-                screenOptions={{
-                  headerShown: false,
-                  contentStyle: { backgroundColor: "transparent" },
-                }}
-              />
-            </View>
+            <View style={{ flex: 1, minHeight: 0 }}>{content}</View>
             <PinRelockOverlay />
             {showBottomTabBar ? <BottomTabBar /> : null}
           </View>

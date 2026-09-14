@@ -65,9 +65,14 @@ export function NewCustomerDialog({
   }
 
   return (
-    <Dialog open={open} onClose={onClose} title="Add new customer" className="!w-[60vw] max-w-none">
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="Add new customer"
+      className="sm:!max-w-xl lg:!w-[60vw] lg:!max-w-none"
+    >
       <div className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <Field label="Name" required>
             <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Customer name" autoFocus />
           </Field>
