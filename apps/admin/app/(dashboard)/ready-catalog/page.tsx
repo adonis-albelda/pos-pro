@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BookCopy, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
-import type { ReadyCatalogCategory, ReadyCatalogSummary } from "@double-a/api-client/queries";
+import type { ReadyCatalogCategory } from "@double-a/api-client/queries";
 import {
   Button,
   Card,
@@ -13,7 +13,7 @@ import {
   Select,
   Skeleton,
 } from "@/components/ui";
-import { useReadyCatalog, useReadyCatalogs } from "@/lib/query/catalogs";
+import { useReadyCatalogCategories } from "@/lib/query/catalogs";
 
 const STORE_TYPES = [
   { value: "supermarket", label: "Supermarket" },
@@ -21,8 +21,10 @@ const STORE_TYPES = [
   { value: "hardware", label: "Hardware", disabled: true },
 ] as const;
 
-function productKey(category: string, name: string): string {
-  return `${category}::${name}`;
+const LOAD_MORE_THRESHOLD_PX = 400;
+
+function productKey(categoryId: string, name: string): string {
+  return `${categoryId}::${name}`;
 }
 
 function CategoryAccordion({
@@ -39,7 +41,7 @@ function CategoryAccordion({
   onImport: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const keys = block.products.map((p) => productKey(block.category, p.name));
+  const keys = block.products.map((p) => productKey(block.id, p.name));
   const selectedCount = keys.filter((k) => selected.has(k)).length;
   const allSelected = keys.length > 0 && selectedCount === keys.length;
   const someSelected = selectedCount > 0 && !allSelected;
@@ -85,7 +87,7 @@ function CategoryAccordion({
         <CardBody className="space-y-3">
           <ul className="max-h-80 space-y-2 overflow-y-auto">
             {block.products.map((product) => {
-              const key = productKey(block.category, product.name);
+              const key = productKey(block.id, product.name);
               const checked = selected.has(key);
               return (
                 <li key={key}>
@@ -120,93 +122,73 @@ function CategoryAccordion({
   );
 }
 
-function CatalogPicker({
-  catalogs,
-  selectedId,
-  onSelect,
-}: {
-  catalogs: ReadyCatalogSummary[];
-  selectedId: string | null;
-  onSelect: (id: string) => void;
-}) {
-  if (catalogs.length <= 1) return null;
-
-  return (
-    <Field label="Catalog">
-      <Select
-        value={selectedId ?? ""}
-        onChange={(e) => onSelect(e.target.value)}
-      >
-        <option value="" disabled>
-          Choose a catalog…
-        </option>
-        {catalogs.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.name ?? c.id}
-          </option>
-        ))}
-      </Select>
-    </Field>
-  );
-}
-
 export default function ReadyCatalogPage() {
   const [storeType, setStoreType] = useState<string>("");
-  const [catalogId, setCatalogId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
 
-  const listQuery = useReadyCatalogs(storeType || null);
-  const detailQuery = useReadyCatalog(catalogId);
+  const catalogQuery = useReadyCatalogCategories(storeType || null);
+  const categories = useMemo(
+    () => catalogQuery.data?.pages.flatMap((page) => page.categories) ?? [],
+    [catalogQuery.data],
+  );
+  const total = catalogQuery.data?.pages[0]?.total ?? 0;
 
-  // Auto-pick when the list has exactly one catalog for the store type.
-  useEffect(() => {
-    const rows = listQuery.data;
-    if (!rows) return;
-    if (rows.length === 1) {
-      setCatalogId(rows[0]!.id);
-      return;
-    }
-    if (catalogId && !rows.some((r) => r.id === catalogId)) {
-      setCatalogId(null);
-    }
-  }, [listQuery.data, catalogId]);
-
-  // Clear selection when switching catalogs.
+  // Clear selection when switching store type.
   useEffect(() => {
     setSelected(new Set());
-  }, [catalogId]);
+  }, [storeType]);
 
-  const categories = detailQuery.data?.products ?? [];
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || !storeType) return;
 
-  const selectedByCategory = useMemo(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (
+          entry?.isIntersecting &&
+          catalogQuery.hasNextPage &&
+          !catalogQuery.isFetchingNextPage
+        ) {
+          void catalogQuery.fetchNextPage();
+        }
+      },
+      { rootMargin: `${LOAD_MORE_THRESHOLD_PX}px` },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeType, catalogQuery.hasNextPage, catalogQuery.isFetchingNextPage]);
+
+  const selectedByCategoryId = useMemo(() => {
     const map = new Map<string, string[]>();
     for (const key of selected) {
       const sep = key.indexOf("::");
       if (sep < 0) continue;
-      const category = key.slice(0, sep);
+      const categoryId = key.slice(0, sep);
       const name = key.slice(sep + 2);
-      const list = map.get(category) ?? [];
+      const list = map.get(categoryId) ?? [];
       list.push(name);
-      map.set(category, list);
+      map.set(categoryId, list);
     }
     return map;
   }, [selected]);
 
-  function toggleProduct(category: string, name: string, checked: boolean) {
+  function toggleProduct(categoryId: string, name: string, checked: boolean) {
     setSelected((prev) => {
       const next = new Set(prev);
-      const key = productKey(category, name);
+      const key = productKey(categoryId, name);
       if (checked) next.add(key);
       else next.delete(key);
       return next;
     });
   }
 
-  function toggleAll(category: string, products: { name: string }[], checked: boolean) {
+  function toggleAll(categoryId: string, products: { name: string }[], checked: boolean) {
     setSelected((prev) => {
       const next = new Set(prev);
       for (const p of products) {
-        const key = productKey(category, p.name);
+        const key = productKey(categoryId, p.name);
         if (checked) next.add(key);
         else next.delete(key);
       }
@@ -214,15 +196,14 @@ export default function ReadyCatalogPage() {
     });
   }
 
-  function onImport(category: string) {
-    const names = selectedByCategory.get(category) ?? [];
+  function onImport(block: ReadyCatalogCategory) {
+    const names = selectedByCategoryId.get(block.id) ?? [];
     if (names.length === 0) {
       toast.error("Select at least one product");
       return;
     }
-    // Import write path lands in a follow-up — selection UX only for now.
     toast.message("Import coming soon", {
-      description: `${names.length} product${names.length === 1 ? "" : "s"} in “${category}”.`,
+      description: `${names.length} product${names.length === 1 ? "" : "s"} in “${block.category}”.`,
     });
   }
 
@@ -235,15 +216,11 @@ export default function ReadyCatalogPage() {
       />
 
       <Card>
-        <CardBody className="grid gap-4 sm:grid-cols-2">
+        <CardBody className="max-w-md">
           <Field label="Store type" hint="More store types land as we seed them.">
             <Select
               value={storeType}
-              onChange={(e) => {
-                setStoreType(e.target.value);
-                setCatalogId(null);
-                setSelected(new Set());
-              }}
+              onChange={(e) => setStoreType(e.target.value)}
             >
               <option value="">Select store type…</option>
               {STORE_TYPES.map((t) => (
@@ -254,28 +231,6 @@ export default function ReadyCatalogPage() {
               ))}
             </Select>
           </Field>
-
-          {storeType ? (
-            listQuery.isPending ? (
-              <Skeleton className="h-10" />
-            ) : listQuery.isError ? (
-              <p className="self-end text-body text-danger">
-                {listQuery.error instanceof Error
-                  ? listQuery.error.message
-                  : "Could not load catalogs."}
-              </p>
-            ) : (listQuery.data?.length ?? 0) === 0 ? (
-              <p className="self-end text-body text-ink-muted">
-                No ready catalogs for this store type yet.
-              </p>
-            ) : (
-              <CatalogPicker
-                catalogs={listQuery.data ?? []}
-                selectedId={catalogId}
-                onSelect={setCatalogId}
-              />
-            )
-          ) : null}
         </CardBody>
       </Card>
 
@@ -283,35 +238,47 @@ export default function ReadyCatalogPage() {
         <Card className="px-4 py-10 text-center text-body text-ink-muted">
           Choose a store type to see available starter catalogs.
         </Card>
-      ) : catalogId && detailQuery.isPending ? (
+      ) : catalogQuery.isPending ? (
         <div className="space-y-3">
           <Skeleton className="h-14" />
           <Skeleton className="h-14" />
           <Skeleton className="h-14" />
         </div>
-      ) : catalogId && detailQuery.isError ? (
+      ) : catalogQuery.isError ? (
         <Card className="px-4 py-8 text-center text-body text-danger">
-          {detailQuery.error instanceof Error
-            ? detailQuery.error.message
-            : "Could not load this catalog."}
+          {catalogQuery.error instanceof Error
+            ? catalogQuery.error.message
+            : "Could not load catalogs."}
         </Card>
-      ) : catalogId ? (
+      ) : categories.length === 0 ? (
+        <Card className="px-4 py-10 text-center text-body text-ink-muted">
+          No ready catalogs for this store type yet.
+        </Card>
+      ) : (
         <div className="space-y-3">
           <p className="text-caption text-ink-muted">
-            {detailQuery.data?.name ?? "Catalog"} · {categories.length} categories
+            {categories[0]?.name ?? "Catalog"} · showing {categories.length}
+            {total > categories.length ? ` of ${total}` : ""} categories
           </p>
           {categories.map((block) => (
             <CategoryAccordion
-              key={block.category}
+              key={block.id}
               block={block}
               selected={selected}
-              onToggleProduct={(name, checked) => toggleProduct(block.category, name, checked)}
-              onToggleAll={(checked) => toggleAll(block.category, block.products, checked)}
-              onImport={() => onImport(block.category)}
+              onToggleProduct={(name, checked) => toggleProduct(block.id, name, checked)}
+              onToggleAll={(checked) => toggleAll(block.id, block.products, checked)}
+              onImport={() => onImport(block)}
             />
           ))}
+          <div ref={sentinelRef} className="h-8" aria-hidden />
+          {catalogQuery.isFetchingNextPage ? (
+            <p className="py-2 text-center text-caption text-ink-muted">Loading more…</p>
+          ) : null}
+          {!catalogQuery.hasNextPage && categories.length > 0 ? (
+            <p className="py-2 text-center text-caption text-ink-muted">End of catalog</p>
+          ) : null}
         </div>
-      ) : null}
+      )}
     </div>
   );
 }

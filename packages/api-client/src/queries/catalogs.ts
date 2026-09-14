@@ -1,71 +1,86 @@
-import type { ApiClient, JsonApiResource } from "../http";
+import type { ApiClient, JsonApiPage, JsonApiResource } from "../http";
 
-/** One product line inside a ready-catalog category. */
+/** One product line inside a ready-catalog category row. */
 export interface ReadyCatalogProduct {
   name: string;
   variants: string[];
 }
 
-/** Category block: accordion unit on the Ready Catalog page. */
+/**
+ * One DB row = one category from the source JSON
+ * (`{ category, products: [...] }`).
+ */
 export interface ReadyCatalogCategory {
-  category: string;
-  products: ReadyCatalogProduct[];
-}
-
-/** List row — no products payload (heavy JSON stays on show). */
-export interface ReadyCatalogSummary {
   id: string;
   storeType: string;
+  /** Pack label, e.g. "Supermarket starter". */
   name: string | null;
+  category: string;
+  products: ReadyCatalogProduct[];
+  sortOrder: number;
   createdAt: string | null;
   updatedAt: string | null;
-}
-
-/** Full ready catalog including the products tree. */
-export interface ReadyCatalog extends ReadyCatalogSummary {
-  products: ReadyCatalogCategory[];
 }
 
 interface CatalogAttrs {
   store_type: string;
   name: string | null;
-  products?: ReadyCatalogCategory[];
+  category: string;
+  products: ReadyCatalogProduct[];
+  sort_order: number;
   created_at: string | null;
   updated_at: string | null;
 }
 
-function toSummary(resource: JsonApiResource<CatalogAttrs>): ReadyCatalogSummary {
+function toCategory(resource: JsonApiResource<CatalogAttrs>): ReadyCatalogCategory {
   const a = resource.attributes;
   return {
     id: resource.id,
     storeType: a.store_type,
     name: a.name,
+    category: a.category,
+    products: a.products ?? [],
+    sortOrder: a.sort_order,
     createdAt: a.created_at,
     updatedAt: a.updated_at,
   };
 }
 
-function toCatalog(resource: JsonApiResource<CatalogAttrs>): ReadyCatalog {
-  const a = resource.attributes;
+export interface ListCatalogsPageOptions {
+  storeType?: string | null;
+  page?: number;
+  /** Default 20 — matches admin infinite-scroll page size. */
+  pageSize?: number;
+}
+
+export interface ListCatalogsPageResult {
+  categories: ReadyCatalogCategory[];
+  total: number;
+  lastPage: number;
+  currentPage: number;
+}
+
+/** Paginated category rows for a store type. */
+export async function listCatalogsPage(
+  client: ApiClient,
+  options: ListCatalogsPageOptions = {},
+): Promise<ListCatalogsPageResult> {
+  const page = await client.get<JsonApiPage<CatalogAttrs>>("/catalogs", {
+    store_type: options.storeType || undefined,
+    page: options.page ?? 1,
+    per_page: options.pageSize ?? 20,
+  });
+
   return {
-    ...toSummary(resource),
-    products: a.products ?? [],
+    categories: page.data.map(toCategory),
+    total: page.meta?.total ?? page.data.length,
+    lastPage: page.meta?.last_page ?? 1,
+    currentPage: page.meta?.current_page ?? options.page ?? 1,
   };
 }
 
-/** Platform-global ready catalogs, optionally filtered by store_type. */
-export async function listCatalogs(
-  client: ApiClient,
-  storeType?: string | null,
-): Promise<ReadyCatalogSummary[]> {
-  const { data } = await client.get<{ data: JsonApiResource<CatalogAttrs>[] }>("/catalogs", {
-    store_type: storeType || undefined,
-  });
-  return data.map(toSummary);
-}
-
-/** One ready catalog with the full products JSON tree. */
-export async function getCatalog(client: ApiClient, id: string): Promise<ReadyCatalog> {
+/** One category row by id. */
+export async function getCatalog(client: ApiClient, id: string): Promise<ReadyCatalogCategory> {
   const { data } = await client.get<{ data: JsonApiResource<CatalogAttrs> }>(`/catalogs/${id}`);
-  return toCatalog(data);
+  return toCategory(data);
 }
