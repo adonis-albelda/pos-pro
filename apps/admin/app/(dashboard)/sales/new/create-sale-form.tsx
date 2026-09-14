@@ -5,7 +5,6 @@ import type { Route } from "next";
 import { useRouter } from "next/navigation";
 import {
   Camera,
-  Gift,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -238,7 +237,6 @@ export function CreateSaleForm() {
   const [drafts, setDrafts] = useState<SaleDraft[]>([]);
   const [draftsOpen, setDraftsOpen] = useState(false);
 
-  const [discountOpen, setDiscountOpen] = useState(false);
   const [discountDraft, setDiscountDraft] = useState("");
 
   useEffect(() => {
@@ -261,8 +259,8 @@ export function CreateSaleForm() {
   // Clear the typed amount each time the dialog opens — no per-line id to key
   // it on, so a re-open must never show the last discount typed.
   useEffect(() => {
-    if (discountOpen) setDiscountDraft("");
-  }, [discountOpen]);
+    if (discountRulesOpen) setDiscountDraft("");
+  }, [discountRulesOpen]);
 
   const customers = customersQuery.data ?? [];
   const categories = categoriesQuery.data ?? [];
@@ -810,7 +808,6 @@ export function CreateSaleForm() {
       }
       return next;
     });
-    setDiscountOpen(false);
     setDiscountDraft("");
   }
 
@@ -823,7 +820,6 @@ export function CreateSaleForm() {
         return product ? { ...line, unitPrice: priceForQuantity(product, line.quantity) } : line;
       }),
     );
-    setDiscountOpen(false);
     setDiscountDraft("");
   }
 
@@ -1505,25 +1501,6 @@ export function CreateSaleForm() {
               ) : null}
 
               {lines.length > 0 ? (
-                <div className="flex items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setDiscountOpen(true)}
-                    className="flex items-center gap-1.5 text-body text-primary-dark underline decoration-dotted"
-                  >
-                    <Tag size={14} strokeWidth={2.5} />
-                    {lineDiscount > 0 ? "Discount given" : "Add a discount for the whole cart"}
-                    <Pencil size={11} />
-                  </button>
-                  {lineDiscount > 0 ? (
-                    <span className="num text-body-lg font-semibold text-warning-ink">
-                      -{formatMoney(lineDiscount)}
-                    </span>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {lines.length > 0 ? (
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between gap-2">
                     <button
@@ -1531,13 +1508,20 @@ export function CreateSaleForm() {
                       onClick={() => setDiscountRulesOpen(true)}
                       className="flex items-center gap-1.5 text-body text-primary-dark underline decoration-dotted"
                     >
-                      <Gift size={14} strokeWidth={2.5} />
-                      Rules &amp; loyalty
+                      <Tag size={14} strokeWidth={2.5} />
+                      {discount > 0 ? "Discount applied" : "Add a discount"}
                       <Pencil size={11} />
                     </button>
-                    {qualifyingComplex.length > 0 ? (
-                      <Badge tone="warning">{qualifyingComplex.length} promo qualifies</Badge>
-                    ) : null}
+                    <span className="flex items-center gap-2">
+                      {qualifyingComplex.length > 0 ? (
+                        <Badge tone="warning">{qualifyingComplex.length} promo qualifies</Badge>
+                      ) : null}
+                      {discount > 0 ? (
+                        <span className="num text-body-lg font-semibold text-warning-ink">
+                          -{formatMoney(discount)}
+                        </span>
+                      ) : null}
+                    </span>
                   </div>
                   {orderDiscounts.length > 0 ? (
                     <div className="flex flex-wrap gap-1.5">
@@ -1630,51 +1614,13 @@ export function CreateSaleForm() {
         tax={taxSettings}
         onApply={addOrderDiscount}
         onRemove={removeOrderDiscount}
+        total={total}
+        lineDiscount={lineDiscount}
+        discountDraft={discountDraft}
+        onDiscountDraftChange={setDiscountDraft}
+        onApplyWholeDiscount={() => applyGlobalDiscount(Number(discountDraft))}
+        onClearWholeDiscount={clearAllDiscounts}
       />
-
-      <Dialog
-        open={discountOpen}
-        onClose={() => setDiscountOpen(false)}
-        title="Discount the whole cart"
-        description="Split across every line by its share of the total, so it still shows per item on the receipt."
-      >
-        <div className="space-y-4">
-          <Field label="Discount amount" required={false}>
-            <MoneyInput
-              type="number"
-              inputMode="decimal"
-              min={0}
-              step="0.01"
-              autoFocus
-              placeholder="0.00"
-              value={discountDraft}
-              onChange={(event) => setDiscountDraft(event.target.value)}
-            />
-          </Field>
-
-          {Number(discountDraft) > total ? (
-            <p className="text-caption text-ink-muted">
-              Capped at {formatMoney(total)} — the cart&rsquo;s current total.
-            </p>
-          ) : null}
-
-          <div className="flex flex-col gap-2">
-            <Button
-              type="button"
-              icon={CheckCircle2}
-              disabled={!(Number(discountDraft) > 0)}
-              onClick={() => applyGlobalDiscount(Number(discountDraft))}
-            >
-              Apply discount
-            </Button>
-            {discount > 0 ? (
-              <Button type="button" variant="secondary" onClick={clearAllDiscounts}>
-                Clear all discounts
-              </Button>
-            ) : null}
-          </div>
-        </div>
-      </Dialog>
 
       <Dialog
         open={draftsOpen}
