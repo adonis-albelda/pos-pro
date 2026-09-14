@@ -117,15 +117,11 @@ export function VariantAddonPicker({
   return (
     <BottomSheet open={open} onClose={onCancel} maxWidth={dialogMaxWidth}>
       <View style={{ gap: space.md }}>
-        <View style={{ gap: space.xs }}>
+        <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: space.sm }}>
           <Text style={{ fontSize: fontSize.headingSm, fontWeight: "700", color: color.ink }}>
             {productName}
           </Text>
-          {productBrandName ? (
-            <View style={{ alignSelf: "flex-start" }}>
-              <Badge tone="neutral" label={productBrandName} />
-            </View>
-          ) : null}
+          {productBrandName ? <Badge tone="neutral" label={productBrandName} /> : null}
         </View>
 
         {variants.length > 1 ? (

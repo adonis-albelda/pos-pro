@@ -43,6 +43,7 @@ import {
   listProductVariants,
   type AddonGroup,
   type ProductVariant,
+  type ProductVariantListRow,
 } from "@double-a/api-client/queries";
 import {
   Badge,
@@ -64,6 +65,7 @@ import { visionProcessingHint } from "@/lib/ai-processing-hint";
 import { useCurrentUser } from "@/lib/query/session";
 import { AiSearchModal } from "@/components/ai-search-modal";
 import { ProductGridTile } from "@/components/product-grid-tile";
+import { ProductVariantGridTile } from "@/components/product-variant-grid-tile";
 import { CropPhoto } from "../../products/from-photo/crop-photo";
 import { VoiceSearchModal, voiceSearchSupported } from "@/components/voice-search-modal";
 import { isImageFile, NOT_AN_IMAGE_MESSAGE } from "@/lib/is-image-file";
@@ -71,7 +73,7 @@ import { useAddonGroups } from "@/lib/query/addon-groups";
 import { useCategories } from "@/lib/query/categories";
 import { useCustomers } from "@/lib/query/customers";
 import { useFeatureFlags } from "@/lib/query/features";
-import { useProducts } from "@/lib/query/products";
+import { useProducts, useProductVariantsList } from "@/lib/query/products";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 import {
   deleteSaleDraft,
@@ -133,6 +135,9 @@ export function CreateSaleForm() {
   const [query, setQuery] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [page, setPage] = useState(1);
+  // Product-level (one tile per product) vs "By variant" (one tile per SKU) —
+  // same split as the Products page's own view toggle.
+  const [gridViewMode, setGridViewMode] = useState<"product" | "variant">("product");
 
   const [aiSearchOpen, setAiSearchOpen] = useState(false);
   const [aiResultIds, setAiResultIds] = useState<string[] | null>(null);
@@ -194,7 +199,7 @@ export function CreateSaleForm() {
 
   useEffect(() => {
     setPage(1);
-  }, [query, categoryId]);
+  }, [query, categoryId, gridViewMode]);
 
   // Clear the typed amount each time the dialog opens — no per-line id to key
   // it on, so a re-open must never show the last discount typed.
@@ -205,12 +210,24 @@ export function CreateSaleForm() {
   const customers = customersQuery.data ?? [];
   const categories = categoriesQuery.data ?? [];
 
-  const productsQuery = useProducts({
-    q: query || undefined,
-    categoryId: categoryId || undefined,
-    page,
-    pageSize: GRID_PAGE_SIZE,
-  });
+  const productsQuery = useProducts(
+    {
+      q: query || undefined,
+      categoryId: categoryId || undefined,
+      page,
+      pageSize: GRID_PAGE_SIZE,
+    },
+    { enabled: "product" === gridViewMode },
+  );
+  const variantsQuery = useProductVariantsList(
+    {
+      q: query || undefined,
+      categoryId: categoryId || undefined,
+      page,
+      pageSize: GRID_PAGE_SIZE,
+    },
+    { enabled: "variant" === gridViewMode },
+  );
 
   // AI results replace the normal browse query entirely — fetched by id, in
   // ranked order, same branch mobile's pos/index.tsx uses for its own
@@ -245,8 +262,15 @@ export function CreateSaleForm() {
     () => (aiResultIds ? aiProducts : (queriedProducts ?? [])),
     [aiResultIds, aiProducts, queriedProducts],
   );
-  const gridLoading = aiResultIds ? aiLoading : productsQuery.isLoading;
-  const pageCount = aiResultIds ? 1 : (productsQuery.data?.pageCount ?? 1);
+  const displayedVariants = variantsQuery.data?.variants ?? [];
+  const gridLoading =
+    "variant" === gridViewMode ? variantsQuery.isLoading : aiResultIds ? aiLoading : productsQuery.isLoading;
+  const pageCount =
+    "variant" === gridViewMode
+      ? (variantsQuery.data?.pageCount ?? 1)
+      : aiResultIds
+        ? 1
+        : (productsQuery.data?.pageCount ?? 1);
 
   function rememberProducts(products: Product[]) {
     setHeldProducts((current) => {
@@ -558,6 +582,35 @@ export function CreateSaleForm() {
     commitVariantSelection(product, selection);
   }
 
+  /**
+   * A "By variant" grid tile's own tap handler — the tile already names one
+   * specific variant, so there is nothing for the usual variant picker to
+   * ask; add-on groups (if the product has any) still get their own step,
+   * same picker component, just pre-scoped to this one variant instead of
+   * every one. Mirrors apps/mobile/app/pos/index.tsx's handleTilePress.
+   */
+  async function addVariantToCart(row: ProductVariantListRow) {
+    const existing = lines.find((line) => line.productId === row.productId && line.variantId === row.id);
+    if (existing) {
+      changeQuantity(row.productId, 1);
+      return;
+    }
+
+    const variants = await listProductVariants(getBrowserApiClient(), row.productId);
+    const product = byId.get(row.productId) ?? (await listProductsByIds(getBrowserApiClient(), [row.productId]))[0];
+    const variant = variants.find((v) => v.id === row.id);
+    if (!product || !variant) return;
+    rememberProducts([product]);
+
+    const addonGroups = addonGroupsFor(product);
+    if (addonGroups.length > 0) {
+      setPickerState({ product, variants: [variant], addonGroups });
+      return;
+    }
+
+    commitVariantSelection(product, { variant, addons: [] });
+  }
+
   function changeQuantity(productId: string, delta: number) {
     setLines((current) =>
       current
@@ -863,7 +916,30 @@ export function CreateSaleForm() {
                   ]}
                 />
               </div>
-              {isEnabled("voice_search") && voiceSupported ? (
+              <div className="flex items-center rounded-sm border border-border p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setGridViewMode("product")}
+                  className={`rounded-sm px-2.5 py-1 text-caption font-medium transition-colors ${
+                    "product" === gridViewMode ? "bg-primary text-on-primary" : "text-ink-muted hover:text-ink"
+                  }`}
+                >
+                  Product
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearAiSearch();
+                    setGridViewMode("variant");
+                  }}
+                  className={`rounded-sm px-2.5 py-1 text-caption font-medium transition-colors ${
+                    "variant" === gridViewMode ? "bg-primary text-on-primary" : "text-ink-muted hover:text-ink"
+                  }`}
+                >
+                  By variant
+                </button>
+              </div>
+              {"product" === gridViewMode && isEnabled("voice_search") && voiceSupported ? (
                 <Button
                   type="button"
                   variant="secondary"
@@ -872,7 +948,7 @@ export function CreateSaleForm() {
                   onClick={() => setVoiceSearchOpen(true)}
                 />
               ) : null}
-              {isEnabled("product_photo_ai") ? (
+              {"product" === gridViewMode && isEnabled("product_photo_ai") ? (
                 <Button
                   type="button"
                   variant="secondary"
@@ -881,7 +957,7 @@ export function CreateSaleForm() {
                   onClick={() => setPhotoModalOpen(true)}
                 />
               ) : null}
-              {isEnabled("product_vector_search") ? (
+              {"product" === gridViewMode && isEnabled("product_vector_search") ? (
                 <Button
                   type="button"
                   variant="secondary"
@@ -893,7 +969,7 @@ export function CreateSaleForm() {
             </div>
           </div>
 
-          {aiResultIds ? (
+          {"product" === gridViewMode && aiResultIds ? (
             <div className="flex items-center gap-2 border-b border-border bg-primary-tint px-4 py-2.5 sm:px-6">
               <Sparkles size={15} className="text-primary" strokeWidth={2} />
               <span className="flex-1 text-body font-medium text-primary-dark">
@@ -911,7 +987,60 @@ export function CreateSaleForm() {
           ) : null}
 
           <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
-            {gridLoading && displayedProducts.length === 0 ? (
+            {"variant" === gridViewMode ? (
+              gridLoading && displayedVariants.length === 0 ? (
+                <div className="py-12 text-center text-body text-ink-muted">Loading variants…</div>
+              ) : displayedVariants.length === 0 ? (
+                <EmptyState
+                  icon={PackageSearch}
+                  title="Nothing matches that"
+                  instruction="Check the spelling, or switch back to Product view."
+                />
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+                    {displayedVariants.map((row) => (
+                      <ProductVariantGridTile
+                        key={row.id}
+                        row={row}
+                        quantityInCart={
+                          lines.find((line) => line.productId === row.productId && line.variantId === row.id)
+                            ?.quantity ?? 0
+                        }
+                        onAdd={() => void addVariantToCart(row)}
+                        onRemove={() => changeQuantity(row.productId, -1)}
+                      />
+                    ))}
+                  </div>
+
+                  {pageCount > 1 ? (
+                    <div className="mt-4 flex items-center justify-center gap-3">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        icon={ChevronLeft}
+                        disabled={page <= 1}
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        aria-label="Previous page"
+                      />
+                      <span className="text-caption text-ink-muted">
+                        Page {page} of {pageCount}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        icon={ChevronRight}
+                        disabled={page >= pageCount}
+                        onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                        aria-label="Next page"
+                      />
+                    </div>
+                  ) : null}
+                </>
+              )
+            ) : gridLoading && displayedProducts.length === 0 ? (
               <div className="py-12 text-center text-body text-ink-muted">Loading products…</div>
             ) : displayedProducts.length === 0 ? (
               <EmptyState
@@ -972,16 +1101,31 @@ export function CreateSaleForm() {
             title="Cart"
             description={itemCount > 0 ? `${itemCount} item${itemCount === 1 ? "" : "s"}` : "Click a product to add it"}
             action={
-              drafts.length > 0 ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  icon={FolderOpen}
-                  onClick={() => setDraftsOpen(true)}
-                >
-                  Drafts <Badge tone="neutral">{drafts.length}</Badge>
-                </Button>
+              lines.length > 0 || drafts.length > 0 ? (
+                <div className="flex items-center gap-2">
+                  {lines.length > 0 ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      icon={Save}
+                      onClick={saveDraft}
+                    >
+                      Save as draft
+                    </Button>
+                  ) : null}
+                  {drafts.length > 0 ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      icon={FolderOpen}
+                      onClick={() => setDraftsOpen(true)}
+                    >
+                      Drafts <Badge tone="neutral">{drafts.length}</Badge>
+                    </Button>
+                  ) : null}
+                </div>
               ) : undefined
             }
           />
