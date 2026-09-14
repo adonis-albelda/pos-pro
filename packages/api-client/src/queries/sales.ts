@@ -102,6 +102,25 @@ export interface CreateSaleItemInput {
   addons?: CreateSaleItemAddonInput[];
 }
 
+/**
+ * One order-level pick — Senior/PWD or another simple rule, a qualifying
+ * promo, or a loyalty reward redemption. Exactly one of discountRuleId /
+ * complexDiscountRuleId must be set, same rule the mobile POS's own push
+ * enforces (see StoreSaleRequest's withValidator). The amount/vatRemoved
+ * are computed client-side (packages/shared-types' discounts.ts) — the
+ * server persists them as given, same trust level as the sync push path.
+ */
+export interface CreateSaleDiscountInput {
+  discountRuleId?: string | null;
+  complexDiscountRuleId?: string | null;
+  loyaltyRewardId?: string | null;
+  idNumber?: string | null;
+  idHolderName?: string | null;
+  discountAmount: number;
+  vatRemoved?: number | null;
+  isVatExempt?: boolean;
+}
+
 export interface CreateSaleInput {
   items: CreateSaleItemInput[];
   paymentMethod: "cash" | "ewallet" | "card" | "credit";
@@ -109,6 +128,9 @@ export interface CreateSaleInput {
   /** Defaults to true for cash, false otherwise — same rule the POS follows (CLAUDE.md §12). */
   isPaid?: boolean;
   fulfillment?: "pickup" | "delivery";
+  /** Which e-wallet, when paymentMethod is "ewallet" — display-only, for matching bank/wallet records. */
+  ewalletProvider?: string | null;
+  discounts?: CreateSaleDiscountInput[];
 }
 
 /** Admin-only. See the file-level note above — this is not the POS's sale path. */
@@ -130,6 +152,17 @@ export async function createSale(client: ApiClient, input: CreateSaleInput): Pro
       customer_id: input.customerId,
       is_paid: input.isPaid,
       fulfillment: input.fulfillment,
+      ewallet_provider: input.ewalletProvider,
+      discounts: input.discounts?.map((discount) => ({
+        discount_rule_id: discount.discountRuleId,
+        complex_discount_rule_id: discount.complexDiscountRuleId,
+        loyalty_reward_id: discount.loyaltyRewardId,
+        id_number: discount.idNumber,
+        id_holder_name: discount.idHolderName,
+        discount_amount: discount.discountAmount,
+        vat_removed: discount.vatRemoved,
+        is_vat_exempt: discount.isVatExempt,
+      })),
     },
     { idempotent: true },
   );

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createSale } from "@double-a/api-client/queries";
+import { createSale, type CreateSaleDiscountInput } from "@double-a/api-client/queries";
 import { getAuthedClient } from "@/lib/api/session";
 
 export interface CreateSaleLine {
@@ -25,6 +25,8 @@ export async function createSaleAction(input: {
   customerId?: string;
   isPaid?: boolean;
   fulfillment?: "pickup" | "delivery";
+  ewalletProvider?: string | null;
+  discounts?: CreateSaleDiscountInput[];
 }): Promise<{ id: string }> {
   const sale = await createSale(getAuthedClient(), input);
 

@@ -5,6 +5,7 @@ import type { Route } from "next";
 import { useRouter } from "next/navigation";
 import {
   Camera,
+  Gift,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -24,10 +25,18 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
-import type { CartLine, Customer, Product } from "@double-a/shared-types";
+import type {
+  CartLine,
+  ComplexDiscountRule,
+  Customer,
+  DiscountRule,
+  LoyaltyReward,
+  Product,
+} from "@double-a/shared-types";
 import {
   cartDiscount,
   cartTotal,
+  DEFAULT_TAX_SETTINGS,
   formatMoney,
   formatPercent,
   lineProfit,
@@ -73,9 +82,18 @@ import { isImageFile, NOT_AN_IMAGE_MESSAGE } from "@/lib/is-image-file";
 import { useAddonGroups } from "@/lib/query/addon-groups";
 import { useCategories } from "@/lib/query/categories";
 import { useCustomers } from "@/lib/query/customers";
+import { useComplexDiscountRules, useDiscountRules, useTaxSettings } from "@/lib/query/discounts";
 import { useFeatureFlags } from "@/lib/query/features";
+import { useLoyaltyRewards } from "@/lib/query/loyalty";
 import { useProducts, useProductVariantsList } from "@/lib/query/products";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
+import {
+  eligibleLoyaltyRewards,
+  orderDiscountImpact,
+  qualifyingComplexRules,
+  qualifyingSimpleRules,
+  type AppliedOrderDiscount,
+} from "@/lib/order-discounts";
 import {
   deleteSaleDraft,
   listSaleDrafts,
@@ -89,6 +107,7 @@ import {
   type SaleVariantAddonSelection,
 } from "./sale-variant-addon-picker";
 import { SaleReviewDialog, type PaymentMethod } from "./sale-review-dialog";
+import { DiscountRulesDialog } from "./discount-rules-dialog";
 import { createSaleAction } from "./actions";
 
 const PAYMENT_METHODS = [
@@ -126,12 +145,22 @@ function lineKey(line: { productId: string; variantId?: string | null }): string
 
 const GRID_PAGE_SIZE = 24;
 
+// Stable references so useMemo deps below don't see a "new" empty array
+// every render while a query is still loading.
+const EMPTY_DISCOUNT_RULES: DiscountRule[] = [];
+const EMPTY_COMPLEX_DISCOUNT_RULES: ComplexDiscountRule[] = [];
+const EMPTY_LOYALTY_REWARDS: LoyaltyReward[] = [];
+
 export function CreateSaleForm() {
   const router = useRouter();
   const { data: currentUser } = useCurrentUser();
   const customersQuery = useCustomers();
   const categoriesQuery = useCategories();
   const addonGroupsQuery = useAddonGroups();
+  const discountRulesQuery = useDiscountRules();
+  const complexDiscountRulesQuery = useComplexDiscountRules();
+  const loyaltyRewardsQuery = useLoyaltyRewards();
+  const taxSettingsQuery = useTaxSettings();
   const { isEnabled } = useFeatureFlags();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -144,6 +173,12 @@ export function CreateSaleForm() {
   // line.unitPrice on quantity changes right up until the cashier actually
   // types something, same split the old form had (unitPrice: string).
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({});
+  // Order-level picks — Senior/PWD or another simple rule, a qualifying
+  // promo, or a loyalty reward redemption. Separate from priceDrafts'
+  // per-line counter discount; same split as the mobile POS's own
+  // lineDiscount/orderDiscount (see order-discounts.ts).
+  const [orderDiscounts, setOrderDiscounts] = useState<AppliedOrderDiscount[]>([]);
+  const [discountRulesOpen, setDiscountRulesOpen] = useState(false);
   // Every product this session has ever added to the cart — CartLine itself
   // doesn't carry bulk-price/cost fields, so repricing and drafts need the
   // full Product back even after it's paged or filtered out of the grid.
@@ -327,12 +362,51 @@ export function CreateSaleForm() {
     [lines, priceDrafts],
   );
 
-  const total = cartTotal(pricedLines);
+  const lineDiscount = cartDiscount(pricedLines);
+  const orderDiscount = orderDiscountImpact(orderDiscounts);
+  const total = roundMoney(Math.max(cartTotal(pricedLines) - orderDiscount, 0));
   const shelfTotal = roundMoney(
     lines.reduce((sum, line) => sum + line.listPrice * line.quantity, 0),
   );
-  const discount = cartDiscount(pricedLines);
+  const discount = roundMoney(lineDiscount + orderDiscount);
   const itemCount = lines.reduce((sum, line) => sum + line.quantity, 0);
+
+  const taxSettings = taxSettingsQuery.data ?? DEFAULT_TAX_SETTINGS;
+  const discountRules = discountRulesQuery.data ?? EMPTY_DISCOUNT_RULES;
+  const complexDiscountRules = complexDiscountRulesQuery.data ?? EMPTY_COMPLEX_DISCOUNT_RULES;
+  const loyaltyRewards = loyaltyRewardsQuery.data ?? EMPTY_LOYALTY_REWARDS;
+  const selectedCustomer = customers.find((customer) => customer.id === customerId) ?? null;
+
+  const qualifyingSimple = useMemo(
+    () => qualifyingSimpleRules(discountRules, lines),
+    [discountRules, lines],
+  );
+  const qualifyingLoyalty = useMemo(
+    () =>
+      eligibleLoyaltyRewards({
+        rewards: loyaltyRewards,
+        discountRules,
+        pointsBalance: selectedCustomer?.loyaltyPointsBalance ?? 0,
+        lines,
+      }),
+    [loyaltyRewards, discountRules, selectedCustomer, lines],
+  );
+  // Auto-detected promos not yet applied — same "suggestion" idea as the
+  // mobile POS's own promoSuggestion banner, just surfaced as a list here
+  // rather than a single dismissible pick, since a web session isn't racing
+  // a physical queue.
+  const qualifyingComplex = useMemo(
+    () => qualifyingComplexRules(complexDiscountRules, lines, orderDiscounts),
+    [complexDiscountRules, lines, orderDiscounts],
+  );
+
+  function addOrderDiscount(applied: AppliedOrderDiscount) {
+    setOrderDiscounts((current) => [...current, applied]);
+  }
+
+  function removeOrderDiscount(id: string) {
+    setOrderDiscounts((current) => current.filter((entry) => entry.id !== id));
+  }
 
   function clearAiSearch() {
     setAiResultIds(null);
@@ -817,6 +891,17 @@ export function CreateSaleForm() {
           paymentMethod,
           customerId: customerId || undefined,
           fulfillment,
+          ewalletProvider: effectiveEwalletProvider,
+          discounts: orderDiscounts.map((entry) => ({
+            discountRuleId: entry.discountRuleId,
+            complexDiscountRuleId: entry.complexDiscountRuleId,
+            loyaltyRewardId: entry.loyaltyRewardId,
+            idNumber: entry.idNumber,
+            idHolderName: entry.idHolderName,
+            discountAmount: entry.discountAmount,
+            vatRemoved: entry.vatRemoved,
+            isVatExempt: entry.isVatExempt,
+          })),
         });
         setCreatedSaleId(sale.id);
         setSaleSucceeded(true);
@@ -842,6 +927,7 @@ export function CreateSaleForm() {
   function resetForm() {
     setLines([]);
     setPriceDrafts({});
+    setOrderDiscounts([]);
     setPaymentMethod("cash");
     setEwalletProvider(null);
     setEwalletProviderOther("");
@@ -1426,13 +1512,52 @@ export function CreateSaleForm() {
                     className="flex items-center gap-1.5 text-body text-primary-dark underline decoration-dotted"
                   >
                     <Tag size={14} strokeWidth={2.5} />
-                    {discount > 0 ? "Discount given" : "Add a discount for the whole cart"}
+                    {lineDiscount > 0 ? "Discount given" : "Add a discount for the whole cart"}
                     <Pencil size={11} />
                   </button>
-                  {discount > 0 ? (
+                  {lineDiscount > 0 ? (
                     <span className="num text-body-lg font-semibold text-warning-ink">
-                      -{formatMoney(discount)}
+                      -{formatMoney(lineDiscount)}
                     </span>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {lines.length > 0 ? (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDiscountRulesOpen(true)}
+                      className="flex items-center gap-1.5 text-body text-primary-dark underline decoration-dotted"
+                    >
+                      <Gift size={14} strokeWidth={2.5} />
+                      Rules &amp; loyalty
+                      <Pencil size={11} />
+                    </button>
+                    {qualifyingComplex.length > 0 ? (
+                      <Badge tone="warning">{qualifyingComplex.length} promo qualifies</Badge>
+                    ) : null}
+                  </div>
+                  {orderDiscounts.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {orderDiscounts.map((entry) => (
+                        <span
+                          key={entry.id}
+                          className="inline-flex items-center gap-1.5 rounded-sm border border-warning/40 bg-warning/10 px-2 py-1 text-caption text-warning-ink"
+                        >
+                          {entry.name ?? "Discount"} · -{formatMoney(entry.discountAmount + (entry.vatRemoved ?? 0))}
+                          <button
+                            type="button"
+                            onClick={() => removeOrderDiscount(entry.id)}
+                            aria-label={`Remove ${entry.name ?? "discount"}`}
+                            className="text-warning-ink/70 hover:text-warning-ink"
+                          >
+                            <X size={11} strokeWidth={2.5} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
                   ) : null}
                 </div>
               ) : null}
@@ -1492,6 +1617,19 @@ export function CreateSaleForm() {
         onConfirm={submit}
         onViewSale={viewCreatedSale}
         onNewSale={startNewSale}
+      />
+
+      <DiscountRulesDialog
+        open={discountRulesOpen}
+        onClose={() => setDiscountRulesOpen(false)}
+        simpleRules={qualifyingSimple}
+        loyaltyMatches={qualifyingLoyalty}
+        complexRules={qualifyingComplex}
+        applied={orderDiscounts}
+        lines={lines}
+        tax={taxSettings}
+        onApply={addOrderDiscount}
+        onRemove={removeOrderDiscount}
       />
 
       <Dialog
