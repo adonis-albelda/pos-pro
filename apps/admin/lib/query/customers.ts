@@ -1,13 +1,15 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  createCustomer,
   customerBalance,
   getCustomer,
   listCustomerBalances,
   listCustomerOpenSales,
   listCustomerPayments,
   listCustomers,
+  type CustomerInput,
 } from "@double-a/api-client/queries";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 import { queryKeys } from "./keys";
@@ -16,6 +18,17 @@ export function useCustomers() {
   return useQuery({
     queryKey: queryKeys.customers.list(),
     queryFn: () => listCustomers(getBrowserApiClient()),
+  });
+}
+
+/** Client-side, not the Server Action other customer writes still use — new call sites should follow this one (CLAUDE.md). */
+export function useCreateCustomer() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Omit<CustomerInput, "id">) => createCustomer(getBrowserApiClient(), input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.customers.all });
+    },
   });
 }
 

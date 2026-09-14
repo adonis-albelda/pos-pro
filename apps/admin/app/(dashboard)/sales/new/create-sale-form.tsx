@@ -109,6 +109,7 @@ import {
 } from "./sale-variant-addon-picker";
 import { SaleReviewDialog, type PaymentMethod } from "./sale-review-dialog";
 import { DiscountRulesDialog } from "./discount-rules-dialog";
+import { NewCustomerDialog } from "./new-customer-dialog";
 import { createSaleAction } from "./actions";
 
 const PAYMENT_METHODS = [
@@ -124,6 +125,9 @@ const PAYMENT_METHODS = [
  * as the mobile POS's own confirm flow (apps/mobile/app/pos/index.tsx).
  */
 const EWALLET_PROVIDERS = ["GCash", "Maya", "MariBank", "GrabPay", "ShopeePay"] as const;
+
+/** Sentinel Combobox value — never a real customer id (those are UUIDs). */
+const NEW_CUSTOMER_OPTION = "__new_customer__";
 
 // A backordered line has no real ceiling — the sale is confirmed with nothing
 // on the shelf, so there's nothing left to cap against (mirrors mobile POS).
@@ -183,6 +187,7 @@ export function CreateSaleForm() {
   // lineDiscount/orderDiscount (see order-discounts.ts).
   const [orderDiscounts, setOrderDiscounts] = useState<AppliedOrderDiscount[]>([]);
   const [discountRulesOpen, setDiscountRulesOpen] = useState(false);
+  const [newCustomerOpen, setNewCustomerOpen] = useState(false);
   // Every product this session has ever added to the cart — CartLine itself
   // doesn't carry bulk-price/cost fields, so repricing and drafts need the
   // full Product back even after it's paged or filtered out of the grid.
@@ -1493,10 +1498,17 @@ export function CreateSaleForm() {
             >
               <Combobox
                 value={customerId}
-                onChange={(next) => setCustomerId(next)}
+                onChange={(next) => {
+                  if (NEW_CUSTOMER_OPTION === next) {
+                    setNewCustomerOpen(true);
+                    return;
+                  }
+                  setCustomerId(next);
+                }}
                 placeholder="Walk-in"
                 options={[
                   { value: "", label: "Walk-in" },
+                  { value: NEW_CUSTOMER_OPTION, label: "+ Add new customer" },
                   ...customers.map((customer: Customer) => ({
                     value: customer.id,
                     label: customer.name,
@@ -1623,6 +1635,16 @@ export function CreateSaleForm() {
             onError: (error) =>
               toast.error(error instanceof Error ? error.message : "Could not award points."),
           });
+        }}
+      />
+
+      <NewCustomerDialog
+        open={newCustomerOpen}
+        onClose={() => setNewCustomerOpen(false)}
+        onCreated={(newCustomerId) => {
+          setCustomerId(newCustomerId);
+          setNewCustomerOpen(false);
+          toast.success("Customer added.");
         }}
       />
 
