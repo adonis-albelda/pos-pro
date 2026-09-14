@@ -2,14 +2,20 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  awardLoyaltyPoints,
+  createLoyaltyEarningRule,
   createLoyaltyReward,
+  deleteLoyaltyEarningRule,
   deleteLoyaltyReward,
   getLoyaltyProgram,
+  listLoyaltyEarningRules,
   listLoyaltyLedger,
   listLoyaltyRewards,
   saveLoyaltyProgram,
+  updateLoyaltyEarningRule,
   updateLoyaltyReward,
   type LoyaltyLedgerFilter,
+  type UpsertLoyaltyEarningRuleInput,
   type UpsertLoyaltyProgramInput,
   type UpsertLoyaltyRewardInput,
 } from "@double-a/api-client/queries";
@@ -67,6 +73,55 @@ export function useDeleteLoyaltyReward() {
     mutationFn: (id: string) => deleteLoyaltyReward(getBrowserApiClient(), id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.loyaltyRewards.all });
+    },
+  });
+}
+
+export function useLoyaltyEarningRules() {
+  return useQuery({
+    queryKey: queryKeys.loyaltyEarningRules.list(),
+    queryFn: () => listLoyaltyEarningRules(getBrowserApiClient()),
+  });
+}
+
+export function useCreateLoyaltyEarningRule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: UpsertLoyaltyEarningRuleInput) => createLoyaltyEarningRule(getBrowserApiClient(), input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.loyaltyEarningRules.all });
+    },
+  });
+}
+
+export function useUpdateLoyaltyEarningRule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: Partial<UpsertLoyaltyEarningRuleInput> }) =>
+      updateLoyaltyEarningRule(getBrowserApiClient(), id, patch),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.loyaltyEarningRules.all });
+    },
+  });
+}
+
+export function useDeleteLoyaltyEarningRule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteLoyaltyEarningRule(getBrowserApiClient(), id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.loyaltyEarningRules.all });
+    },
+  });
+}
+
+/** For a sale whose matching rule is manual-only — see AwardLoyaltyPointsController. */
+export function useAwardLoyaltyPoints() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (saleId: string) => awardLoyaltyPoints(getBrowserApiClient(), saleId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.loyaltyLedger.all });
     },
   });
 }

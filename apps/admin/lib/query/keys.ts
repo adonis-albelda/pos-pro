@@ -197,6 +197,10 @@ export const queryKeys = {
     list: (filter: { customerId?: string; type?: string; page?: number }) =>
       ["loyalty-points-ledger", "list", filter] as const,
   },
+  loyaltyEarningRules: {
+    all: ["loyalty-earning-rules"] as const,
+    list: () => ["loyalty-earning-rules", "list"] as const,
+  },
   workSchedules: {
     all: ["work-schedules"] as const,
     list: () => ["work-schedules", "list"] as const,

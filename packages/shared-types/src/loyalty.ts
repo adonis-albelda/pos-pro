@@ -31,6 +31,69 @@ export interface LoyaltyReward {
   updatedAt?: string;
 }
 
+export type LoyaltyEarningConditionOperator = ">=" | ">" | "=" | "<=" | "<";
+export type LoyaltyEarningRewardType = "fixed_points" | "percentage";
+
+/**
+ * One condition-based earning tier — replaces LoyaltyProgram's flat
+ * pointsPerCurrency rate once any rule exists for the company. "Under 100
+ * → 1 pt (auto)", "exactly 500 → 5 pts (auto)", "over 1000 → 2% (cashier
+ * confirms)" are three separate rules, matched against a sale's total by
+ * operator/threshold — same shape as ComplexDiscountCondition's own
+ * total_amount condition, just for earning instead of discounting.
+ */
+export interface LoyaltyEarningRule {
+  id: string;
+  companyId: string;
+  conditionOperator: LoyaltyEarningConditionOperator;
+  thresholdAmount: number;
+  rewardType: LoyaltyEarningRewardType;
+  rewardValue: number;
+  /** false = a cashier must confirm the award (see the sale's own "award points" action) — never auto-credited. */
+  isAuto: boolean;
+  isActive: boolean;
+  /** Lowest wins when a sale's total matches more than one active rule. */
+  sortOrder: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** Points this rule would award for a sale of this total — mirrors LoyaltyEarningRule::pointsFor (PHP), floored, never negative. */
+export function pointsForEarningRule(
+  rule: Pick<LoyaltyEarningRule, "rewardType" | "rewardValue">,
+  total: number,
+): number {
+  const points = "percentage" === rule.rewardType ? total * (rule.rewardValue / 100) : rule.rewardValue;
+  return Math.max(0, Math.floor(points));
+}
+
+/** Whether a sale of this total meets this rule's condition — mirrors LoyaltyEarningRule::matches (PHP). */
+export function earningRuleMatches(
+  rule: Pick<LoyaltyEarningRule, "conditionOperator" | "thresholdAmount">,
+  total: number,
+): boolean {
+  switch (rule.conditionOperator) {
+    case ">=":
+      return total >= rule.thresholdAmount;
+    case ">":
+      return total > rule.thresholdAmount;
+    case "=":
+      return total === rule.thresholdAmount;
+    case "<=":
+      return total <= rule.thresholdAmount;
+    case "<":
+      return total < rule.thresholdAmount;
+  }
+}
+
+/** The active rule (lowest sortOrder first) whose condition this total satisfies, if any — mirrors RecordLoyaltyForSaleAction::matchingRule (PHP). */
+export function matchingEarningRule(rules: LoyaltyEarningRule[], total: number): LoyaltyEarningRule | null {
+  const sorted = [...rules]
+    .filter((rule) => rule.isActive)
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+  return sorted.find((rule) => earningRuleMatches(rule, total)) ?? null;
+}
+
 export interface LoyaltyLedgerEntry {
   id: string;
   companyId: string;

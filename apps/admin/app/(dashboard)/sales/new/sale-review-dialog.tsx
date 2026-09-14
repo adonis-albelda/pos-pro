@@ -5,6 +5,7 @@ import {
   Banknote,
   CheckCircle2,
   CreditCard,
+  Gift,
   HandCoins,
   Package,
   Receipt,
@@ -89,6 +90,9 @@ export function SaleReviewDialog({
   onConfirm,
   onViewSale,
   onNewSale,
+  showAwardPointsButton = false,
+  awardPointsPending = false,
+  onAwardPoints,
 }: {
   open: boolean;
   succeeded: boolean;
@@ -107,6 +111,10 @@ export function SaleReviewDialog({
   onConfirm: () => void;
   onViewSale: () => void;
   onNewSale: () => void;
+  /** True when this sale's total matched a manual-only earning tier — see AwardLoyaltyPointsController. */
+  showAwardPointsButton?: boolean;
+  awardPointsPending?: boolean;
+  onAwardPoints?: () => void;
 }) {
   const [cashDraft, setCashDraft] = useState(() => amountDue.toFixed(2));
 
@@ -140,6 +148,19 @@ export function SaleReviewDialog({
               View the receipt, or start ringing up the next sale.
             </p>
           </div>
+          {showAwardPointsButton ? (
+            <Button
+              type="button"
+              variant="secondary"
+              icon={Gift}
+              loading={awardPointsPending}
+              disabled={awardPointsPending}
+              className="w-full"
+              onClick={onAwardPoints}
+            >
+              {awardPointsPending ? "Awarding..." : "Award loyalty points"}
+            </Button>
+          ) : null}
           <div className="flex w-full flex-col gap-2 sm:flex-row">
             <Button type="button" variant="secondary" icon={Receipt} className="w-full sm:flex-1" onClick={onViewSale}>
               View sale

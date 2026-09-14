@@ -1,4 +1,12 @@
-import type { LoyaltyLedgerEntry, LoyaltyLedgerEntryType, LoyaltyProgram, LoyaltyReward } from "@double-a/shared-types";
+import type {
+  LoyaltyEarningConditionOperator,
+  LoyaltyEarningRewardType,
+  LoyaltyEarningRule,
+  LoyaltyLedgerEntry,
+  LoyaltyLedgerEntryType,
+  LoyaltyProgram,
+  LoyaltyReward,
+} from "@double-a/shared-types";
 import type { ApiClient, JsonApiResource } from "../http";
 
 /**
@@ -162,4 +170,99 @@ export async function listLoyaltyLedger(
     meta?: { total?: number };
   }>("/loyalty-points-ledger", query);
   return { entries: data.map(toLoyaltyLedgerEntry), total: meta?.total ?? data.length };
+}
+
+export interface LoyaltyEarningRuleAttrs {
+  condition_operator: LoyaltyEarningConditionOperator;
+  threshold_amount: number;
+  reward_type: LoyaltyEarningRewardType;
+  reward_value: number;
+  is_auto: boolean;
+  is_active: boolean;
+  sort_order: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+function toLoyaltyEarningRule(resource: JsonApiResource<LoyaltyEarningRuleAttrs>): LoyaltyEarningRule {
+  const a = resource.attributes;
+  return {
+    id: resource.id,
+    companyId: "",
+    conditionOperator: a.condition_operator,
+    thresholdAmount: a.threshold_amount,
+    rewardType: a.reward_type,
+    rewardValue: a.reward_value,
+    isAuto: a.is_auto,
+    isActive: a.is_active,
+    sortOrder: a.sort_order,
+    createdAt: a.created_at,
+    updatedAt: a.updated_at,
+  };
+}
+
+export async function listLoyaltyEarningRules(client: ApiClient): Promise<LoyaltyEarningRule[]> {
+  const { data } = await client.get<{ data: JsonApiResource<LoyaltyEarningRuleAttrs>[] }>(
+    "/loyalty-earning-rules",
+  );
+  return data.map(toLoyaltyEarningRule);
+}
+
+export interface UpsertLoyaltyEarningRuleInput {
+  conditionOperator: LoyaltyEarningConditionOperator;
+  thresholdAmount: number;
+  rewardType: LoyaltyEarningRewardType;
+  rewardValue: number;
+  isAuto?: boolean;
+  isActive?: boolean;
+  sortOrder?: number;
+}
+
+export async function createLoyaltyEarningRule(
+  client: ApiClient,
+  input: UpsertLoyaltyEarningRuleInput,
+): Promise<LoyaltyEarningRule> {
+  const { data } = await client.post<{ data: JsonApiResource<LoyaltyEarningRuleAttrs> }>(
+    "/loyalty-earning-rules",
+    {
+      condition_operator: input.conditionOperator,
+      threshold_amount: input.thresholdAmount,
+      reward_type: input.rewardType,
+      reward_value: input.rewardValue,
+      is_auto: input.isAuto ?? true,
+      is_active: input.isActive ?? true,
+      sort_order: input.sortOrder ?? 0,
+    },
+  );
+  return toLoyaltyEarningRule(data);
+}
+
+export async function updateLoyaltyEarningRule(
+  client: ApiClient,
+  id: string,
+  patch: Partial<UpsertLoyaltyEarningRuleInput>,
+): Promise<LoyaltyEarningRule> {
+  const body: Record<string, unknown> = {};
+  if (patch.conditionOperator !== undefined) body.condition_operator = patch.conditionOperator;
+  if (patch.thresholdAmount !== undefined) body.threshold_amount = patch.thresholdAmount;
+  if (patch.rewardType !== undefined) body.reward_type = patch.rewardType;
+  if (patch.rewardValue !== undefined) body.reward_value = patch.rewardValue;
+  if (patch.isAuto !== undefined) body.is_auto = patch.isAuto;
+  if (patch.isActive !== undefined) body.is_active = patch.isActive;
+  if (patch.sortOrder !== undefined) body.sort_order = patch.sortOrder;
+  const { data } = await client.patch<{ data: JsonApiResource<LoyaltyEarningRuleAttrs> }>(
+    `/loyalty-earning-rules/${id}`,
+    body,
+  );
+  return toLoyaltyEarningRule(data);
+}
+
+export async function deleteLoyaltyEarningRule(client: ApiClient, id: string): Promise<void> {
+  await client.delete(`/loyalty-earning-rules/${id}`);
+}
+
+/** For a sale whose matching rule is manual-only — see AwardLoyaltyPointsController. */
+export async function awardLoyaltyPoints(client: ApiClient, saleId: string): Promise<{ points: number }> {
+  const { data } = await client.post<{ data: { points: number } }>(`/sales/${saleId}/loyalty-points`);
+  return data;
 }

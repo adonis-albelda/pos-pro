@@ -29,6 +29,7 @@ import type {
   ComplexDiscountRule,
   Customer,
   DiscountRule,
+  LoyaltyEarningRule,
   LoyaltyReward,
   Product,
 } from "@double-a/shared-types";
@@ -41,6 +42,7 @@ import {
   lineProfit,
   lineSubtotal,
   marginPercent,
+  matchingEarningRule,
   priceForQuantity,
   QUANTITY_DECIMALS,
   roundMoney,
@@ -83,7 +85,7 @@ import { useCategories } from "@/lib/query/categories";
 import { useCustomers } from "@/lib/query/customers";
 import { useComplexDiscountRules, useDiscountRules, useTaxSettings } from "@/lib/query/discounts";
 import { useFeatureFlags } from "@/lib/query/features";
-import { useLoyaltyRewards } from "@/lib/query/loyalty";
+import { useAwardLoyaltyPoints, useLoyaltyEarningRules, useLoyaltyRewards } from "@/lib/query/loyalty";
 import { useProducts, useProductVariantsList } from "@/lib/query/products";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 import {
@@ -149,6 +151,7 @@ const GRID_PAGE_SIZE = 24;
 const EMPTY_DISCOUNT_RULES: DiscountRule[] = [];
 const EMPTY_COMPLEX_DISCOUNT_RULES: ComplexDiscountRule[] = [];
 const EMPTY_LOYALTY_REWARDS: LoyaltyReward[] = [];
+const EMPTY_LOYALTY_EARNING_RULES: LoyaltyEarningRule[] = [];
 
 export function CreateSaleForm() {
   const router = useRouter();
@@ -159,6 +162,8 @@ export function CreateSaleForm() {
   const discountRulesQuery = useDiscountRules();
   const complexDiscountRulesQuery = useComplexDiscountRules();
   const loyaltyRewardsQuery = useLoyaltyRewards();
+  const loyaltyEarningRulesQuery = useLoyaltyEarningRules();
+  const awardLoyaltyPoints = useAwardLoyaltyPoints();
   const taxSettingsQuery = useTaxSettings();
   const { isEnabled } = useFeatureFlags();
   const [pending, startTransition] = useTransition();
@@ -373,7 +378,15 @@ export function CreateSaleForm() {
   const discountRules = discountRulesQuery.data ?? EMPTY_DISCOUNT_RULES;
   const complexDiscountRules = complexDiscountRulesQuery.data ?? EMPTY_COMPLEX_DISCOUNT_RULES;
   const loyaltyRewards = loyaltyRewardsQuery.data ?? EMPTY_LOYALTY_REWARDS;
+  const loyaltyEarningRules = loyaltyEarningRulesQuery.data ?? EMPTY_LOYALTY_EARNING_RULES;
   const selectedCustomer = customers.find((customer) => customer.id === customerId) ?? null;
+  // Whether this sale's total lands on a manual-only earning tier — surfaced
+  // on the review dialog's success screen so the cashier can confirm it
+  // without leaving the flow (AwardLoyaltyPointsController).
+  const pendingManualAwardRule = selectedCustomer
+    ? matchingEarningRule(loyaltyEarningRules, total)
+    : null;
+  const showAwardPointsButton = null !== pendingManualAwardRule && !pendingManualAwardRule.isAuto;
 
   const qualifyingSimple = useMemo(
     () => qualifyingSimpleRules(discountRules, lines),
@@ -1601,6 +1614,16 @@ export function CreateSaleForm() {
         onConfirm={submit}
         onViewSale={viewCreatedSale}
         onNewSale={startNewSale}
+        showAwardPointsButton={showAwardPointsButton}
+        awardPointsPending={awardLoyaltyPoints.isPending}
+        onAwardPoints={() => {
+          if (!createdSaleId) return;
+          awardLoyaltyPoints.mutate(createdSaleId, {
+            onSuccess: ({ points }) => toast.success(`Awarded ${points} loyalty point${1 === points ? "" : "s"}.`),
+            onError: (error) =>
+              toast.error(error instanceof Error ? error.message : "Could not award points."),
+          });
+        }}
       />
 
       <DiscountRulesDialog

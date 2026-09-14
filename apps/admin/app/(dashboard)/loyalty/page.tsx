@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatMoney } from "@double-a/shared-types";
-import type { LoyaltyReward } from "@double-a/shared-types";
+import type { LoyaltyEarningConditionOperator, LoyaltyEarningRewardType, LoyaltyEarningRule, LoyaltyReward } from "@double-a/shared-types";
 import {
   Badge,
   Button,
@@ -38,12 +38,16 @@ import { TabNav } from "@/components/tab-nav";
 import { useDiscountRules } from "@/lib/query/discounts";
 import { useCustomers } from "@/lib/query/customers";
 import {
+  useCreateLoyaltyEarningRule,
   useCreateLoyaltyReward,
+  useDeleteLoyaltyEarningRule,
   useDeleteLoyaltyReward,
+  useLoyaltyEarningRules,
   useLoyaltyLedger,
   useLoyaltyProgram,
   useLoyaltyRewards,
   useSaveLoyaltyProgram,
+  useUpdateLoyaltyEarningRule,
   useUpdateLoyaltyReward,
 } from "@/lib/query/loyalty";
 
@@ -425,7 +429,232 @@ function SettingsTab() {
           </div>
         </CardBody>
       </Card>
+
+      <EarningRulesCard />
     </div>
+  );
+}
+
+const CONDITION_OPERATORS: { value: LoyaltyEarningConditionOperator; label: string }[] = [
+  { value: "<", label: "Total is under" },
+  { value: "<=", label: "Total is at or under" },
+  { value: "=", label: "Total is exactly" },
+  { value: ">=", label: "Total is at or over" },
+  { value: ">", label: "Total is over" },
+];
+
+function earningRuleConditionLabel(rule: LoyaltyEarningRule): string {
+  const operator = CONDITION_OPERATORS.find((entry) => entry.value === rule.conditionOperator);
+  return `${operator?.label ?? rule.conditionOperator} ${formatMoney(rule.thresholdAmount)}`;
+}
+
+function earningRuleRewardLabel(rule: LoyaltyEarningRule): string {
+  return "percentage" === rule.rewardType ? `${rule.rewardValue}% of total` : `${rule.rewardValue} pt(s)`;
+}
+
+/**
+ * Condition-based earning tiers — replaces the flat "points per ₱1" rate
+ * above the moment any rule exists (RecordLoyaltyForSaleAction only falls
+ * back to that rate when this list is empty). Each tier can be auto-
+ * credited on the sale, or left for a cashier to confirm from the sale
+ * itself (AwardLoyaltyPointsController) — e.g. a high-value tier the owner
+ * wants a human glancing at first.
+ */
+function EarningRulesCard() {
+  const rulesQuery = useLoyaltyEarningRules();
+  const update = useUpdateLoyaltyEarningRule();
+  const remove = useDeleteLoyaltyEarningRule();
+  const [creating, setCreating] = useState(false);
+  const rules = rulesQuery.data ?? [];
+
+  return (
+    <Card>
+      <CardBody className="space-y-4">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="text-body font-medium text-ink">Earning rules</p>
+            <p className="text-caption text-ink-muted">
+              As many tiers as you want, matched by a sale&apos;s total. Lowest sort order wins when more
+              than one matches. Leave this empty to keep the flat rate above.
+            </p>
+          </div>
+          <Button type="button" size="sm" onClick={() => setCreating(true)}>
+            <Plus size={16} /> New rule
+          </Button>
+        </div>
+
+        {creating ? <CreateEarningRuleForm sortOrder={rules.length} onDone={() => setCreating(false)} /> : null}
+
+        {rulesQuery.isPending ? (
+          <CardListSkeleton count={2} />
+        ) : rulesQuery.isError ? (
+          <p className="py-6 text-center text-body text-danger">Could not load earning rules.</p>
+        ) : rules.length === 0 ? (
+          <p className="py-6 text-center text-body text-ink-muted">
+            No earning rules yet — the flat rate above applies to every sale.
+          </p>
+        ) : (
+          <Table>
+            <thead>
+              <tr>
+                <Th>Condition</Th>
+                <Th>Reward</Th>
+                <Th>Award</Th>
+                <Th>Status</Th>
+                <Th numeric>Sort</Th>
+                <Th>
+                  <span className="sr-only">Delete</span>
+                </Th>
+              </tr>
+            </thead>
+            <tbody>
+              {rules.map((rule) => (
+                <tr key={rule.id}>
+                  <Td className="font-medium text-ink">{earningRuleConditionLabel(rule)}</Td>
+                  <Td>{earningRuleRewardLabel(rule)}</Td>
+                  <Td>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        update.mutate(
+                          { id: rule.id, patch: { isAuto: !rule.isAuto } },
+                          { onError: (error) => toast.error(errorMessage(error, "Could not update rule.")) },
+                        )
+                      }
+                    >
+                      <Badge tone={rule.isAuto ? "success" : "warning"}>
+                        {rule.isAuto ? "Auto" : "Manual"}
+                      </Badge>
+                    </button>
+                  </Td>
+                  <Td>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        update.mutate(
+                          { id: rule.id, patch: { isActive: !rule.isActive } },
+                          { onError: (error) => toast.error(errorMessage(error, "Could not update rule.")) },
+                        )
+                      }
+                    >
+                      <Badge tone={rule.isActive ? "success" : "neutral"}>
+                        {rule.isActive ? "Active" : "Inactive"}
+                      </Badge>
+                    </button>
+                  </Td>
+                  <Td numeric className="num">{rule.sortOrder}</Td>
+                  <Td>
+                    <IconButton
+                      icon={Trash2}
+                      label="Delete rule"
+                      tone="danger"
+                      onClick={() => {
+                        if (!window.confirm("Delete this earning rule? This cannot be undone.")) return;
+                        remove.mutate(rule.id, {
+                          onError: (error) => toast.error(errorMessage(error, "Could not delete rule.")),
+                        });
+                      }}
+                    />
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+function CreateEarningRuleForm({ sortOrder, onDone }: { sortOrder: number; onDone: () => void }) {
+  const create = useCreateLoyaltyEarningRule();
+  const [conditionOperator, setConditionOperator] = useState<LoyaltyEarningConditionOperator>(">=");
+  const [thresholdAmount, setThresholdAmount] = useState("");
+  const [rewardType, setRewardType] = useState<LoyaltyEarningRewardType>("fixed_points");
+  const [rewardValue, setRewardValue] = useState("");
+  const [isAuto, setIsAuto] = useState(true);
+
+  return (
+    <Card>
+      <CardBody className="space-y-4">
+        <p className="text-body font-medium text-ink">New earning rule</p>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Field label="Condition" required>
+            <Select
+              value={conditionOperator}
+              onChange={(e) => setConditionOperator(e.currentTarget.value as LoyaltyEarningConditionOperator)}
+            >
+              {CONDITION_OPERATORS.map((entry) => (
+                <option key={entry.value} value={entry.value}>
+                  {entry.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Amount" required>
+            <Input
+              type="number"
+              min={0}
+              step="0.01"
+              value={thresholdAmount}
+              onChange={(e) => setThresholdAmount(e.currentTarget.value)}
+              placeholder="500"
+            />
+          </Field>
+          <Field label="Reward" required>
+            <Select value={rewardType} onChange={(e) => setRewardType(e.currentTarget.value as LoyaltyEarningRewardType)}>
+              <option value="fixed_points">Fixed points</option>
+              <option value="percentage">% of total (as points)</option>
+            </Select>
+          </Field>
+          <Field label={"percentage" === rewardType ? "Percent" : "Points"} required>
+            <Input
+              type="number"
+              min={0}
+              step={"percentage" === rewardType ? "0.01" : "1"}
+              value={rewardValue}
+              onChange={(e) => setRewardValue(e.currentTarget.value)}
+              placeholder={"percentage" === rewardType ? "2" : "5"}
+            />
+          </Field>
+        </div>
+        <Field label="Award" required={false}>
+          <Select value={isAuto ? "auto" : "manual"} onChange={(e) => setIsAuto(e.currentTarget.value === "auto")}>
+            <option value="auto">Auto — credited the moment the sale is created</option>
+            <option value="manual">Manual — a cashier confirms it from the sale</option>
+          </Select>
+        </Field>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onDone}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            disabled={create.isPending}
+            onClick={() => {
+              const threshold = Number(thresholdAmount);
+              const value = Number(rewardValue);
+              if (!Number.isFinite(threshold) || threshold < 0 || !Number.isFinite(value) || value < 0) {
+                toast.error("A non-negative amount and reward value are required.");
+                return;
+              }
+              create.mutate(
+                { conditionOperator, thresholdAmount: threshold, rewardType, rewardValue: value, isAuto, sortOrder },
+                {
+                  onSuccess: () => {
+                    toast.success("Earning rule created.");
+                    onDone();
+                  },
+                  onError: (error) => toast.error(errorMessage(error, "Could not create rule.")),
+                },
+              );
+            }}
+          >
+            Create
+          </Button>
+        </div>
+      </CardBody>
+    </Card>
   );
 }
 
