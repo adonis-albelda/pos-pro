@@ -15,6 +15,7 @@ import {
   Minimize2,
   PackageSearch,
   Pencil,
+  Save,
   Search,
   ShoppingCart,
   Sparkles,
@@ -75,7 +76,13 @@ import { useCustomers } from "@/lib/query/customers";
 import { useFeatureFlags } from "@/lib/query/features";
 import { useProducts, useProductVariantsList } from "@/lib/query/products";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
-import { deleteSaleDraft, listSaleDrafts, type SaleDraft } from "@/lib/sale-drafts";
+import {
+  deleteSaleDraft,
+  listSaleDrafts,
+  saveSaleDraft,
+  type SaleDraft,
+  type SaleDraftItem,
+} from "@/lib/sale-drafts";
 import {
   SaleVariantAddonPicker,
   variantLabel,
@@ -357,14 +364,20 @@ export function CreateSaleForm() {
     rememberProducts([product]);
 
     setLines((current) => {
-      const existing = current.find((line) => line.productId === product.id);
+      // Matches on variantId too, not just productId — a different variant
+      // of the same product picked a second time must land as its own line,
+      // never bump whatever variant happened to be added first.
+      const targetVariantId = selection?.variant.id ?? null;
+      const isTarget = (line: CartLine) =>
+        line.productId === product.id && (line.variantId ?? null) === targetVariantId;
+      const existing = current.find(isTarget);
       if (existing) {
         const cap = existing.variantId
           ? stockCapFor(existing.availableStock, existing.allowDecimal)
           : stockCapFor(product.stockQuantity, product.allowDecimal);
         if (existing.quantity >= cap) return current;
         return current.map((line) =>
-          line.productId === product.id ? repricedFor(line, Math.min(line.quantity + 1, cap), product) : line,
+          isTarget(line) ? repricedFor(line, Math.min(line.quantity + 1, cap), product) : line,
         );
       }
 
@@ -839,6 +852,31 @@ export function CreateSaleForm() {
     applyManualSearch("");
   }
 
+  function saveDraft() {
+    const withQuantity = lines.filter((line) => line.quantity > 0);
+    if (withQuantity.length === 0) {
+      setError("Add at least one product before saving as draft.");
+      return;
+    }
+
+    const items: SaleDraftItem[] = withQuantity.map((line) => ({
+      key: lineKey(line),
+      product: byId.get(line.productId) ?? null,
+      quantity: String(line.quantity),
+      unitPrice: priceDrafts[lineKey(line)] ?? "",
+      variantId: line.variantId ?? null,
+      variantLabel: line.variantLabel ?? null,
+      naturalPrice: line.naturalPrice ?? null,
+      unitCost: line.variantId ? line.unitCost : null,
+      availableStock: line.variantId ? line.availableStock : null,
+      addons: line.addons ?? [],
+    }));
+    saveSaleDraft({ items, paymentMethod, customerId, fulfillment });
+    setDrafts(listSaleDrafts());
+    resetForm();
+    toast.success("Sale held as draft. Load it later from Drafts.");
+  }
+
   function loadDraft(draft: SaleDraft) {
     const nextLines: CartLine[] = [];
     const nextDrafts: Record<string, string> = {};
@@ -1140,16 +1178,31 @@ export function CreateSaleForm() {
             title="Cart"
             description={itemCount > 0 ? `${itemCount} item${itemCount === 1 ? "" : "s"}` : "Click a product to add it"}
             action={
-              drafts.length > 0 ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  icon={FolderOpen}
-                  onClick={() => setDraftsOpen(true)}
-                >
-                  Drafts <Badge tone="neutral">{drafts.length}</Badge>
-                </Button>
+              lines.length > 0 || drafts.length > 0 ? (
+                <div className="flex items-center gap-2">
+                  {lines.length > 0 ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      icon={Save}
+                      onClick={saveDraft}
+                    >
+                      Save as draft
+                    </Button>
+                  ) : null}
+                  {drafts.length > 0 ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      icon={FolderOpen}
+                      onClick={() => setDraftsOpen(true)}
+                    >
+                      Drafts <Badge tone="neutral">{drafts.length}</Badge>
+                    </Button>
+                  ) : null}
+                </div>
               ) : undefined
             }
           />
