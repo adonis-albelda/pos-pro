@@ -91,7 +91,7 @@ export default function AdminLayout() {
   // underneath a chrome that never moves.
   let content: ReactNode;
   if (check === "checking") {
-    content = <LoadingState text="Opening admin dashboard…" />;
+    content = <LoadingState text="Opening Backoffice…" />;
   } else if (check === "error") {
     content = (
       <View
@@ -100,7 +100,7 @@ export default function AdminLayout() {
           { flex: 1, alignItems: "center", justifyContent: "center", padding: space.xl, gap: space.md },
         ]}
       >
-        <Text style={styles.subheading}>Could not open the admin dashboard</Text>
+        <Text style={styles.subheading}>Could not open Backoffice</Text>
         <Text style={[styles.muted, { textAlign: "center" }]}>{error}</Text>
         <Button label="Back to POS" onPress={() => router.replace("/pos")} />
       </View>

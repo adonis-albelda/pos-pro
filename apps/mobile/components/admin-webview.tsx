@@ -109,7 +109,7 @@ export function AdminWebView() {
           gap: space.md,
         }}
       >
-        <Text style={styles.subheading}>Could not load admin dashboard</Text>
+        <Text style={styles.subheading}>Could not load Backoffice</Text>
         <Text style={[styles.muted, { textAlign: "center" }]}>{error}</Text>
         <Button
           label="Try again"
@@ -126,7 +126,7 @@ export function AdminWebView() {
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
-      {!ready ? <LoadingState text="Opening admin dashboard…" /> : null}
+      {!ready ? <LoadingState text="Opening Backoffice…" /> : null}
       <WebView
         key={attempt}
         ref={webRef}
@@ -155,7 +155,7 @@ export function AdminWebView() {
           const { description, url } = event.nativeEvent;
           if (url && !guardNavigation(url)) return;
           setError(
-            description ? `${description} (${url || dashboardUrl})` : "Could not reach the admin dashboard.",
+            description ? `${description} (${url || dashboardUrl})` : "Could not reach Backoffice.",
           );
         }}
         style={{ flex: 1, opacity: ready ? 1 : 0 }}

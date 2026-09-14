@@ -20,6 +20,7 @@ import {
   ChevronDown,
   CloudUpload,
   HelpCircle,
+  Home,
   Info,
   LogOut,
   MessageCircle,
@@ -126,6 +127,11 @@ export function AccountDrawer({
   function go(href: (typeof POS_TABS)[number]["href"] | (typeof HELP_TABS)[number]["href"]) {
     onClose();
     setTimeout(() => router.push(href), ANIM_MS);
+  }
+
+  function openHome() {
+    onClose();
+    setTimeout(() => router.push("/pos"), ANIM_MS);
   }
 
   function openAdmin() {
@@ -317,6 +323,13 @@ export function AccountDrawer({
           />
 
           <View style={{ gap: 2 }}>
+            <DrawerTab
+              key="home"
+              icon={Home}
+              label="Home"
+              active={pathname === "/pos"}
+              onPress={openHome}
+            />
             {POS_TABS.map((tab) => (
               <DrawerTab
                 key={tab.href}
@@ -330,7 +343,7 @@ export function AccountDrawer({
               <DrawerTab
                 key="admin"
                 icon={Building2}
-                label="Admin dashboard"
+                label="Backoffice"
                 active={pathname === "/admin"}
                 onPress={openAdmin}
               />

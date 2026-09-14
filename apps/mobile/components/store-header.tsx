@@ -195,7 +195,7 @@ export function StoreHeader() {
               numberOfLines={1}
               style={{ fontSize: fontSize.body, fontWeight: "700", color: color.onPrimary }}
             >
-              Viewing the Admin Live Dashboard
+              Viewing Backoffice
             </Text>
           </View>
         ) : (
