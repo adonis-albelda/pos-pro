@@ -90,6 +90,7 @@ export function SaleReviewDialog({
   onConfirm,
   onViewSale,
   onNewSale,
+  estimatedPointsEarned = 0,
   showAwardPointsButton = false,
   awardPointsPending = false,
   onAwardPoints,
@@ -111,6 +112,8 @@ export function SaleReviewDialog({
   onConfirm: () => void;
   onViewSale: () => void;
   onNewSale: () => void;
+  /** What this sale would earn the customer, at today's loyalty settings — 0 when no customer is picked or nothing qualifies. */
+  estimatedPointsEarned?: number;
   /** True when this sale's total matched a manual-only earning tier — see AwardLoyaltyPointsController. */
   showAwardPointsButton?: boolean;
   awardPointsPending?: boolean;
@@ -196,6 +199,13 @@ export function SaleReviewDialog({
               </p>
             </div>
 
+            {estimatedPointsEarned > 0 ? (
+              <p className="flex items-center justify-center gap-1.5 text-body font-medium text-success">
+                <Gift size={14} strokeWidth={2.5} />
+                Earns {estimatedPointsEarned} loyalty point{1 === estimatedPointsEarned ? "" : "s"}
+              </p>
+            ) : null}
+
             <div className="flex overflow-hidden rounded-sm border border-border">
               <SummaryStat label="Shelf total" value={shelfTotal} />
               <div className="w-px bg-border" />
@@ -252,8 +262,14 @@ export function SaleReviewDialog({
               </p>
             )}
 
-            <div className="flex flex-col-reverse gap-2 sm:flex-row">
-              <Button type="button" variant="secondary" className="w-full sm:flex-1" disabled={pending} onClick={onClose}>
+            <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row">
+              <Button
+                type="button"
+                variant="secondary"
+                className="!h-20 w-full text-heading-sm sm:flex-1"
+                disabled={pending}
+                onClick={onClose}
+              >
                 Back to cart
               </Button>
               <Button
@@ -261,7 +277,7 @@ export function SaleReviewDialog({
                 icon={CheckCircle2}
                 loading={pending}
                 disabled={!canConfirm || pending}
-                className="w-full sm:flex-1"
+                className="!h-20 w-full text-heading-sm sm:flex-1"
                 onClick={onConfirm}
               >
                 {pending ? "Creating..." : "Confirm and complete"}

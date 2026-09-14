@@ -43,6 +43,7 @@ import {
   lineSubtotal,
   marginPercent,
   matchingEarningRule,
+  pointsForEarningRule,
   priceForQuantity,
   QUANTITY_DECIMALS,
   roundMoney,
@@ -85,7 +86,12 @@ import { useCategories } from "@/lib/query/categories";
 import { useCustomers } from "@/lib/query/customers";
 import { useComplexDiscountRules, useDiscountRules, useTaxSettings } from "@/lib/query/discounts";
 import { useFeatureFlags } from "@/lib/query/features";
-import { useAwardLoyaltyPoints, useLoyaltyEarningRules, useLoyaltyRewards } from "@/lib/query/loyalty";
+import {
+  useAwardLoyaltyPoints,
+  useLoyaltyEarningRules,
+  useLoyaltyProgram,
+  useLoyaltyRewards,
+} from "@/lib/query/loyalty";
 import { useProducts, useProductVariantsList } from "@/lib/query/products";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 import {
@@ -167,6 +173,7 @@ export function CreateSaleForm() {
   const complexDiscountRulesQuery = useComplexDiscountRules();
   const loyaltyRewardsQuery = useLoyaltyRewards();
   const loyaltyEarningRulesQuery = useLoyaltyEarningRules();
+  const loyaltyProgramQuery = useLoyaltyProgram();
   const awardLoyaltyPoints = useAwardLoyaltyPoints();
   const taxSettingsQuery = useTaxSettings();
   const { isEnabled } = useFeatureFlags();
@@ -392,6 +399,18 @@ export function CreateSaleForm() {
     ? matchingEarningRule(loyaltyEarningRules, total)
     : null;
   const showAwardPointsButton = null !== pendingManualAwardRule && !pendingManualAwardRule.isAuto;
+  // Same decision tree as RecordLoyaltyForSaleAction::awardPurchasePoints
+  // (PHP) — a matching rule wins outright (auto or manual, since a manual
+  // one is still what the cashier could go earn right after); with none
+  // configured, the flat rate is what actually runs server-side.
+  const estimatedPointsEarned =
+    !selectedCustomer || true !== loyaltyProgramQuery.data?.isActive
+      ? 0
+      : pendingManualAwardRule
+        ? pointsForEarningRule(pendingManualAwardRule, total)
+        : 0 === loyaltyEarningRules.length
+          ? Math.floor(total * (loyaltyProgramQuery.data?.pointsPerCurrency ?? 0))
+          : 0;
 
   const qualifyingSimple = useMemo(
     () => qualifyingSimpleRules(discountRules, lines),
@@ -1626,6 +1645,7 @@ export function CreateSaleForm() {
         onConfirm={submit}
         onViewSale={viewCreatedSale}
         onNewSale={startNewSale}
+        estimatedPointsEarned={estimatedPointsEarned}
         showAwardPointsButton={showAwardPointsButton}
         awardPointsPending={awardLoyaltyPoints.isPending}
         onAwardPoints={() => {
