@@ -125,6 +125,7 @@ export function CustomersPanel({
         onClose={() => setCreating(false)}
         title="Add a customer"
         description="Reusable accounts linked from the counter."
+        className="max-w-4xl min-w-4xl"
       >
         <CustomerForm onDone={() => setCreating(false)} />
       </Sheet>
@@ -133,6 +134,7 @@ export function CustomersPanel({
         open={editing !== null}
         onClose={() => setEditing(null)}
         title={editing ? `Edit ${editing.name}` : "Edit customer"}
+        className="max-w-3xl"
       >
         {editing ? (
           <CustomerForm
