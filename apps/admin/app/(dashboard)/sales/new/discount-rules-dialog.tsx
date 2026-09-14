@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { CheckCircle2, Gift, Percent, Sparkles, Tag, X, type LucideIcon } from "lucide-react";
 import type { CartLine, ComplexDiscountRule, DiscountRule, LoyaltyReward, TaxSettings } from "@double-a/shared-types";
-import { formatMoney } from "@double-a/shared-types";
+import { applyComplexDiscountReward, cartTotal, formatMoney } from "@double-a/shared-types";
 import { Button, Field, Input, Money, MoneyInput } from "@/components/ui";
 import { Dialog } from "@/components/overlay";
 import {
@@ -43,6 +43,16 @@ function RuleRow({
       {active ? <CheckCircle2 size={16} className="text-primary" strokeWidth={2} /> : null}
     </button>
   );
+}
+
+/** "10% off — -₱120.00 if applied" / "₱50 off — -₱50.00 if applied" / "Free item if applied" — the rule's own config plus what it actually deducts from this cart. */
+function complexRuleSummary(rule: ComplexDiscountRule, lines: CartLine[]): string {
+  if ("free_item" === rule.rewardType) return "Free item if applied";
+
+  const config =
+    "percentage" === rule.rewardType ? `${rule.rewardValue ?? 0}% off` : `${formatMoney(rule.rewardValue ?? 0)} off`;
+  const { discountAmount } = applyComplexDiscountReward(rule, cartTotal(lines));
+  return `${config} — -${formatMoney(discountAmount)} if applied`;
 }
 
 /**
@@ -215,7 +225,7 @@ export function DiscountRulesDialog({
                       key={rule.id}
                       icon={Sparkles}
                       label={rule.name}
-                      sub="Conditions met"
+                      sub={complexRuleSummary(rule, lines)}
                       active={false}
                       onClick={() => onApply(applyComplexRuleToCart({ rule, lines }))}
                     />
