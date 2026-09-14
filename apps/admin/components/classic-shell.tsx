@@ -10,7 +10,7 @@ import { LocationSwitcher } from "@/components/location-switcher";
 import { LocationMutationsBanner } from "@/components/location-mutations-banner";
 import { BrandFooter } from "@/components/brand-footer";
 import { UiModeToggle } from "@/components/ui-mode-toggle";
-import { filterNavGroupsByFeatures, filterNavGroupsByPermissions, NAV_GROUPS } from "@/lib/nav";
+import { filterNavGroupsByFeatures, filterNavGroupsByPermissions, isNavItemActive, NAV_GROUPS } from "@/lib/nav";
 import { useNavFeatureEnabled } from "@/lib/query/nav-features";
 import { useCurrentUser } from "@/lib/query/session";
 import { canPermission } from "@/lib/authz";
@@ -64,7 +64,7 @@ export function ClassicShell({
   );
 
   function isActive(href: string): boolean {
-    return href === "/" ? pathname === "/" : pathname.startsWith(href);
+    return isNavItemActive(pathname, href);
   }
 
   return (

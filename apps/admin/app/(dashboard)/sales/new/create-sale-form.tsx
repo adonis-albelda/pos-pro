@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
+import type { Route } from "next";
 import { useRouter } from "next/navigation";
 import {
   Camera,
@@ -14,7 +15,6 @@ import {
   Minimize2,
   PackageSearch,
   Pencil,
-  Save,
   Search,
   ShoppingCart,
   Sparkles,
@@ -75,27 +75,28 @@ import { useCustomers } from "@/lib/query/customers";
 import { useFeatureFlags } from "@/lib/query/features";
 import { useProducts, useProductVariantsList } from "@/lib/query/products";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
-import {
-  deleteSaleDraft,
-  listSaleDrafts,
-  saveSaleDraft,
-  type SaleDraft,
-  type SaleDraftItem,
-} from "@/lib/sale-drafts";
+import { deleteSaleDraft, listSaleDrafts, type SaleDraft } from "@/lib/sale-drafts";
 import {
   SaleVariantAddonPicker,
   variantLabel,
   type SaleVariantAddonSelection,
 } from "./sale-variant-addon-picker";
+import { SaleReviewDialog, type PaymentMethod } from "./sale-review-dialog";
 import { createSaleAction } from "./actions";
 
 const PAYMENT_METHODS = [
   { value: "cash", label: "Cash" },
   { value: "ewallet", label: "E-Wallet" },
   { value: "card", label: "Card" },
+  { value: "credit", label: "Credit" },
 ] as const;
 
-type PaymentMethod = (typeof PAYMENT_METHODS)[number]["value"];
+/**
+ * Which e-wallet the customer actually paid with — display-only, so the
+ * owner can match a sale against their own bank/wallet records. Same list
+ * as the mobile POS's own confirm flow (apps/mobile/app/pos/index.tsx).
+ */
+const EWALLET_PROVIDERS = ["GCash", "Maya", "MariBank", "GrabPay", "ShopeePay"] as const;
 
 // A backordered line has no real ceiling — the sale is confirmed with nothing
 // on the shelf, so there's nothing left to cap against (mirrors mobile POS).
@@ -104,6 +105,16 @@ const BACKORDER_CAP = 9999;
 function stockCapFor(stock: number, allowDecimal: boolean): number {
   if (stock <= 0) return BACKORDER_CAP;
   return allowDecimal ? Number(stock.toFixed(QUANTITY_DECIMALS)) : Math.floor(stock);
+}
+
+/**
+ * Two variants of the same product are separate cart lines — a plain
+ * productId key would conflate a price draft (or a quantity/remove action)
+ * meant for one variant with its sibling. variantId disambiguates the same
+ * way mobile's own cart matches on (productId, variantId) pairs.
+ */
+function lineKey(line: { productId: string; variantId?: string | null }): string {
+  return line.variantId ? `${line.productId}:${line.variantId}` : line.productId;
 }
 
 const GRID_PAGE_SIZE = 24;
@@ -176,8 +187,12 @@ export function CreateSaleForm() {
   } | null>(null);
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
+  const [ewalletProvider, setEwalletProvider] = useState<string | null>(null);
+  const [ewalletProviderOther, setEwalletProviderOther] = useState("");
   const [customerId, setCustomerId] = useState("");
   const [fulfillment, setFulfillment] = useState<"pickup" | "delivery">("pickup");
+  const [saleSucceeded, setSaleSucceeded] = useState(false);
+  const [createdSaleId, setCreatedSaleId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<SaleDraft[]>([]);
   const [draftsOpen, setDraftsOpen] = useState(false);
 
@@ -286,12 +301,12 @@ export function CreateSaleForm() {
 
   const byId = useMemo(() => heldProducts, [heldProducts]);
 
-  function isOverridden(productId: string): boolean {
-    return Boolean(priceDrafts[productId]?.trim());
+  function isOverridden(line: CartLine): boolean {
+    return Boolean(priceDrafts[lineKey(line)]?.trim());
   }
 
   function effectiveUnitPrice(line: CartLine): number {
-    const draft = priceDrafts[line.productId]?.trim();
+    const draft = priceDrafts[lineKey(line)]?.trim();
     if (draft) {
       const typed = Number(draft);
       return Number.isFinite(typed) ? typed : line.unitPrice;
@@ -323,7 +338,7 @@ export function CreateSaleForm() {
   }
 
   function repricedFor(line: CartLine, quantity: number, product?: Product): CartLine {
-    if (isOverridden(line.productId)) return { ...line, quantity };
+    if (isOverridden(line)) return { ...line, quantity };
     // A variant/add-on line's price is fixed at add time (the picker's own
     // resolved total), not re-derived from the product's bulk-pricing math —
     // same split as mobile's own repricedFor.
@@ -540,7 +555,14 @@ export function CreateSaleForm() {
    */
   async function addToCart(product: Product) {
     const existing = lines.find((line) => line.productId === product.id);
-    if (existing) {
+    // A plain line (no variant picked at all) has nothing to reconsider —
+    // bump it straight away. A line that DOES carry a variantId came out of
+    // the picker/auto-resolve below, and this product may have more than
+    // one variant to choose from — re-open the picker instead of blindly
+    // bumping whatever was picked first, so a second click can choose a
+    // different variant. See below: once fetched, a single-variant/no-addon
+    // product with nothing to reconsider still just bumps.
+    if (existing && !existing.variantId) {
       changeQuantity(product.id, 1);
       return;
     }
@@ -550,6 +572,11 @@ export function CreateSaleForm() {
 
     if (variants.length > 1 || addonGroups.length > 0) {
       setPickerState({ product, variants, addonGroups });
+      return;
+    }
+
+    if (existing) {
+      changeQuantity(product.id, 1, existing.variantId);
       return;
     }
 
@@ -592,7 +619,7 @@ export function CreateSaleForm() {
   async function addVariantToCart(row: ProductVariantListRow) {
     const existing = lines.find((line) => line.productId === row.productId && line.variantId === row.id);
     if (existing) {
-      changeQuantity(row.productId, 1);
+      changeQuantity(row.productId, 1, row.id);
       return;
     }
 
@@ -611,11 +638,13 @@ export function CreateSaleForm() {
     commitVariantSelection(product, { variant, addons: [] });
   }
 
-  function changeQuantity(productId: string, delta: number) {
+  /** variantId disambiguates two lines that share a product — omitted, this matches the line with no variant (a plain product). */
+  function changeQuantity(productId: string, delta: number, variantId?: string | null) {
+    const isTarget = (line: CartLine) => line.productId === productId && (line.variantId ?? null) === (variantId ?? null);
     setLines((current) =>
       current
         .map((line) => {
-          if (line.productId !== productId) return line;
+          if (!isTarget(line)) return line;
           const cap = stockCapFor(line.availableStock, line.allowDecimal);
           const next = line.quantity + delta;
           if (delta > 0 && next > cap) return line;
@@ -626,10 +655,11 @@ export function CreateSaleForm() {
   }
 
   /** Typed quantity — never auto-removes the line; use the remove button for that. */
-  function updateQuantity(productId: string, raw: string) {
+  function updateQuantity(productId: string, raw: string, variantId?: string | null) {
+    const isTarget = (line: CartLine) => line.productId === productId && (line.variantId ?? null) === (variantId ?? null);
     setLines((current) =>
       current.map((line) => {
-        if (line.productId !== productId) return line;
+        if (!isTarget(line)) return line;
         const typed = Number(raw);
         if (raw.trim() === "" || !Number.isFinite(typed) || typed < 0) {
           return { ...line, quantity: 0 };
@@ -641,17 +671,21 @@ export function CreateSaleForm() {
     );
   }
 
-  function removeLine(productId: string) {
-    setLines((current) => current.filter((line) => line.productId !== productId));
-    setPriceDrafts(({ [productId]: _drop, ...rest }) => rest);
+  function removeLine(productId: string, variantId?: string | null) {
+    const isTarget = (line: CartLine) => line.productId === productId && (line.variantId ?? null) === (variantId ?? null);
+    setLines((current) => current.filter((line) => !isTarget(line)));
+    setPriceDrafts(({ [lineKey({ productId, variantId })]: _drop, ...rest }) => rest);
   }
 
-  function updatePriceDraft(productId: string, raw: string) {
-    setPriceDrafts((current) => ({ ...current, [productId]: raw }));
+  function updatePriceDraft(productId: string, raw: string, variantId?: string | null) {
+    const key = lineKey({ productId, variantId });
+    const isTarget = (line: CartLine) => line.productId === productId && (line.variantId ?? null) === (variantId ?? null);
+    setPriceDrafts((current) => ({ ...current, [key]: raw }));
     if (raw.trim() === "") {
       setLines((current) =>
         current.map((line) => {
-          if (line.productId !== productId) return line;
+          if (!isTarget(line)) return line;
+          if (line.naturalPrice !== undefined) return { ...line, unitPrice: line.naturalPrice };
           const product = byId.get(productId);
           return product ? { ...line, unitPrice: priceForQuantity(product, line.quantity) } : line;
         }),
@@ -659,13 +693,16 @@ export function CreateSaleForm() {
     }
   }
 
-  function resetLinePrice(productId: string) {
-    setPriceDrafts(({ [productId]: _drop, ...rest }) => rest);
+  function resetLinePrice(productId: string, variantId?: string | null) {
+    const key = lineKey({ productId, variantId });
+    const isTarget = (line: CartLine) => line.productId === productId && (line.variantId ?? null) === (variantId ?? null);
+    setPriceDrafts(({ [key]: _drop, ...rest }) => rest);
     setLines((current) =>
       current.map((line) => {
+        if (!isTarget(line)) return line;
+        if (line.naturalPrice !== undefined) return { ...line, unitPrice: line.naturalPrice };
         const product = byId.get(productId);
-        if (line.productId !== productId || !product) return line;
-        return { ...line, unitPrice: priceForQuantity(product, line.quantity) };
+        return product ? { ...line, unitPrice: priceForQuantity(product, line.quantity) } : line;
       }),
     );
   }
@@ -682,7 +719,7 @@ export function CreateSaleForm() {
         const lineTotal = line.unitPrice * line.quantity;
         const share = roundMoney((lineTotal / total) * capped);
         const nextPrice = Math.max(0, roundMoney(line.unitPrice - share / line.quantity));
-        next[line.productId] = String(nextPrice);
+        next[lineKey(line)] = String(nextPrice);
       }
       return next;
     });
@@ -694,6 +731,7 @@ export function CreateSaleForm() {
     setPriceDrafts({});
     setLines((current) =>
       current.map((line) => {
+        if (line.naturalPrice !== undefined) return { ...line, unitPrice: line.naturalPrice };
         const product = byId.get(line.productId);
         return product ? { ...line, unitPrice: priceForQuantity(product, line.quantity) } : line;
       }),
@@ -723,13 +761,22 @@ export function CreateSaleForm() {
     }
   }
 
+  const effectiveEwalletProvider =
+    "Other" === ewalletProvider ? ewalletProviderOther.trim() || null : ewalletProvider;
+
   function requestSubmit() {
     const hasQuantity = lines.some((line) => line.quantity > 0);
     if (!hasQuantity) {
       setError("Add at least one product with a quantity.");
       return;
     }
+    if ("credit" === paymentMethod && !customerId) {
+      setError("A credit sale must have a customer attached.");
+      return;
+    }
     setError(null);
+    setSaleSucceeded(false);
+    setCreatedSaleId(null);
     setCreateConfirmOpen(true);
   }
 
@@ -740,7 +787,7 @@ export function CreateSaleForm() {
         productId: line.productId,
         variantId: line.variantId ?? undefined,
         quantity: line.quantity,
-        unitPrice: isOverridden(line.productId) ? effectiveUnitPrice(line) : undefined,
+        unitPrice: isOverridden(line) ? effectiveUnitPrice(line) : undefined,
         addons: line.addons?.map((addon) => ({ addonGroupItemId: addon.addonGroupItemId, quantity: addon.quantity })),
       }));
 
@@ -752,15 +799,14 @@ export function CreateSaleForm() {
     setError(null);
     startTransition(async () => {
       try {
-        await createSaleAction({
+        const sale = await createSaleAction({
           items: cleanItems,
           paymentMethod,
           customerId: customerId || undefined,
           fulfillment,
         });
-        setCreateConfirmOpen(false);
-        resetForm();
-        toast.success("Sale created.");
+        setCreatedSaleId(sale.id);
+        setSaleSucceeded(true);
       } catch (cause) {
         setCreateConfirmOpen(false);
         setError(cause instanceof Error ? cause.message : "Could not create this sale.");
@@ -768,40 +814,29 @@ export function CreateSaleForm() {
     });
   }
 
+  function startNewSale() {
+    setCreateConfirmOpen(false);
+    setSaleSucceeded(false);
+    setCreatedSaleId(null);
+    resetForm();
+    toast.success("Sale created.");
+  }
+
+  function viewCreatedSale() {
+    if (createdSaleId) router.push(`/sales/${createdSaleId}` as Route);
+  }
+
   function resetForm() {
     setLines([]);
     setPriceDrafts({});
     setPaymentMethod("cash");
+    setEwalletProvider(null);
+    setEwalletProviderOther("");
     setCustomerId("");
     setFulfillment("pickup");
     setError(null);
     clearAiSearch();
     applyManualSearch("");
-  }
-
-  function saveDraft() {
-    const withQuantity = lines.filter((line) => line.quantity > 0);
-    if (withQuantity.length === 0) {
-      setError("Add at least one product before saving as draft.");
-      return;
-    }
-
-    const items: SaleDraftItem[] = withQuantity.map((line) => ({
-      key: line.productId,
-      product: byId.get(line.productId) ?? null,
-      quantity: String(line.quantity),
-      unitPrice: priceDrafts[line.productId] ?? "",
-      variantId: line.variantId ?? null,
-      variantLabel: line.variantLabel ?? null,
-      naturalPrice: line.naturalPrice ?? null,
-      unitCost: line.variantId ? line.unitCost : null,
-      availableStock: line.variantId ? line.availableStock : null,
-      addons: line.addons ?? [],
-    }));
-    saveSaleDraft({ items, paymentMethod, customerId, fulfillment });
-    setDrafts(listSaleDrafts());
-    resetForm();
-    toast.success("Sale held as draft. Load it later from Drafts.");
   }
 
   function loadDraft(draft: SaleDraft) {
@@ -847,7 +882,7 @@ export function CreateSaleForm() {
           availableStock: stockCapFor(product.stockQuantity, product.allowDecimal),
         });
       }
-      if (item.unitPrice.trim()) nextDrafts[product.id] = item.unitPrice;
+      if (item.unitPrice.trim()) nextDrafts[lineKey({ productId: product.id, variantId: item.variantId })] = item.unitPrice;
     }
 
     setHeldProducts(nextHeld);
@@ -873,21 +908,16 @@ export function CreateSaleForm() {
       <div className="flex min-h-0 flex-1 flex-col gap-4">
         <Card className="flex min-h-0 flex-1 flex-col">
           <div className="flex flex-col gap-4 border-b border-border px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
-            <div className="min-w-0 shrink-0">
-              <div className="flex items-center gap-2">
-                <h1 className="text-heading-md font-semibold text-ink">New sale</h1>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  icon={expandOpen ? Minimize2 : Maximize2}
-                  aria-label={expandOpen ? "Exit full-page view" : "Expand to a full-page, distraction-free view"}
-                  onClick={() => setExpandOpen((current) => !current)}
-                />
-              </div>
-              <p className="mt-1 text-caption text-ink-muted">
-                Rung up in the office — not from a POS terminal.
-              </p>
+            <div className="flex shrink-0 items-center gap-2">
+              <h1 className="text-heading-md font-semibold text-ink">New sale</h1>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                icon={expandOpen ? Minimize2 : Maximize2}
+                aria-label={expandOpen ? "Exit full-page view" : "Expand to a full-page, distraction-free view"}
+                onClick={() => setExpandOpen((current) => !current)}
+              />
             </div>
 
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 lg:justify-end">
@@ -939,7 +969,7 @@ export function CreateSaleForm() {
                   By variant
                 </button>
               </div>
-              {"product" === gridViewMode && isEnabled("voice_search") && voiceSupported ? (
+              {isEnabled("voice_search") && voiceSupported ? (
                 <Button
                   type="button"
                   variant="secondary"
@@ -1008,7 +1038,7 @@ export function CreateSaleForm() {
                             ?.quantity ?? 0
                         }
                         onAdd={() => void addVariantToCart(row)}
-                        onRemove={() => changeQuantity(row.productId, -1)}
+                        onRemove={() => changeQuantity(row.productId, -1, row.id)}
                       />
                     ))}
                   </div>
@@ -1051,15 +1081,24 @@ export function CreateSaleForm() {
             ) : (
               <>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-                  {displayedProducts.map((product) => (
-                    <ProductGridTile
-                      key={product.id}
-                      product={product}
-                      quantityInCart={lines.find((line) => line.productId === product.id)?.quantity ?? 0}
-                      onAdd={() => void addToCart(product)}
-                      onRemove={() => changeQuantity(product.id, -1)}
-                    />
-                  ))}
+                  {displayedProducts.map((product) => {
+                    // A product can have more than one cart line now (a
+                    // different variant picked each time) — the tile badge
+                    // sums all of them, same as mobile's own inCart map;
+                    // its quick decrement just targets whichever line was
+                    // added first.
+                    const productLines = lines.filter((line) => line.productId === product.id);
+                    const quantityInCart = productLines.reduce((sum, line) => sum + line.quantity, 0);
+                    return (
+                      <ProductGridTile
+                        key={product.id}
+                        product={product}
+                        quantityInCart={quantityInCart}
+                        onAdd={() => void addToCart(product)}
+                        onRemove={() => changeQuantity(product.id, -1, productLines[0]?.variantId)}
+                      />
+                    );
+                  })}
                 </div>
 
                 {!aiResultIds && pageCount > 1 ? (
@@ -1101,31 +1140,16 @@ export function CreateSaleForm() {
             title="Cart"
             description={itemCount > 0 ? `${itemCount} item${itemCount === 1 ? "" : "s"}` : "Click a product to add it"}
             action={
-              lines.length > 0 || drafts.length > 0 ? (
-                <div className="flex items-center gap-2">
-                  {lines.length > 0 ? (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      icon={Save}
-                      onClick={saveDraft}
-                    >
-                      Save as draft
-                    </Button>
-                  ) : null}
-                  {drafts.length > 0 ? (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      icon={FolderOpen}
-                      onClick={() => setDraftsOpen(true)}
-                    >
-                      Drafts <Badge tone="neutral">{drafts.length}</Badge>
-                    </Button>
-                  ) : null}
-                </div>
+              drafts.length > 0 ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  icon={FolderOpen}
+                  onClick={() => setDraftsOpen(true)}
+                >
+                  Drafts <Badge tone="neutral">{drafts.length}</Badge>
+                </Button>
               ) : undefined
             }
           />
@@ -1144,11 +1168,11 @@ export function CreateSaleForm() {
                 const lineDiscount = roundMoney(
                   Math.max(line.listPrice - line.unitPrice, 0) * quantity,
                 );
-                const overridden = isOverridden(line.productId);
+                const overridden = isOverridden(line);
 
                 return (
                   <div
-                    key={line.productId}
+                    key={lineKey(line)}
                     className="rounded-sm border border-border bg-paper p-3"
                   >
                     <div className="flex items-start justify-between gap-2">
@@ -1169,7 +1193,7 @@ export function CreateSaleForm() {
                         size="sm"
                         icon={Trash2}
                         aria-label={`Remove ${line.productName} from cart`}
-                        onClick={() => removeLine(line.productId)}
+                        onClick={() => removeLine(line.productId, line.variantId)}
                       />
                     </div>
 
@@ -1181,7 +1205,7 @@ export function CreateSaleForm() {
                             variant="secondary"
                             size="sm"
                             aria-label={`One less ${line.productName}`}
-                            onClick={() => changeQuantity(line.productId, -1)}
+                            onClick={() => changeQuantity(line.productId, -1, line.variantId)}
                           >
                             −
                           </Button>
@@ -1191,7 +1215,7 @@ export function CreateSaleForm() {
                             min={0}
                             step={line.allowDecimal ? "0.001" : "1"}
                             value={quantity}
-                            onChange={(event) => updateQuantity(line.productId, event.target.value)}
+                            onChange={(event) => updateQuantity(line.productId, event.target.value, line.variantId)}
                             className="num text-center"
                           />
                           <Button
@@ -1199,7 +1223,7 @@ export function CreateSaleForm() {
                             variant="secondary"
                             size="sm"
                             aria-label={`One more ${line.productName}`}
-                            onClick={() => changeQuantity(line.productId, 1)}
+                            onClick={() => changeQuantity(line.productId, 1, line.variantId)}
                           >
                             +
                           </Button>
@@ -1216,8 +1240,8 @@ export function CreateSaleForm() {
                           min={0}
                           step="0.01"
                           placeholder={String(line.listPrice)}
-                          value={priceDrafts[line.productId] ?? ""}
-                          onChange={(event) => updatePriceDraft(line.productId, event.target.value)}
+                          value={priceDrafts[lineKey(line)] ?? ""}
+                          onChange={(event) => updatePriceDraft(line.productId, event.target.value, line.variantId)}
                         />
                       </Field>
                     </div>
@@ -1233,7 +1257,7 @@ export function CreateSaleForm() {
                           <button
                             type="button"
                             className="text-primary underline decoration-dotted"
-                            onClick={() => resetLinePrice(line.productId)}
+                            onClick={() => resetLinePrice(line.productId, line.variantId)}
                           >
                             Reset to shelf price
                           </button>
@@ -1268,9 +1292,35 @@ export function CreateSaleForm() {
               <Field label="Payment method" required>
                 <Combobox
                   value={paymentMethod}
-                  onChange={(next) => setPaymentMethod(next as PaymentMethod)}
+                  onChange={(next) => {
+                    setPaymentMethod(next as PaymentMethod);
+                    if ("ewallet" !== next) {
+                      setEwalletProvider(null);
+                      setEwalletProviderOther("");
+                    }
+                  }}
                   options={PAYMENT_METHODS.map((method) => ({ value: method.value, label: method.label }))}
                 />
+                {"ewallet" === paymentMethod ? (
+                  <div className="mt-2 space-y-2">
+                    <Combobox
+                      value={ewalletProvider ?? ""}
+                      onChange={(next) => setEwalletProvider(next || null)}
+                      placeholder="Which e-wallet?"
+                      options={[
+                        ...EWALLET_PROVIDERS.map((name) => ({ value: name, label: name })),
+                        { value: "Other", label: "Other e-wallet" },
+                      ]}
+                    />
+                    {"Other" === ewalletProvider ? (
+                      <Input
+                        value={ewalletProviderOther}
+                        onChange={(event) => setEwalletProviderOther(event.target.value)}
+                        placeholder="Name the e-wallet"
+                      />
+                    ) : null}
+                  </div>
+                ) : null}
               </Field>
               <Field label="Fulfillment" required>
                 <Combobox
@@ -1284,7 +1334,15 @@ export function CreateSaleForm() {
               </Field>
             </div>
 
-            <Field label="Customer" hint="Optional — a walk-in needs nothing here." required={false}>
+            <Field
+              label="Customer"
+              hint={
+                "credit" === paymentMethod
+                  ? "Required for a credit sale."
+                  : "Optional — a walk-in needs nothing here."
+              }
+              required={"credit" === paymentMethod}
+            >
               <Combobox
                 value={customerId}
                 onChange={(next) => setCustomerId(next)}
@@ -1338,16 +1396,6 @@ export function CreateSaleForm() {
 
             {!expandOpen ? (
               <>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  icon={Save}
-                  className="w-full"
-                  onClick={saveDraft}
-                >
-                  Save as draft
-                </Button>
-
                 <div className="flex flex-col-reverse gap-2 sm:flex-row">
                   <Button
                     type="button"
@@ -1373,15 +1421,24 @@ export function CreateSaleForm() {
         </Card>
       </div>
 
-      <ConfirmDialog
+      <SaleReviewDialog
         open={createConfirmOpen}
+        succeeded={saleSucceeded}
+        pending={pending}
+        shelfTotal={shelfTotal}
+        discount={discount}
+        amountDue={total}
+        itemCount={itemCount}
+        paymentMethod={paymentMethod}
+        ewalletProvider={effectiveEwalletProvider}
+        fulfillment={fulfillment}
+        customerName={customers.find((customer) => customer.id === customerId)?.name ?? null}
+        customerContact={customers.find((customer) => customer.id === customerId)?.contact ?? null}
+        customerAddress={customers.find((customer) => customer.id === customerId)?.address ?? null}
         onClose={() => setCreateConfirmOpen(false)}
         onConfirm={submit}
-        pending={pending}
-        title="Create this sale?"
-        description="This records the sale and updates stock. You can't undo it from here."
-        confirmLabel="Create sale"
-        confirmIcon={CheckCircle2}
+        onViewSale={viewCreatedSale}
+        onNewSale={startNewSale}
       />
 
       <Dialog
@@ -1606,9 +1663,6 @@ export function CreateSaleForm() {
         className="w-full max-w-none"
         footer={
           <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-            <Button type="button" variant="secondary" icon={Save} onClick={saveDraft}>
-              Save as draft
-            </Button>
             <Button
               type="button"
               variant="secondary"

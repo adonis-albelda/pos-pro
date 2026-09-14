@@ -104,7 +104,7 @@ export interface CreateSaleItemInput {
 
 export interface CreateSaleInput {
   items: CreateSaleItemInput[];
-  paymentMethod: "cash" | "ewallet" | "card";
+  paymentMethod: "cash" | "ewallet" | "card" | "credit";
   customerId?: string;
   /** Defaults to true for cash, false otherwise — same rule the POS follows (CLAUDE.md §12). */
   isPaid?: boolean;

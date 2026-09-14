@@ -21,7 +21,7 @@ export interface CreateSaleLine {
  */
 export async function createSaleAction(input: {
   items: CreateSaleLine[];
-  paymentMethod: "cash" | "ewallet" | "card";
+  paymentMethod: "cash" | "ewallet" | "card" | "credit";
   customerId?: string;
   isPaid?: boolean;
   fulfillment?: "pickup" | "delivery";

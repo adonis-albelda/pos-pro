@@ -8,6 +8,7 @@ import { canPermission } from "@/lib/authz";
 import {
   filterNavSectionsByFeatures,
   filterNavSectionsByPermissions,
+  isNavItemActive,
   NAV_SECTIONS,
   type NavItem,
 } from "@/lib/nav";
@@ -36,7 +37,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const [motion, setMotion] = useState<ReadonlyMap<string, RowMotion>>(() => new Map());
 
   function isItemActive(href: string): boolean {
-    return href === "/" ? pathname === "/" : pathname.startsWith(href);
+    return isNavItemActive(pathname, href);
   }
 
   // Collapsed on first load — only the group holding the current page opens
