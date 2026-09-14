@@ -34,6 +34,7 @@ export * from "./mfa";
 export * from "./security-settings";
 export * from "./platform-security-settings";
 export * from "./catalog-settings";
+export * from "./catalogs";
 export * from "./brands";
 export * from "./tags";
 export * from "./discounts";

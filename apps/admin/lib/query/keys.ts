@@ -172,6 +172,11 @@ export const queryKeys = {
     all: ["catalog-settings"] as const,
     detail: () => ["catalog-settings", "detail"] as const,
   },
+  readyCatalogs: {
+    all: ["ready-catalogs"] as const,
+    list: (storeType?: string | null) => ["ready-catalogs", "list", storeType ?? null] as const,
+    detail: (id: string) => ["ready-catalogs", "detail", id] as const,
+  },
   taxSettings: {
     all: ["tax-settings"] as const,
     detail: () => ["tax-settings", "detail"] as const,

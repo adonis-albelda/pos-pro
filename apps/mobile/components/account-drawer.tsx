@@ -35,7 +35,7 @@ import { useSession } from "@/lib/session";
 import { useStoreSettings } from "@/lib/store";
 import { useSync } from "@/sync/sync-provider";
 import { BranchPickerDialog, useBranchPicker } from "@/components/location-switcher";
-import { circleRadius, color, fontSize, radius, space, styles } from "@/theme";
+import { circleRadius, color, fontSize, radius, space } from "@/theme";
 
 // Sell / Delivery / History / Attendance stay on BottomTabBar only (phone
 // only) — tablet has no bar, but attendance is a shift-start/end action, not
@@ -161,6 +161,38 @@ export function AccountDrawer({
             transform: [{ translateX }],
           }}
         >
+          {/* Floating, not part of the scrolling column — no longer spends a
+              row's worth of height just to close the drawer. Sits at the top
+              of the panel, straddling its right edge (the boundary with the
+              scrim) so it reads as a floating control, not inline chrome. */}
+          <Pressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+            style={({ pressed }) => ({
+              position: "absolute",
+              top: insets.top + space.sm,
+              right: -18,
+              zIndex: 1,
+              width: 36,
+              height: 36,
+              borderRadius: circleRadius(36),
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: color.surface,
+              borderWidth: 1,
+              borderColor: color.border,
+              opacity: pressed ? 0.7 : 1,
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 0.15,
+              shadowRadius: 3,
+              elevation: 3,
+            })}
+          >
+            <X size={18} color={color.inkMuted} strokeWidth={2.25} />
+          </Pressable>
+
           {/*
             Everything below scrolls — a fixed-height column with no
             fallback used to clip "On shift"/Offline mode/End shift/version
@@ -182,17 +214,6 @@ export function AccountDrawer({
             }}
             showsVerticalScrollIndicator={false}
           >
-          <View style={{ flexDirection: "row", justifyContent: "flex-end" }}>
-            <Pressable
-              onPress={onClose}
-              accessibilityRole="button"
-              accessibilityLabel="Close"
-              style={styles.tapTarget}
-            >
-              <X size={22} color={color.inkMuted} strokeWidth={2} />
-            </Pressable>
-          </View>
-
           {/* Identity: avatar + cashier name on top, business name (and branch,
               only once there is more than one to name) underneath — no logo,
               no separate store-name block above this. A single-branch shop

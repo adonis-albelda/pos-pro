@@ -25,6 +25,7 @@ import {
   Users,
   Wallet,
   Banknote,
+  BookCopy,
   type LucideIcon,
 } from "lucide-react";
 
@@ -144,6 +145,24 @@ export const NAV_SECTIONS: NavSection[] = [
             blurb: "Print SKU QR sheets",
             tone: "accent",
             permissionKey: "catalog.labels.view",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    label: "Ready Catalog",
+    groups: [
+      {
+        label: null,
+        items: [
+          {
+            href: "/ready-catalog" as Route,
+            label: "Ready Catalog",
+            icon: BookCopy,
+            blurb: "Import starter products by store type",
+            tone: "accent",
+            permissionKey: "catalog.products.view",
           },
         ],
       },
