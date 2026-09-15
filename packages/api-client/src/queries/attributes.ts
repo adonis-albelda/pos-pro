@@ -13,6 +13,8 @@ export interface CompanyAttribute {
   id: string;
   name: string;
   displayType: "dropdown" | "color_swatch" | "text";
+  /** null = global Variant Options row; set = product-level vocabulary for that product. */
+  productId: string | null;
   values: CompanyAttributeValue[];
 }
 
@@ -82,6 +84,7 @@ interface CompanyAttributeValueAttrs {
 interface CompanyAttributeAttrs {
   name: string;
   display_type: string;
+  product_id: string | null;
   values: { id: string; value: string; sort_order: number; hex_code: string | null }[];
 }
 
@@ -184,6 +187,7 @@ function toCompanyAttribute(resource: JsonApiResource<CompanyAttributeAttrs>): C
     id: resource.id,
     name: a.name,
     displayType: a.display_type as CompanyAttribute["displayType"],
+    productId: a.product_id ?? null,
     values: a.values.map((value) => ({
       id: value.id,
       companyAttributeId: resource.id,
@@ -233,18 +237,42 @@ function toProductVariant(resource: JsonApiResource<ProductVariantAttrs>): Produ
   };
 }
 
-export async function listCompanyAttributes(client: ApiClient): Promise<CompanyAttribute[]> {
-  const { data } = await client.get<{ data: JsonApiResource<CompanyAttributeAttrs>[] }>("/attributes");
+export type ListCompanyAttributesParams =
+  | { scope: "global" }
+  | { forProduct: string }
+  | Record<string, never>;
+
+export async function listCompanyAttributes(
+  client: ApiClient,
+  params: ListCompanyAttributesParams = {},
+): Promise<CompanyAttribute[]> {
+  const search = new URLSearchParams();
+  if ("scope" in params && params.scope === "global") {
+    search.set("scope", "global");
+  }
+  if ("forProduct" in params && params.forProduct) {
+    search.set("for_product", params.forProduct);
+  }
+  const qs = search.toString();
+  const { data } = await client.get<{ data: JsonApiResource<CompanyAttributeAttrs>[] }>(
+    qs ? `/attributes?${qs}` : "/attributes",
+  );
   return data.map(toCompanyAttribute);
 }
 
 export async function createCompanyAttribute(
   client: ApiClient,
-  input: { name: string; displayType?: CompanyAttribute["displayType"] },
+  input: {
+    name: string;
+    displayType?: CompanyAttribute["displayType"];
+    /** Set for product-level options; omit/null for global Variant Options. */
+    productId?: string | null;
+  },
 ): Promise<CompanyAttribute> {
   const { data } = await client.post<{ data: JsonApiResource<CompanyAttributeAttrs> }>("/attributes", {
     name: input.name,
     display_type: input.displayType,
+    product_id: input.productId ?? null,
   });
   return toCompanyAttribute(data);
 }

@@ -169,7 +169,7 @@ function AttributeCard({ attribute }: { attribute: { id: string; name: string; v
 }
 
 export default function AttributesPage() {
-  const attributesQuery = useCompanyAttributes();
+  const attributesQuery = useCompanyAttributes({ scope: "global" });
   const createAttribute = useCreateCompanyAttribute();
   const [name, setName] = useState("");
 

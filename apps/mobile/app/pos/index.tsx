@@ -28,6 +28,7 @@ import {
   Camera,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   CreditCard,
   FolderTree,
@@ -91,7 +92,7 @@ import {
 } from "@double-a/shared-types";
 import { listLocalAddonGroups } from "@/db/addon-groups";
 import { listLocalCategories, type LocalCategory } from "@/db/categories";
-import { getLocalCustomer, searchLocalCustomers, upsertLocalCustomer } from "@/db/customers";
+import { getLocalCustomer, upsertLocalCustomer } from "@/db/customers";
 import { getPendingRedeemedPoints, listLocalLoyaltyRewards } from "@/db/loyalty";
 import {
   countActiveLocalProducts,
@@ -160,6 +161,7 @@ import {
   type VariantAddonSelection,
 } from "@/components/variant-addon-picker";
 import { VoiceSearchModal } from "@/components/voice-search-modal";
+import { OpenPriceSheet } from "@/components/open-price-sheet";
 import {
   Badge,
   Button,
@@ -388,6 +390,9 @@ export default function SellScreen() {
   const [fulfillment, setFulfillment] = useState<Fulfillment>("pickup");
   const [openField, setOpenField] = useState<"payment" | "fulfillment" | null>(null);
   const [editingCustomer, setEditingCustomer] = useState(false);
+  // Collapsed by default — cash + pickup + walk-in covers most sales, so
+  // showing these expanded by default just ate cart space for the common case.
+  const [saleDetailsOpen, setSaleDetailsOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmSucceeded, setConfirmSucceeded] = useState(false);
   const [completedSale, setCompletedSale] = useState<LocalSaleWithItems | null>(null);
@@ -412,6 +417,12 @@ export default function SellScreen() {
     product: ProductWithEstimatedStock;
     variants: ProductVariant[];
     addonGroups: AddonGroup[];
+  } | null>(null);
+  /** Ready-catalog / zero-shelf-price lines — cashier types the charge before commit. */
+  const [openPricePending, setOpenPricePending] = useState<{
+    product: ProductWithEstimatedStock;
+    selection?: ResolvedSelection;
+    sourceRect?: FlyRect;
   } | null>(null);
   // Ranked product ids from the last smart search — while set, the grid shows
   // exactly these (in this order) instead of the normal query/category list.
@@ -751,25 +762,22 @@ export default function SellScreen() {
    * The one exception is the first tap on a product sitting at zero: that's a
    * backorder decision, not a speed-critical tap, so it gets asked once.
    *
-   * A product with more than one variant, and/or one or more attached
-   * add-on groups, opens the picker instead of adding directly — but only
-   * on the FIRST tap. Once a line exists, its variant/add-ons are already
-   * resolved, so a repeat tap just bumps quantity, same speed-critical path
-   * as a plain product always had.
+   * A product with more than one variant opens the picker on every tap, not
+   * just the first — a second tap is not necessarily "one more of the same
+   * variant," it might be a different variant of the same product, and only
+   * the picker can ask that. A plain product, or one with exactly one
+   * variant, has nothing to ask twice: those keep the old fast bump-existing
+   * path. Add-on-only products (no variants) also keep the old first-tap-only
+   * behavior — add-on combos aren't picked apart per repeat tap here.
    */
   async function addToCart(product: ProductWithEstimatedStock, sourceRect?: FlyRect) {
     rememberProducts([product]);
 
-    // Product-level mode never creates more than one line per product (the
-    // variant/add-on picker below only ever runs on the first tap), so a
-    // repeat tap always has exactly one existing line to bump — its own
-    // variantId included, whether that's unset (a plain product) or a
-    // single auto-resolved/picked variant (see changeQuantity's variantId
-    // parameter for why that distinction matters once a product has more
-    // than one variant line, which "By variant" grid tiles can produce).
     const existing = lines.find((line) => line.productId === product.id);
-    if (existing) {
-      changeQuantity(product.id, 1, existing.variantId);
+    // A plain line (no variant ever resolved) never needed a choice and
+    // never will — same fast path as before, skipping the variant fetch.
+    if (existing && !existing.variantId) {
+      changeQuantity(product.id, 1, null);
       if (sourceRect) flyToCart(sourceRect, product.photoUrl);
       return;
     }
@@ -779,8 +787,20 @@ export default function SellScreen() {
       listLocalAddonGroups(product.addonGroupIds),
     ]);
 
-    if (variants.length > 1 || addonGroups.length > 0) {
-      // Opens the picker instead — nothing has been added yet, so no flight.
+    if (variants.length > 1) {
+      // Opens the picker regardless of any existing line — could be a
+      // different variant of this same product, not a repeat of the last one.
+      setPickerState({ product, variants, addonGroups });
+      return;
+    }
+
+    if (existing) {
+      changeQuantity(product.id, 1, existing.variantId);
+      if (sourceRect) flyToCart(sourceRect, product.photoUrl);
+      return;
+    }
+
+    if (addonGroups.length > 0) {
       setPickerState({ product, variants, addonGroups });
       return;
     }
@@ -804,8 +824,7 @@ export default function SellScreen() {
           {
             text: "Sell anyway",
             onPress: () => {
-              commitAddToCart(product);
-              if (sourceRect) flyToCart(sourceRect, product.photoUrl);
+              requestAddToCart(product, undefined, sourceRect);
             },
           },
         ],
@@ -813,8 +832,7 @@ export default function SellScreen() {
       return;
     }
 
-    commitAddToCart(product);
-    if (sourceRect) flyToCart(sourceRect, product.photoUrl);
+    requestAddToCart(product, undefined, sourceRect);
   }
 
   /**
@@ -844,8 +862,7 @@ export default function SellScreen() {
           {
             text: "Sell anyway",
             onPress: () => {
-              commitAddToCart(product, resolved);
-              if (sourceRect) flyToCart(sourceRect, product.photoUrl);
+              requestAddToCart(product, resolved, sourceRect);
             },
           },
         ],
@@ -853,8 +870,7 @@ export default function SellScreen() {
       return;
     }
 
-    commitAddToCart(product, resolved);
-    if (sourceRect) flyToCart(sourceRect, product.photoUrl);
+    requestAddToCart(product, resolved, sourceRect);
   }
 
   /**
@@ -889,7 +905,73 @@ export default function SellScreen() {
     await commitVariantSelection(tile.realProduct, tile.variant, [], sourceRect);
   }
 
-  function commitAddToCart(product: ProductWithEstimatedStock, selection?: ResolvedSelection) {
+  /**
+   * Tile decrement (product-level "-") and hold-remove: a plain or
+   * single-variant tile just decrements/removes its one line, same as
+   * before. A "By variant" tile already names its own line. But a
+   * product-level tile for a product with 2+ variants can't guess which
+   * line to touch — it opens the same manager sheet as adding does, so the
+   * cashier picks which variant to take one off of.
+   */
+  async function handleTileDecrement(tile: GridTile, action: "decrement" | "hold-remove") {
+    if (tile.variant) {
+      if (action === "decrement") {
+        changeQuantity(tile.realProduct.id, -1, tile.variant.id);
+      } else {
+        confirmRemoveLine(tile.realProduct.id, tile.display.name, tile.variant.id);
+      }
+      return;
+    }
+
+    const [variants, addonGroups] = await Promise.all([
+      listLocalVariantsForProduct(tile.realProduct.id),
+      listLocalAddonGroups(tile.realProduct.addonGroupIds),
+    ]);
+
+    if (variants.length > 1) {
+      setPickerState({ product: tile.realProduct, variants, addonGroups });
+      return;
+    }
+
+    const existing = lines.find((line) => line.productId === tile.realProduct.id);
+    const variantId = existing?.variantId ?? null;
+    if (action === "decrement") {
+      changeQuantity(tile.realProduct.id, -1, variantId);
+    } else {
+      confirmRemoveLine(tile.realProduct.id, tile.display.name, variantId);
+    }
+  }
+
+  /**
+   * Zero shelf price (ready-catalog imports) → ask cashier before commit.
+   * Otherwise same as commitAddToCart + optional fly animation.
+   */
+  function requestAddToCart(
+    product: ProductWithEstimatedStock,
+    selection?: ResolvedSelection,
+    sourceRect?: FlyRect,
+  ) {
+    const shelfPrice = selection
+      ? roundMoney(
+          selection.variant.price +
+            selection.addons.reduce((sum, addon) => sum + addon.price, 0),
+        )
+      : product.price;
+
+    if (shelfPrice <= 0) {
+      setOpenPricePending({ product, selection, sourceRect });
+      return;
+    }
+
+    commitAddToCart(product, selection);
+    if (sourceRect) flyToCart(sourceRect, product.photoUrl);
+  }
+
+  function commitAddToCart(
+    product: ProductWithEstimatedStock,
+    selection?: ResolvedSelection,
+    priceOverride?: number,
+  ) {
     setLines((current) => {
       // Matches on variantId too, not just productId — two variants of the
       // same product (picked twice, or two "By variant" grid tiles) are
@@ -914,7 +996,10 @@ export default function SellScreen() {
         const addonsTotal = roundMoney(
           selection.addons.reduce((sum, addon) => sum + addon.price, 0),
         );
-        const naturalPrice = roundMoney(selection.variant.price + addonsTotal);
+        const naturalPrice =
+          priceOverride !== undefined
+            ? priceOverride
+            : roundMoney(selection.variant.price + addonsTotal);
         const stockCap = stockCapFor(selection.estimatedStock);
 
         return [
@@ -943,15 +1028,17 @@ export default function SellScreen() {
       }
 
       const stockCap = stockCapFor(product.estimatedStock);
+      const price = priceOverride !== undefined ? priceOverride : product.price;
       return [
         ...current,
         {
           productId: product.id,
           productName: product.name,
-          unitPrice: product.price,
+          unitPrice: price,
           // The shelf price, kept whatever the line ends up selling at, so the
           // office can see exactly what was given away.
-          listPrice: product.price,
+          listPrice: price,
+          naturalPrice: priceOverride !== undefined ? priceOverride : undefined,
           unitCost: product.costPrice,
           unit: product.unit,
           quantity: 1,
@@ -970,8 +1057,12 @@ export default function SellScreen() {
    */
   async function onPickerConfirm(selection: VariantAddonSelection) {
     if (!pickerState) return;
-    const { product } = pickerState;
-    setPickerState(null);
+    const { product, variants } = pickerState;
+    // A tile-scoped single-variant + add-ons picker (handleTilePress) is a
+    // one-shot action tied to that one tap, so it still closes on confirm.
+    // The 2+ variant manager (addToCart / handleTileDecrement) stays open —
+    // there may be another variant left to add.
+    if (variants.length <= 1) setPickerState(null);
     void commitVariantSelection(product, selection.variant, selection.addons);
   }
 
@@ -1605,10 +1696,8 @@ export default function SellScreen() {
                       justCreated={justCreatedProductIds.has(item.display.id)}
                       enterIndex={index < LIST_ENTER_MAX ? index : null}
                       onPress={(sourceRect) => void handleTilePress(item, sourceRect)}
-                      onRemove={() => changeQuantity(item.realProduct.id, -1, item.variant?.id)}
-                      onHoldRemove={() =>
-                        confirmRemoveLine(item.realProduct.id, item.display.name, item.variant?.id)
-                      }
+                      onRemove={() => void handleTileDecrement(item, "decrement")}
+                      onHoldRemove={() => void handleTileDecrement(item, "hold-remove")}
                       onHoldView={() => setViewingProduct(item.realProduct)}
                     />
                   </View>
@@ -1928,23 +2017,77 @@ export default function SellScreen() {
               />
             </View>
 
-            <View style={{ flexDirection: "row", gap: space.sm, marginTop: space.md }}>
-              <PaymentMethodTrigger
-                value={payment}
-                hasProof={Boolean(paymentProofUri)}
-                provider={ewalletProvider}
-                onPress={() => setOpenField("payment")}
+            {/* Collapsed by default — the toggle's own summary line always
+                shows the current picks, so nothing here is hidden, just
+                folded away until the cashier needs to change one. Forced
+                open when Credit has no customer yet — that warning below is
+                pointless if the customer picker it points at stays hidden. */}
+            <Pressable
+              onPress={() => setSaleDetailsOpen((was) => !was)}
+              disabled={requiresCustomerForPayment(payment, customer)}
+              accessibilityRole="button"
+              accessibilityLabel={`Payment, fulfillment and customer. ${saleDetailsOpen ? "Collapse" : "Expand"}.`}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: space.sm,
+                marginTop: space.md,
+              }}
+            >
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontSize: fontSize.caption, fontWeight: "600", color: color.ink }}>
+                  Payment, fulfillment &amp; customer
+                </Text>
+                <Text numberOfLines={1} style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
+                  {PAYMENT_METHODS.find((option) => option.value === payment)?.label ?? payment}
+                  {" · "}
+                  {FULFILLMENT_OPTIONS.find((option) => option.value === fulfillment)?.label ?? fulfillment}
+                  {" · "}
+                  {customer.name?.trim() || "Walk-in"}
+                </Text>
+              </View>
+              <ChevronDown
+                size={18}
+                color={color.inkMuted}
+                strokeWidth={2.25}
+                style={{ transform: [{ rotate: saleDetailsOpen ? "180deg" : "0deg" }] }}
               />
-              <SelectField
-                label="Fulfillment"
-                value={fulfillment}
-                options={FULFILLMENT_OPTIONS}
-                open={openField === "fulfillment"}
-                onOpen={() => setOpenField("fulfillment")}
-                onClose={() => setOpenField(null)}
-                onChange={setFulfillment}
-              />
-            </View>
+            </Pressable>
+
+            {saleDetailsOpen || requiresCustomerForPayment(payment, customer) ? (
+              <>
+                <View style={{ flexDirection: "row", gap: space.sm, marginTop: space.sm }}>
+                  <PaymentMethodTrigger
+                    value={payment}
+                    hasProof={Boolean(paymentProofUri)}
+                    provider={ewalletProvider}
+                    onPress={() => setOpenField("payment")}
+                  />
+                  <SelectField
+                    label="Fulfillment"
+                    value={fulfillment}
+                    options={FULFILLMENT_OPTIONS}
+                    open={openField === "fulfillment"}
+                    onOpen={() => setOpenField("fulfillment")}
+                    onClose={() => setOpenField(null)}
+                    onChange={setFulfillment}
+                  />
+                </View>
+
+                {/* Optional, and it looks optional: one quiet row, never a
+                    required step between the cashier and the total. */}
+                <CustomerButton
+                  customer={customer}
+                  onPress={() => setEditingCustomer(true)}
+                  onClear={() => {
+                    setCustomer(NO_CUSTOMER);
+                    // No customer left to owe utang to — fall back to cash
+                    // rather than leaving Credit selected with nothing behind it.
+                    if (payment === "credit") setPayment("cash");
+                  }}
+                />
+              </>
+            ) : null}
 
             <PaymentMethodDialog
               open={openField === "payment"}
@@ -1957,19 +2100,6 @@ export default function SellScreen() {
                 setPaymentProofUri(method === "ewallet" ? proofUri : null);
                 setEwalletProvider(method === "ewallet" ? provider : null);
                 setOpenField(null);
-              }}
-            />
-
-            {/* Optional, and it looks optional: one quiet row, never a required
-                step between the cashier and the total. */}
-            <CustomerButton
-              customer={customer}
-              onPress={() => setEditingCustomer(true)}
-              onClear={() => {
-                setCustomer(NO_CUSTOMER);
-                // No customer left to owe utang to — fall back to cash
-                // rather than leaving Credit selected with nothing behind it.
-                if (payment === "credit") setPayment("cash");
               }}
             />
 
@@ -2146,8 +2276,35 @@ export default function SellScreen() {
         productPhotoUrl={pickerState?.product.photoUrl}
         variants={pickerState?.variants ?? []}
         addonGroups={pickerState?.addonGroups ?? []}
+        quantities={inCartByVariant}
         onCancel={() => setPickerState(null)}
+        onAdjust={(variant, delta) => {
+          if (!pickerState) return;
+          if (delta > 0) {
+            void commitVariantSelection(pickerState.product, variant, []);
+          } else {
+            changeQuantity(pickerState.product.id, -1, variant.id);
+          }
+        }}
         onConfirm={(selection) => void onPickerConfirm(selection)}
+      />
+
+      <OpenPriceSheet
+        open={openPricePending !== null}
+        productName={openPricePending?.product.name ?? ""}
+        variantLabel={
+          openPricePending?.selection
+            ? variantAttributeLabel(openPricePending.selection.variant) || null
+            : null
+        }
+        onCancel={() => setOpenPricePending(null)}
+        onConfirm={(price) => {
+          if (!openPricePending) return;
+          const { product, selection, sourceRect } = openPricePending;
+          setOpenPricePending(null);
+          commitAddToCart(product, selection, price);
+          if (sourceRect) flyToCart(sourceRect, product.photoUrl);
+        }}
       />
 
       {/*
@@ -3451,6 +3608,7 @@ function CustomerSheet({
   onApply: (next: CustomerDetails) => void;
 }) {
   const layout = useLayout();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const [name, setName] = useState(customer.name ?? "");
   const [contact, setContact] = useState(customer.contact ?? "");
   const [email, setEmail] = useState("");
@@ -3459,36 +3617,10 @@ function CustomerSheet({
   const [gender, setGender] = useState<CustomerGender | "">("");
   const [notes, setNotes] = useState("");
   const [customerId, setCustomerId] = useState<string | null>(customer.customerId);
-  const [query, setQuery] = useState("");
-  const [matches, setMatches] = useState<
-    Awaited<ReturnType<typeof searchLocalCustomers>>
-  >([]);
-  const [searching, setSearching] = useState(false);
   const [genderOpen, setGenderOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    setSearching(true);
-    void searchLocalCustomers(query)
-      .then((rows) => {
-        if (!cancelled) setMatches(rows);
-      })
-      .catch((error: unknown) => {
-        console.warn("Customer search failed", error);
-        if (!cancelled) setMatches([]);
-      })
-      .finally(() => {
-        if (!cancelled) setSearching(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, query]);
-
-  // Prefill profile fields when the sale already has a linked customer, or
-  // when the cashier picks one from the list.
+  // Prefill profile fields when the sale already has a linked customer.
   useEffect(() => {
     if (!open || !customer.customerId) return;
     let cancelled = false;
@@ -3516,21 +3648,7 @@ function CustomerSheet({
     contact,
     address,
   });
-  const needle = query.trim();
-  const shown = matches.slice(0, 12);
   const twoCol = !layout.compact;
-
-  function pickExisting(match: Awaited<ReturnType<typeof searchLocalCustomers>>[number]) {
-    setCustomerId(match.id);
-    setName(match.name);
-    setContact(match.contact ?? "");
-    setEmail(match.email ?? "");
-    setAddress(match.address ?? "");
-    setDateOfBirth(match.dateOfBirth ?? "");
-    setGender(match.gender ?? "");
-    setNotes(match.notes ?? "");
-    setQuery("");
-  }
 
   async function save() {
     const next = normaliseCustomerDetails({
@@ -3572,7 +3690,12 @@ function CustomerSheet({
   }
 
   return (
-    <BottomSheet open={open} onClose={onClose}>
+    <BottomSheet
+      open={open}
+      onClose={onClose}
+      maxWidth={screenWidth * 0.8}
+      maxHeight={screenHeight * 0.8}
+    >
       <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
         <View style={[styles.iconWell, { width: 34, height: 34 }]}>
           <UserRound size={18} color={color.primary} strokeWidth={2} />
@@ -3580,145 +3703,10 @@ function CustomerSheet({
         <View style={{ flex: 1 }}>
           <Text style={styles.subheading}>Customer</Text>
           <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
-            Reuse an existing account, or fill the form — same fields as admin.
+            Fill the form — same fields as admin.
           </Text>
         </View>
         <IconButton icon={X} label="Close" onPress={onClose} />
-      </View>
-
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          gap: space.sm,
-          minHeight: 48,
-          borderWidth: 1,
-          borderColor: color.border,
-          borderRadius: radius.sm,
-          paddingHorizontal: space.md,
-          backgroundColor: color.paper,
-        }}
-      >
-        <Search size={16} color={color.inkMuted} strokeWidth={2} />
-        <TextInput
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search name, contact, address, email…"
-          placeholderTextColor={color.inkMuted}
-          autoFocus={!customer.customerId}
-          autoCorrect={false}
-          autoCapitalize="none"
-          returnKeyType="search"
-          style={{
-            flex: 1,
-            fontSize: fontSize.body,
-            color: color.ink,
-            paddingVertical: space.sm,
-          }}
-        />
-        {query ? (
-          <Pressable
-            onPress={() => setQuery("")}
-            accessibilityRole="button"
-            accessibilityLabel="Clear search"
-            hitSlop={8}
-          >
-            <X size={16} color={color.inkMuted} strokeWidth={2} />
-          </Pressable>
-        ) : null}
-      </View>
-
-      <View style={{ gap: space.xs }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: space.xs }}>
-          <Users size={14} color={color.inkMuted} strokeWidth={2} />
-          <Text
-            style={{
-              fontSize: fontSize.caption,
-              fontWeight: "600",
-              color: color.inkMuted,
-            }}
-          >
-            {needle ? "Matches" : "Existing customers"}
-            {shown.length > 0 ? ` (${shown.length}${matches.length > shown.length ? "+" : ""})` : ""}
-          </Text>
-        </View>
-
-        {searching && shown.length === 0 ? (
-          <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
-            Searching…
-          </Text>
-        ) : shown.length > 0 ? (
-          <View style={{ gap: space.xs, maxHeight: 200 }}>
-            <ScrollView
-              nestedScrollEnabled
-              keyboardShouldPersistTaps="handled"
-              style={{ maxHeight: 200 }}
-            >
-              {shown.map((match) => (
-                <Pressable
-                  key={match.id}
-                  onPress={() => pickExisting(match)}
-                  style={({ pressed }) => ({
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: space.sm,
-                    paddingVertical: space.sm,
-                    paddingHorizontal: space.md,
-                    marginBottom: space.xs,
-                    borderRadius: radius.sm,
-                    backgroundColor: pressed
-                      ? color.surfacePressed
-                      : customerId === match.id
-                        ? color.primaryTint
-                        : color.paper,
-                    borderWidth: 1,
-                    borderColor:
-                      customerId === match.id ? color.primarySoft : color.border,
-                  })}
-                >
-                  <View
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: circleRadius(36),
-                      backgroundColor: color.primarySoft,
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Text style={{ fontSize: fontSize.body, fontWeight: "700", color: color.primary }}>
-                      {match.name.trim().slice(0, 1).toUpperCase() || "?"}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text
-                      style={{ fontSize: fontSize.body, fontWeight: "600", color: color.ink }}
-                      numberOfLines={1}
-                    >
-                      {match.name}
-                    </Text>
-                    <Text
-                      style={{ fontSize: fontSize.caption, color: color.inkMuted }}
-                      numberOfLines={1}
-                    >
-                      {[match.contact, match.email, match.address].filter(Boolean).join(" · ") ||
-                        "No contact"}
-                    </Text>
-                  </View>
-                  {customerId === match.id ? (
-                    <Check size={16} color={color.primary} strokeWidth={2.5} />
-                  ) : null}
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-        ) : (
-          <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
-            {needle
-              ? "No saved customer matches that. Fill the form below for a new one."
-              : "No saved customers yet. Sync, or fill the form below."}
-          </Text>
-        )}
       </View>
 
       <Text
@@ -3750,6 +3738,7 @@ function CustomerSheet({
             }}
             placeholder="Who the sale is for"
             autoCapitalize="words"
+            autoFocus={!customer.customerId}
             required
           />
         </View>

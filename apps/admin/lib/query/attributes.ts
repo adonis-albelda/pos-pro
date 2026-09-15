@@ -31,10 +31,12 @@ import {
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 import { queryKeys } from "./keys";
 
-export function useCompanyAttributes() {
+export function useCompanyAttributes(
+  params: { scope: "global" } | { forProduct: string } | Record<string, never> = {},
+) {
   return useQuery({
-    queryKey: queryKeys.attributes.list(),
-    queryFn: () => listCompanyAttributes(getBrowserApiClient()),
+    queryKey: queryKeys.attributes.list(params),
+    queryFn: () => listCompanyAttributes(getBrowserApiClient(), params),
   });
 }
 

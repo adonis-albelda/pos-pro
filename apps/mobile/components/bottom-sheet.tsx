@@ -47,6 +47,7 @@ export function BottomSheet({
   contentStyle,
   scroll = true,
   maxWidth = 560,
+  maxHeight,
 }: {
   open: boolean;
   onClose: () => void;
@@ -55,6 +56,8 @@ export function BottomSheet({
   /** Wrap children in a ScrollView so tall forms stay reachable. */
   scroll?: boolean;
   maxWidth?: number;
+  /** Overrides the default 88%/92% cap — a number (px) or a percentage string. */
+  maxHeight?: number | `${number}%`;
 }) {
   const insets = useSafeAreaInsets();
   const keyboardHeight = useKeyboardHeight();
@@ -112,7 +115,7 @@ export function BottomSheet({
               maxWidth,
               alignSelf: "center",
               // Leave room for the field + actions when the keyboard is up.
-              maxHeight: centered ? "88%" : keyboardHeight > 0 ? "88%" : "92%",
+              maxHeight: maxHeight ?? (centered ? "88%" : keyboardHeight > 0 ? "88%" : "92%"),
               // Floats up from the scrim now, same treatment as setup/unlock's cards.
               shadowColor: "#000",
               shadowOpacity: centered ? 0.22 : 0.18,

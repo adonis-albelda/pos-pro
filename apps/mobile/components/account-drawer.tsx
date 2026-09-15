@@ -161,38 +161,6 @@ export function AccountDrawer({
             transform: [{ translateX }],
           }}
         >
-          {/* Floating, not part of the scrolling column — no longer spends a
-              row's worth of height just to close the drawer. Sits at the top
-              of the panel, straddling its right edge (the boundary with the
-              scrim) so it reads as a floating control, not inline chrome. */}
-          <Pressable
-            onPress={onClose}
-            accessibilityRole="button"
-            accessibilityLabel="Close"
-            style={({ pressed }) => ({
-              position: "absolute",
-              top: insets.top + space.sm,
-              right: -18,
-              zIndex: 1,
-              width: 36,
-              height: 36,
-              borderRadius: circleRadius(36),
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: color.surface,
-              borderWidth: 1,
-              borderColor: color.border,
-              opacity: pressed ? 0.7 : 1,
-              shadowColor: "#000",
-              shadowOffset: { width: 0, height: 1 },
-              shadowOpacity: 0.15,
-              shadowRadius: 3,
-              elevation: 3,
-            })}
-          >
-            <X size={18} color={color.inkMuted} strokeWidth={2.25} />
-          </Pressable>
-
           {/*
             Everything below scrolls — a fixed-height column with no
             fallback used to clip "On shift"/Offline mode/End shift/version
@@ -405,6 +373,42 @@ export function AccountDrawer({
             accessibilityLabel="Dismiss"
             style={{ flex: 1, backgroundColor: "rgba(27, 31, 29, 0.35)" }}
           />
+        </Animated.View>
+
+        {/* Outside the panel entirely (not straddling its edge) — last child
+            of this row so it always paints above the scrim, and slides with
+            the panel via the same translateX/opacity rather than popping in
+            on its own. Topmost and off to the side, out of the menu's way. */}
+        <Animated.View
+          style={{
+            position: "absolute",
+            top: insets.top,
+            left: panelWidth + space.md,
+            opacity: scrim,
+            transform: [{ translateX }],
+          }}
+        >
+          <Pressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+            style={({ pressed }) => ({
+              width: 48,
+              height: 48,
+              borderRadius: circleRadius(48),
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: color.surface,
+              opacity: pressed ? 0.7 : 1,
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.2,
+              shadowRadius: 4,
+              elevation: 4,
+            })}
+          >
+            <X size={24} color={color.ink} strokeWidth={2.25} />
+          </Pressable>
         </Animated.View>
       </View>
     </Modal>

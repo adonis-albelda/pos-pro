@@ -19,6 +19,7 @@ import {
   useCreateCompanyAttributeValue,
   useProductVariants,
 } from "@/lib/query/attributes";
+import { attributePickerLabel } from "@/lib/attribute-labels";
 import { useMoveProductInto } from "@/lib/query/products";
 
 type Mode = "new_variant" | "merge";
@@ -50,12 +51,14 @@ export function MoveIntoProductDialog({
 }) {
   const router = useRouter();
   const move = useMoveProductInto();
-  const attributesQuery = useCompanyAttributes();
   const createAttribute = useCreateCompanyAttribute();
   const createValue = useCreateCompanyAttributeValue();
 
   const [step, setStep] = useState<Step>("setup");
   const [target, setTarget] = useState<Product | null>(null);
+  const attributesQuery = useCompanyAttributes(
+    target ? { forProduct: target.id } : { scope: "global" },
+  );
   const [mode, setMode] = useState<Mode>("new_variant");
   const [attributeId, setAttributeId] = useState("");
   const [valueId, setValueId] = useState("");
@@ -192,7 +195,11 @@ export function MoveIntoProductDialog({
       if (existing) {
         resolvedAttributeId = existing.id;
       } else {
-        const created = await createAttribute.mutateAsync({ name, displayType: "dropdown" });
+        const created = await createAttribute.mutateAsync({
+          name,
+          displayType: "dropdown",
+          productId: target?.id ?? null,
+        });
         resolvedAttributeId = created.id;
       }
       setAttributeId(resolvedAttributeId);
@@ -375,7 +382,7 @@ export function MoveIntoProductDialog({
                   <option value="">Create or pick…</option>
                   {attributes.map((attribute) => (
                     <option key={attribute.id} value={attribute.id}>
-                      {attribute.name}
+                      {attributePickerLabel(attribute)}
                     </option>
                   ))}
                 </select>

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   Camera,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Crop,
@@ -247,6 +248,10 @@ export function CreateSaleForm() {
   const [ewalletProviderOther, setEwalletProviderOther] = useState("");
   const [customerId, setCustomerId] = useState("");
   const [fulfillment, setFulfillment] = useState<"pickup" | "delivery">("pickup");
+  // Collapsed by default — payment/fulfillment/customer are only occasional
+  // edits (cash + pickup + walk-in covers most sales); showing them expanded
+  // by default just ate vertical space in the cart for the common case.
+  const [saleDetailsOpen, setSaleDetailsOpen] = useState(false);
   const [saleSucceeded, setSaleSucceeded] = useState(false);
   const [createdSaleId, setCreatedSaleId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<SaleDraft[]>([]);
@@ -1452,7 +1457,31 @@ export function CreateSaleForm() {
             )}
           </div>
 
-          <div className="space-y-4 border-t border-border px-4 py-4 sm:px-6">
+          <div className="border-t border-border px-4 py-4 sm:px-6">
+            <button
+              type="button"
+              onClick={() => setSaleDetailsOpen((was) => !was)}
+              className="flex w-full items-center justify-between gap-2 text-left"
+            >
+              <span className="min-w-0">
+                <span className="block text-body font-medium text-ink">Payment, fulfillment &amp; customer</span>
+                <span className="block truncate text-caption text-ink-muted">
+                  {PAYMENT_METHODS.find((method) => method.value === paymentMethod)?.label ?? paymentMethod}
+                  {" · "}
+                  {"delivery" === fulfillment ? "Delivery" : "Pickup"}
+                  {" · "}
+                  {selectedCustomer?.name ?? "Walk-in"}
+                </span>
+              </span>
+              <ChevronDown
+                size={16}
+                strokeWidth={2}
+                className={`shrink-0 text-ink-muted transition-transform ${saleDetailsOpen ? "rotate-180" : ""}`}
+              />
+            </button>
+
+            {saleDetailsOpen ? (
+              <div className="mt-4 space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Payment method" required>
                 <Combobox
@@ -1528,7 +1557,11 @@ export function CreateSaleForm() {
                 ]}
               />
             </Field>
+              </div>
+            ) : null}
+          </div>
 
+          <div className="space-y-4 border-t border-border px-4 py-4 sm:px-6">
             <div className="space-y-2 rounded-sm bg-primary-tint px-3 py-3">
               {discount > 0 ? (
                 <div className="flex items-baseline justify-between text-body text-ink-muted">

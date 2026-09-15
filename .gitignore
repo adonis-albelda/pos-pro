@@ -22,6 +22,9 @@ apps/mobile/ios
 # turbo
 .turbo
 
+*.keystore
+*.jks
+
 # supabase local
 supabase/.branches
 supabase/.temp

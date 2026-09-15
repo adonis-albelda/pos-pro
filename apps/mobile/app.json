@@ -19,7 +19,7 @@
       "bundleIdentifier": "com.pospro.app"
     },
     "android": {
-      "package": "com.pospro.app",
+      "package": "com.doubleaitsolutions.pospro",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#00000000"

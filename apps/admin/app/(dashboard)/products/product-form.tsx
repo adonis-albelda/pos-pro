@@ -62,11 +62,11 @@ import { EMPTY_FORM_STATE } from "@/lib/form-state";
 import { useLocations } from "@/lib/query/locations";
 import {
   useCompanyAttributes,
-  useCreateCompanyAttribute,
   useCreateCompanyAttributeValue,
   useProductVariants,
   useVariantStockByLocation,
 } from "@/lib/query/attributes";
+import { attributePickerLabel } from "@/lib/attribute-labels";
 import { useBrands, useCreateBrand } from "@/lib/query/brands";
 import { useCreateSupplier, useSuppliers } from "@/lib/query/suppliers";
 import { useAttachProductTag, useCreateTag, useDetachProductTag, useTags } from "@/lib/query/tags";
@@ -779,12 +779,18 @@ interface WizardProductDetails {
   tags: { id: string; name: string }[];
 }
 
-/** One attribute chosen for the with-variants wizard's step 2 — the attribute and its values are real, already-created vocabulary rows (picked or typed-and-created live, same as the Variants tab); only the product/variant/attach rows stay local until Finish. */
+/** One attribute chosen for the with-variants wizard's step 2.
+ * Existing globals are real vocabulary rows (picked by id). Newly typed
+ * names stay local (`isLocal`) until Finish — create-full then creates them
+ * as product-level attributes. Values for local options are client-only too.
+ */
 interface WizardAttribute {
   key: string;
   attributeId: string;
   attributeName: string;
   values: { id: string; name: string }[];
+  /** True when typed during create — not yet a company_attributes row. */
+  isLocal?: boolean;
 }
 
 /**
@@ -1333,6 +1339,12 @@ function VariantOptionGroup({
                   if (!chosenValueIds.has(existing.id)) onAddValue({ id: existing.id, name: existing.value });
                   return;
                 }
+                // Local (wizard-only) options: values stay client-side until
+                // create-full — no company_attribute_values row yet.
+                if (attribute.isLocal) {
+                  onAddValue({ id: `local-value-${crypto.randomUUID()}`, name: trimmed });
+                  return;
+                }
                 createValue.mutate(
                   { attributeId: attribute.attributeId, value: trimmed },
                   {
@@ -1407,8 +1419,7 @@ function WizardAttributesStep({
   stockNote: string;
   onStockNoteChange: (value: string) => void;
 }) {
-  const allAttributesQuery = useCompanyAttributes();
-  const createAttribute = useCreateCompanyAttribute();
+  const allAttributesQuery = useCompanyAttributes({ scope: "global" });
   const createValue = useCreateCompanyAttributeValue();
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -1450,6 +1461,7 @@ function WizardAttributesStep({
         key: newRowKey(),
         attributeId: found.id,
         attributeName: found.name,
+        isLocal: false,
         // Re-picking an option already on the product seeds its current
         // values so Available chips show only the ones not yet used.
         values: committed ? committed.values.map((value) => ({ ...value })) : [],
@@ -1472,18 +1484,20 @@ function WizardAttributesStep({
       addPendingOption(existing.id);
       return;
     }
-    createAttribute.mutate(
-      { name: trimmed },
+    // Keep product-level names local until Finish — product id does not
+    // exist yet; create-full writes company_attributes.product_id.
+    const localId = `local-attr-${crypto.randomUUID()}`;
+    setPendingAttributes((current) => [
+      ...current,
       {
-        onSuccess: (created) => {
-          setPendingAttributes((current) => [
-            ...current,
-            { key: newRowKey(), attributeId: created.id, attributeName: created.name, values: [] },
-          ]);
-        },
-        onError: (error) => toast.error(error instanceof Error ? error.message : "Could not create that attribute."),
+        key: newRowKey(),
+        attributeId: localId,
+        attributeName: trimmed,
+        isLocal: true,
+        values: [],
       },
-    );
+    ]);
+    setDialogPicking("");
   }
 
   function updatePendingValues(key: string, values: { id: string; name: string }[]) {
@@ -1839,7 +1853,10 @@ function WizardAttributesStep({
               value={dialogPicking}
               onChange={addPendingOption}
               placeholder={allAttributesQuery.isPending ? "Loading…" : "Eg. Size, Color, etc."}
-              options={dialogAvailable.map((entry) => ({ value: entry.id, label: entry.name }))}
+              options={dialogAvailable.map((entry) => ({
+                value: entry.id,
+                label: attributePickerLabel(entry),
+              }))}
               creatable
               createOptionLabel={(typed) => `"${typed}" doesn't exist — create it`}
               onCreate={createAndAddPendingOption}
@@ -2972,10 +2989,21 @@ export function ProductForm({
       },
       brand: wizardProduct.brandId ? { id: wizardProduct.brandId } : null,
       tags: wizardProduct.tags.map((tag) => ({ id: tag.id })),
-      attributes: wizardAttributes.map((attribute) => ({
-        id: attribute.attributeId,
-        values: attribute.values.map((value) => ({ id: value.id })),
-      })),
+      attributes: wizardAttributes.map((attribute) =>
+        attribute.isLocal
+          ? {
+              name: attribute.attributeName,
+              values: attribute.values.map((value) => ({ name: value.name })),
+            }
+          : {
+              id: attribute.attributeId,
+              values: attribute.values.map((value) =>
+                value.id.startsWith("local-value-")
+                  ? { name: value.name }
+                  : { id: value.id },
+              ),
+            },
+      ),
       variantSuppliers: combos.map((combo) =>
         (wizardVariantSuppliers[comboKey(combo)] ?? []).map((link) => ({
           supplierId: link.supplierId,

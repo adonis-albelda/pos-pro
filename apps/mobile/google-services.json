@@ -7,12 +7,17 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:818354796268:android:e5b30ddd919de29cf217c9",
+        "mobilesdk_app_id": "1:818354796268:android:e4738c76ed6637a8f217c9",
         "android_client_info": {
-          "package_name": "com.pospro.app"
+          "package_name": "com.doubleaitsolutions.pospro"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "818354796268-rg852j72oam6ptvd7dkvg2gev575m9c8.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyA6rzOhQcPIQEVdN6kUAB04_H8HAcYemH0"
@@ -20,7 +25,41 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "818354796268-rg852j72oam6ptvd7dkvg2gev575m9c8.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:818354796268:android:e5b30ddd919de29cf217c9",
+        "android_client_info": {
+          "package_name": "com.pospro.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "818354796268-rg852j72oam6ptvd7dkvg2gev575m9c8.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA6rzOhQcPIQEVdN6kUAB04_H8HAcYemH0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "818354796268-rg852j72oam6ptvd7dkvg2gev575m9c8.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

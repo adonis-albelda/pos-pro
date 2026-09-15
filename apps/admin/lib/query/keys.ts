@@ -26,7 +26,7 @@ export const queryKeys = {
   },
   attributes: {
     all: ["attributes"] as const,
-    list: () => ["attributes", "list"] as const,
+    list: (params?: Record<string, unknown>) => ["attributes", "list", params ?? {}] as const,
   },
   brands: {
     all: ["brands"] as const,

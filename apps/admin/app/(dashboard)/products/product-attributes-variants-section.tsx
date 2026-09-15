@@ -28,6 +28,7 @@ import { ApiError } from "@double-a/api-client";
 import { formatMoney, roundMoney, shelfPriceFromMarkup } from "@double-a/shared-types";
 import type { Product, Supplier } from "@double-a/shared-types";
 import type { CompanyAttribute, MarginType, ProductVariant, VariantSupplierLink } from "@double-a/api-client/queries";
+import { attributePickerLabel } from "@/lib/attribute-labels";
 import {
   Badge,
   Button,
@@ -1775,7 +1776,7 @@ export function ProductAttributesAndVariantsSection({
   /** true = no Card/CardHeader wrapper (already inside a bordered tab panel). */
   bare?: boolean;
 }) {
-  const allAttributesQuery = useCompanyAttributes();
+  const allAttributesQuery = useCompanyAttributes({ forProduct: product.id });
   const attachedQuery = useProductAttributes(product.id);
   const variantsQuery = useProductVariants(product.id);
   const attach = useAttachProductAttribute(product.id);
@@ -1831,10 +1832,15 @@ export function ProductAttributesAndVariantsSection({
     // exists company-wide but happens to already be attached here — typing
     // its name then wrongly looks like it "doesn't exist yet". Check the
     // full company list before ever creating a duplicate.
-    const existing = (allAttributesQuery.data ?? []).find(
+    const matches = (allAttributesQuery.data ?? []).filter(
       (a) => a.name.trim().toLowerCase() === trimmed.toLowerCase(),
     );
-    if (existing) {
+    if (matches.length > 1) {
+      toast.error(`Pick "${trimmed} (global option)" or "${trimmed} (product level)" from the list.`);
+      return;
+    }
+    if (matches.length === 1) {
+      const existing = matches[0]!;
       if (attachedIds.has(existing.id)) {
         toast.error(`"${existing.name}" is already added to this product.`);
       } else {
@@ -1844,7 +1850,7 @@ export function ProductAttributesAndVariantsSection({
     }
 
     createAttribute.mutate(
-      { name: trimmed },
+      { name: trimmed, productId: product.id },
       {
         onSuccess: (created) => {
           attach.mutate(created.id, {
@@ -1907,7 +1913,7 @@ export function ProductAttributesAndVariantsSection({
                     }
                     options={(allAttributesQuery.data ?? []).map((a) => ({
                       value: a.id,
-                      label: attachedIds.has(a.id) ? `${a.name} (already added)` : a.name,
+                      label: attributePickerLabel(a, attachedIds.has(a.id)),
                       disabled: attachedIds.has(a.id),
                     }))}
                     creatable
