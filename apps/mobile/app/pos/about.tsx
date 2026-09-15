@@ -27,7 +27,7 @@ export default function AboutScreen() {
             Version {APP_VERSION}
           </Text>
           <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
-            Copyright © 2026 POSPro - All Rights Reserved.
+            Copyright © 2026 POSPro One - All Rights Reserved.
           </Text>
         </Card>
       </ScrollView>

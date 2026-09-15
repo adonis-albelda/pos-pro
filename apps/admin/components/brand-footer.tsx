@@ -74,7 +74,7 @@ export function BrandFooter({
       <div className={cx("flex items-center justify-center gap-1.5 text-caption text-ink-muted", className)}>
         <img src={APP_LOGO} alt="" className="size-4 shrink-0 object-contain" />
         <span>
-          POSPro © {year} Double A Digital Solutions
+          POSPro One © {year} Double A Digital Solutions
         </span>
       </div>
     );
@@ -90,7 +90,7 @@ export function BrandFooter({
       <div className="flex min-w-0 items-center gap-3 justify-self-start">
         <span className="inline-flex items-center gap-2">
           <img src={APP_LOGO} alt="" className="size-5 shrink-0 object-contain" />
-          <span className="font-medium text-ink">POSPro</span>
+          <span className="font-medium text-ink">POSPro One</span>
         </span>
         {userEmail ? <span className="hidden text-ink-muted sm:inline">{userEmail}</span> : null}
       </div>

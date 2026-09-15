@@ -25,7 +25,7 @@ function VerifiedPanel({ result }: { result: VerifyEmailResult }) {
       <div className="mt-1 flex w-full flex-col items-center gap-2 rounded-sm bg-primary-soft px-4 py-3">
         <Smartphone size={22} strokeWidth={2} className="text-primary" />
         <p className="text-body font-medium text-ink">
-          Please check the POSPro mobile app to continue using it.
+          Please check the POSPro One mobile app to continue using it.
         </p>
         <p className="text-caption text-ink-muted">
           The app was waiting on this — it signs you in on its own now that your email is verified.

@@ -16,23 +16,26 @@ import { PinRelockOverlay } from "@/components/pin-relock-overlay";
 import { BottomTabBar } from "@/components/bottom-tab-bar";
 import { styles } from "@/theme";
 
-/** Drawer-reached detail screens — plain back-arrow + title chrome (SubPageHeader) instead of the full StoreHeader. Kept in sync with AccountDrawer's POS_TABS/HELP_TABS hrefs. */
+/** Drawer-reached detail screens — plain back-arrow + title chrome (SubPageHeader) instead of the full StoreHeader. Kept in sync with AccountDrawer's POS_TABS/HELP_TABS hrefs and its standalone "Help Center" DrawerTab. */
 const DRAWER_SUBPAGE_TITLES: Record<string, string> = {
   "/pos/theme": "Theme",
   "/pos/settings": "Settings",
   "/pos/sync": "Sync",
   "/pos/faq": "FAQ",
   "/pos/about": "About",
+  "/pos/help-center": "Help Center",
 };
 
 /** Same screens as above, keyed by their Stack route name (file basename) instead of full path — pushed from the drawer, so they get a real slide-in instead of the tab-swap fade below. */
-const DRAWER_SUBPAGE_ROUTE_NAMES = new Set(["theme", "settings", "sync", "faq", "about"]);
+const DRAWER_SUBPAGE_ROUTE_NAMES = new Set(["theme", "settings", "sync", "faq", "about", "help-center"]);
 
 export default function PosLayout() {
   const { cashier } = useSession();
   const insets = useSafeAreaInsets();
-  const { idleTimeoutMinutes } = useStoreSettings();
-  const recordActivity = useIdleLock(idleTimeoutMinutes);
+  const { idleTimeoutMinutes: storeIdleTimeoutMinutes } = useStoreSettings();
+  // Self-service override (Account tab, Settings) wins when set — null falls
+  // back to the branch default, same as every other per-user preference.
+  const recordActivity = useIdleLock(cashier?.idleTimeoutMinutes ?? storeIdleTimeoutMinutes);
   const { compact } = useLayout();
   const pathname = usePathname();
 

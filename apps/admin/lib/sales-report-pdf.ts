@@ -277,7 +277,7 @@ export async function salesReportToPdf(input: SalesReportPdfInput): Promise<Uint
   }
   ctx.y -= 6;
 
-  // Top-selling items — POSPro sells at the variant level, so product_name here is the sellable variant's name (product_variants.name via sale_items.product_name snapshot).
+  // Top-selling items — POSPro One sells at the variant level, so product_name here is the sellable variant's name (product_variants.name via sale_items.product_name snapshot).
   sectionTitle(ctx, "TOP SELLING ITEMS");
   if (topProducts.length === 0) {
     emptyNote(ctx, "No completed sales in this period.");

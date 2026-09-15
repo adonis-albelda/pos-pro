@@ -8,7 +8,11 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { ApiError } from "@double-a/api-client";
+import { changePin, updateMe } from "@double-a/api-client/queries";
 import {
+  PIN_LENGTH_MAX,
+  PIN_LENGTH_MIN,
   RECEIPT_COLUMNS,
   RECEIPT_PAPER_WIDTH_MM,
   RECEIPT_PRINTER_MODEL,
@@ -18,8 +22,10 @@ import { getSyncMeta } from "@/db/meta";
 import { countLocalProducts } from "@/db/products";
 import { countPendingSales } from "@/db/sales";
 import { countLocalUsers } from "@/db/users";
+import { ensureFreshSession, getApiClient } from "@/lib/api/session";
 import { getDeviceId, getDeviceLabel } from "@/lib/device";
 import { useLayout } from "@/lib/layout";
+import { cacheLocalPin } from "@/lib/pin";
 import { useSession } from "@/lib/session";
 import { useStoreSettings } from "@/lib/store";
 import { useSync } from "@/sync/sync-provider";
@@ -29,13 +35,16 @@ import { transportFor, type PrinterSettings } from "@/printing/transport";
 import {
   Bluetooth,
   Check,
+  Clock,
   FileText,
+  KeyRound,
   LogOut,
   Printer,
   RefreshCw,
   Send,
   Smartphone,
   Store,
+  User as UserIcon,
 } from "lucide-react-native";
 import { WaveBackdrop } from "@/components/wave-backdrop";
 import { Badge, Button, Card, ErrorNote, SectionTitle, SuccessNote } from "@/components/ui";
@@ -46,12 +55,24 @@ interface BtDevice {
   name: string;
 }
 
+type SettingsTab = "general" | "printer" | "account";
+
+function errorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) {
+    const first = error.errors ? Object.values(error.errors)[0]?.[0] : undefined;
+    return first ?? error.message;
+  }
+  return error instanceof Error ? error.message : fallback;
+}
+
 export default function SettingsScreen() {
   const router = useRouter();
   const layout = useLayout();
-  const { lock } = useSession();
+  const { cashier, lock, updateCashier } = useSession();
   const { dataVersion } = useSync();
   const store = useStoreSettings();
+
+  const [tab, setTab] = useState<SettingsTab>("general");
 
   const [settings, setSettings] = useState<PrinterSettings | null>(null);
   const [host, setHost] = useState("");
@@ -69,6 +90,22 @@ export default function SettingsScreen() {
     pending: 0,
     lastSyncedAt: null as string | null,
   });
+
+  // Account tab — change PIN.
+  const [currentPin, setCurrentPin] = useState("");
+  const [newPin, setNewPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [pinBusy, setPinBusy] = useState(false);
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [pinMessage, setPinMessage] = useState<string | null>(null);
+
+  // Account tab — personal idle timeout override.
+  const [idleMinutesInput, setIdleMinutesInput] = useState(
+    cashier && cashier.idleTimeoutMinutes !== null ? String(cashier.idleTimeoutMinutes) : "",
+  );
+  const [idleBusy, setIdleBusy] = useState(false);
+  const [idleError, setIdleError] = useState<string | null>(null);
+  const [idleMessage, setIdleMessage] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -263,9 +300,104 @@ export default function SettingsScreen() {
     }
   }
 
+  async function submitChangePin() {
+    if (!cashier) return;
+    setPinError(null);
+    setPinMessage(null);
+
+    if (newPin.length < PIN_LENGTH_MIN || newPin.length > PIN_LENGTH_MAX) {
+      setPinError(`PIN must be ${PIN_LENGTH_MIN}-${PIN_LENGTH_MAX} digits.`);
+      return;
+    }
+    if (newPin !== confirmPin) {
+      setPinError("Those two PINs don't match.");
+      return;
+    }
+    if (cashier.hasPin && currentPin.length < PIN_LENGTH_MIN) {
+      setPinError("Enter your current PIN.");
+      return;
+    }
+
+    setPinBusy(true);
+    try {
+      await ensureFreshSession();
+      const client = getApiClient();
+      await changePin(client, {
+        currentPin: cashier.hasPin ? currentPin : undefined,
+        pin: newPin,
+      });
+      await cacheLocalPin(cashier.id, newPin);
+      updateCashier({ hasPin: true });
+      setCurrentPin("");
+      setNewPin("");
+      setConfirmPin("");
+      setPinMessage("PIN changed.");
+    } catch (cause) {
+      setPinError(errorMessage(cause, "Could not change the PIN."));
+    } finally {
+      setPinBusy(false);
+    }
+  }
+
+  async function submitIdleTimeout() {
+    if (!cashier) return;
+    setIdleError(null);
+    setIdleMessage(null);
+
+    const trimmed = idleMinutesInput.trim();
+    const idleTimeoutMinutes = trimmed === "" ? null : Number(trimmed);
+    if (idleTimeoutMinutes !== null && (!Number.isFinite(idleTimeoutMinutes) || idleTimeoutMinutes < 0 || idleTimeoutMinutes > 120)) {
+      setIdleError("Enter a number of minutes between 0 and 120, or leave it blank.");
+      return;
+    }
+
+    setIdleBusy(true);
+    try {
+      await ensureFreshSession();
+      const client = getApiClient();
+      const updated = await updateMe(client, { idleTimeoutMinutes });
+      updateCashier({ idleTimeoutMinutes: updated.idleTimeoutMinutes });
+      setIdleMessage(
+        idleTimeoutMinutes === null
+          ? `Saved. Using the shop default (${store.idleTimeoutMinutes} min).`
+          : "Saved.",
+      );
+    } catch (cause) {
+      setIdleError(errorMessage(cause, "Could not save the idle timeout."));
+    } finally {
+      setIdleBusy(false);
+    }
+  }
+
   return (
     <View style={styles.screen}>
       <WaveBackdrop />
+      <View
+        style={{
+          flexDirection: "row",
+          gap: space.xs,
+          paddingHorizontal: layout.gutter,
+          paddingTop: space.sm,
+          width: "100%",
+          maxWidth: layout.readableMaxWidth,
+          alignSelf: "center",
+        }}
+      >
+        <SettingsTabButton label="General" selected={tab === "general"} onPress={() => setTab("general")} />
+        <SettingsTabButton
+          label="Printer"
+          icon={Printer}
+          selected={tab === "printer"}
+          onPress={() => setTab("printer")}
+        />
+        <SettingsTabButton
+          label="Account"
+          icon={UserIcon}
+          selected={tab === "account"}
+          onPress={() => setTab("account")}
+        />
+      </View>
+
       <ScrollView
         contentContainerStyle={{
           padding: layout.gutter,
@@ -275,160 +407,259 @@ export default function SettingsScreen() {
           alignSelf: "center",
         }}
       >
-      <Card style={[{ gap: space.sm }, styles.floatShadow, { borderRadius: radius.sm }]}>
-        <SectionTitle icon={Smartphone} title="This terminal" />
-        <Row label="Name" value={info.label || "Not named"} />
-        <Row label="Terminal id" value={info.deviceId.slice(0, 8)} />
-        <Row label="Products held" value={String(info.products)} />
-        <Row label="Cashiers held" value={String(info.users)} />
-        <Row label="Last synced" value={timeAgo(info.lastSyncedAt)} />
-        {info.pending > 0 ? (
-          <Badge tone="warning" label={`${info.pending} sales waiting to send`} />
-        ) : (
-          <Badge tone="success" label="All sales sent" />
-        )}
-      </Card>
+      {tab === "general" ? (
+        <>
+          <Card style={[{ gap: space.sm }, styles.floatShadow, { borderRadius: radius.sm }]}>
+            <SectionTitle icon={Smartphone} title="This terminal" />
+            <Row label="Name" value={info.label || "Not named"} />
+            <Row label="Terminal id" value={info.deviceId.slice(0, 8)} />
+            <Row label="Products held" value={String(info.products)} />
+            <Row label="Cashiers held" value={String(info.users)} />
+            <Row label="Last synced" value={timeAgo(info.lastSyncedAt)} />
+            {info.pending > 0 ? (
+              <Badge tone="warning" label={`${info.pending} sales waiting to send`} />
+            ) : (
+              <Badge tone="success" label="All sales sent" />
+            )}
+          </Card>
 
-      <Card style={[{ gap: space.sm }, styles.floatShadow, { borderRadius: radius.sm }]}>
-        <SectionTitle
-          icon={Store}
-          title="Shop"
-          hint="Set in the office. Changes arrive on the next sync."
-        />
-        <Row label="Name" value={store.name} />
-        <Row label="Address" value={store.address ?? "Not set"} />
-        <Row label="Phone" value={store.phone ?? "Not set"} />
-      </Card>
+          <Card style={[{ gap: space.sm }, styles.floatShadow, { borderRadius: radius.sm }]}>
+            <SectionTitle
+              icon={Store}
+              title="Shop"
+              hint="Set in the office. Changes arrive on the next sync."
+            />
+            <Row label="Name" value={store.name} />
+            <Row label="Address" value={store.address ?? "Not set"} />
+            <Row label="Phone" value={store.phone ?? "Not set"} />
+          </Card>
 
-      <Card style={[{ gap: space.md }, styles.floatShadow, { borderRadius: radius.sm }]}>
-        <SectionTitle
-          icon={Bluetooth}
-          title="Bluetooth printer"
-          hint={`${RECEIPT_PRINTER_MODEL} · ${RECEIPT_PAPER_WIDTH_MM}mm · ${RECEIPT_COLUMNS} cols`}
-        />
-        <Text style={styles.muted}>
-          Pair the PT-210 here. Receipt layout (which blocks print) comes from admin on
-          sync — this terminal only stores the Bluetooth device.
-        </Text>
+          <Card style={[{ gap: space.md }, styles.floatShadow, { borderRadius: radius.sm }]}>
+            <SectionTitle icon={LogOut} title="Shift" />
+            <Button
+              label="End shift"
+              variant="secondary"
+              icon={LogOut}
+              onPress={() => {
+                lock();
+                router.replace("/unlock");
+              }}
+            />
+          </Card>
+        </>
+      ) : null}
 
-        {settings?.kind === "bluetooth" && settings.bluetoothAddress ? (
-          <Badge
-            tone="success"
-            label={`Using ${settings.bluetoothName || settings.bluetoothAddress}`}
-          />
-        ) : (
-          <Badge tone="neutral" label="No Bluetooth printer paired" />
-        )}
+      {tab === "printer" ? (
+        <>
+          <Card style={[{ gap: space.md }, styles.floatShadow, { borderRadius: radius.sm }]}>
+            <SectionTitle
+              icon={Bluetooth}
+              title="Bluetooth printer"
+              hint={`${RECEIPT_PRINTER_MODEL} · ${RECEIPT_PAPER_WIDTH_MM}mm · ${RECEIPT_COLUMNS} cols`}
+            />
+            <Text style={styles.muted}>
+              Pair the PT-210 here. Receipt layout (which blocks print) comes from admin on
+              sync — this terminal only stores the Bluetooth device.
+            </Text>
 
-        <Button
-          label={scanning ? "Scanning…" : "Scan / refresh devices"}
-          icon={scanning ? undefined : RefreshCw}
-          variant="secondary"
-          onPress={() => void loadBluetoothDevices()}
-          disabled={scanning}
-        />
-        {scanning ? <ActivityIndicator color={color.primary} /> : null}
+            {settings?.kind === "bluetooth" && settings.bluetoothAddress ? (
+              <Badge
+                tone="success"
+                label={`Using ${settings.bluetoothName || settings.bluetoothAddress}`}
+              />
+            ) : (
+              <Badge tone="neutral" label="No Bluetooth printer paired" />
+            )}
 
-        {devices.length > 0 ? (
-          <View style={{ gap: space.xs }}>
-            {devices.map((device) => {
-              const active =
-                settings?.kind === "bluetooth" &&
-                settings.bluetoothAddress === device.id;
-              return (
-                <Pressable
-                  key={device.id}
-                  onPress={() => void save("bluetooth", device)}
-                  style={{
-                    minHeight: 48,
-                    borderWidth: 1,
-                    borderColor: active ? color.primary : color.border,
-                    borderRadius: radius.md,
-                    backgroundColor: active ? color.primarySoft : color.surface,
-                    paddingHorizontal: space.md,
-                    paddingVertical: space.sm,
-                    justifyContent: "center",
-                  }}
-                >
-                  <Text style={{ fontSize: fontSize.bodyLg, fontWeight: "600", color: color.ink }}>
-                    {device.name || "Unknown device"}
-                  </Text>
-                  <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
-                    {device.id}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        ) : null}
-      </Card>
+            <Button
+              label={scanning ? "Scanning…" : "Scan / refresh devices"}
+              icon={scanning ? undefined : RefreshCw}
+              variant="secondary"
+              onPress={() => void loadBluetoothDevices()}
+              disabled={scanning}
+            />
+            {scanning ? <ActivityIndicator color={color.primary} /> : null}
 
-      <Card style={[{ gap: space.md }, styles.floatShadow, { borderRadius: radius.sm }]}>
-        <SectionTitle icon={Printer} title="Network printer (optional)" />
-        <Text style={styles.muted}>
-          LAN ESC/POS on wifi. Prefer Bluetooth for the PT-210 on the counter.
-        </Text>
+            {devices.length > 0 ? (
+              <View style={{ gap: space.xs }}>
+                {devices.map((device) => {
+                  const active =
+                    settings?.kind === "bluetooth" &&
+                    settings.bluetoothAddress === device.id;
+                  return (
+                    <Pressable
+                      key={device.id}
+                      onPress={() => void save("bluetooth", device)}
+                      style={{
+                        minHeight: 48,
+                        borderWidth: 1,
+                        borderColor: active ? color.primary : color.border,
+                        borderRadius: radius.md,
+                        backgroundColor: active ? color.primarySoft : color.surface,
+                        paddingHorizontal: space.md,
+                        paddingVertical: space.sm,
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Text style={{ fontSize: fontSize.bodyLg, fontWeight: "600", color: color.ink }}>
+                        {device.name || "Unknown device"}
+                      </Text>
+                      <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
+                        {device.id}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
+          </Card>
 
-        <Labelled label="Address">
-          <TextInput
-            value={host}
-            onChangeText={setHost}
-            placeholder="192.168.1.50"
-            placeholderTextColor={color.inkMuted}
-            autoCapitalize="none"
-            keyboardType="numbers-and-punctuation"
-            style={inputStyle}
-          />
-        </Labelled>
+          <Card style={[{ gap: space.md }, styles.floatShadow, { borderRadius: radius.sm }]}>
+            <SectionTitle icon={Printer} title="Network printer (optional)" />
+            <Text style={styles.muted}>
+              LAN ESC/POS on wifi. Prefer Bluetooth for the PT-210 on the counter.
+            </Text>
 
-        <Labelled label="Port">
-          <TextInput
-            value={port}
-            onChangeText={setPort}
-            keyboardType="number-pad"
-            style={inputStyle}
-          />
-        </Labelled>
+            <Labelled label="Address">
+              <TextInput
+                value={host}
+                onChangeText={setHost}
+                placeholder="192.168.1.50"
+                placeholderTextColor={color.inkMuted}
+                autoCapitalize="none"
+                keyboardType="numbers-and-punctuation"
+                style={inputStyle}
+              />
+            </Labelled>
 
-        <Button
-          label="Use network printer"
-          icon={Check}
-          variant="secondary"
-          onPress={() => void save("network")}
-        />
-      </Card>
+            <Labelled label="Port">
+              <TextInput
+                value={port}
+                onChangeText={setPort}
+                keyboardType="number-pad"
+                style={inputStyle}
+              />
+            </Labelled>
 
-      <Card style={[{ gap: space.md }, styles.floatShadow, { borderRadius: radius.sm }]}>
-        <SectionTitle icon={Printer} title="Print test" />
-        {error ? <ErrorNote>{error}</ErrorNote> : null}
-        {message ? <SuccessNote>{message}</SuccessNote> : null}
+            <Button
+              label="Use network printer"
+              icon={Check}
+              variant="secondary"
+              onPress={() => void save("network")}
+            />
+          </Card>
 
-        <Button
-          label="Print to log instead"
-          variant="secondary"
-          icon={FileText}
-          onPress={() => void save("none")}
-        />
-        <Button
-          label="Send a test receipt"
-          variant="secondary"
-          icon={Send}
-          onPress={() => void testPrint()}
-        />
-      </Card>
+          <Card style={[{ gap: space.md }, styles.floatShadow, { borderRadius: radius.sm }]}>
+            <SectionTitle icon={Printer} title="Print test" />
+            {error ? <ErrorNote>{error}</ErrorNote> : null}
+            {message ? <SuccessNote>{message}</SuccessNote> : null}
 
-      <Card style={[{ gap: space.md }, styles.floatShadow, { borderRadius: radius.sm }]}>
-        <SectionTitle icon={LogOut} title="Shift" />
-        <Button
-          label="End shift"
-          variant="secondary"
-          icon={LogOut}
-          onPress={() => {
-            lock();
-            router.replace("/unlock");
-          }}
-        />
-      </Card>
+            <Button
+              label="Print to log instead"
+              variant="secondary"
+              icon={FileText}
+              onPress={() => void save("none")}
+            />
+            <Button
+              label="Send a test receipt"
+              variant="secondary"
+              icon={Send}
+              onPress={() => void testPrint()}
+            />
+          </Card>
+        </>
+      ) : null}
+
+      {tab === "account" ? (
+        <>
+          <Card style={[{ gap: space.md }, styles.floatShadow, { borderRadius: radius.sm }]}>
+            <SectionTitle
+              icon={KeyRound}
+              title="Change PIN"
+              hint={cashier?.hasPin ? "Used to unlock this terminal." : "No PIN set yet — set one below."}
+            />
+
+            {cashier?.hasPin ? (
+              <Labelled label="Current PIN">
+                <TextInput
+                  value={currentPin}
+                  onChangeText={setCurrentPin}
+                  placeholder="••••"
+                  placeholderTextColor={color.inkMuted}
+                  keyboardType="number-pad"
+                  secureTextEntry
+                  maxLength={PIN_LENGTH_MAX}
+                  style={inputStyle}
+                />
+              </Labelled>
+            ) : null}
+
+            <Labelled label="New PIN">
+              <TextInput
+                value={newPin}
+                onChangeText={setNewPin}
+                placeholder={`${PIN_LENGTH_MIN}-${PIN_LENGTH_MAX} digits`}
+                placeholderTextColor={color.inkMuted}
+                keyboardType="number-pad"
+                secureTextEntry
+                maxLength={PIN_LENGTH_MAX}
+                style={inputStyle}
+              />
+            </Labelled>
+
+            <Labelled label="Confirm new PIN">
+              <TextInput
+                value={confirmPin}
+                onChangeText={setConfirmPin}
+                placeholder={`${PIN_LENGTH_MIN}-${PIN_LENGTH_MAX} digits`}
+                placeholderTextColor={color.inkMuted}
+                keyboardType="number-pad"
+                secureTextEntry
+                maxLength={PIN_LENGTH_MAX}
+                style={inputStyle}
+              />
+            </Labelled>
+
+            {pinError ? <ErrorNote>{pinError}</ErrorNote> : null}
+            {pinMessage ? <SuccessNote>{pinMessage}</SuccessNote> : null}
+
+            <Button
+              label={pinBusy ? "Saving…" : "Save PIN"}
+              icon={Check}
+              busy={pinBusy}
+              onPress={() => void submitChangePin()}
+            />
+          </Card>
+
+          <Card style={[{ gap: space.md }, styles.floatShadow, { borderRadius: radius.sm }]}>
+            <SectionTitle
+              icon={Clock}
+              title="Idle timeout"
+              hint={`Shop default is ${store.idleTimeoutMinutes} min. Leave blank to use it.`}
+            />
+            <Labelled label="Lock me after (minutes)">
+              <TextInput
+                value={idleMinutesInput}
+                onChangeText={setIdleMinutesInput}
+                placeholder={String(store.idleTimeoutMinutes)}
+                placeholderTextColor={color.inkMuted}
+                keyboardType="number-pad"
+                style={inputStyle}
+              />
+            </Labelled>
+
+            {idleError ? <ErrorNote>{idleError}</ErrorNote> : null}
+            {idleMessage ? <SuccessNote>{idleMessage}</SuccessNote> : null}
+
+            <Button
+              label={idleBusy ? "Saving…" : "Save"}
+              icon={Check}
+              busy={idleBusy}
+              onPress={() => void submitIdleTimeout()}
+            />
+          </Card>
+        </>
+      ) : null}
       </ScrollView>
     </View>
   );
@@ -462,5 +693,42 @@ function Row({ label, value }: { label: string; value: string }) {
       <Text style={styles.muted}>{label}</Text>
       <Text style={[styles.numeric, { fontSize: fontSize.body }]}>{value}</Text>
     </View>
+  );
+}
+
+function SettingsTabButton({
+  label,
+  icon: Icon,
+  selected,
+  onPress,
+}: {
+  label: string;
+  icon?: typeof Printer;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      style={({ pressed }) => ({
+        flex: 1,
+        minHeight: 44,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: space.xs,
+        borderRadius: radius.sm,
+        borderWidth: 1,
+        borderColor: selected ? color.primary : color.primarySoft,
+        backgroundColor: selected ? color.primary : pressed ? color.primarySoft : color.surface,
+      })}
+    >
+      {Icon ? <Icon size={15} color={selected ? color.onPrimary : color.ink} strokeWidth={2.25} /> : null}
+      <Text style={{ fontSize: fontSize.body, fontWeight: "600", color: selected ? color.onPrimary : color.ink }}>
+        {label}
+      </Text>
+    </Pressable>
   );
 }

@@ -1,27 +1,26 @@
 import { useEffect, useRef, useState } from "react";
-import { Animated, Image, Pressable, Text, View } from "react-native";
+import { Animated, Pressable, Text, View } from "react-native";
 import { usePathname, useRouter } from "expo-router";
 import { CheckCircle2, Menu, ShoppingCart } from "lucide-react-native";
-import { formatMoney, storeInitial, type SyncPhase } from "@double-a/shared-types";
+import { formatMoney, type SyncPhase } from "@double-a/shared-types";
 import { AccountDrawer } from "@/components/account-drawer";
 import { LocationSwitcher } from "@/components/location-switcher";
 import { summariseToday, type LocalDaySummary } from "@/db/sales";
 import { useAccountDrawer } from "@/lib/account-drawer";
 import { useCartSummary } from "@/lib/cart-summary";
 import { useFlyToCart } from "@/lib/fly-to-cart";
-import { useStoreSettings } from "@/lib/store";
 import { useLayout } from "@/lib/layout";
 import { useSync } from "@/sync/sync-provider";
 import { pendingLabel, syncLook, useMinuteTick, type SyncLook } from "@/sync/status";
 import { color, fontSize, radius, space } from "@/theme";
 
 /**
- * One chrome row on every POS screen: logo (opens drawer with tabs), time +
- * sync chip inline on the left, then cart chip (phone Sell) or today's sales
- * (tablet). Sync chip taps through to Sync — does not sync itself.
+ * One chrome row on every POS screen: hamburger (opens drawer with tabs),
+ * time + sync chip inline on the left, then cart chip (phone Sell) or
+ * today's sales (tablet). Sync chip taps through to Sync — does not sync
+ * itself.
  */
 export function StoreHeader() {
-  const store = useStoreSettings();
   const state = useSync();
   const cart = useCartSummary();
   const router = useRouter();
@@ -149,41 +148,6 @@ export function StoreHeader() {
           })}
         >
           <Menu size={compact ? 20 : 22} color={color.onPrimary} strokeWidth={2.25} />
-        </Pressable>
-
-        <Pressable
-          onPress={openDrawer}
-          accessibilityRole="button"
-          accessibilityLabel={`${store.name}. Open menu.`}
-          style={({ pressed }) => ({
-            width: logoSize,
-            height: logoSize,
-            borderRadius: radius.sm,
-            overflow: "hidden",
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: store.logoUrl ? color.surface : "rgba(255,255,255,0.2)",
-            opacity: pressed ? 0.85 : 1,
-          })}
-        >
-          {store.logoUrl ? (
-            <Image
-              source={{ uri: store.logoUrl }}
-              resizeMode="contain"
-              style={{ width: "100%", height: "100%" }}
-              accessibilityIgnoresInvertColors
-            />
-          ) : (
-            <Text
-              style={{
-                fontSize: compact ? fontSize.body : fontSize.bodyLg,
-                fontWeight: "700",
-                color: color.onPrimary,
-              }}
-            >
-              {storeInitial(store.name)}
-            </Text>
-          )}
         </Pressable>
 
         {/* Time + sync as HeaderStat twins, then a rule before cart/sales —

@@ -8,7 +8,7 @@ import {
 } from "react";
 import type { User } from "@double-a/shared-types";
 import { setAdminToken } from "@/lib/api/session";
-import { verifyPin, type PinResult } from "@/lib/pin";
+import { cacheLocalPin, verifyPin, verifyPinLocally, type PinResult } from "@/lib/pin";
 
 interface SessionValue {
   cashier: User | null;
@@ -28,8 +28,20 @@ interface SessionValue {
   unlock: (user: User, pin: string) => Promise<PinResult>;
   /** Idle timeout / backgrounding — same person, re-verify in place. */
   relock: () => void;
+  /**
+   * Re-entry after relock() — checks the offline-cached PIN (lib/pin.ts)
+   * instead of the live API, so a dead connection mid-shift never strands
+   * the cashier at the lock screen. Falls back to the same live path
+   * `unlock` uses when nothing is cached yet (fresh install, or this
+   * cashier has never unlocked live on this device). Distinct from `unlock`
+   * itself, which stays live-only — that one gates a brand-new shift
+   * starting, this one just re-confirms a shift already underway.
+   */
+  relockUnlock: (pin: string) => Promise<PinResult>;
   /** Explicit "End shift" — a different person may unlock next, so this must actually clear who's on shift, not just re-prompt the same one. */
   lock: () => void;
+  /** Account tab (Settings) — reflects a self-service field change (e.g. idleTimeoutMinutes) in the in-memory cashier without a full re-unlock. */
+  updateCashier: (patch: Partial<User>) => void;
 }
 
 const SessionContext = createContext<SessionValue | null>(null);
@@ -48,6 +60,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setCashier(user);
       setLocked(false);
       setAdminToken(outcome.adminToken, outcome.adminTokenExpiresAt);
+      // Best-effort — an idle relock later can survive a dead connection
+      // with this cached, but a device that's never gone online since
+      // install just keeps falling back to the live path (see relockUnlock).
+      void cacheLocalPin(user.id, pin);
     }
     return outcome.result;
   }, []);
@@ -57,15 +73,42 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setAdminToken(null);
   }, []);
 
+  const relockUnlock = useCallback(
+    async (pin: string): Promise<PinResult> => {
+      if (!cashier) return "wrong-pin";
+
+      const localResult = await verifyPinLocally(cashier.id, pin);
+      if (localResult === null) return unlock(cashier, pin);
+      if (!localResult) return "wrong-pin";
+
+      setLocked(false);
+      // Best-effort live refresh — an admin-role cashier's adminToken (set
+      // by the shift-start unlock) went stale the moment relock() cleared
+      // it; refresh it when reachable, but never gate the unlock on it, or
+      // this stops being the offline-safe path it exists for.
+      void verifyPin(cashier.id, pin)
+        .then((outcome) => {
+          if (outcome.result === "ok") setAdminToken(outcome.adminToken, outcome.adminTokenExpiresAt);
+        })
+        .catch(() => undefined);
+      return "ok";
+    },
+    [cashier, unlock],
+  );
+
   const lock = useCallback(() => {
     setCashier(null);
     setLocked(false);
     setAdminToken(null);
   }, []);
 
+  const updateCashier = useCallback((patch: Partial<User>) => {
+    setCashier((current) => (current ? { ...current, ...patch } : current));
+  }, []);
+
   const value = useMemo(
-    () => ({ cashier, locked, unlock, relock, lock }),
-    [cashier, locked, unlock, relock, lock],
+    () => ({ cashier, locked, unlock, relock, relockUnlock, lock, updateCashier }),
+    [cashier, locked, unlock, relock, relockUnlock, lock, updateCashier],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

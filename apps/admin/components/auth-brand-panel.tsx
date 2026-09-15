@@ -50,7 +50,7 @@ export function AuthBrandPanel() {
           <div className="flex size-11 items-center justify-center rounded-xl bg-white shadow-sm">
             <Image src="/logo.png" alt="" width={28} height={28} className="size-7 object-contain" />
           </div>
-          <span className="font-display text-heading-sm font-bold text-white">POSPro</span>
+          <span className="font-display text-heading-sm font-bold text-white">POSPro One</span>
         </div>
         <div className="max-w-md space-y-14">
           <RotatingTagline lines={TAGLINES} />
@@ -73,7 +73,7 @@ export function AuthBrandPanel() {
         </div>
       </div>
       <p className="relative text-caption text-white/60">
-        Copyright © 2026 POSPro - All Rights Reserved.
+        Copyright © 2026 POSPro One - All Rights Reserved.
       </p>
     </div>
   );

@@ -62,6 +62,7 @@ import {
 } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import {
+  applyComplexDiscountReward,
   cartDiscount,
   cartTotal,
   computeSimpleDiscount,
@@ -374,7 +375,6 @@ export default function SellScreen() {
   const [loyaltyRewards, setLoyaltyRewards] = useState<LoyaltyReward[]>([]);
   const [customerPoints, setCustomerPoints] = useState(0);
   const [taxSettings, setTaxSettings] = useState<TaxSettings>(DEFAULT_TAX_SETTINGS);
-  const [promoSuggestion, setPromoSuggestion] = useState<ComplexDiscountRule | null>(null);
   const [qtyEditingId, setQtyEditingId] = useState<string | null>(null);
   const [payment, setPayment] = useState<PaymentMethod>("cash");
   // Optional e-wallet proof screenshot — local file uri, cleared whenever
@@ -540,31 +540,6 @@ export default function SellScreen() {
     })();
   }, [customer.customerId, dataVersion, orderDiscounts]);
 
-  // Re-evaluate complex promos whenever the cart changes.
-  useEffect(() => {
-    const alreadyApplied = new Set(
-      orderDiscounts.map((d) => d.complexDiscountRuleId).filter(Boolean),
-    );
-    const qualifying = qualifyingComplexRules(complexRules, lines, orderDiscounts).filter(
-      (rule) => !alreadyApplied.has(rule.id),
-    );
-    if (qualifying.length === 0) {
-      setPromoSuggestion(null);
-      return;
-    }
-    const next = qualifying[0];
-    if (taxSettings.autoApplyComplexDiscounts) {
-      setOrderDiscounts((current) => [
-        ...current.filter((d) => d.complexDiscountRuleId !== next.id),
-        applyComplexRuleToCart({ rule: next, lines, appliedBy: cashier?.id }),
-      ]);
-      setPromoSuggestion(null);
-    } else {
-      setPromoSuggestion(next);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run on cart/rules/tax; orderDiscounts read for filter
-  }, [lines, complexRules, taxSettings.autoApplyComplexDiscounts, cashier?.id]);
-
   useEffect(() => {
     const handle = setTimeout(() => setQuery(search.trim()), 150);
     return () => clearTimeout(handle);
@@ -708,6 +683,23 @@ export default function SellScreen() {
   const lineDiscount = cartDiscount(lines);
   const orderDiscount = orderDiscountImpact(orderDiscounts);
   const discount = roundMoney(lineDiscount + orderDiscount);
+  // Same three lists DiscountSheet itself renders (rule/promo/loyalty) —
+  // surfaced here as a plain count so the cashier sees something is on the
+  // table before ever opening the dialog.
+  const applicableDiscountCount = useMemo(() => {
+    if (lines.length === 0) return 0;
+    const simple = qualifyingSimpleRules(discountRules, lines).length;
+    const promos = qualifyingComplexRules(complexRules, lines, orderDiscounts).length;
+    const loyalty = customer.customerId
+      ? eligibleLoyaltyRewards({
+          rewards: loyaltyRewards,
+          discountRules,
+          pointsBalance: customerPoints,
+          lines,
+        }).length
+      : 0;
+    return simple + promos + loyalty;
+  }, [lines, discountRules, complexRules, orderDiscounts, customer.customerId, loyaltyRewards, customerPoints]);
   const shelfTotal = roundMoney(
     lines.reduce((sum, line) => sum + line.listPrice * line.quantity, 0),
   );
@@ -1195,7 +1187,6 @@ export default function SellScreen() {
     setGlobalDiscountIds([]);
     setPreDiscountPrices({});
     setOrderDiscounts([]);
-    setPromoSuggestion(null);
     setDiscountSheetOpen(false);
   }
 
@@ -1259,7 +1250,6 @@ export default function SellScreen() {
           setLines([]);
           setOverridden([]);
           setOrderDiscounts([]);
-          setPromoSuggestion(null);
           setCustomer(NO_CUSTOMER);
           setFulfillment("pickup");
         },
@@ -1393,7 +1383,6 @@ export default function SellScreen() {
       setLines([]);
       setOverridden([]);
       setOrderDiscounts([]);
-      setPromoSuggestion(null);
       // The next customer is a different customer. Carrying details over would
       // put a stranger's name and address on the following receipt.
       setCustomer(NO_CUSTOMER);
@@ -1917,7 +1906,9 @@ export default function SellScreen() {
                   accessibilityLabel={
                     discount > 0
                       ? `Discount given, ${formatMoney(discount)}. Edit.`
-                      : "Add a discount"
+                      : applicableDiscountCount > 0
+                        ? `Add a discount. ${applicableDiscountCount} applicable to this cart.`
+                        : "Add a discount"
                   }
                   style={{ flexDirection: "row", alignItems: "center", gap: space.xs }}
                 >
@@ -1934,43 +1925,22 @@ export default function SellScreen() {
                   </Text>
                   <Pencil size={11} color={color.accentInk} strokeWidth={2} />
                 </Pressable>
-                {discount > 0 ? (
-                  <Text
-                    style={[
-                      styles.numeric,
-                      { fontSize: fontSize.bodyLg, fontWeight: "700", color: color.accentInk },
-                    ]}
-                  >
-                    -{formatMoney(discount)}
-                  </Text>
-                ) : null}
+                <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
+                  {applicableDiscountCount > 0 ? (
+                    <Badge tone="success" label={`${applicableDiscountCount} available`} />
+                  ) : null}
+                  {discount > 0 ? (
+                    <Text
+                      style={[
+                        styles.numeric,
+                        { fontSize: fontSize.bodyLg, fontWeight: "700", color: color.accentInk },
+                      ]}
+                    >
+                      -{formatMoney(discount)}
+                    </Text>
+                  ) : null}
+                </View>
               </View>
-            ) : null}
-
-            {promoSuggestion ? (
-              <Pressable
-                onPress={() => {
-                  setOrderDiscounts((current) => [
-                    ...current,
-                    applyComplexRuleToCart({
-                      rule: promoSuggestion,
-                      lines,
-                      appliedBy: cashier?.id,
-                    }),
-                  ]);
-                  setPromoSuggestion(null);
-                }}
-                style={{
-                  marginBottom: space.sm,
-                  padding: space.sm,
-                  borderRadius: radius.sm,
-                  backgroundColor: color.primaryTint,
-                }}
-              >
-                <Text style={{ fontSize: fontSize.body, color: color.primary, fontWeight: "600" }}>
-                  You've unlocked: {promoSuggestion.name}! Tap to apply
-                </Text>
-              </Pressable>
             ) : null}
 
             {/* The one number the cashier reads out loud, so it sits on its own
@@ -2146,6 +2116,7 @@ export default function SellScreen() {
           total={cartTotal(lines)}
           lines={lines}
           rules={discountRules}
+          complexRules={complexRules}
           loyaltyRewards={loyaltyRewards}
           customerPoints={customerPoints}
           hasCustomer={Boolean(customer.customerId)}
@@ -2162,7 +2133,6 @@ export default function SellScreen() {
               }
               return [...withoutSimple.filter((d) => !d.isVatExempt), discountRow];
             });
-            setPromoSuggestion(null);
             setDiscountSheetOpen(false);
           }}
           onClear={clearAllDiscounts}
@@ -2656,6 +2626,7 @@ function DiscountSheet({
   total,
   lines,
   rules,
+  complexRules,
   loyaltyRewards,
   customerPoints,
   hasCustomer,
@@ -2671,6 +2642,7 @@ function DiscountSheet({
   total: number;
   lines: CartLine[];
   rules: DiscountRule[];
+  complexRules: ComplexDiscountRule[];
   loyaltyRewards: LoyaltyReward[];
   customerPoints: number;
   hasCustomer: boolean;
@@ -2687,7 +2659,8 @@ function DiscountSheet({
   const keyboardHeight = useKeyboardHeight();
   const { compact, landscape } = useLayout();
   // Phone or upright tablet: dock at the bottom, same as BottomSheet. Tablet
-  // held sideways: keep the centered dialog box — there's width to spare.
+  // held sideways: keep the centered dialog box, now wide enough (90%) for a
+  // two-column layout — cart info left, every pickable discount right.
   const centered = !compact && landscape;
   const [draft, setDraft] = useState("");
   const [pendingRule, setPendingRule] = useState<DiscountRule | null>(null);
@@ -2696,6 +2669,10 @@ function DiscountSheet({
   const typed = Number(draft);
   const valid = draft.trim() !== "" && Number.isFinite(typed) && typed > 0;
   const applicable = qualifyingSimpleRules(rules, lines);
+  // Promos/complex rules are listed here like every other discount, never
+  // applied on their own — the cashier taps one, same as a simple rule or a
+  // loyalty reward (no more silent auto-apply from a store setting).
+  const qualifyingPromos = qualifyingComplexRules(complexRules, lines, applied);
   const eligibleRewardEntries = hasCustomer
     ? eligibleLoyaltyRewards({ rewards: loyaltyRewards, discountRules: rules, pointsBalance: customerPoints, lines })
     : [];
@@ -2738,10 +2715,124 @@ function DiscountSheet({
   }
 
   const usableHeight = height - keyboardHeight - insets.top - insets.bottom;
-  const dialogWidth = centered ? width * 0.8 : width;
+  const dialogWidth = centered ? width * 0.9 : width;
   const dialogHeight = centered
-    ? Math.min(height * 0.8, usableHeight * 0.95)
+    ? Math.min(height * 0.9, usableHeight * 0.95)
     : Math.min(height * 0.85, usableHeight * 0.92);
+  // Wide enough for two real columns, not just a bigger single column.
+  const dialogMaxWidth = centered ? 1100 : 720;
+  const infoColumnWidth = Math.max(280, Math.min(dialogWidth, dialogMaxWidth) * 0.36);
+
+  // Rendered once, placed in whichever of the two spots below is actually
+  // mounted (centered's own scrollable column, or inline atop the single
+  // stacked scroll on phone) — the two spots are mutually exclusive per render.
+  const cartInfoBlock = (
+    <>
+      {/* Cart total first — cashier sees what discount cuts against. */}
+      <View
+        style={{
+          alignItems: "center",
+          gap: space.xs,
+          paddingVertical: space.md,
+          paddingHorizontal: space.md,
+          borderRadius: radius.md,
+          backgroundColor: color.primaryTint,
+          borderWidth: 1,
+          borderColor: color.primarySoft,
+        }}
+      >
+        <Text
+          style={{
+            fontSize: fontSize.bodyLg,
+            fontWeight: "600",
+            color: color.primaryDark,
+            letterSpacing: 0.4,
+          }}
+        >
+          Cart total
+        </Text>
+        <Text
+          style={[
+            styles.numeric,
+            {
+              fontSize: fontSize.display,
+              fontWeight: "700",
+              color: color.primaryDark,
+            },
+          ]}
+        >
+          {formatMoney(total)}
+        </Text>
+        {hasDiscount ? (
+          <Text
+            style={{
+              fontSize: fontSize.bodyLg,
+              fontWeight: "700",
+              color: color.successInk,
+              marginTop: space.xs,
+            }}
+          >
+            Discount applied −{formatMoney(appliedTotal)}
+          </Text>
+        ) : (
+          <Text
+            style={{
+              fontSize: fontSize.bodyLg,
+              fontWeight: "600",
+              color: color.ink,
+              marginTop: space.xs,
+            }}
+          >
+            Pick a rule or type a custom amount
+          </Text>
+        )}
+      </View>
+
+      {hasDiscount ? (
+        <View style={{ gap: space.sm }}>
+          <Text style={{ fontSize: fontSize.headingSm, fontWeight: "700", color: color.ink }}>
+            Applied discounts
+          </Text>
+          {applied.map((d) => (
+            <View
+              key={d.id}
+              style={{ flexDirection: "row", justifyContent: "space-between", gap: space.sm }}
+            >
+              <Text
+                numberOfLines={1}
+                style={{ flex: 1, fontSize: fontSize.body, fontWeight: "600", color: color.ink }}
+              >
+                {d.name ?? "Discount"}
+              </Text>
+              <Text
+                style={[
+                  styles.numeric,
+                  { fontSize: fontSize.body, fontWeight: "700", color: color.successInk },
+                ]}
+              >
+                −{formatMoney(d.discountAmount + (d.vatRemoved ?? 0))}
+              </Text>
+            </View>
+          ))}
+          <View style={{ borderTopWidth: 1, borderTopColor: color.border, paddingTop: space.xs }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ fontSize: fontSize.body, fontWeight: "700", color: color.ink }}>
+                Total discount
+              </Text>
+              <Text
+                style={[
+                  styles.numeric,
+                  { fontSize: fontSize.body, fontWeight: "700", color: color.successInk },
+                ]}
+              >
+                −{formatMoney(appliedTotal)}
+              </Text>
+            </View>
+          </View>
+        </View>
+      ) : null}
+    </>
+  );
 
   return (
     <Modal
@@ -2772,7 +2863,7 @@ function DiscountSheet({
           style={{
             width: dialogWidth,
             height: dialogHeight,
-            maxWidth: 720,
+            maxWidth: dialogMaxWidth,
             backgroundColor: color.surface,
             borderTopLeftRadius: radius.lg,
             borderTopRightRadius: radius.lg,
@@ -2805,14 +2896,14 @@ function DiscountSheet({
             <IconButton icon={X} label="Close" onPress={onClose} />
           </View>
 
-          <ScrollView
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="interactive"
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ gap: space.lg, paddingBottom: space.sm }}
-            style={{ flex: 1 }}
-          >
-            {pendingRule ? (
+          {pendingRule ? (
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ gap: space.lg, paddingBottom: space.sm }}
+              style={{ flex: 1 }}
+            >
               <View style={{ gap: space.md }}>
                 <View
                   style={{
@@ -2900,67 +2991,29 @@ function DiscountSheet({
                   />
                 </View>
               </View>
-            ) : (
-              <View style={{ gap: space.lg }}>
-                {/* Cart total first — cashier sees what discount cuts against. */}
-                <View
-                  style={{
-                    alignItems: "center",
-                    gap: space.xs,
-                    paddingVertical: space.md,
-                    paddingHorizontal: space.md,
-                    borderRadius: radius.md,
-                    backgroundColor: color.primaryTint,
-                    borderWidth: 1,
-                    borderColor: color.primarySoft,
-                  }}
+            </ScrollView>
+          ) : (
+            <View style={{ flex: 1, flexDirection: centered ? "row" : "column", gap: centered ? space.lg : 0 }}>
+              {centered ? (
+                <ScrollView
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={{ gap: space.lg, paddingBottom: space.sm }}
+                  style={{ width: infoColumnWidth, flexGrow: 0 }}
                 >
-                  <Text
-                    style={{
-                      fontSize: fontSize.bodyLg,
-                      fontWeight: "600",
-                      color: color.primaryDark,
-                      letterSpacing: 0.4,
-                    }}
-                  >
-                    Cart total
-                  </Text>
-                  <Text
-                    style={[
-                      styles.numeric,
-                      {
-                        fontSize: fontSize.display,
-                        fontWeight: "700",
-                        color: color.primaryDark,
-                      },
-                    ]}
-                  >
-                    {formatMoney(total)}
-                  </Text>
-                  {hasDiscount ? (
-                    <Text
-                      style={{
-                        fontSize: fontSize.bodyLg,
-                        fontWeight: "700",
-                        color: color.successInk,
-                        marginTop: space.xs,
-                      }}
-                    >
-                      Discount applied −{formatMoney(appliedTotal)}
-                    </Text>
-                  ) : (
-                    <Text
-                      style={{
-                        fontSize: fontSize.bodyLg,
-                        fontWeight: "600",
-                        color: color.ink,
-                        marginTop: space.xs,
-                      }}
-                    >
-                      Pick a rule or type a custom amount
-                    </Text>
-                  )}
-                </View>
+                  {cartInfoBlock}
+                </ScrollView>
+              ) : null}
+
+              {centered ? <View style={{ width: 1, backgroundColor: color.border }} /> : null}
+
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="interactive"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ gap: space.lg, paddingBottom: space.sm }}
+                style={{ flex: 1 }}
+              >
+                {!centered ? cartInfoBlock : null}
 
                 {eligibleRewardEntries.length > 0 ? (
                   <View style={{ gap: space.sm }}>
@@ -3002,6 +3055,67 @@ function DiscountSheet({
                             {reward.pointsRequired.toLocaleString()} pts
                             {" · "}
                             {active ? "applied" : `about −${formatMoney(preview.discountAmount)}`}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : null}
+
+                {qualifyingPromos.length > 0 ? (
+                  <View style={{ gap: space.sm }}>
+                    <Text style={{ fontSize: fontSize.headingSm, fontWeight: "700", color: color.ink }}>
+                      Promos
+                    </Text>
+                    {qualifyingPromos.map((rule) => {
+                      const active = applied.some((d) => d.complexDiscountRuleId === rule.id);
+                      const reward = applyComplexDiscountReward(rule, cartTotal(lines));
+                      const rewardLabel =
+                        rule.rewardType === "percentage"
+                          ? `${rule.rewardValue ?? 0}% off`
+                          : rule.rewardType === "fixed_amount"
+                            ? `${formatMoney(rule.rewardValue ?? 0)} off`
+                            : "Free item";
+                      return (
+                        <Pressable
+                          key={rule.id}
+                          onPress={() => onApplyRule(applyComplexRuleToCart({ rule, lines }))}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Apply ${rule.name}`}
+                          style={{
+                            padding: space.md,
+                            minHeight: 64,
+                            borderRadius: radius.sm,
+                            borderWidth: 1,
+                            borderColor: active ? color.primary : color.border,
+                            backgroundColor: active ? color.primaryTint : color.surface,
+                            gap: space.xs,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: fontSize.bodyLg,
+                              fontWeight: "700",
+                              color: color.ink,
+                            }}
+                          >
+                            {rule.name}
+                          </Text>
+                          <Text style={{ fontSize: fontSize.body, fontWeight: "600", color: color.inkMuted }}>
+                            {rewardLabel}
+                          </Text>
+                          <Text
+                            style={{
+                              fontSize: fontSize.bodyLg,
+                              fontWeight: "700",
+                              color: active ? color.primaryDark : color.ink,
+                            }}
+                          >
+                            {active
+                              ? "Applied"
+                              : rule.rewardType === "free_item"
+                                ? "Free item included"
+                                : `About −${formatMoney(reward.discountAmount)}`}
                           </Text>
                         </Pressable>
                       );
@@ -3109,9 +3223,9 @@ function DiscountSheet({
                     </Text>
                   ) : null}
                 </View>
-              </View>
-            )}
-          </ScrollView>
+              </ScrollView>
+            </View>
+          )}
 
           <View style={{ gap: space.sm }}>
             {pendingRule ? (

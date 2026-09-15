@@ -14,7 +14,7 @@ export default function DashboardLoading() {
         <Image src="/logo.png" alt="" width={32} height={32} className="size-8 object-contain" />
       </div>
       <div className="text-center">
-        <p className="text-heading-sm font-bold text-ink">POSPro</p>
+        <p className="text-heading-sm font-bold text-ink">POSPro One</p>
         <p className="mt-1 text-body text-ink-muted">
           Sales, inventory, and cashiers — everything your store needs, in one place.
         </p>

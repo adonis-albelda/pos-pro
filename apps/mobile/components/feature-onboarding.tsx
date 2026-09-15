@@ -188,7 +188,7 @@ export function FeatureOnboarding({ onDone }: { onDone: () => void }) {
                 letterSpacing: -0.5,
               }}
             >
-              Welcome to POSPro!
+              Welcome to POSPro One!
             </Text>
             <Text style={{ fontSize: fontSize.body, color: color.inkMuted, textAlign: "center" }}>
               Set up this terminal to start selling.

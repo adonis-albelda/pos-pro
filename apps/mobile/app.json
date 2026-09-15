@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "POSPro",
+    "name": "POSPro One",
     "slug": "pospro",
-    "version": "1.2.2",
+    "version": "1.3.0",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "scheme": "pospro",

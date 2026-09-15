@@ -378,7 +378,7 @@ function SettingsTab() {
               <Input
                 value={name || programQuery.data?.name || ""}
                 onChange={(e) => setName(e.currentTarget.value)}
-                placeholder="POSPro Rewards"
+                placeholder="POSPro One Rewards"
               />
             </Field>
             <Field label="Points earned per ₱1 spent" required>

@@ -649,6 +649,24 @@ ALTER TABLE customers ADD COLUMN gender TEXT;
 ALTER TABLE customers ADD COLUMN notes TEXT;
 `;
 
+/**
+ * v37: self-service per-cashier idle-lock override (Account tab, Settings) —
+ * null means "use store_settings.idle_timeout_minutes" (lib/idle-lock.ts).
+ */
+const V37_USER_IDLE_TIMEOUT = `
+ALTER TABLE users ADD COLUMN idle_timeout_minutes INTEGER;
+`;
+
+/**
+ * v38: v37 only adds the column — every cashier already on-device keeps it
+ * null until their own next incremental update, same reasoning as v31/v33.
+ * Forces one more unfiltered pull so a value already set server-side shows
+ * up without waiting on an unrelated edit.
+ */
+const V38_REPULL_FOR_USER_IDLE_TIMEOUT = `
+UPDATE sync_meta SET high_water_mark = NULL WHERE id = 1;
+`;
+
 /** Ordered, append-only. Never edit a step that has shipped. */
 export const MIGRATIONS: Migration[] = [
   { version: 1, sql: V1_INITIAL },
@@ -687,6 +705,8 @@ export const MIGRATIONS: Migration[] = [
   { version: 34, sql: V34_SUBCATEGORY },
   { version: 35, sql: V35_REPULL_FOR_SUBCATEGORY },
   { version: 36, sql: V36_CUSTOMER_PROFILE },
+  { version: 37, sql: V37_USER_IDLE_TIMEOUT },
+  { version: 38, sql: V38_REPULL_FOR_USER_IDLE_TIMEOUT },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.reduce(

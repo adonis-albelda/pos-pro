@@ -19,8 +19,10 @@ import {
   ChevronDown,
   CloudUpload,
   HelpCircle,
+  HelpCircleIcon,
   Home,
   Info,
+  LifeBuoy,
   LogOut,
   MessageCircle,
   Palette,
@@ -138,6 +140,11 @@ export function AccountDrawer({
   function openContactSupport() {
     onClose();
     setTimeout(() => void Linking.openURL(CONTACT_SUPPORT_URL), ANIM_MS);
+  }
+
+  function openHelpCenter() {
+    onClose();
+    setTimeout(() => router.push("/pos/help-center"), ANIM_MS);
   }
 
   function endShift() {
@@ -285,7 +292,7 @@ export function AccountDrawer({
             onPick={branchPicker.pick}
           />
 
-          <View style={{ gap: 2 }}>
+          <View style={{ gap: 3 }}>
             <DrawerTab
               key="home"
               icon={Home}
@@ -293,6 +300,16 @@ export function AccountDrawer({
               active={pathname === "/pos"}
               onPress={openHome}
             />
+            {canOpenAdminDashboard ? (
+              <DrawerTab
+                key="admin"
+                icon={Building2}
+                label="Backoffice"
+                description="Products, Stocks, Employees, etc."
+                active={pathname === "/admin"}
+                onPress={openAdmin}
+              />
+            ) : null}
             {POS_TABS.map((tab) => (
               <DrawerTab
                 key={tab.href}
@@ -302,15 +319,6 @@ export function AccountDrawer({
                 onPress={() => go(tab.href)}
               />
             ))}
-            {canOpenAdminDashboard ? (
-              <DrawerTab
-                key="admin"
-                icon={Building2}
-                label="Backoffice"
-                active={pathname === "/admin"}
-                onPress={openAdmin}
-              />
-            ) : null}
             {HELP_TABS.map((tab) => (
               <DrawerTab
                 key={tab.href}
@@ -325,9 +333,16 @@ export function AccountDrawer({
               key="contact-support"
               icon={MessageCircle}
               label="Contact support"
-              description="Opens Double-A IT Solutions' Facebook page — POSPro's maker"
+              description="Opens Double-A IT Solutions' Facebook page — POSPro One's maker"
               active={false}
               onPress={openContactSupport}
+            />
+            <DrawerTab
+              key="help-center"
+              icon={HelpCircleIcon}
+              label="Help Center"
+              active={pathname === "/pos/help-center"}
+              onPress={openHelpCenter}
             />
           </View>
 
@@ -361,7 +376,7 @@ export function AccountDrawer({
             />
           </View>
           <Text style={{ fontSize: fontSize.caption, color: color.inkMuted, textAlign: "center" }}>
-            Copyright © 2026 POSPro - All Rights Reserved.
+            Copyright © 2026 POSPro One - All Rights Reserved.
           </Text>
           </ScrollView>
         </Animated.View>

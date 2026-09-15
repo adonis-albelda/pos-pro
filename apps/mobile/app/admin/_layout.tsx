@@ -34,11 +34,12 @@ export default function AdminLayout() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const pathname = usePathname();
-  const { idleTimeoutMinutes } = useStoreSettings();
+  const { idleTimeoutMinutes: storeIdleTimeoutMinutes } = useStoreSettings();
   // Same idle/background lock as the POS tabs (lib/idle-lock.ts) — the admin
   // dashboard is reached from the same shift and must not stay unlocked here
-  // just because the cashier tapped away from the Sell screen first.
-  const recordActivity = useIdleLock(idleTimeoutMinutes);
+  // just because the cashier tapped away from the Sell screen first. Self-
+  // service override (Account tab, Settings) wins when set.
+  const recordActivity = useIdleLock(cashier?.idleTimeoutMinutes ?? storeIdleTimeoutMinutes);
   // "Account used to login is admin" (device.ts EnrolledRole) also opens the
   // dashboard, regardless of which PIN shift user is on — same rule as
   // account-drawer.tsx's ADMIN_TAB gate, kept in sync with it.

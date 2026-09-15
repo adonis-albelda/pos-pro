@@ -1,5 +1,7 @@
+import * as Crypto from "expo-crypto";
 import { me, verifyCashierPin } from "@double-a/api-client/queries";
 import { ROLES } from "@double-a/shared-types";
+import { getLocalPinHash, setLocalPinHash } from "@/db/users";
 import { ensureFreshSession, getApiClient } from "@/lib/api/session";
 
 export type PinResult =
@@ -43,4 +45,42 @@ export async function verifyPin(userId: string, pin: string): Promise<PinUnlock>
   const profile = await me(client);
   const result = profile.role !== ROLES.TERMINAL && profile.role !== ROLES.ADMIN ? "terminal-not-authorized" : "wrong-pin";
   return { result, adminToken: null, adminTokenExpiresAt: null };
+}
+
+/**
+ * Offline idle-relock cache, deliberately scoped away from live login/unlock
+ * above. Same salted scheme as the server's own CashierPinHasher
+ * (sha256("double-a-pin:{id}:{pin}")) — not because this hash is ever
+ * compared against the server's, but so the two never drift into two
+ * different "the PIN hash" concepts on the same device.
+ *
+ * A 4-6 digit PIN is a small enough space that any hash of it is crackable
+ * with a bit of local compute — the real boundary here is the same one that
+ * protects the rest of a locked terminal: whoever has the device's own
+ * SQLite file already has the terminal. This exists only to let idle-lock
+ * relock survive a dead connection mid-shift (CLAUDE.md §1's live-only rule
+ * still governs the two things that actually leave the device: shift-start
+ * unlock in app/unlock.tsx, and PIN changes below).
+ */
+async function hashPinLocally(userId: string, pin: string): Promise<string> {
+  return Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, `double-a-pin:${userId}:${pin}`);
+}
+
+/** Called after a live-verified PIN succeeds (unlock, or a PIN change) — see hashPinLocally's own comment. */
+export async function cacheLocalPin(userId: string, pin: string): Promise<void> {
+  const hash = await hashPinLocally(userId, pin);
+  await setLocalPinHash(userId, hash);
+}
+
+/**
+ * Offline idle-relock check. `null` means this device has never cached a PIN
+ * for this cashier this install (a fresh install, or one that's never had a
+ * live unlock yet) — the caller falls back to the live path in that case,
+ * same as always.
+ */
+export async function verifyPinLocally(userId: string, pin: string): Promise<boolean | null> {
+  const stored = await getLocalPinHash(userId);
+  if (!stored) return null;
+  const candidate = await hashPinLocally(userId, pin);
+  return candidate === stored;
 }

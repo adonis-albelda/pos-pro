@@ -74,6 +74,8 @@ export interface UpdateMeInput {
   username?: string | null;
   /** Opts this account out of admin web's idle-lock PIN prompt (SessionLockProvider). */
   skipSessionLock?: boolean;
+  /** Self-service override of store_settings.idleTimeoutMinutes. Null clears it back to the branch default. */
+  idleTimeoutMinutes?: number | null;
 }
 
 function toUpdateMePayload(input: UpdateMeInput): Record<string, unknown> {
@@ -82,6 +84,7 @@ function toUpdateMePayload(input: UpdateMeInput): Record<string, unknown> {
   if (input.email !== undefined) payload.email = input.email;
   if (input.username !== undefined) payload.username = input.username;
   if (input.skipSessionLock !== undefined) payload.skip_session_lock = input.skipSessionLock;
+  if (input.idleTimeoutMinutes !== undefined) payload.idle_timeout_minutes = input.idleTimeoutMinutes;
   return payload;
 }
 
@@ -151,6 +154,26 @@ export async function changePassword(client: ApiClient, input: ChangePasswordInp
     current_password: input.currentPassword,
     password: input.password,
     password_confirmation: input.password,
+  });
+}
+
+export interface ChangePinInput {
+  /** Omit only when the account has no PIN set yet (User.hasPin === false). */
+  currentPin?: string;
+  pin: string;
+}
+
+/**
+ * Self-service PIN change — live only, same as verifyCashierPin/confirmPin.
+ * Never touches local SQLite here; callers that also want an offline-capable
+ * idle-relock check of their own (apps/mobile/lib/pin.ts) cache a local hash
+ * themselves after this succeeds.
+ */
+export async function changePin(client: ApiClient, input: ChangePinInput): Promise<void> {
+  await client.post<{ message: string }>("/auth/pin/change", {
+    current_pin: input.currentPin,
+    pin: input.pin,
+    pin_confirmation: input.pin,
   });
 }
 
@@ -234,7 +257,7 @@ export interface RegisterInput {
 }
 
 /**
- * "New to POSPro?" self-signup — always provisions a demo account (see
+ * "New to POSPro One?" self-signup — always provisions a demo account (see
  * RegisterDemoAccountAction). The account cannot sign in until its email is
  * verified; no token comes back here, unlike login(). Idempotency-Key keeps
  * a doubled tap from provisioning two companies.
@@ -248,7 +271,7 @@ export async function registerDemoAccount(client: ApiClient, input: RegisterInpu
 }
 
 /**
- * Resend for the "New to POSPro?" flow specifically — the prospect has no
+ * Resend for the "New to POSPro One?" flow specifically — the prospect has no
  * bearer token yet at this point (register() never signs them in), so the
  * generic authenticated resend endpoint is out of reach. Looked up by email
  * server-side, not a token. Same generic-message contract as

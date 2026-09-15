@@ -331,6 +331,8 @@ export interface User {
   hasPin: boolean;
   /** Self-service opt-out of admin web's idle-lock PIN prompt (SessionLockProvider). */
   skipSessionLock: boolean;
+  /** Self-service override of store_settings.idleTimeoutMinutes. Null = use the branch default. */
+  idleTimeoutMinutes: number | null;
   /** Null until the emailed verification link is clicked — only ever sent for admin/manager roles (see StoreUserController). Every other role is created already verified. */
   emailVerifiedAt: string | null;
   lastLoginAt?: string | null;

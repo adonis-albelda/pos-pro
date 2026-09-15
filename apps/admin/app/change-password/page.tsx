@@ -22,7 +22,7 @@ export default function ChangePasswordPage() {
               <Image src="/logo.png" alt="" width={28} height={28} className="size-7 object-contain" />
             </div>
             <div>
-              <h1 className="text-heading-md font-bold text-ink">POSPro</h1>
+              <h1 className="text-heading-md font-bold text-ink">POSPro One</h1>
               <p className="text-caption text-ink-muted">Admin dashboard</p>
             </div>
           </div>
@@ -39,7 +39,7 @@ export default function ChangePasswordPage() {
           </div>
 
           <p className="mt-8 text-center text-caption text-ink-muted">
-            Copyright © 2026 POSPro - All Rights Reserved.
+            Copyright © 2026 POSPro One - All Rights Reserved.
           </p>
         </div>
       </div>

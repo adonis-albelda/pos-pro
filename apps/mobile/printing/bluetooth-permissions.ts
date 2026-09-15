@@ -75,7 +75,7 @@ function confirmPrompt(): Promise<boolean> {
   return new Promise((resolve) => {
     Alert.alert(
       "Allow Bluetooth?",
-      "POSPro needs Bluetooth to find and print receipts on the PT-210 thermal printer.",
+      "POSPro One needs Bluetooth to find and print receipts on the PT-210 thermal printer.",
       [
         { text: "Not now", style: "cancel", onPress: () => resolve(false) },
         { text: "Continue", onPress: () => resolve(true) },
@@ -90,7 +90,7 @@ function offerSettings(): Promise<boolean> {
   return new Promise((resolve) => {
     Alert.alert(
       "Bluetooth blocked",
-      "Permission was denied earlier. Open Settings and allow Bluetooth (and nearby devices) for POSPro.",
+      "Permission was denied earlier. Open Settings and allow Bluetooth (and nearby devices) for POSPro One.",
       [
         { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
         {

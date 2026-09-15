@@ -434,6 +434,7 @@ export interface UserAttrs {
   is_demo: boolean;
   has_pin?: boolean;
   skip_session_lock?: boolean;
+  idle_timeout_minutes?: number | null;
   email_verified_at: string | null;
   last_login_at?: string | null;
   created_at: string | null;
@@ -458,6 +459,7 @@ export function toUser(resource: JsonApiResource<UserAttrs>): User {
     isDemo: a.is_demo,
     hasPin: Boolean(a.has_pin),
     skipSessionLock: Boolean(a.skip_session_lock),
+    idleTimeoutMinutes: a.idle_timeout_minutes ?? null,
     companyId: a.company_id ?? null,
     locationId: a.location_id ?? null,
     companyIsActive: a.company_is_active ?? true,

@@ -53,7 +53,7 @@ export function usePushNotifications(): void {
         // Foreground messages (tab open and focused) never reach the
         // service worker — this is the only place they're seen at all.
         unsubscribeForeground = onMessage(firebaseMessaging(), (payload) => {
-          const title = payload.notification?.title ?? "POSPro";
+          const title = payload.notification?.title ?? "POSPro One";
           const body = payload.notification?.body;
           if (Notification.permission === "granted") {
             new Notification(title, { body });

@@ -14,7 +14,7 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "POSPro — Admin",
+  title: "POSPro One — Admin",
   description: "Sales, inventory, and cashiers — everything your store needs, in one place.",
 };
 

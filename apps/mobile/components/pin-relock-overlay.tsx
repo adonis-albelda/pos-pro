@@ -20,6 +20,10 @@ const PIN_ICON = require("../assets/password-protection.webp");
  * "Switch account" is the escape hatch to that picker for the rare case a
  * different cashier is actually taking over.
  *
+ * Verifies through `relockUnlock`, not `unlock` — an offline-cached PIN
+ * check (lib/pin.ts) instead of a live one, so this screen still works with
+ * no connection mid-shift. /unlock's own picker stays live-only.
+ *
  * Renders nothing when not locked — mount unconditionally in a layout
  * (app/pos/_layout.tsx, app/admin/_layout.tsx) right after the screen
  * content it should sit on top of. Staying mounted means useState survives
@@ -29,7 +33,7 @@ const PIN_ICON = require("../assets/password-protection.webp");
 export function PinRelockOverlay() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { cashier, locked, unlock } = useSession();
+  const { cashier, locked, relockUnlock } = useSession();
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -49,7 +53,7 @@ export function PinRelockOverlay() {
     setBusy(true);
     setError(null);
     try {
-      const result = await unlock(cashier, pin);
+      const result = await relockUnlock(pin);
 
       if (result === "wrong-pin") {
         setPin("");

@@ -531,7 +531,7 @@ export default function SetupScreen() {
     },
     "feature-onboarding": {
       title: "Welcome",
-      subtitle: "A quick look at what POSPro can do",
+      subtitle: "A quick look at what POSPro One can do",
       Icon: ShieldCheck,
     },
     "first-pull": {
@@ -661,7 +661,7 @@ export default function SetupScreen() {
                   letterSpacing: -0.5,
                 }}
               >
-                Welcome to POSPro!
+                Welcome to POSPro One!
               </Text>
               <Text style={{ fontSize: fontSize.body, color: color.inkMuted }}>
                 Set up this terminal to start selling.
@@ -755,7 +755,7 @@ export default function SetupScreen() {
                   }}
                 >
                   <TextLink label="Forgot password?" onPress={() => setForgotOpen(true)} disabled={busy} />
-                  <TextLink label="New to POSPro?" onPress={() => setRegisterOpen(true)} disabled={busy} />
+                  <TextLink label="New to POSPro One?" onPress={() => setRegisterOpen(true)} disabled={busy} />
                 </View>
                 <InfoLine text="One-time setup, admin or terminal account only — needs an internet connection." />
               </>
@@ -1067,7 +1067,7 @@ export default function SetupScreen() {
             opacity: 0.8,
           }}
         >
-          Copyright © 2026 POSPro - All Rights Reserved.
+          Copyright © 2026 POSPro One - All Rights Reserved.
         </Text>
       </View>
     </View>
