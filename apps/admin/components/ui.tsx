@@ -18,6 +18,7 @@ import {
   ChevronDown,
   CircleAlert,
   Dot,
+  Info,
   Loader2,
   Plus,
   Search,
@@ -1133,6 +1134,16 @@ export function SuccessNote({ children }: { children: ReactNode }) {
   return (
     <p className="flex items-start gap-2 rounded-sm border border-success/40 bg-success/8 px-3 py-2 text-body text-success">
       <Check size={16} strokeWidth={2.5} className="mt-0.5 shrink-0" />
+      <span>{children}</span>
+    </p>
+  );
+}
+
+/** Neutral heads-up, not a validation error/success — a caveat about how a field actually behaves. */
+export function InfoNote({ children }: { children: ReactNode }) {
+  return (
+    <p className="flex items-start gap-2 rounded-sm border border-accent/40 bg-accent/8 px-3 py-2 text-body text-ink-muted">
+      <Info size={16} strokeWidth={2} className="mt-0.5 shrink-0 text-accent" />
       <span>{children}</span>
     </p>
   );

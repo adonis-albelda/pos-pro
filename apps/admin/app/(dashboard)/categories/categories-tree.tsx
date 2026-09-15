@@ -126,6 +126,7 @@ export function CategoriesTree({
       </Table>
 
       <Sheet
+        className="min-w-3xl"
         open={editing !== null}
         onClose={() => setEditing(null)}
         title={editing ? `Edit ${editing.name}` : "Edit category"}

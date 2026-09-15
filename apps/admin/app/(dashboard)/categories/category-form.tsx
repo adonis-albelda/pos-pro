@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useId } from "react";
 import { Check, FolderPlus, X } from "lucide-react";
 import { SheetFooter, useSheetChrome } from "@/components/overlay";
-import { Button, Combobox, ErrorNote, Field, Input, SuccessNote } from "@/components/ui";
+import { Button, Combobox, ErrorNote, Field, Input, InfoNote, SuccessNote } from "@/components/ui";
 import {
   descendantIds,
   indentLabel,
@@ -85,6 +85,11 @@ export function CategoryForm({
           />
         </Field>
       </div>
+
+      <InfoNote>
+        Markup only fills shelf price on a product with no supplier attached. A
+        product tied to a supplier prices off that supplier&apos;s cost instead.
+      </InfoNote>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field
