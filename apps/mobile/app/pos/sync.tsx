@@ -1,16 +1,29 @@
-import { useEffect, useState } from "react";
-import { Alert, Pressable, ScrollView, Text, View } from "react-native";
-import { timeAgo } from "@double-a/shared-types";
-import { CloudUpload, DatabaseZap, RefreshCw, Smartphone } from "lucide-react-native";
+import { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { useFocusEffect } from "expo-router";
+import { ApiError } from "@double-a/api-client";
+import { flagBrokenSale } from "@double-a/api-client/queries";
+import { timeAgo, type LocalSaleWithItems } from "@double-a/shared-types";
+import { AlertTriangle, CloudUpload, DatabaseZap, RefreshCw, Send, Smartphone } from "lucide-react-native";
 import { getSyncMeta } from "@/db/meta";
 import { countLocalProducts } from "@/db/products";
-import { countPendingSales } from "@/db/sales";
+import { countPendingSales, listRejectedSales, markSaleFlagged } from "@/db/sales";
 import { countLocalUsers } from "@/db/users";
+import { ensureFreshSession, getApiClient } from "@/lib/api/session";
+import { getDeviceId } from "@/lib/device";
 import { useLayout } from "@/lib/layout";
 import { useSync } from "@/sync/sync-provider";
 import { WaveBackdrop } from "@/components/wave-backdrop";
-import { Badge, Card, ErrorNote, LedgerLine, SectionTitle } from "@/components/ui";
+import { Badge, Button, Card, ErrorNote, LedgerLine, SectionTitle } from "@/components/ui";
 import { color, fontSize, radius, space, styles } from "@/theme";
+
+function errorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) {
+    const first = error.errors ? Object.values(error.errors)[0]?.[0] : undefined;
+    return first ?? error.message;
+  }
+  return error instanceof Error ? error.message : fallback;
+}
 
 /**
  * One card, flat — status on top, the three actions below it as plain rows
@@ -27,6 +40,7 @@ export default function SyncScreen() {
     pending: 0,
     lastSyncedAt: null as string | null,
   });
+  const [rejectedSales, setRejectedSales] = useState<LocalSaleWithItems[]>([]);
 
   useEffect(() => {
     async function load() {
@@ -43,6 +57,17 @@ export default function SyncScreen() {
     void load();
     // Every count here is stale the moment a pull finishes.
   }, [dataVersion]);
+
+  const loadRejected = useCallback(() => {
+    void listRejectedSales().then(setRejectedSales);
+  }, []);
+
+  // dataVersion alone misses a sale that just failed THIS sync's own push —
+  // a failed push never pulls, so dataVersion never bumps. Re-check on
+  // every focus too, so returning to this tab after a Sync attempt always
+  // shows the current rejected list.
+  useEffect(loadRejected, [loadRejected, dataVersion]);
+  useFocusEffect(loadRejected);
 
   const busy = phase === "pushing" || phase === "pulling";
 
@@ -121,12 +146,89 @@ export default function SyncScreen() {
           />
         </Card>
 
+        {rejectedSales.length > 0 ? (
+          <Card style={[{ gap: space.sm }, styles.floatShadow, { borderRadius: radius.sm }]}>
+            <SectionTitle
+              icon={AlertTriangle}
+              title="Couldn't sync"
+              hint="Sync keeps retrying these quietly — they'll go out on their own the moment the reason clears. Sending a raw copy is a last resort, only if an admin needs to see one now."
+            />
+            {rejectedSales.map((sale) => (
+              <RejectedSaleRow
+                key={sale.id}
+                sale={sale}
+                onFlagged={() => setRejectedSales((current) => current.filter((row) => row.id !== sale.id))}
+              />
+            ))}
+          </Card>
+        ) : null}
+
         <Text style={[styles.muted, { textAlign: "center", color: color.onPrimary }]}>
           Nothing here runs on its own. Selling and printing work exactly the
           same with no connection at all
           {pendingSales > 0 ? ` — ${pendingSales} sale${pendingSales === 1 ? "" : "s"} waiting on Sync.` : "."}
         </Text>
       </ScrollView>
+    </View>
+  );
+}
+
+/** One row in the "Couldn't sync" card — the reason push() recorded, plus the flag-to-server last resort. */
+function RejectedSaleRow({ sale, onFlagged }: { sale: LocalSaleWithItems; onFlagged: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function confirmFlag() {
+    Alert.alert(
+      "Send raw copy to server?",
+      "Sends this sale exactly as it sits on this device to the server for an admin to look at by hand. It will not become a real sale, and this terminal stops retrying it normally afterward.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Send", style: "destructive", onPress: () => void flag() },
+      ],
+    );
+  }
+
+  async function flag() {
+    setBusy(true);
+    setError(null);
+    try {
+      await ensureFreshSession();
+      const client = getApiClient();
+      const deviceId = await getDeviceId();
+      await flagBrokenSale(client, { deviceId, reason: sale.rejectionReason ?? "Unknown", sale });
+      await markSaleFlagged(sale.id);
+      onFlagged();
+    } catch (cause) {
+      setError(errorMessage(cause, "Could not reach the server."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <View style={{ gap: space.xs }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
+        <AlertTriangle size={16} color={color.warning} strokeWidth={2} />
+        <Text
+          numberOfLines={1}
+          style={{ flex: 1, fontSize: fontSize.body, fontWeight: "700", color: color.ink }}
+        >
+          {timeAgo(sale.createdAt)} · {sale.customerName?.trim() || "Walk-in"}
+        </Text>
+      </View>
+      <Text style={styles.muted}>{sale.rejectionReason ?? "Could not sync."}</Text>
+      {error ? <ErrorNote>{error}</ErrorNote> : null}
+      {busy ? (
+        <ActivityIndicator color={color.primary} />
+      ) : (
+        <Button
+          label="Send raw copy to server"
+          variant="secondary"
+          icon={Send}
+          onPress={confirmFlag}
+        />
+      )}
     </View>
   );
 }

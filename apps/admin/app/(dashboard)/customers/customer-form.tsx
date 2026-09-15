@@ -4,6 +4,7 @@ import { useActionState, useEffect, useId } from "react";
 import {
   Cake,
   Check,
+  IdCard,
   Mail,
   MapPin,
   Phone,
@@ -127,6 +128,46 @@ export function CustomerForm({
             maxLength={2000}
           />
         </Field>
+
+        <div className="space-y-3 rounded-md border border-border p-4">
+          <p className="text-body font-medium text-ink">Senior / PWD discount</p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="ID number" required={false}>
+              <Input
+                name="id_number"
+                icon={IdCard}
+                defaultValue={customer?.idNumber ?? ""}
+                maxLength={50}
+              />
+            </Field>
+            <Field label="Cardholder name" required={false} hint="Name printed on the ID — independent of the customer's own name.">
+              <Input
+                name="cardholder_name"
+                icon={UserRound}
+                defaultValue={customer?.cardholderName ?? ""}
+                maxLength={160}
+              />
+            </Field>
+          </div>
+          <label className="flex items-center gap-2 text-body text-ink">
+            <input
+              type="checkbox"
+              name="is_pwd_eligible"
+              defaultChecked={customer?.isPwdEligible ?? false}
+              className="size-4 rounded border-border"
+            />
+            PWD eligible — shows in the POS discount dialog&apos;s PWD picker.
+          </label>
+          <label className="flex items-center gap-2 text-body text-ink">
+            <input
+              type="checkbox"
+              name="is_senior_eligible"
+              defaultChecked={customer?.isSeniorEligible ?? false}
+              className="size-4 rounded border-border"
+            />
+            Senior citizen eligible — shows in the POS discount dialog&apos;s Senior picker.
+          </label>
+        </div>
 
         {customer ? (
           <label className="flex items-center gap-2 text-body text-ink">

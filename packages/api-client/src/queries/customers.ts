@@ -28,6 +28,10 @@ export interface CustomerInput {
   gender?: CustomerGender | null;
   notes?: string | null;
   isActive?: boolean;
+  idNumber?: string | null;
+  cardholderName?: string | null;
+  isPwdEligible?: boolean;
+  isSeniorEligible?: boolean;
 }
 
 function toPayload(input: Partial<CustomerInput>): Record<string, unknown> {
@@ -41,6 +45,10 @@ function toPayload(input: Partial<CustomerInput>): Record<string, unknown> {
   if (input.gender !== undefined) payload.gender = input.gender;
   if (input.notes !== undefined) payload.notes = input.notes;
   if (input.isActive !== undefined) payload.is_active = input.isActive;
+  if (input.idNumber !== undefined) payload.id_number = input.idNumber;
+  if (input.cardholderName !== undefined) payload.cardholder_name = input.cardholderName;
+  if (input.isPwdEligible !== undefined) payload.is_pwd_eligible = input.isPwdEligible;
+  if (input.isSeniorEligible !== undefined) payload.is_senior_eligible = input.isSeniorEligible;
   return payload;
 }
 

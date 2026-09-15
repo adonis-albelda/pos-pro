@@ -280,6 +280,10 @@ export interface CustomerAttrs {
   gender?: CustomerGender | null;
   notes?: string | null;
   is_active?: boolean;
+  id_number?: string | null;
+  cardholder_name?: string | null;
+  is_pwd_eligible?: boolean;
+  is_senior_eligible?: boolean;
   loyalty_points_balance?: number;
   lifetime_points_earned?: number;
   lifetime_points_redeemed?: number;
@@ -299,6 +303,10 @@ export function toCustomer(resource: JsonApiResource<CustomerAttrs>): Customer {
     gender: a.gender ?? null,
     notes: a.notes ?? null,
     isActive: a.is_active ?? true,
+    idNumber: a.id_number ?? null,
+    cardholderName: a.cardholder_name ?? null,
+    isPwdEligible: a.is_pwd_eligible ?? false,
+    isSeniorEligible: a.is_senior_eligible ?? false,
     loyaltyPointsBalance: a.loyalty_points_balance ?? 0,
     lifetimePointsEarned: a.lifetime_points_earned ?? 0,
     lifetimePointsRedeemed: a.lifetime_points_redeemed ?? 0,

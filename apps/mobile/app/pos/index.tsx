@@ -10,6 +10,7 @@ import {
   Modal,
   Pressable,
   ScrollView,
+  Switch,
   Text,
   TextInput,
   useWindowDimensions,
@@ -33,6 +34,7 @@ import {
   CreditCard,
   FolderTree,
   HandCoins,
+  IdCard,
   Images,
   Info,
   MapPin,
@@ -93,7 +95,12 @@ import {
 } from "@double-a/shared-types";
 import { listLocalAddonGroups } from "@/db/addon-groups";
 import { listLocalCategories, type LocalCategory } from "@/db/categories";
-import { getLocalCustomer, upsertLocalCustomer } from "@/db/customers";
+import {
+  getLocalCustomer,
+  listLocalCustomers,
+  upsertLocalCustomer,
+  type LocalCustomer,
+} from "@/db/customers";
 import { getPendingRedeemedPoints, listLocalLoyaltyRewards } from "@/db/loyalty";
 import {
   countActiveLocalProducts,
@@ -376,6 +383,11 @@ export default function SellScreen() {
   const [complexRules, setComplexRules] = useState<ComplexDiscountRule[]>([]);
   const [loyaltyRewards, setLoyaltyRewards] = useState<LoyaltyReward[]>([]);
   const [customerPoints, setCustomerPoints] = useState(0);
+  // Full local customer list — DiscountSheet filters this client-side by
+  // isPwdEligible/isSeniorEligible for its PWD/Senior picker, and reads a
+  // picked/attached customer's own idNumber/cardholderName off it. Same
+  // "small table, load it whole" assumption CLAUDE.md §11 already makes.
+  const [allCustomers, setAllCustomers] = useState<LocalCustomer[]>([]);
   const [taxSettings, setTaxSettings] = useState<TaxSettings>(DEFAULT_TAX_SETTINGS);
   const [qtyEditingId, setQtyEditingId] = useState<string | null>(null);
   const [payment, setPayment] = useState<PaymentMethod>("cash");
@@ -511,16 +523,18 @@ export default function SellScreen() {
 
   useEffect(() => {
     void (async () => {
-      const [simple, complex, tax, rewards] = await Promise.all([
+      const [simple, complex, tax, rewards, customers] = await Promise.all([
         listLocalDiscountRules(),
         listLocalComplexDiscountRules(),
         getLocalTaxSettings(),
         listLocalLoyaltyRewards(),
+        listLocalCustomers(),
       ]);
       setDiscountRules(simple);
       setComplexRules(complex);
       setTaxSettings(tax);
       setLoyaltyRewards(rewards);
+      setAllCustomers(customers);
     })();
   }, [dataVersion]);
 
@@ -1412,7 +1426,16 @@ export default function SellScreen() {
     setConfirmOpen(false);
     setConfirmSucceeded(false);
     setCompletedSale(null);
-    setCartOpen(false);
+    // On phone, ConfirmSaleSheet's own Modal is nested inside CartShell's
+    // Modal (finishSale keeps the cart open underneath so opening the confirm
+    // sheet doesn't unmount it — see finishSale's own comment). Setting both
+    // Modals' `visible` false in the same React commit — as a plain
+    // setCartOpen(false) right here would — leaves the inner one stuck
+    // on-screen instead of dismissing (a known RN nested-Modal quirk): tapping
+    // Skip registered (state changed) but nothing visibly closed. Deferring
+    // this one to the next tick splits it into a second, separate commit so
+    // the inner Modal actually finishes closing first.
+    setTimeout(() => setCartOpen(false), 0);
   }
 
   function printCompletedSale() {
@@ -2125,6 +2148,17 @@ export default function SellScreen() {
           applied={orderDiscounts}
           tax={taxSettings}
           hasDiscount={discount > 0}
+          customers={allCustomers}
+          linkedCustomer={customer}
+          onAttachCustomer={(picked) =>
+            setCustomer({
+              customerId: picked.id,
+              name: picked.name,
+              address: picked.address,
+              contact: picked.contact,
+            })
+          }
+          onOpenCustomerForm={() => setEditingCustomer(true)}
           onClose={() => setDiscountSheetOpen(false)}
           onApplyAmount={applyGlobalDiscount}
           onApplyRule={(discountRow) => {
@@ -2152,8 +2186,14 @@ export default function SellScreen() {
           open={editingCustomer}
           customer={customer}
           onClose={() => setEditingCustomer(false)}
-          onApply={(next) => {
+          onApply={(next, full) => {
             setCustomer(next);
+            if (full) {
+              setAllCustomers((current) => [
+                full,
+                ...current.filter((row) => row.id !== full.id),
+              ]);
+            }
             setEditingCustomer(false);
           }}
         />
@@ -2623,6 +2663,22 @@ function QuantitySheet({
  * Rules come from the local discounts table (synced); scoped rules only
  * appear when a cart line hits their product/category/variant.
  */
+/**
+ * DiscountRule has no PWD-vs-Senior distinction of its own — admin names/
+ * configures it freely (requiresIdNumber + isVatExempt are the only
+ * structured flags). This is the only signal available for which picker an
+ * ID-required rule should show: match on the rule's own name text, falling
+ * back to "either eligibility" when it names neither so an ID-required rule
+ * with an unusual name still shows a real, non-empty picker instead of
+ * nothing.
+ */
+function inferMandatoryDiscountEligibility(ruleName: string): "pwd" | "senior" | "either" {
+  const lower = ruleName.toLowerCase();
+  if (lower.includes("senior")) return "senior";
+  if (lower.includes("pwd") || lower.includes("disab")) return "pwd";
+  return "either";
+}
+
 function DiscountSheet({
   open,
   total,
@@ -2635,6 +2691,10 @@ function DiscountSheet({
   applied,
   tax,
   hasDiscount,
+  customers,
+  linkedCustomer,
+  onAttachCustomer,
+  onOpenCustomerForm,
   onClose,
   onApplyAmount,
   onApplyRule,
@@ -2651,6 +2711,13 @@ function DiscountSheet({
   applied: AppliedOrderDiscount[];
   tax: TaxSettings;
   hasDiscount: boolean;
+  /** Full local customer list — filtered client-side for the PWD/Senior picker (see inferMandatoryDiscountEligibility). */
+  customers: LocalCustomer[];
+  /** The sale's own attached customer, if any — shown in the overview column, and watched below to auto-resolve a customer just created from "+ Create new customer". */
+  linkedCustomer: CustomerDetails;
+  onAttachCustomer: (customer: LocalCustomer) => void;
+  /** Opens CustomerSheet on top of this one (same nested-Modal pattern ConfirmSaleSheet/CartShell already use) — this sheet stays open underneath. */
+  onOpenCustomerForm: () => void;
   onClose: () => void;
   onApplyAmount: (amount: number) => void;
   onApplyRule: (discount: AppliedOrderDiscount) => void;
@@ -2661,13 +2728,12 @@ function DiscountSheet({
   const keyboardHeight = useKeyboardHeight();
   const { compact, landscape } = useLayout();
   // Phone or upright tablet: dock at the bottom, same as BottomSheet. Tablet
-  // held sideways: keep the centered dialog box, now wide enough (90%) for a
-  // two-column layout — cart info left, every pickable discount right.
+  // held sideways: keep the centered dialog box, wide enough (90%) for a
+  // two-column layout — every pickable discount left, cart/customer overview
+  // right.
   const centered = !compact && landscape;
   const [draft, setDraft] = useState("");
   const [pendingRule, setPendingRule] = useState<DiscountRule | null>(null);
-  const [idNumber, setIdNumber] = useState("");
-  const [idHolderName, setIdHolderName] = useState("");
   const typed = Number(draft);
   const valid = draft.trim() !== "" && Number.isFinite(typed) && typed > 0;
   const applicable = qualifyingSimpleRules(rules, lines);
@@ -2680,14 +2746,39 @@ function DiscountSheet({
     : [];
   const appliedTotal = orderDiscountImpact(applied);
 
+  const pendingEligibility = pendingRule ? inferMandatoryDiscountEligibility(pendingRule.name) : null;
+  const eligibleCustomers = customers.filter(
+    (c) =>
+      (pendingEligibility === "pwd" && c.isPwdEligible) ||
+      (pendingEligibility === "senior" && c.isSeniorEligible) ||
+      (pendingEligibility === "either" && (c.isPwdEligible || c.isSeniorEligible)),
+  );
+
   useEffect(() => {
     if (!open) {
       setDraft("");
       setPendingRule(null);
-      setIdNumber("");
-      setIdHolderName("");
     }
   }, [open]);
+
+  // "+ Create new customer" inside the picker below opens CustomerSheet on
+  // top of this sheet (onOpenCustomerForm) rather than replacing this
+  // screen — once it saves, the sale's own linkedCustomer changes, which is
+  // the signal picked up here: resolve that same id against the fresh
+  // `customers` list (CustomerSheet's own onApply already merged the just-
+  // saved record into it) and finish the pending rule with it, same as
+  // tapping an existing row below would.
+  useEffect(() => {
+    if (!pendingRule || !linkedCustomer.customerId) return;
+    const created = customers.find((c) => c.id === linkedCustomer.customerId);
+    if (created && created.idNumber && created.cardholderName) {
+      pickMandatoryDiscountCustomer(created);
+    }
+    // Only re-run when the linked customer itself changes — re-matching on
+    // every `customers`/`pendingRule` change would re-fire this the moment
+    // any unrelated list refresh lands.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedCustomer.customerId]);
 
   if (!open) return null;
 
@@ -2699,19 +2790,17 @@ function DiscountSheet({
     onApplyRule(applySimpleRuleToCart({ rule, lines, tax }));
   }
 
-  function confirmId() {
+  /** A picked (or just-created) PWD/Senior customer — their own idNumber/cardholderName stand in for what the cashier used to type by hand. */
+  function pickMandatoryDiscountCustomer(picked: LocalCustomer) {
     if (!pendingRule) return;
-    if (!idNumber.trim() || !idHolderName.trim()) {
-      Alert.alert("ID required", "Enter the ID number and the cardholder's name.");
-      return;
-    }
+    onAttachCustomer(picked);
     onApplyRule(
       applySimpleRuleToCart({
         rule: pendingRule,
         lines,
         tax,
-        idNumber: idNumber.trim(),
-        idHolderName: idHolderName.trim(),
+        idNumber: picked.idNumber ?? "",
+        idHolderName: picked.cardholderName || picked.name,
       }),
     );
   }
@@ -2789,6 +2878,34 @@ function DiscountSheet({
           </Text>
         )}
       </View>
+
+      {linkedCustomer.customerId ? (
+        <View
+          style={{
+            gap: 2,
+            padding: space.md,
+            borderRadius: radius.sm,
+            borderWidth: 1,
+            borderColor: color.border,
+            backgroundColor: color.surface,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: space.xs }}>
+            <UserRound size={14} color={color.inkMuted} strokeWidth={2} />
+            <Text style={{ fontSize: fontSize.caption, fontWeight: "700", color: color.inkMuted }}>
+              CUSTOMER
+            </Text>
+          </View>
+          <Text style={{ fontSize: fontSize.bodyLg, fontWeight: "700", color: color.ink }}>
+            {linkedCustomer.name ?? "Customer"}
+          </Text>
+          {linkedCustomer.contact ? (
+            <Text style={{ fontSize: fontSize.body, color: color.inkMuted }}>
+              {linkedCustomer.contact}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
 
       {hasDiscount ? (
         <View style={{ gap: space.sm }}>
@@ -2900,114 +3017,117 @@ function DiscountSheet({
 
           {pendingRule ? (
             <ScrollView
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="interactive"
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ gap: space.lg, paddingBottom: space.sm }}
+              contentContainerStyle={{ gap: space.md, paddingBottom: space.sm }}
               style={{ flex: 1 }}
             >
-              <View style={{ gap: space.md }}>
-                <View
+              <View
+                style={{
+                  alignItems: "center",
+                  gap: space.xs,
+                  paddingVertical: space.md,
+                  paddingHorizontal: space.md,
+                  borderRadius: radius.md,
+                  backgroundColor: color.primaryTint,
+                  borderWidth: 1,
+                  borderColor: color.primarySoft,
+                }}
+              >
+                <Text style={{ fontSize: fontSize.bodyLg, fontWeight: "600", color: color.primaryDark }}>
+                  Discount rule
+                </Text>
+                <Text
                   style={{
-                    alignItems: "center",
-                    gap: space.xs,
-                    paddingVertical: space.md,
-                    paddingHorizontal: space.md,
-                    borderRadius: radius.md,
-                    backgroundColor: color.primaryTint,
-                    borderWidth: 1,
-                    borderColor: color.primarySoft,
+                    fontSize: fontSize.headingSm,
+                    fontWeight: "700",
+                    color: color.primaryDark,
+                    textAlign: "center",
                   }}
                 >
-                  <Text
-                    style={{
-                      fontSize: fontSize.bodyLg,
-                      fontWeight: "600",
-                      color: color.primaryDark,
-                    }}
-                  >
-                    Discount rule
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: fontSize.headingSm,
-                      fontWeight: "700",
-                      color: color.primaryDark,
-                      textAlign: "center",
-                    }}
-                  >
-                    {pendingRule.name}
-                  </Text>
-                  <Text style={{ fontSize: fontSize.bodyLg, fontWeight: "600", color: color.ink }}>
-                    Enter ID number and cardholder name
-                  </Text>
-                </View>
-
-                <View style={{ gap: space.sm }}>
-                  <Text style={{ fontSize: fontSize.headingSm, fontWeight: "700", color: color.ink }}>
-                    ID number
-                  </Text>
-                  <TextInput
-                    value={idNumber}
-                    onChangeText={setIdNumber}
-                    placeholder="ID number"
-                    autoFocus
-                    accessibilityLabel="ID number"
-                    style={[
-                      styles.numeric,
-                      {
-                        minHeight: 64,
-                        borderWidth: 2,
-                        borderColor: color.primary,
-                        borderRadius: radius.sm,
-                        backgroundColor: color.primaryTint,
-                        paddingHorizontal: space.md,
-                        fontSize: fontSize.headingSm,
-                        fontWeight: "700",
-                        color: color.primaryDark,
-                      },
-                    ]}
-                  />
-                  <Text style={{ fontSize: fontSize.headingSm, fontWeight: "700", color: color.ink }}>
-                    Cardholder name
-                  </Text>
-                  <TextInput
-                    value={idHolderName}
-                    onChangeText={setIdHolderName}
-                    placeholder="Cardholder name"
-                    accessibilityLabel="Cardholder name"
-                    style={[
-                      styles.numeric,
-                      {
-                        minHeight: 64,
-                        borderWidth: 2,
-                        borderColor: color.primary,
-                        borderRadius: radius.sm,
-                        backgroundColor: color.primaryTint,
-                        paddingHorizontal: space.md,
-                        fontSize: fontSize.headingSm,
-                        fontWeight: "700",
-                        color: color.primaryDark,
-                      },
-                    ]}
-                  />
-                </View>
+                  {pendingRule.name}
+                </Text>
+                <Text style={{ fontSize: fontSize.bodyLg, fontWeight: "600", color: color.ink, textAlign: "center" }}>
+                  Pick who the ID belongs to
+                </Text>
               </View>
+
+              <Pressable
+                onPress={onOpenCustomerForm}
+                accessibilityRole="button"
+                accessibilityLabel="Create new customer"
+                style={({ pressed }) => ({
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: space.sm,
+                  padding: space.md,
+                  minHeight: 56,
+                  borderRadius: radius.sm,
+                  borderWidth: 1,
+                  borderStyle: "dashed",
+                  borderColor: color.primary,
+                  backgroundColor: pressed ? color.primaryTint : color.surface,
+                })}
+              >
+                <Plus size={18} color={color.primary} strokeWidth={2.5} />
+                <Text style={{ fontSize: fontSize.bodyLg, fontWeight: "700", color: color.primary }}>
+                  Create new customer
+                </Text>
+              </Pressable>
+
+              {eligibleCustomers.length === 0 ? (
+                <Text style={{ fontSize: fontSize.body, fontWeight: "600", color: color.inkMuted }}>
+                  No customer is flagged for this discount yet. Create one, or open an
+                  existing customer's details and turn on the toggle for it.
+                </Text>
+              ) : (
+                eligibleCustomers.map((c) => {
+                  const missingId = !c.idNumber || !c.cardholderName;
+                  return (
+                    <Pressable
+                      key={c.id}
+                      onPress={() => {
+                        if (missingId) {
+                          // Attach them first — CustomerSheet prefills from
+                          // the sale's own linked customer id, so this
+                          // customer (not whoever was linked before) is
+                          // what opens for editing.
+                          onAttachCustomer(c);
+                          onOpenCustomerForm();
+                          return;
+                        }
+                        pickMandatoryDiscountCustomer(c);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={missingId ? `${c.name}, missing ID, edit` : `Apply for ${c.name}`}
+                      style={{
+                        padding: space.md,
+                        minHeight: 64,
+                        borderRadius: radius.sm,
+                        borderWidth: 1,
+                        borderColor: color.border,
+                        backgroundColor: color.surface,
+                        gap: space.xs,
+                      }}
+                    >
+                      <Text style={{ fontSize: fontSize.bodyLg, fontWeight: "700", color: color.ink }}>
+                        {c.name}
+                      </Text>
+                      {missingId ? (
+                        <Text style={{ fontSize: fontSize.body, fontWeight: "600", color: color.warningInk }}>
+                          No ID on file — tap to add
+                        </Text>
+                      ) : (
+                        <Text style={{ fontSize: fontSize.body, fontWeight: "600", color: color.inkMuted }}>
+                          {c.cardholderName} · {c.idNumber}
+                        </Text>
+                      )}
+                    </Pressable>
+                  );
+                })
+              )}
             </ScrollView>
           ) : (
             <View style={{ flex: 1, flexDirection: centered ? "row" : "column", gap: centered ? space.lg : 0 }}>
-              {centered ? (
-                <ScrollView
-                  showsVerticalScrollIndicator={false}
-                  contentContainerStyle={{ gap: space.lg, paddingBottom: space.sm }}
-                  style={{ width: infoColumnWidth, flexGrow: 0 }}
-                >
-                  {cartInfoBlock}
-                </ScrollView>
-              ) : null}
-
-              {centered ? <View style={{ width: 1, backgroundColor: color.border }} /> : null}
-
               <ScrollView
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode="interactive"
@@ -3226,15 +3346,24 @@ function DiscountSheet({
                   ) : null}
                 </View>
               </ScrollView>
+
+              {centered ? <View style={{ width: 1, backgroundColor: color.border }} /> : null}
+
+              {centered ? (
+                <ScrollView
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={{ gap: space.lg, paddingBottom: space.sm }}
+                  style={{ width: infoColumnWidth, flexGrow: 0 }}
+                >
+                  {cartInfoBlock}
+                </ScrollView>
+              ) : null}
             </View>
           )}
 
           <View style={{ gap: space.sm }}>
             {pendingRule ? (
-              <>
-                <Button label="Apply with ID" large icon={CheckCircle2} onPress={confirmId} />
-                <Button label="Back" variant="secondary" onPress={() => setPendingRule(null)} />
-              </>
+              <Button label="Back" variant="secondary" onPress={() => setPendingRule(null)} />
             ) : (
               <>
                 <Button
@@ -3721,7 +3850,8 @@ function CustomerSheet({
   open: boolean;
   customer: CustomerDetails;
   onClose: () => void;
-  onApply: (next: CustomerDetails) => void;
+  /** `saved` is the full local record just written (null for "Leave blank") — DiscountSheet's PWD/Senior picker needs the fresh idNumber/cardholderName/eligibility without waiting for a re-fetch. */
+  onApply: (next: CustomerDetails, saved: LocalCustomer | null) => void;
 }) {
   const layout = useLayout();
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -3732,6 +3862,10 @@ function CustomerSheet({
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [gender, setGender] = useState<CustomerGender | "">("");
   const [notes, setNotes] = useState("");
+  const [idNumber, setIdNumber] = useState("");
+  const [cardholderName, setCardholderName] = useState("");
+  const [isPwdEligible, setIsPwdEligible] = useState(false);
+  const [isSeniorEligible, setIsSeniorEligible] = useState(false);
   const [customerId, setCustomerId] = useState<string | null>(customer.customerId);
   const [genderOpen, setGenderOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -3750,6 +3884,10 @@ function CustomerSheet({
       setDateOfBirth(row.dateOfBirth ?? "");
       setGender(row.gender ?? "");
       setNotes(row.notes ?? "");
+      setIdNumber(row.idNumber ?? "");
+      setCardholderName(row.cardholderName ?? "");
+      setIsPwdEligible(row.isPwdEligible);
+      setIsSeniorEligible(row.isSeniorEligible);
     });
     return () => {
       cancelled = true;
@@ -3774,7 +3912,7 @@ function CustomerSheet({
       address,
     });
     if (!hasCustomerDetails(next)) {
-      onApply(NO_CUSTOMER);
+      onApply(NO_CUSTOMER, null);
       return;
     }
 
@@ -3783,7 +3921,7 @@ function CustomerSheet({
       const id = next.customerId ?? Crypto.randomUUID();
       const displayName =
         next.name ?? next.contact ?? next.address ?? "Customer";
-      await upsertLocalCustomer({
+      const saved = await upsertLocalCustomer({
         id,
         name: displayName,
         address: next.address,
@@ -3792,8 +3930,12 @@ function CustomerSheet({
         dateOfBirth: dateOfBirth.trim() || null,
         gender: gender || null,
         notes: notes.trim() || null,
+        idNumber: idNumber.trim() || null,
+        cardholderName: cardholderName.trim() || null,
+        isPwdEligible,
+        isSeniorEligible,
       });
-      onApply({ ...next, customerId: id, name: displayName });
+      onApply({ ...next, customerId: id, name: displayName }, saved);
     } catch (error: unknown) {
       console.warn("Customer save failed", error);
       Alert.alert(
@@ -3938,6 +4080,56 @@ function CustomerSheet({
         maxLength={2000}
       />
 
+      <View style={{ gap: space.sm }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: space.xs }}>
+          <IdCard size={14} color={color.inkMuted} strokeWidth={2} />
+          <Text style={{ fontSize: fontSize.body, fontWeight: "700" }}>
+            Senior / PWD discount
+          </Text>
+        </View>
+        <View
+          style={{
+            flexDirection: twoCol ? "row" : "column",
+            flexWrap: "wrap",
+            gap: space.md,
+          }}
+        >
+          <View style={{ flexGrow: 1, flexBasis: twoCol ? "48%" : "100%", minWidth: twoCol ? 160 : undefined }}>
+            <CustomerField
+              icon={IdCard}
+              label="ID number"
+              value={idNumber}
+              onChangeText={setIdNumber}
+              placeholder="Senior/PWD card number"
+              autoCapitalize="none"
+            />
+          </View>
+          <View style={{ flexGrow: 1, flexBasis: twoCol ? "48%" : "100%", minWidth: twoCol ? 160 : undefined }}>
+            <CustomerField
+              icon={UserRound}
+              label="Cardholder name"
+              value={cardholderName}
+              onChangeText={setCardholderName}
+              placeholder="Name printed on the ID"
+              autoCapitalize="words"
+            />
+          </View>
+        </View>
+
+        <MandatoryDiscountToggle
+          label="PWD eligible"
+          description="Shows in the discount dialog's PWD picker."
+          value={isPwdEligible}
+          onChange={setIsPwdEligible}
+        />
+        <MandatoryDiscountToggle
+          label="Senior citizen eligible"
+          description="Shows in the discount dialog's Senior picker."
+          value={isSeniorEligible}
+          onChange={setIsSeniorEligible}
+        />
+      </View>
+
       <Button
         label={saving ? "Saving…" : "Save customer"}
         large
@@ -3950,10 +4142,50 @@ function CustomerSheet({
         <Button
           label="Leave blank"
           variant="secondary"
-          onPress={() => onApply(NO_CUSTOMER)}
+          onPress={() => onApply(NO_CUSTOMER, null)}
         />
       ) : null}
     </BottomSheet>
+  );
+}
+
+/** Same row shape as account-drawer.tsx's Offline mode switch — label + description on the left, Switch on the right. */
+function MandatoryDiscountToggle({
+  label,
+  description,
+  value,
+  onChange,
+}: {
+  label: string;
+  description: string;
+  value: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: space.sm,
+        padding: space.sm,
+        borderRadius: radius.sm,
+        backgroundColor: color.primarySoft,
+      }}
+    >
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: fontSize.body, fontWeight: "600", color: color.ink }}>
+          {label}
+        </Text>
+        <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
+          {description}
+        </Text>
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onChange}
+        trackColor={{ true: color.primary, false: color.border }}
+      />
+    </View>
   );
 }
 

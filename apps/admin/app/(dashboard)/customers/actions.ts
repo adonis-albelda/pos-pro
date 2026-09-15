@@ -49,6 +49,8 @@ export async function saveCustomer(
     ? (genderRaw as CustomerGender)
     : null;
   const notes = String(formData.get("notes") ?? "").trim();
+  const idNumber = String(formData.get("id_number") ?? "").trim();
+  const cardholderName = String(formData.get("cardholder_name") ?? "").trim();
 
   const client = getAuthedClient();
   const row = {
@@ -59,6 +61,13 @@ export async function saveCustomer(
     dateOfBirth: dateOfBirth || null,
     gender,
     notes: notes || null,
+    idNumber: idNumber || null,
+    cardholderName: cardholderName || null,
+    // Rendered (and meaningful) on both create and edit, unlike is_active
+    // below — a brand-new Senior/PWD customer should be flaggable
+    // immediately, not only after a later edit.
+    isPwdEligible: formData.has("is_pwd_eligible"),
+    isSeniorEligible: formData.has("is_senior_eligible"),
     // Absent on a new-customer submit (no checkbox rendered there) means
     // "leave the server default" — id present is the edit form, which does
     // render the checkbox, so its absence there means unchecked.

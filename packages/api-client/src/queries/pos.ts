@@ -163,6 +163,16 @@ export interface PushCustomerInput {
   name: string;
   address?: string | null;
   contact?: string | null;
+  /**
+   * Carried through on first push only — `PushCustomersAction` is
+   * insert-only, so an edit to an already-synced customer's PWD/Senior
+   * fields never reaches here, same limitation every other profile field
+   * already has (see the NOTE below on `email`/`date_of_birth` etc.).
+   */
+  idNumber?: string | null;
+  cardholderName?: string | null;
+  isPwdEligible?: boolean;
+  isSeniorEligible?: boolean;
 }
 
 /**
@@ -180,6 +190,10 @@ function toPushCustomerPayload(input: PushCustomerInput): Record<string, unknown
     name: input.name,
     address: input.address ?? null,
     contact: input.contact ?? null,
+    id_number: input.idNumber ?? null,
+    cardholder_name: input.cardholderName ?? null,
+    is_pwd_eligible: input.isPwdEligible ?? false,
+    is_senior_eligible: input.isSeniorEligible ?? false,
   };
 }
 
@@ -231,7 +245,8 @@ export async function pushCustomers(client: ApiClient, customers: PushCustomerIn
  * entirely if `sale.id` already existed before this push, same as the rest
  * of `PushSalesAction`).
  */
-function toPushSalePayload(sale: SaleWithItems): Record<string, unknown> {
+/** Exported for flagBrokenSale below — the raw JSON sent there is exactly what a normal push would have sent for this same sale. */
+export function toPushSalePayload(sale: SaleWithItems): Record<string, unknown> {
   return {
     id: sale.id,
     user_id: sale.userId,
@@ -310,6 +325,34 @@ export async function pushSales(client: ApiClient, sales: SaleWithItems[]): Prom
     { idempotent: true },
   );
   return { createdIds: data.created_ids, invoiceNumbers: data.invoice_numbers ?? {} };
+}
+
+export interface FlagBrokenSaleInput {
+  deviceId: string;
+  /** Why the normal push rejected it — validateSaleForPush's own error strings, joined. */
+  reason: string;
+  sale: SaleWithItems;
+}
+
+/**
+ * Last resort (CLAUDE.md is silent on this by design — it's an escape
+ * hatch, not a sync path): a sale that can never pass validateSaleForPush,
+ * sent raw for manual admin review instead of sitting stuck on the device
+ * forever. Server stores this in a quarantine table only — it never creates
+ * a real sale, never touches inventory, never appears in reports. Distinct
+ * from pushSales: this is a deliberate, one-off cashier action from the
+ * Sync tab, not something sync itself ever calls automatically.
+ */
+export async function flagBrokenSale(client: ApiClient, input: FlagBrokenSaleInput): Promise<void> {
+  await client.post<DataEnvelope<{ id: string }>>(
+    "/pos/sales/flag",
+    {
+      device_id: input.deviceId,
+      reason: input.reason,
+      payload: toPushSalePayload(input.sale),
+    },
+    { idempotent: true },
+  );
 }
 
 export interface PullSyncResult {

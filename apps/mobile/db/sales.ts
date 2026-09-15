@@ -45,6 +45,7 @@ interface SaleRow {
   payment_proof_local_uri: string | null;
   payment_proof_url: string | null;
   ewallet_provider: string | null;
+  rejection_reason: string | null;
 }
 
 interface SaleItemRow {
@@ -96,6 +97,7 @@ function toLocalSale(row: SaleRow): LocalSale {
     paymentProofLocalUri: row.payment_proof_local_uri,
     paymentProofUrl: row.payment_proof_url,
     ewalletProvider: row.ewallet_provider,
+    rejectionReason: row.rejection_reason,
   };
 }
 
@@ -424,6 +426,47 @@ export async function countPendingSales(): Promise<number> {
     "SELECT COUNT(*) AS count FROM sales WHERE sync_status = 'pending'",
   );
   return row?.count ?? 0;
+}
+
+/**
+ * Set by push() (sync/push.ts) the moment validateSaleForPush rejects a
+ * sale — still 'pending' and still retried every sync (harmless; the same
+ * validation will keep saying no), but now the Sync tab can tell the
+ * cashier why and offer the flag-to-server last resort. `null` clears it,
+ * for the rare case a sale that once failed later passes (e.g. a bug fix
+ * shipped and the app updated) — cosmetic only, push() re-derives this on
+ * every rejection either way.
+ */
+export async function setSaleRejectionReason(saleId: string, reason: string | null): Promise<void> {
+  await getDb().runAsync(
+    "UPDATE sales SET rejection_reason = ? WHERE id = ?",
+    reason,
+    saleId,
+  );
+}
+
+/** Sales the Sync tab's "Couldn't sync" section lists — still pending, and push() has recorded why. */
+export async function listRejectedSales(): Promise<LocalSaleWithItems[]> {
+  const sales = await getDb().getAllAsync<SaleRow>(
+    "SELECT * FROM sales WHERE sync_status = 'pending' AND rejection_reason IS NOT NULL ORDER BY created_at",
+  );
+  return hydrateSales(sales);
+}
+
+/**
+ * The last-resort action itself: this device is done trying to sync
+ * `saleId` the normal way — it already sent (or is about to send) the raw
+ * payload to the server's own quarantine table (packages/api-client's
+ * flagBrokenSale). Excluded from every pending count/list from here on,
+ * same as a synced sale, but the row and its items stay on-device — this
+ * is not a delete, just a "stop retrying this one" mark, matching how
+ * markSalesSynced never deletes either.
+ */
+export async function markSaleFlagged(saleId: string): Promise<void> {
+  await getDb().runAsync(
+    "UPDATE sales SET sync_status = 'flagged' WHERE id = ?",
+    saleId,
+  );
 }
 
 export async function markSalesSynced(

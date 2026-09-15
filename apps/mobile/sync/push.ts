@@ -15,6 +15,7 @@ import {
   markFlagsSynced,
   markPaymentProofUploaded,
   markSalesSynced,
+  setSaleRejectionReason,
 } from "@/db/sales";
 import { getEnrolledCompanyId } from "@/lib/device";
 import { getApiClient } from "@/lib/api/session";
@@ -70,9 +71,18 @@ export async function push(): Promise<PushResult> {
   const rejected: { id: string; errors: string[] }[] = [];
 
   for (const sale of pending) {
-    const result = validateSaleForPush(sale, sale.items);
-    if (result.ok) valid.push(sale);
-    else rejected.push({ id: sale.id, errors: result.errors });
+    const result = validateSaleForPush(sale, sale.items, sale.discounts);
+    if (result.ok) {
+      valid.push(sale);
+      // Cosmetic cleanup for the rare sale that once failed and now passes
+      // (e.g. this device updated to a build with a validation fix) — the
+      // Sync tab's "Couldn't sync" list should drop it even before the
+      // normal push below marks it synced.
+      if (sale.rejectionReason) void setSaleRejectionReason(sale.id, null);
+    } else {
+      rejected.push({ id: sale.id, errors: result.errors });
+      void setSaleRejectionReason(sale.id, result.errors.join("; "));
+    }
   }
 
   if (rejected.length > 0) {

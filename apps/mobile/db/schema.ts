@@ -667,6 +667,31 @@ const V38_REPULL_FOR_USER_IDLE_TIMEOUT = `
 UPDATE sync_meta SET high_water_mark = NULL WHERE id = 1;
 `;
 
+/**
+ * v39: sync/push.ts's validateSaleForPush() rejection reason, persisted so
+ * it survives past that one push() call — the Sync tab lists these for the
+ * cashier, with a "Send raw copy to server" last resort (db/sales.ts's
+ * markSaleFlagged). sync_status itself gains a new 'flagged' value (no
+ * schema change needed, already a plain TEXT column) once that's used.
+ */
+const V39_SALE_REJECTION_REASON = `
+ALTER TABLE sales ADD COLUMN rejection_reason TEXT;
+`;
+
+/**
+ * v40: Senior/PWD identity on the customer, typed once (CustomerSheet) and
+ * reused by the DiscountSheet PWD/Senior picker instead of retyped at the
+ * register every sale. is_pwd_eligible/is_senior_eligible independently gate
+ * that picker — see packages/shared-types Customer's own comment for why
+ * there's no single combined flag.
+ */
+const V40_CUSTOMER_MANDATORY_DISCOUNT_FIELDS = `
+ALTER TABLE customers ADD COLUMN id_number TEXT;
+ALTER TABLE customers ADD COLUMN cardholder_name TEXT;
+ALTER TABLE customers ADD COLUMN is_pwd_eligible INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE customers ADD COLUMN is_senior_eligible INTEGER NOT NULL DEFAULT 0;
+`;
+
 /** Ordered, append-only. Never edit a step that has shipped. */
 export const MIGRATIONS: Migration[] = [
   { version: 1, sql: V1_INITIAL },
@@ -707,6 +732,8 @@ export const MIGRATIONS: Migration[] = [
   { version: 36, sql: V36_CUSTOMER_PROFILE },
   { version: 37, sql: V37_USER_IDLE_TIMEOUT },
   { version: 38, sql: V38_REPULL_FOR_USER_IDLE_TIMEOUT },
+  { version: 39, sql: V39_SALE_REJECTION_REASON },
+  { version: 40, sql: V40_CUSTOMER_MANDATORY_DISCOUNT_FIELDS },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.reduce(

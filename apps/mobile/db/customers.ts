@@ -10,6 +10,10 @@ interface CustomerRow {
   date_of_birth: string | null;
   gender: string | null;
   notes: string | null;
+  id_number: string | null;
+  cardholder_name: string | null;
+  is_pwd_eligible: number;
+  is_senior_eligible: number;
   loyalty_points_balance: number;
   updated_at: string | null;
   sync_status: string;
@@ -30,12 +34,27 @@ function toLocal(row: CustomerRow): LocalCustomer {
     gender: (row.gender as CustomerGender | null) ?? null,
     notes: row.notes,
     isActive: true,
+    idNumber: row.id_number,
+    cardholderName: row.cardholder_name,
+    isPwdEligible: row.is_pwd_eligible === 1,
+    isSeniorEligible: row.is_senior_eligible === 1,
     loyaltyPointsBalance: row.loyalty_points_balance,
     lifetimePointsEarned: 0,
     lifetimePointsRedeemed: 0,
     updatedAt: row.updated_at ?? "",
     syncStatus: row.sync_status as SyncStatus,
   };
+}
+
+/** Customers the DiscountSheet PWD/Senior pickers show — the reasoning that gates them lives on Customer's own isPwdEligible/isSeniorEligible fields (packages/shared-types). */
+export async function listMandatoryDiscountEligibleCustomers(
+  eligibility: "pwd" | "senior",
+): Promise<LocalCustomer[]> {
+  const column = eligibility === "pwd" ? "is_pwd_eligible" : "is_senior_eligible";
+  const rows = await getDb().getAllAsync<CustomerRow>(
+    `SELECT * FROM customers WHERE ${column} = 1 ORDER BY name COLLATE NOCASE`,
+  );
+  return rows.map(toLocal);
 }
 
 export async function listLocalCustomers(): Promise<LocalCustomer[]> {
@@ -92,6 +111,10 @@ export async function upsertLocalCustomer(input: {
   dateOfBirth?: string | null;
   gender?: CustomerGender | null;
   notes?: string | null;
+  idNumber?: string | null;
+  cardholderName?: string | null;
+  isPwdEligible?: boolean;
+  isSeniorEligible?: boolean;
   /** Fresh local write — always pending. Pulls write with synced. */
   pending?: boolean;
   updatedAt?: string;
@@ -105,14 +128,22 @@ export async function upsertLocalCustomer(input: {
     input.dateOfBirth !== undefined ? input.dateOfBirth : (existing?.dateOfBirth ?? null);
   const gender = input.gender !== undefined ? input.gender : (existing?.gender ?? null);
   const notes = input.notes !== undefined ? input.notes : (existing?.notes ?? null);
+  const idNumber = input.idNumber !== undefined ? input.idNumber : (existing?.idNumber ?? null);
+  const cardholderName =
+    input.cardholderName !== undefined ? input.cardholderName : (existing?.cardholderName ?? null);
+  const isPwdEligible =
+    input.isPwdEligible !== undefined ? input.isPwdEligible : (existing?.isPwdEligible ?? false);
+  const isSeniorEligible =
+    input.isSeniorEligible !== undefined ? input.isSeniorEligible : (existing?.isSeniorEligible ?? false);
   const loyaltyPointsBalance = existing?.loyaltyPointsBalance ?? 0;
 
   await getDb().runAsync(
     `INSERT INTO customers (
        id, name, address, contact, email, date_of_birth, gender, notes,
+       id_number, cardholder_name, is_pwd_eligible, is_senior_eligible,
        loyalty_points_balance, updated_at, sync_status
      )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        name = excluded.name,
        address = excluded.address,
@@ -121,6 +152,10 @@ export async function upsertLocalCustomer(input: {
        date_of_birth = excluded.date_of_birth,
        gender = excluded.gender,
        notes = excluded.notes,
+       id_number = excluded.id_number,
+       cardholder_name = excluded.cardholder_name,
+       is_pwd_eligible = excluded.is_pwd_eligible,
+       is_senior_eligible = excluded.is_senior_eligible,
        updated_at = excluded.updated_at,
        sync_status = CASE
          WHEN excluded.sync_status = 'pending' THEN 'pending'
@@ -134,6 +169,10 @@ export async function upsertLocalCustomer(input: {
     dateOfBirth,
     gender,
     notes,
+    idNumber,
+    cardholderName,
+    isPwdEligible ? 1 : 0,
+    isSeniorEligible ? 1 : 0,
     loyaltyPointsBalance,
     updatedAt,
     syncStatus,
@@ -148,6 +187,10 @@ export async function upsertLocalCustomer(input: {
     dateOfBirth,
     gender,
     notes,
+    idNumber,
+    cardholderName,
+    isPwdEligible,
+    isSeniorEligible,
     isActive: true,
     loyaltyPointsBalance,
     lifetimePointsEarned: existing?.lifetimePointsEarned ?? 0,
@@ -204,9 +247,10 @@ export async function replaceSyncedCustomers(customers: Customer[]): Promise<voi
       await db.runAsync(
         `INSERT INTO customers (
            id, name, address, contact, email, date_of_birth, gender, notes,
+           id_number, cardholder_name, is_pwd_eligible, is_senior_eligible,
            loyalty_points_balance, updated_at, sync_status
          )
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced')
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced')
          ON CONFLICT(id) DO UPDATE SET
            name = excluded.name,
            address = excluded.address,
@@ -215,6 +259,10 @@ export async function replaceSyncedCustomers(customers: Customer[]): Promise<voi
            date_of_birth = excluded.date_of_birth,
            gender = excluded.gender,
            notes = excluded.notes,
+           id_number = excluded.id_number,
+           cardholder_name = excluded.cardholder_name,
+           is_pwd_eligible = excluded.is_pwd_eligible,
+           is_senior_eligible = excluded.is_senior_eligible,
            loyalty_points_balance = excluded.loyalty_points_balance,
            updated_at = excluded.updated_at,
            sync_status = 'synced'`,
@@ -226,6 +274,10 @@ export async function replaceSyncedCustomers(customers: Customer[]): Promise<voi
         customer.dateOfBirth,
         customer.gender,
         customer.notes,
+        customer.idNumber,
+        customer.cardholderName,
+        customer.isPwdEligible ? 1 : 0,
+        customer.isSeniorEligible ? 1 : 0,
         customer.loyaltyPointsBalance,
         customer.updatedAt,
       );

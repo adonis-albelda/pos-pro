@@ -1,6 +1,7 @@
 import { lineSubtotal, roundMoney } from "./money";
 import { isProductUnit } from "./domain";
 import type { CartLine, Sale, SaleItem } from "./domain";
+import type { SaleDiscount } from "./discounts";
 
 export interface ValidationResult {
   ok: boolean;
@@ -116,6 +117,15 @@ export function checkPriceOverride(
 export function validateSaleForPush(
   sale: Sale,
   items: SaleItem[],
+  /**
+   * Order-level discounts (simple rule, promo, loyalty reward, or a
+   * cashier-typed custom amount from the discount dialog) — separate from
+   * counter line discounts, which are already baked into each item's own
+   * unitPrice/subtotal (list_price vs unit_price, CLAUDE.md §7). Omitted
+   * defaults to none, so a sale predating this parameter still validates
+   * the same way it always did.
+   */
+  discounts: SaleDiscount[] = [],
 ): ValidationResult {
   const errors: string[] = [];
 
@@ -133,7 +143,16 @@ export function validateSaleForPush(
   }
 
   const itemsTotal = roundMoney(items.reduce((sum, item) => sum + item.subtotal, 0));
-  if (roundMoney(sale.totalAmount) !== itemsTotal) {
+  // Item subtotals are post-line-discount but pre-order-discount — an order-
+  // level discount (see param comment above) only ever lands on sale.totalAmount,
+  // never on any one item's own subtotal. Comparing itemsTotal straight against
+  // totalAmount without subtracting this out would reject every sale that had
+  // one applied, which is not a real mismatch.
+  const orderDiscountTotal = roundMoney(
+    discounts.reduce((sum, d) => sum + d.discountAmount + (d.vatRemoved ?? 0), 0),
+  );
+  const expectedTotal = roundMoney(Math.max(itemsTotal - orderDiscountTotal, 0));
+  if (roundMoney(sale.totalAmount) !== expectedTotal) {
     errors.push("Sale total does not match the sum of its line items.");
   }
 

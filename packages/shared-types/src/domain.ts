@@ -72,8 +72,14 @@ export type InventoryReason =
   | "transfer_out"
   | "transfer_in";
 
-/** Local-only. Never sent to Supabase — it describes a row's push state. */
-export type SyncStatus = "pending" | "synced" | "failed";
+/**
+ * Local-only. Never sent to Supabase — it describes a row's push state.
+ * "flagged" = the cashier sent this sale's raw JSON to the server's
+ * quarantine table as a last resort (it could never pass normal push
+ * validation) and it is done with on this device — excluded from every
+ * pending count/list from that point on, same as "synced".
+ */
+export type SyncStatus = "pending" | "synced" | "failed" | "flagged";
 
 /**
  * How a product is sold across the counter. A hardware store sells wire by the
@@ -727,6 +733,14 @@ export interface Customer {
   /** Staff notes — never shown to the customer. */
   notes: string | null;
   isActive: boolean;
+  /** Senior/PWD ID number, typed once and reused every sale instead of retyped at the register (see sale_discounts.idNumber, snapshotted from this at apply time). */
+  idNumber: string | null;
+  /** Name printed on the ID — independent of `name`, since the buyer isn't always the cardholder. */
+  cardholderName: string | null;
+  /** Shows this customer in the POS discount dialog's PWD picker. Independent of isSeniorEligible — no PWD/Senior distinction exists on DiscountRule itself, so these are the only structured signal either picker has. */
+  isPwdEligible: boolean;
+  /** Same as isPwdEligible, for the Senior picker. */
+  isSeniorEligible: boolean;
   /** Cached from loyalty_points_ledger — see LoyaltyLedgerEntry (loyalty.ts) for the source of truth. */
   loyaltyPointsBalance: number;
   /** Running total ever earned — never decreases, unlike loyaltyPointsBalance. */
@@ -1052,6 +1066,14 @@ export interface LocalSale extends Sale {
    * lands. Local-only; never sent anywhere itself.
    */
   paymentProofLocalUri?: string | null;
+  /**
+   * validateSaleForPush's own error strings, joined, the last time push()
+   * rejected this sale — null for anything that has never failed push
+   * validation. Persisted so the Sync tab can show the cashier why, and
+   * offer the flag-to-server last resort. Cleared once the sale actually
+   * syncs or is flagged.
+   */
+  rejectionReason?: string | null;
 }
 
 export interface SaleWithItems extends Sale {
