@@ -93,6 +93,9 @@ export function StoreForm({ settings }: { settings: StoreSettings }) {
         </Field>
         <Field label="Phone" required={false}>
           <Input
+            type="tel"
+            inputMode="tel"
+            pattern="[0-9+\-\s()]*"
             icon={Phone}
             name="phone"
             defaultValue={settings.phone ?? ""}

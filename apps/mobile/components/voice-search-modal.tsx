@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Animated, Modal, Pressable, Text, View } from "react-native";
-import { Mic, MicOff, TriangleAlert } from "lucide-react-native";
+import { Animated, Modal, Pressable, Text, useWindowDimensions, View } from "react-native";
+import { Mic, MicOff, Search, TriangleAlert } from "lucide-react-native";
 import {
   ExpoSpeechRecognitionModule,
   useSpeechRecognitionEvent,
@@ -8,7 +8,13 @@ import {
 import { Button } from "@/components/ui";
 import { circleRadius, color, fontSize, radius, space } from "@/theme";
 
-type Phase = "requesting" | "listening" | "error";
+/**
+ * "captured" — speech ended with something heard. Previously this jumped
+ * straight to onResult+onClose (auto-searching whatever was heard, wrong
+ * more often than a cashier could correct); it now instead shows the
+ * transcript and waits for Search/Retry/Cancel.
+ */
+type Phase = "requesting" | "listening" | "captured" | "error";
 
 /**
  * Voice search for the product grid. A native speech-recognition module
@@ -29,16 +35,24 @@ export function VoiceSearchModal({
   /** Product/category names to bias recognition toward — the shop's own vocabulary reads far better than generic English. */
   contextualStrings?: string[];
 }) {
+  const { width: screenWidth } = useWindowDimensions();
   const [phase, setPhase] = useState<Phase>("requesting");
   const [transcript, setTranscript] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const finishedRef = useRef(false);
+  const capturedRef = useRef(false);
 
-  function finish(text: string) {
-    if (finishedRef.current) return;
-    finishedRef.current = true;
+  /** Speech ended with something heard — wait for Search/Retry/Cancel instead of acting on it right away. */
+  function capture(text: string) {
+    if (capturedRef.current) return;
     const trimmed = text.trim();
-    if (trimmed) onResult(trimmed);
+    if (!trimmed) return;
+    capturedRef.current = true;
+    setTranscript(trimmed);
+    setPhase("captured");
+  }
+
+  function confirmSearch() {
+    onResult(transcript);
     onClose();
   }
 
@@ -61,7 +75,7 @@ export function VoiceSearchModal({
   useEffect(() => {
     if (!open) return;
 
-    finishedRef.current = false;
+    capturedRef.current = false;
     setPhase("requesting");
     setTranscript("");
     setErrorMessage(null);
@@ -88,12 +102,17 @@ export function VoiceSearchModal({
 
   useSpeechRecognitionEvent("result", (event) => {
     const heard = event.results[0]?.transcript ?? "";
-    setTranscript(heard);
-    if (event.isFinal) finish(heard);
+    if (event.isFinal) {
+      capture(heard);
+      return;
+    }
+    // Still listening — show the interim words live, but don't treat them
+    // as captured yet (capture() below/from "end" owns that transition).
+    if (phase === "listening") setTranscript(heard);
   });
 
   useSpeechRecognitionEvent("error", (event) => {
-    finishedRef.current = true;
+    capturedRef.current = true;
     setPhase("error");
     setErrorMessage(
       event.error === "no-speech"
@@ -106,11 +125,11 @@ export function VoiceSearchModal({
     // Engine stopped without a final result (e.g. it caught something but
     // never marked it final) — use whatever partial transcript we have
     // rather than silently dropping it.
-    if (!finishedRef.current && transcript.trim()) finish(transcript);
+    if (!capturedRef.current) capture(transcript);
   });
 
   function retry() {
-    finishedRef.current = false;
+    capturedRef.current = false;
     setTranscript("");
     setErrorMessage(null);
     setPhase("listening");
@@ -138,13 +157,13 @@ export function VoiceSearchModal({
         <View
           style={{
             width: "100%",
-            maxWidth: 340,
+            maxWidth: Math.min(screenWidth * 0.9, 480),
             borderRadius: radius.lg,
             backgroundColor: color.surface,
             borderWidth: 1,
             borderColor: color.borderSoft,
-            paddingVertical: space["2xl"],
-            paddingHorizontal: space.xl,
+            paddingVertical: space["3xl"],
+            paddingHorizontal: space["2xl"],
             alignItems: "center",
             gap: space.lg,
             shadowColor: "#000",
@@ -183,6 +202,44 @@ export function VoiceSearchModal({
                   style={{ flex: 1 }}
                 />
               </View>
+            </>
+          ) : phase === "captured" ? (
+            <>
+              <View
+                style={{
+                  width: 88,
+                  height: 88,
+                  borderRadius: circleRadius(88),
+                  backgroundColor: color.primarySoft,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Mic size={36} color={color.primary} strokeWidth={2} />
+              </View>
+              <Text style={{ fontSize: fontSize.headingSm, fontWeight: "700", color: color.ink }}>
+                Heard you
+              </Text>
+              <Text
+                style={{
+                  fontSize: fontSize.headingSm,
+                  fontWeight: "700",
+                  color: color.ink,
+                  textAlign: "center",
+                }}
+              >
+                “{transcript}”
+              </Text>
+              <View style={{ flexDirection: "row", gap: space.sm, width: "100%" }}>
+                <Button label="Cancel" variant="secondary" onPress={onClose} style={{ flex: 1 }} />
+                <Button label="Retry" variant="secondary" onPress={retry} style={{ flex: 1 }} />
+              </View>
+              <Button
+                label="Search"
+                icon={Search}
+                onPress={confirmSearch}
+                style={{ width: "100%" }}
+              />
             </>
           ) : (
             <>

@@ -1,16 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  Animated,
-  Easing,
-  Image,
-  Pressable,
-  Text,
-  View,
-} from "react-native";
+import { Animated, Easing, Pressable, Text, View } from "react-native";
+import { Image } from "expo-image";
 import { COMPANY_INTRO_HOLD_MS, COMPANY_PRODUCT } from "@double-a/ui";
 import { WaveBackdrop } from "@/components/wave-backdrop";
 import { color, fontSize, radius, space } from "@/theme";
 
+// Genuinely animated (has a WebP ANIM chunk) — react-native core's own
+// Image only ever renders it as one static frame, no animation, on either
+// platform. expo-image (SDWebImage/Glide under the hood) actually plays it.
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- same asset-require pattern as elsewhere; no *.gif module declaration in this project
 const SPLASH_LOGO = require("../assets/splash-loop.webp");
 // Source is 1146x379 — a wide lockup, not a square mark, so it's sized by
@@ -105,8 +102,8 @@ export function CompanyIntro({ onDone }: { onDone: () => void }) {
         <Image
           source={SPLASH_LOGO}
           style={{ width: SPLASH_LOGO_WIDTH, height: SPLASH_LOGO_HEIGHT }}
-          resizeMode="contain"
-          accessibilityIgnoresInvertColors
+          contentFit="contain"
+          autoplay
         />
         <View
           style={{

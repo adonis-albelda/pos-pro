@@ -8,6 +8,7 @@ import {
   FlatList,
   Image,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   Switch,
@@ -19,6 +20,9 @@ import {
 import Swipeable, {
   type SwipeableMethods,
 } from "react-native-gesture-handler/ReanimatedSwipeable";
+import DateTimePicker, {
+  DateTimePickerAndroid,
+} from "@react-native-community/datetimepicker";
 import { useFocusEffect } from "expo-router";
 import * as Crypto from "expo-crypto";
 import {
@@ -50,6 +54,7 @@ import {
   Phone,
   Plus,
   Printer,
+  RefreshCw,
   ScanBarcode,
   Search,
   ShoppingCart,
@@ -174,6 +179,7 @@ import {
   Badge,
   Button,
   EmptyState,
+  ErrorNote,
   IconButton,
   LedgerLine,
   Money,
@@ -274,7 +280,16 @@ function toVariantTileDisplay(
 
 export default function SellScreen() {
   const { cashier } = useSession();
-  const { refresh, autoPush, dataVersion, offlineModeEnabled, justCreatedProductIds } = useSync();
+  const {
+    refresh,
+    autoPush,
+    dataVersion,
+    offlineModeEnabled,
+    justCreatedProductIds,
+    pullOnly,
+    phase: syncPhase,
+    error: syncError,
+  } = useSync();
   const { isEnabled } = useFeatureFlags();
 
   // A phone cannot hold a grid and a cart side by side, so below the compact
@@ -1556,10 +1571,15 @@ export default function SellScreen() {
           ) : null}
           {isEnabled("barcode_scan") ? (
             <Pressable
-              onPress={() => setBarcodeScanOpen(true)}
-              onLongPress={() => setFloatingScannerOpen(true)}
+              // Tap opens the small floating camera — stays docked over
+              // whatever screen is already showing, scans one item after
+              // another without closing. Hold for the old one-shot,
+              // full-screen scanner (fills the search box, then closes) —
+              // still there for the rare case that's actually wanted.
+              onPress={() => setFloatingScannerOpen(true)}
+              onLongPress={() => setBarcodeScanOpen(true)}
               accessibilityRole="button"
-              accessibilityLabel="Scan a barcode or QR code. Hold for continuous scanning"
+              accessibilityLabel="Scan a barcode or QR code with the floating camera. Hold for a one-time full-screen scan"
               hitSlop={4}
               style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}
             >
@@ -1634,7 +1654,19 @@ export default function SellScreen() {
             <EmptyState
               icon={PackageSearch}
               title="No products on this terminal"
-              instruction="Press Refresh to bring the product list down from the office."
+              instruction="Pull the catalog down from the office — no need to go to the Sync tab."
+              action={
+                <View style={{ gap: space.sm, alignItems: "center" }}>
+                  <Button
+                    label={syncPhase === "pulling" ? "Pulling…" : "Pull products now"}
+                    icon={RefreshCw}
+                    busy={syncPhase === "pulling"}
+                    disabled={syncPhase === "pulling"}
+                    onPress={() => void pullOnly()}
+                  />
+                  {syncPhase === "failed" && syncError ? <ErrorNote>{syncError}</ErrorNote> : null}
+                </View>
+              }
             />
           ) : (
             <FlatList
@@ -3835,6 +3867,23 @@ function CustomerButton({
   );
 }
 
+/** Local-timezone YYYY-MM-DD — Date#toISOString() is UTC and can shift the calendar day, wrong for a birthdate. */
+function toIsoDateString(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/** Parses a YYYY-MM-DD string as a local date — `new Date("YYYY-MM-DD")` parses as UTC midnight, which can display as the previous day in a timezone behind UTC. */
+function parseIsoDateString(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const [, y, m, d] = match;
+  const date = new Date(Number(y), Number(m) - 1, Number(d));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 /**
  * Pick an existing customer or type a new one. Field set mirrors admin
  * CustomerForm (name/contact/email/address/DOB/gender/notes) with icons.
@@ -3868,6 +3917,10 @@ function CustomerSheet({
   const [isSeniorEligible, setIsSeniorEligible] = useState(false);
   const [customerId, setCustomerId] = useState<string | null>(customer.customerId);
   const [genderOpen, setGenderOpen] = useState(false);
+  // iOS only — the spinner renders inline once true (see DateField below).
+  // Android's picker is its own imperative dialog (DateTimePickerAndroid),
+  // no open state needed for it.
+  const [dobPickerOpen, setDobPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // Prefill profile fields when the sale already has a linked customer.
@@ -3953,7 +4006,9 @@ function CustomerSheet({
       onClose={onClose}
       maxWidth={screenWidth * 0.8}
       maxHeight={screenHeight * 0.8}
+      scroll={false}
     >
+      <View style={{ flex: 1, gap: space.md }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
         <View style={[styles.iconWell, { width: 34, height: 34 }]}>
           <UserRound size={18} color={color.primary} strokeWidth={2} />
@@ -3967,12 +4022,18 @@ function CustomerSheet({
         <IconButton icon={X} label="Close" onPress={onClose} />
       </View>
 
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ gap: space.md }}
+        style={{ flex: 1 }}
+      >
       <Text
         style={{
           fontSize: fontSize.caption,
           fontWeight: "600",
           color: color.inkMuted,
-          marginTop: space.xs,
         }}
       >
         {customerId ? "Edit details" : "New customer"}
@@ -4032,15 +4093,13 @@ function CustomerSheet({
           />
         </View>
         <View style={{ flexGrow: 1, flexBasis: twoCol ? "30%" : "100%", minWidth: twoCol ? 160 : undefined }}>
-          <CustomerField
-            icon={Cake}
+          <DateField
             label="Date of birth"
             value={dateOfBirth}
-            onChangeText={setDateOfBirth}
-            placeholder="YYYY-MM-DD"
-            keyboardType="numbers-and-punctuation"
-            autoCapitalize="none"
-            maxLength={10}
+            onChange={setDateOfBirth}
+            open={dobPickerOpen}
+            onOpen={() => setDobPickerOpen(true)}
+            onClose={() => setDobPickerOpen(false)}
           />
         </View>
         <View style={{ flexGrow: 1, flexBasis: twoCol ? "30%" : "100%", minWidth: twoCol ? 160 : undefined, gap: space.xs }}>
@@ -4129,22 +4188,26 @@ function CustomerSheet({
           onChange={setIsSeniorEligible}
         />
       </View>
+      </ScrollView>
 
-      <Button
-        label={saving ? "Saving…" : "Save customer"}
-        large
-        icon={CheckCircle2}
-        busy={saving}
-        disabled={saving}
-        onPress={() => void save()}
-      />
-      {hasCustomerDetails(draft) || customerId ? (
+      <View style={{ gap: space.sm }}>
         <Button
-          label="Leave blank"
-          variant="secondary"
-          onPress={() => onApply(NO_CUSTOMER, null)}
+          label={saving ? "Saving…" : "Save customer"}
+          large
+          icon={CheckCircle2}
+          busy={saving}
+          disabled={saving}
+          onPress={() => void save()}
         />
-      ) : null}
+        {hasCustomerDetails(draft) || customerId ? (
+          <Button
+            label="Leave blank"
+            variant="secondary"
+            onPress={() => onApply(NO_CUSTOMER, null)}
+          />
+        ) : null}
+      </View>
+      </View>
     </BottomSheet>
   );
 }
@@ -4249,6 +4312,96 @@ function CustomerField({
   );
 }
 
+/**
+ * Same visual chrome as CustomerField, but a native date picker instead of
+ * free text — a typed "YYYY-MM-DD" let a birthdate through malformed or in
+ * the wrong order. `value`/`onChange` still carry the same YYYY-MM-DD string
+ * contract the rest of this form (and the server) already use; only the
+ * input mechanism changes.
+ *
+ * Android's picker is its own OS dialog (DateTimePickerAndroid.open), fired
+ * imperatively on tap — nothing stays mounted. iOS has no equivalent
+ * imperative API, so `open`/`onOpen`/`onClose` (same controlled shape
+ * SelectField already uses for Gender, right beside this field) toggle an
+ * inline spinner under the trigger instead.
+ */
+function DateField({
+  label,
+  value,
+  onChange,
+  open,
+  onOpen,
+  onClose,
+  required = false,
+}: {
+  label: string;
+  /** YYYY-MM-DD, or "" for unset. */
+  value: string;
+  onChange: (next: string) => void;
+  /** iOS only — see comment above. Android ignores this. */
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  required?: boolean;
+}) {
+  const selected = parseIsoDateString(value);
+
+  function handlePress() {
+    if (Platform.OS === "android") {
+      DateTimePickerAndroid.open({
+        value: selected ?? new Date(),
+        mode: "date",
+        maximumDate: new Date(),
+        onChange: (_event, next) => {
+          if (next) onChange(toIsoDateString(next));
+        },
+      });
+      return;
+    }
+    onOpen();
+  }
+
+  return (
+    <View style={{ gap: space.xs }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: space.xs }}>
+        <Cake size={14} color={color.inkMuted} strokeWidth={2} />
+        <Text style={{ fontSize: fontSize.body, fontWeight: "600" }}>{label}</Text>
+      </View>
+      <Pressable
+        onPress={handlePress}
+        accessibilityRole="button"
+        accessibilityLabel={`${label}${required ? "" : ", optional"}${selected ? `, ${value}` : ""}`}
+        style={{
+          minHeight: 52,
+          justifyContent: "center",
+          borderWidth: 1,
+          borderColor: value.trim() ? color.primary : color.border,
+          borderRadius: radius.sm,
+          backgroundColor: value.trim() ? color.primaryTint : color.surface,
+          paddingHorizontal: space.md,
+        }}
+      >
+        <Text style={{ fontSize: fontSize.bodyLg, color: value ? color.ink : color.inkMuted }}>
+          {value || "Select a date"}
+        </Text>
+      </Pressable>
+      {Platform.OS === "ios" && open ? (
+        <DateTimePicker
+          value={selected ?? new Date()}
+          mode="date"
+          display="spinner"
+          maximumDate={new Date()}
+          onChange={(_event, next) => {
+            if (next) onChange(toIsoDateString(next));
+          }}
+        />
+      ) : null}
+      {Platform.OS === "ios" && open ? (
+        <Button label="Done" variant="secondary" onPress={onClose} />
+      ) : null}
+    </View>
+  );
+}
 
 /**
  * Pick which parked cart to bring back. Many drafts can sit on one terminal.
@@ -4489,34 +4642,38 @@ function ConfirmSaleSheet({
 
           <ConfirmSaleBody compact={compact}>
             {/* Left column — how this sale is being paid and fulfilled, and
-                who it's for. Stays put across confirm → success; only the
-                right column's content changes once the sale lands. On a
+                who it's for. Only during confirm: once the sale lands there's
+                nothing left to confirm, so it's dropped entirely and the
+                success message gets the full dialog to itself instead of
+                sharing half with now-stale payment/fulfillment details. On a
                 phone this stacks above the right column and shrinks (see
                 ConfirmDetailBlock's compact prop) — the two full-size
                 columns plus a full cash keypad below never fit an upright
                 phone's height without either shrinking or scrolling; this
                 does both. */}
-            <View style={{ flex: compact ? undefined : 1, gap: compact ? space.sm : space.md }}>
-              <ConfirmDetailBlock
-                compact={compact}
-                icon={methodIcon}
-                label="Payment method"
-                value={ewalletProvider ? `${methodLabel} · ${ewalletProvider}` : methodLabel}
-              />
-              <ConfirmDetailBlock
-                compact={compact}
-                icon={isDelivery ? Truck : Package}
-                label="Fulfillment"
-                value={isDelivery ? "Delivery" : "Pickup"}
-              />
-              <ConfirmDetailBlock
-                compact={compact}
-                icon={UserRound}
-                label="Customer"
-                value={customer.name?.trim() || "Walk-in"}
-                sub={[customer.contact, customer.address].filter(Boolean).join(" · ") || undefined}
-              />
-            </View>
+            {succeeded ? null : (
+              <View style={{ flex: compact ? undefined : 1, gap: compact ? space.sm : space.md }}>
+                <ConfirmDetailBlock
+                  compact={compact}
+                  icon={methodIcon}
+                  label="Payment method"
+                  value={ewalletProvider ? `${methodLabel} · ${ewalletProvider}` : methodLabel}
+                />
+                <ConfirmDetailBlock
+                  compact={compact}
+                  icon={isDelivery ? Truck : Package}
+                  label="Fulfillment"
+                  value={isDelivery ? "Delivery" : "Pickup"}
+                />
+                <ConfirmDetailBlock
+                  compact={compact}
+                  icon={UserRound}
+                  label="Customer"
+                  value={customer.name?.trim() || "Walk-in"}
+                  sub={[customer.contact, customer.address].filter(Boolean).join(" · ") || undefined}
+                />
+              </View>
+            )}
 
             {/* Right column — the confirm step's own math and cash entry,
                 replaced by the success state once the sale is saved. */}

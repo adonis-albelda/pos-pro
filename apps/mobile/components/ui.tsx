@@ -312,10 +312,13 @@ export function EmptyState({
   icon: Icon,
   title,
   instruction,
+  action,
 }: {
   icon?: LucideIcon;
   title: string;
   instruction: string;
+  /** Optional — a Button (or any node) sitting right under the instruction text, for an empty state the cashier can act on directly instead of just reading about it. */
+  action?: ReactNode;
 }) {
   return (
     <View style={{ padding: space["2xl"], alignItems: "center", gap: space.sm }}>
@@ -339,6 +342,7 @@ export function EmptyState({
       ) : null}
       <Text style={styles.subheading}>{title}</Text>
       <Text style={[styles.muted, { textAlign: "center" }]}>{instruction}</Text>
+      {action ? <View style={{ marginTop: space.sm }}>{action}</View> : null}
     </View>
   );
 }

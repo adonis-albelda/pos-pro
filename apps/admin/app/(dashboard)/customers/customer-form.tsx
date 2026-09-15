@@ -77,6 +77,9 @@ export function CustomerForm({
           </Field>
           <Field label="Contact" required={false}>
             <Input
+              type="tel"
+              inputMode="tel"
+              pattern="[0-9+\-\s()]*"
               name="contact"
               icon={Phone}
               defaultValue={customer?.contact ?? ""}

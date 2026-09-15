@@ -118,6 +118,9 @@ export function SupplierForm({
         </Field>
         <Field label="Phone" required={false}>
           <Input
+            type="tel"
+            inputMode="tel"
+            pattern="[0-9+\-\s()]*"
             name="phone"
             defaultValue={supplier?.phone ?? ""}
             maxLength={SUPPLIER_PHONE_MAX}
@@ -125,6 +128,9 @@ export function SupplierForm({
         </Field>
         <Field label="Secondary phone" required={false}>
           <Input
+            type="tel"
+            inputMode="tel"
+            pattern="[0-9+\-\s()]*"
             name="secondary_phone"
             defaultValue={supplier?.secondaryPhone ?? ""}
             maxLength={SUPPLIER_PHONE_MAX}

@@ -42,10 +42,20 @@ export function SupplierInfoForm({ supplier }: { supplier: Supplier }) {
           />
         </Field>
         <Field label="Phone" required={false}>
-          <Input name="phone" defaultValue={supplier.phone ?? ""} maxLength={SUPPLIER_PHONE_MAX} />
+          <Input
+            type="tel"
+            inputMode="tel"
+            pattern="[0-9+\-\s()]*"
+            name="phone"
+            defaultValue={supplier.phone ?? ""}
+            maxLength={SUPPLIER_PHONE_MAX}
+          />
         </Field>
         <Field label="Secondary phone" required={false}>
           <Input
+            type="tel"
+            inputMode="tel"
+            pattern="[0-9+\-\s()]*"
             name="secondary_phone"
             defaultValue={supplier.secondaryPhone ?? ""}
             maxLength={SUPPLIER_PHONE_MAX}

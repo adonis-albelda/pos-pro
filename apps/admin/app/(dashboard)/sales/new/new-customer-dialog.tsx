@@ -78,8 +78,10 @@ export function NewCustomerDialog({
           </Field>
           <Field label="Contact" required={false}>
             <Input
+              type="tel"
+              inputMode="tel"
               value={contact}
-              onChange={(event) => setContact(event.target.value)}
+              onChange={(event) => setContact(event.target.value.replace(/[^0-9+\-\s()]/g, ""))}
               placeholder="Phone number"
             />
           </Field>

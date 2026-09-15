@@ -1,10 +1,23 @@
 import { useRef, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { PanResponder, Pressable, Text, useWindowDimensions, View } from "react-native";
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "expo-camera";
 import { useAudioPlayer } from "expo-audio";
-import { ScanLine, TriangleAlert, X } from "lucide-react-native";
+import { GripHorizontal, MoveDiagonal2, ScanLine, TriangleAlert, X } from "lucide-react-native";
 import { Button } from "@/components/ui";
 import { circleRadius, color, fontSize, radius, space } from "@/theme";
+
+/** Roughly the old 170×220 aspect ratio, just smaller — the bubble sits over whatever screen is underneath, so default footprint matters more here than on a full-screen scanner. */
+const DEFAULT_SIZE = { width: 130, height: 168 };
+const MIN_SIZE = { width: 100, height: 130 };
+const MAX_SIZE = { width: 260, height: 336 };
+/** Distance from each screen edge the bubble starts docked at — same numbers the old hardcoded `right`/`bottom` style used. */
+const DEFAULT_POSITION = { right: space.md, bottom: space.xl * 2 };
+/** Never let a drag push the bubble fully off an edge — this much of it always stays on-screen and reachable. */
+const EDGE_MARGIN = 8;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
 
 /** Same set BarcodeScanModal reads — retail barcodes plus qr, nothing this app ever prints outside those. */
 const BARCODE_TYPES = [
@@ -52,12 +65,81 @@ export function FloatingBarcodeScanner({
   onClose: () => void;
   onScan: (code: string) => Promise<boolean>;
 }) {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const [permission, requestPermission] = useCameraPermissions();
   const [requesting, setRequesting] = useState(false);
+  const [size, setSize] = useState(DEFAULT_SIZE);
+  const [position, setPosition] = useState<{ right: number; bottom: number }>(DEFAULT_POSITION);
   const successPlayer = useAudioPlayer(SUCCESS_SOUND);
   const notFoundPlayer = useAudioPlayer(NOT_FOUND_SOUND);
   const lastScanRef = useRef<{ code: string; at: number } | null>(null);
   const handlingRef = useRef(false);
+  // Both PanResponders below are created once (useRef) and their callbacks
+  // close over refs, never over state directly — a closure over state
+  // captured at creation time would go stale after the first drag/resize.
+  // Kept in sync on every render (plain assignment, no effect needed for a
+  // ref) so onPanResponderGrant always reads what this render actually has.
+  const currentSizeRef = useRef(size);
+  currentSizeRef.current = size;
+  const currentPositionRef = useRef(position);
+  currentPositionRef.current = position;
+  // gesture.dx/dy (react-native's PanResponder) are relative to where THIS
+  // drag started, not the previous frame — onPanResponderMove needs the
+  // size/position AT GRANT TIME to add that delta onto, not whatever state
+  // has become mid-drag (which would double-apply the movement).
+  const sizeAtGrantRef = useRef(size);
+  const positionAtGrantRef = useRef(position);
+
+  const resizeResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        sizeAtGrantRef.current = currentSizeRef.current;
+      },
+      onPanResponderMove: (_event, gesture) => {
+        // The bubble is anchored by `right`/`bottom` (fixed screen position),
+        // so its top-left corner is the one that actually moves as size
+        // changes — width/height grow toward the top-left, the handle's own
+        // corner. Dragging left/up (negative dx/dy) grows the box; the sign
+        // flip below is that, not a mistake.
+        const start = sizeAtGrantRef.current;
+        setSize({
+          width: clamp(start.width - gesture.dx, MIN_SIZE.width, MAX_SIZE.width),
+          height: clamp(start.height - gesture.dy, MIN_SIZE.height, MAX_SIZE.height),
+        });
+      },
+    }),
+  ).current;
+
+  const moveResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        positionAtGrantRef.current = currentPositionRef.current;
+      },
+      onPanResponderMove: (_event, gesture) => {
+        // `right`/`bottom` are distances FROM those edges — dragging right
+        // (positive dx) moves the bubble closer to the right edge, so that
+        // distance shrinks; dragging down shrinks `bottom` the same way.
+        // Clamped against the current window size so a drag can never push
+        // the bubble fully off an edge and out of reach.
+        const start = positionAtGrantRef.current;
+        const { width, height } = currentSizeRef.current;
+        setPosition({
+          right: clamp(
+            start.right - gesture.dx,
+            EDGE_MARGIN,
+            Math.max(EDGE_MARGIN, screenWidth - width - EDGE_MARGIN),
+          ),
+          bottom: clamp(
+            start.bottom - gesture.dy,
+            EDGE_MARGIN,
+            Math.max(EDGE_MARGIN, screenHeight - height - EDGE_MARGIN),
+          ),
+        });
+      },
+    }),
+  ).current;
 
   if (!open) return null;
 
@@ -98,10 +180,10 @@ export function FloatingBarcodeScanner({
       <View
         style={{
           position: "absolute",
-          right: space.md,
-          bottom: space.xl * 2,
-          width: 170,
-          height: 220,
+          right: position.right,
+          bottom: position.bottom,
+          width: size.width,
+          height: size.height,
           borderRadius: radius.lg,
           overflow: "hidden",
           backgroundColor: color.ink,
@@ -158,6 +240,32 @@ export function FloatingBarcodeScanner({
           </View>
         )}
 
+        {/* Top-center, clear of the resize handle (left) and close button
+            (right) below — the whole bubble is small enough that any bigger
+            drag target would overlap one of those. */}
+        <View
+          {...moveResponder.panHandlers}
+          accessible
+          accessibilityRole="adjustable"
+          accessibilityLabel="Move barcode scanner"
+          accessibilityHint="Drag to reposition"
+          hitSlop={8}
+          style={{
+            position: "absolute",
+            top: space.xs,
+            left: "50%",
+            marginLeft: -18,
+            width: 36,
+            height: 18,
+            borderRadius: radius.sm,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: "rgba(0,0,0,0.5)",
+          }}
+        >
+          <GripHorizontal size={14} color={color.onPrimary} strokeWidth={2.5} />
+        </View>
+
         <Pressable
           onPress={onClose}
           accessibilityRole="button"
@@ -177,6 +285,37 @@ export function FloatingBarcodeScanner({
         >
           <X size={16} color={color.onPrimary} strokeWidth={2.5} />
         </Pressable>
+
+        {/* Top-left — the bubble is anchored by right/bottom, so that's the
+            one corner that actually moves as size changes (see the sign
+            flip in onPanResponderMove above). Any other corner would drag
+            backwards from what the cashier's finger is doing.
+            MoveDiagonal2 (arrows pointing OUT of a corner), not Maximize2
+            (arrows pointing IN, reads as a tap-to-fullscreen button) — this
+            handle only drags to resize, it was never meant to be tappable,
+            and a fullscreen mode is the opposite of what this component is
+            for (small floating preview over the rest of the app). */}
+        <View
+          {...resizeResponder.panHandlers}
+          accessible
+          accessibilityRole="adjustable"
+          accessibilityLabel="Resize barcode scanner"
+          accessibilityHint="Drag to resize"
+          hitSlop={8}
+          style={{
+            position: "absolute",
+            top: space.xs,
+            left: space.xs,
+            width: 30,
+            height: 30,
+            borderRadius: circleRadius(30),
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: "rgba(0,0,0,0.5)",
+          }}
+        >
+          <MoveDiagonal2 size={14} color={color.onPrimary} strokeWidth={2.5} />
+        </View>
       </View>
     </View>
   );
