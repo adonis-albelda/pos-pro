@@ -22,6 +22,12 @@ export interface PinUnlock {
    */
   adminToken: string | null;
   adminTokenExpiresAt: string | null;
+  /**
+   * Set for every other verified cashier — narrower, self-service-only
+   * token (change my own PIN/password). See VerifyCashierPinController.
+   */
+  cashierToken: string | null;
+  cashierTokenExpiresAt: string | null;
 }
 
 /**
@@ -39,12 +45,18 @@ export async function verifyPin(userId: string, pin: string): Promise<PinUnlock>
 
   const outcome = await verifyCashierPin(client, { userId, pin });
   if (outcome.verified) {
-    return { result: "ok", adminToken: outcome.adminToken, adminTokenExpiresAt: outcome.adminTokenExpiresAt };
+    return {
+      result: "ok",
+      adminToken: outcome.adminToken,
+      adminTokenExpiresAt: outcome.adminTokenExpiresAt,
+      cashierToken: outcome.cashierToken,
+      cashierTokenExpiresAt: outcome.cashierTokenExpiresAt,
+    };
   }
 
   const profile = await me(client);
   const result = profile.role !== ROLES.TERMINAL && profile.role !== ROLES.ADMIN ? "terminal-not-authorized" : "wrong-pin";
-  return { result, adminToken: null, adminTokenExpiresAt: null };
+  return { result, adminToken: null, adminTokenExpiresAt: null, cashierToken: null, cashierTokenExpiresAt: null };
 }
 
 /**

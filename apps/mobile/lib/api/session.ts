@@ -82,6 +82,46 @@ export function getAdminApiClient(): ApiClient {
   return createScopedClient(adminToken);
 }
 
+/**
+ * The narrower self-service token a non-admin cashier's PIN unlock mints
+ * (VerifyCashierPinController) — same in-memory, no-SecureStore lifetime as
+ * adminToken above, just a smaller ability set (change my own PIN/password,
+ * log myself out). An admin-role cashier never gets one of these; adminToken
+ * already covers self-service for them.
+ */
+let cashierToken: string | null = null;
+let cashierTokenExpiresAt: string | null = null;
+
+export function setCashierToken(token: string | null, expiresAt: string | null = null): void {
+  cashierToken = token;
+  cashierTokenExpiresAt = token ? expiresAt : null;
+}
+
+export function getCashierToken(): string | null {
+  return cashierToken;
+}
+
+export function getCashierTokenExpiresAt(): string | null {
+  return cashierTokenExpiresAt;
+}
+
+/**
+ * For self-service calls only (change my own PIN/password) — never for
+ * admin-gated screens, those must keep using getAdminApiClient. Prefers
+ * adminToken when present (an admin cashier's admin_token already covers
+ * self-service; they never get a separate cashierToken) then falls back to
+ * cashierToken. The device token is deliberately never used here: it has
+ * none of the abilities self-service calls need, and using it would just
+ * reproduce the same 403 this exists to fix.
+ */
+export function getSelfServiceApiClient(): ApiClient {
+  const token = adminToken ?? cashierToken;
+  if (!token) {
+    throw new Error("Unlock again to change your PIN.");
+  }
+  return createScopedClient(token);
+}
+
 async function bindEnrolledCompany(profile: User): Promise<void> {
   if (profile.role !== ROLES.ADMIN && profile.role !== ROLES.TERMINAL) {
     throw new Error("This terminal is not set up yet. Finish setup before syncing.");
@@ -152,6 +192,7 @@ export async function unenrollTerminal(): Promise<void> {
   await clearEnrolledLocationId();
   await clearEnrolledRole();
   setAdminToken(null);
+  setCashierToken(null);
 }
 
 export { createScopedClient };

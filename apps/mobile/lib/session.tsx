@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import type { User } from "@double-a/shared-types";
-import { setAdminToken } from "@/lib/api/session";
+import { setAdminToken, setCashierToken } from "@/lib/api/session";
 import { cacheLocalPin, verifyPin, verifyPinLocally, type PinResult } from "@/lib/pin";
 
 interface SessionValue {
@@ -60,6 +60,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setCashier(user);
       setLocked(false);
       setAdminToken(outcome.adminToken, outcome.adminTokenExpiresAt);
+      setCashierToken(outcome.cashierToken, outcome.cashierTokenExpiresAt);
       // Best-effort — an idle relock later can survive a dead connection
       // with this cached, but a device that's never gone online since
       // install just keeps falling back to the live path (see relockUnlock).
@@ -71,6 +72,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const relock = useCallback(() => {
     setLocked(true);
     setAdminToken(null);
+    setCashierToken(null);
   }, []);
 
   const relockUnlock = useCallback(
@@ -82,13 +84,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (!localResult) return "wrong-pin";
 
       setLocked(false);
-      // Best-effort live refresh — an admin-role cashier's adminToken (set
+      // Best-effort live refresh — a cashier's adminToken/cashierToken (set
       // by the shift-start unlock) went stale the moment relock() cleared
       // it; refresh it when reachable, but never gate the unlock on it, or
       // this stops being the offline-safe path it exists for.
       void verifyPin(cashier.id, pin)
         .then((outcome) => {
-          if (outcome.result === "ok") setAdminToken(outcome.adminToken, outcome.adminTokenExpiresAt);
+          if (outcome.result === "ok") {
+            setAdminToken(outcome.adminToken, outcome.adminTokenExpiresAt);
+            setCashierToken(outcome.cashierToken, outcome.cashierTokenExpiresAt);
+          }
         })
         .catch(() => undefined);
       return "ok";
@@ -100,6 +105,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setCashier(null);
     setLocked(false);
     setAdminToken(null);
+    setCashierToken(null);
   }, []);
 
   const updateCashier = useCallback((patch: Partial<User>) => {

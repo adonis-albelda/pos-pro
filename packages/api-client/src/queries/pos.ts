@@ -110,14 +110,22 @@ export interface VerifyCashierPinResult {
    */
   adminToken: string | null;
   adminTokenExpiresAt: string | null;
+  /**
+   * Set for every other verified cashier — the device token (auth:me,
+   * sync:*, pin:verify, pin:list) has no auth:pin:change/auth:password:change,
+   * so a plain cashier's own Settings > Change PIN 403s without this.
+   * Narrower than adminToken: self-service abilities only.
+   */
+  cashierToken: string | null;
+  cashierTokenExpiresAt: string | null;
 }
 
 /**
  * Live cashier unlock check (CLAUDE.md §1 — unlock is always a network
  * call). The raw PIN string goes over the wire; the server hashes and
  * compares against `pin_hash`. Never round-trips a hash. Response is a
- * plain `{ verified, admin_token, admin_token_expires_at }` object, not
- * JSON:API-wrapped.
+ * plain `{ verified, admin_token, admin_token_expires_at, cashier_token,
+ * cashier_token_expires_at }` object, not JSON:API-wrapped.
  */
 export async function verifyCashierPin(
   client: ApiClient,
@@ -127,6 +135,8 @@ export async function verifyCashierPin(
     verified: boolean;
     admin_token: string | null;
     admin_token_expires_at: string | null;
+    cashier_token: string | null;
+    cashier_token_expires_at: string | null;
   }>("/pos/cashiers/verify-pin", {
     user_id: input.userId,
     pin: input.pin,
@@ -135,6 +145,8 @@ export async function verifyCashierPin(
     verified: result.verified,
     adminToken: result.admin_token,
     adminTokenExpiresAt: result.admin_token_expires_at,
+    cashierToken: result.cashier_token,
+    cashierTokenExpiresAt: result.cashier_token_expires_at,
   };
 }
 

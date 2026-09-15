@@ -22,7 +22,7 @@ import { getSyncMeta } from "@/db/meta";
 import { countLocalProducts } from "@/db/products";
 import { countPendingSales } from "@/db/sales";
 import { countLocalUsers } from "@/db/users";
-import { ensureFreshSession, getApiClient } from "@/lib/api/session";
+import { ensureFreshSession, getSelfServiceApiClient } from "@/lib/api/session";
 import { getDeviceId, getDeviceLabel } from "@/lib/device";
 import { useLayout } from "@/lib/layout";
 import { cacheLocalPin } from "@/lib/pin";
@@ -321,7 +321,7 @@ export default function SettingsScreen() {
     setPinBusy(true);
     try {
       await ensureFreshSession();
-      const client = getApiClient();
+      const client = getSelfServiceApiClient();
       await changePin(client, {
         currentPin: cashier.hasPin ? currentPin : undefined,
         pin: newPin,
@@ -354,7 +354,7 @@ export default function SettingsScreen() {
     setIdleBusy(true);
     try {
       await ensureFreshSession();
-      const client = getApiClient();
+      const client = getSelfServiceApiClient();
       const updated = await updateMe(client, { idleTimeoutMinutes });
       updateCashier({ idleTimeoutMinutes: updated.idleTimeoutMinutes });
       setIdleMessage(
@@ -385,16 +385,16 @@ export default function SettingsScreen() {
       >
         <SettingsTabButton label="General" selected={tab === "general"} onPress={() => setTab("general")} />
         <SettingsTabButton
-          label="Printer"
-          icon={Printer}
-          selected={tab === "printer"}
-          onPress={() => setTab("printer")}
-        />
-        <SettingsTabButton
           label="Account"
           icon={UserIcon}
           selected={tab === "account"}
           onPress={() => setTab("account")}
+        />
+        <SettingsTabButton
+          label="Printer"
+          icon={Printer}
+          selected={tab === "printer"}
+          onPress={() => setTab("printer")}
         />
       </View>
 

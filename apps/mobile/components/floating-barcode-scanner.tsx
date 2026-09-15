@@ -6,10 +6,10 @@ import { GripHorizontal, MoveDiagonal2, ScanLine, TriangleAlert, X } from "lucid
 import { Button } from "@/components/ui";
 import { circleRadius, color, fontSize, radius, space } from "@/theme";
 
-/** Roughly the old 170×220 aspect ratio, just smaller — the bubble sits over whatever screen is underneath, so default footprint matters more here than on a full-screen scanner. */
-const DEFAULT_SIZE = { width: 130, height: 168 };
-const MIN_SIZE = { width: 100, height: 130 };
-const MAX_SIZE = { width: 260, height: 336 };
+/** Roughly the old 170×220 aspect ratio, doubled from the first small pass — that one read as too cramped to actually aim a barcode into. Still a floating bubble, not fullscreen. */
+const DEFAULT_SIZE = { width: 260, height: 336 };
+const MIN_SIZE = { width: 200, height: 260 };
+const MAX_SIZE = { width: 520, height: 672 };
 /** Distance from each screen edge the bubble starts docked at — same numbers the old hardcoded `right`/`bottom` style used. */
 const DEFAULT_POSITION = { right: space.md, bottom: space.xl * 2 };
 /** Never let a drag push the bubble fully off an edge — this much of it always stays on-screen and reachable. */
@@ -93,6 +93,15 @@ export function FloatingBarcodeScanner({
   const resizeResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
+      // Without these two, the live camera surface underneath (a real
+      // native SurfaceView/TextureView on Android, not a plain RN view) can
+      // steal or block the gesture mid-drag — the handle would grab the
+      // touch on press-down and then go dead the instant the finger moved.
+      onPanResponderTerminationRequest: () => false,
+      onShouldBlockNativeResponder: () => true,
       onPanResponderGrant: () => {
         sizeAtGrantRef.current = currentSizeRef.current;
       },
@@ -114,6 +123,11 @@ export function FloatingBarcodeScanner({
   const moveResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onShouldBlockNativeResponder: () => true,
       onPanResponderGrant: () => {
         positionAtGrantRef.current = currentPositionRef.current;
       },
@@ -249,41 +263,45 @@ export function FloatingBarcodeScanner({
           accessibilityRole="adjustable"
           accessibilityLabel="Move barcode scanner"
           accessibilityHint="Drag to reposition"
-          hitSlop={8}
+          hitSlop={10}
           style={{
             position: "absolute",
             top: space.xs,
             left: "50%",
-            marginLeft: -18,
-            width: 36,
-            height: 18,
+            marginLeft: -24,
+            width: 48,
+            height: 22,
             borderRadius: radius.sm,
             alignItems: "center",
             justifyContent: "center",
             backgroundColor: "rgba(0,0,0,0.5)",
+            zIndex: 10,
+            elevation: 10,
           }}
         >
-          <GripHorizontal size={14} color={color.onPrimary} strokeWidth={2.5} />
+          <GripHorizontal size={16} color={color.onPrimary} strokeWidth={2.5} />
         </View>
 
         <Pressable
           onPress={onClose}
           accessibilityRole="button"
           accessibilityLabel="Close barcode scanner"
-          hitSlop={8}
+          hitSlop={10}
           style={{
             position: "absolute",
             top: space.xs,
             right: space.xs,
-            width: 30,
-            height: 30,
-            borderRadius: circleRadius(30),
+            width: 36,
+            height: 36,
+            borderRadius: circleRadius(36),
             alignItems: "center",
             justifyContent: "center",
             backgroundColor: "rgba(0,0,0,0.5)",
+            zIndex: 10,
+            elevation: 10,
           }}
         >
-          <X size={16} color={color.onPrimary} strokeWidth={2.5} />
+          <X size={18} color={color.onPrimary} strokeWidth={2.5} />
         </Pressable>
 
         {/* Top-left — the bubble is anchored by right/bottom, so that's the
@@ -301,20 +319,22 @@ export function FloatingBarcodeScanner({
           accessibilityRole="adjustable"
           accessibilityLabel="Resize barcode scanner"
           accessibilityHint="Drag to resize"
-          hitSlop={8}
+          hitSlop={10}
           style={{
             position: "absolute",
             top: space.xs,
             left: space.xs,
-            width: 30,
-            height: 30,
-            borderRadius: circleRadius(30),
+            width: 36,
+            height: 36,
+            borderRadius: circleRadius(36),
             alignItems: "center",
             justifyContent: "center",
             backgroundColor: "rgba(0,0,0,0.5)",
+            zIndex: 10,
+            elevation: 10,
           }}
         >
-          <MoveDiagonal2 size={14} color={color.onPrimary} strokeWidth={2.5} />
+          <MoveDiagonal2 size={16} color={color.onPrimary} strokeWidth={2.5} />
         </View>
       </View>
     </View>
