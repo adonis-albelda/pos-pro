@@ -6,7 +6,9 @@ import {
   Image as ImageIcon,
   Layers,
   List,
+  Minus,
   Palette,
+  Plus,
   Rows3,
   Sparkles,
   SquareStack,
@@ -14,10 +16,13 @@ import {
 } from "lucide-react-native";
 import { useLayout } from "@/lib/layout";
 import {
+  MAX_GRID_COLUMNS,
+  MIN_GRID_COLUMNS,
   THEME_COLOR_PRESETS,
   resolvePrimaryPalette,
   setBackgroundEffect,
   setCardDisplayStyle,
+  setGridColumns,
   setProductLayout,
   setProductViewMode,
   setRadiusStyle,
@@ -32,6 +37,7 @@ import {
 } from "@/lib/theme-preferences";
 import { WaveBackdrop } from "@/components/wave-backdrop";
 import { Card, SectionTitle } from "@/components/ui";
+import { CartQtyButton } from "@/components/cart-qty-button";
 import { color, fontSize, radius, space, styles } from "@/theme";
 
 const RADIUS_OPTIONS: { id: RadiusStyle; label: string; hint: string }[] = [
@@ -189,6 +195,12 @@ export default function ThemeScreen() {
               onPress={() => void applyChange(() => setProductLayout(option.id))}
             />
           ))}
+          {prefs.productLayout === "grid" ? (
+            <GridColumnsStepper
+              value={prefs.gridColumns > 0 ? prefs.gridColumns : layout.columns}
+              onChange={(next) => void applyChange(() => setGridColumns(next))}
+            />
+          ) : null}
         </Card>
 
         <Card style={[{ gap: space.md }, styles.floatShadow, { borderRadius: radius.sm }]}>
@@ -408,6 +420,59 @@ function ViewModeOption({
       </View>
       {active ? <Check size={18} color={color.primary} strokeWidth={2.5} /> : null}
     </Pressable>
+  );
+}
+
+/** Grid-only — Row always forces 1 column, no stepper needed there. `value` is already resolved to a concrete number by the caller (automatic falls back to lib/layout.ts's width-based count). */
+function GridColumnsStepper({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (next: number) => void;
+}) {
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: space.md,
+        padding: space.md,
+        borderRadius: radius.sm,
+        borderWidth: 1,
+        borderColor: color.border,
+        backgroundColor: color.surface,
+      }}
+    >
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={{ fontSize: fontSize.body, fontWeight: "700", color: color.ink }}>
+          Items per row
+        </Text>
+        <Text style={{ fontSize: fontSize.caption, color: color.inkMuted }}>
+          How many product cards sit side by side.
+        </Text>
+      </View>
+      <CartQtyButton
+        icon={Minus}
+        label="Fewer items per row"
+        disabled={value <= MIN_GRID_COLUMNS}
+        onPress={() => onChange(Math.max(MIN_GRID_COLUMNS, value - 1))}
+      />
+      <Text
+        style={[
+          styles.numeric,
+          { minWidth: 24, textAlign: "center", fontSize: fontSize.bodyLg, fontWeight: "700", color: color.ink },
+        ]}
+      >
+        {value}
+      </Text>
+      <CartQtyButton
+        icon={Plus}
+        label="More items per row"
+        disabled={value >= MAX_GRID_COLUMNS}
+        onPress={() => onChange(Math.min(MAX_GRID_COLUMNS, value + 1))}
+      />
+    </View>
   );
 }
 

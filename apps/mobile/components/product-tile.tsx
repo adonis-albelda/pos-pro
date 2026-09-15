@@ -177,23 +177,6 @@ export function ProductTile({
         <>
       <View style={{ flexDirection: "row", alignItems: "flex-start", gap: space.sm }}>
       <View style={{ flex: 1, minWidth: 0, gap: space.xs }}>
-        {/* Category breadcrumb — the same flattened `category` path used
-            elsewhere (CLAUDE.md #9), just rendered with a chevron instead of
-            the raw "/" separator. */}
-        {!compact && showThumbnail && product.category ? (
-          <Text
-            numberOfLines={1}
-            style={{
-              fontSize: fontSize.caption,
-              fontWeight: "700",
-              letterSpacing: 0.4,
-              textTransform: "uppercase",
-              color: color.inkMuted,
-            }}
-          >
-            {product.category.replace(/\s*\/\s*/g, " › ")}
-          </Text>
-        ) : null}
         {/* On a phone the tile is too narrow to carry the icon and still leave
             room for a readable product name, so the icon is dropped there. */}
         {showThumbnail ? (
@@ -218,10 +201,10 @@ export function ProductTile({
             <Text
               numberOfLines={2}
               style={{
-                fontSize: compact ? fontSize.body : fontSize.bodyLg,
+                fontSize: compact ? fontSize.caption : fontSize.body,
                 fontWeight: "600",
                 color: color.ink,
-                lineHeight: compact ? 18 : 22,
+                lineHeight: compact ? 15 : 18,
               }}
             >
               {product.name}
@@ -240,10 +223,10 @@ export function ProductTile({
             <Text
               numberOfLines={2}
               style={{
-                fontSize: compact ? fontSize.body : fontSize.bodyLg,
+                fontSize: compact ? fontSize.caption : fontSize.body,
                 fontWeight: "600",
                 color: color.ink,
-                lineHeight: compact ? 18 : 22,
+                lineHeight: compact ? 15 : 18,
               }}
             >
               {product.name}
@@ -261,7 +244,7 @@ export function ProductTile({
             adjustsFontSizeToFit
             style={[
               styles.price,
-              { fontSize: compact ? fontSize.bodyLg : fontSize.headingSm },
+              { fontSize: compact ? fontSize.body : fontSize.bodyLg },
             ]}
           >
             {formatMoney(product.price)}
@@ -601,10 +584,10 @@ function RowLayoutBody({
           <Text
             numberOfLines={2}
             style={{
-              fontSize: compact ? fontSize.body : fontSize.bodyLg,
+              fontSize: compact ? fontSize.caption : fontSize.body,
               fontWeight: "600",
               color: color.ink,
-              lineHeight: compact ? 18 : 22,
+              lineHeight: compact ? 15 : 18,
             }}
           >
             {product.name}
@@ -620,7 +603,7 @@ function RowLayoutBody({
               adjustsFontSizeToFit
               style={[
                 styles.price,
-                { fontSize: compact ? fontSize.bodyLg : fontSize.headingSm },
+                { fontSize: compact ? fontSize.body : fontSize.bodyLg },
               ]}
             >
               {formatMoney(product.price)}

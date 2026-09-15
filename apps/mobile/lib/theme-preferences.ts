@@ -48,6 +48,10 @@ export type CardDisplayStyle = "text" | "image-text" | "image-dominant";
  */
 export type ProductLayoutMode = "grid" | "row";
 
+/** Grid columns per row, Theme → Product layout → Grid. Min/max the +/- stepper (app/pos/theme.tsx) enforces. */
+export const MIN_GRID_COLUMNS = 2;
+export const MAX_GRID_COLUMNS = 6;
+
 export interface ThemePreferences {
   radiusStyle: RadiusStyle;
   colorId: ThemeColorId;
@@ -55,6 +59,8 @@ export interface ThemePreferences {
   backgroundEffect: BackgroundEffect;
   cardDisplayStyle: CardDisplayStyle;
   productLayout: ProductLayoutMode;
+  /** 0 = automatic (lib/layout.ts's width-based columns). Any other value overrides it, Grid mode only — Row always forces 1 regardless. */
+  gridColumns: number;
 }
 
 /** "full" = today's existing corner scale (packages/ui's radius token), "teal" = today's existing brand color, "image-text" = today's existing tile layout — an un-migrated device looks unchanged. */
@@ -65,6 +71,7 @@ const DEFAULT_PREFERENCES: ThemePreferences = {
   backgroundEffect: "none",
   cardDisplayStyle: "image-text",
   productLayout: "grid",
+  gridColumns: 0,
 };
 
 export const RADIUS_SCALES: Record<RadiusStyle, { sm: number; md: number; lg: number }> = {
@@ -195,6 +202,10 @@ export async function setCardDisplayStyle(cardDisplayStyle: CardDisplayStyle): P
 
 export async function setProductLayout(productLayout: ProductLayoutMode): Promise<void> {
   await persist({ ...cache, productLayout });
+}
+
+export async function setGridColumns(gridColumns: number): Promise<void> {
+  await persist({ ...cache, gridColumns });
 }
 
 /** Re-renders the calling component on any theme preference change — the Theme screen itself uses this to keep its selection UI in sync; most of the app instead relies on the root remount (app/_layout.tsx). */

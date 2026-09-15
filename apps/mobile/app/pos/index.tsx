@@ -276,9 +276,11 @@ export default function SellScreen() {
   const { compact, columns: layoutColumns } = layout;
 
   const [products, setProducts] = useState<ProductWithEstimatedStock[]>([]);
-  const { productViewMode, backgroundEffect, productLayout } = useThemePreferences();
-  // Theme "Row" = one product per line; "Grid" keeps the width-based column count.
-  const columns = productLayout === "row" ? 1 : layoutColumns;
+  const { productViewMode, backgroundEffect, productLayout, gridColumns } = useThemePreferences();
+  // Theme "Row" = one product per line. "Grid" keeps the width-based column
+  // count unless the cashier has dialed in their own (Theme → Product
+  // layout → Grid, gridColumns 0 = automatic).
+  const columns = productLayout === "row" ? 1 : gridColumns > 0 ? gridColumns : layoutColumns;
   const { celebrate, node: confettiNode } = useSaleCelebration();
   // Only populated in "By variant" mode (Theme menu — lib/theme-preferences.ts).
   // Keyed by product id; fetched for whatever page of `products` is currently
