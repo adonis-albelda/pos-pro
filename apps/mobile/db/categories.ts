@@ -128,6 +128,38 @@ export async function listLocalCategories(): Promise<LocalCategory[]> {
  * their `category_id` is left dangling on purpose, so a sale mid-shift is never
  * interrupted by the office reorganising shelves.
  */
+/**
+ * Realtime counterpart to replaceCategories — a single row upsert from
+ * CategoryUpdated (Laravel), fired on the admin creating or editing a
+ * category (CLAUDE.md §9, sync/realtime.ts). Never touches the rest of the
+ * table, unlike a pull's wholesale replace.
+ */
+export async function upsertLocalCategory(category: Category): Promise<void> {
+  await getDb().runAsync(
+    `INSERT INTO categories (id, name, parent_id, is_active, updated_at, markup_percent, markup_applied)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (id) DO UPDATE SET
+       name = excluded.name,
+       parent_id = excluded.parent_id,
+       is_active = excluded.is_active,
+       updated_at = excluded.updated_at,
+       markup_percent = excluded.markup_percent,
+       markup_applied = excluded.markup_applied`,
+    category.id,
+    category.name,
+    category.parentId,
+    category.isActive ? 1 : 0,
+    category.updatedAt,
+    category.markupPercent,
+    category.markupApplied ? 1 : 0,
+  );
+}
+
+/** Realtime counterpart to a category's removal — see upsertLocalCategory's own comment. */
+export async function deleteLocalCategory(id: string): Promise<void> {
+  await getDb().runAsync("DELETE FROM categories WHERE id = ?", id);
+}
+
 export async function replaceCategories(categories: Category[]): Promise<void> {
   const db = getDb();
 

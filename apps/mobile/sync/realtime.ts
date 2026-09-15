@@ -2,6 +2,7 @@ import type Echo from "laravel-echo";
 import type { Channel } from "laravel-echo";
 import {
   getPosProduct,
+  toCategory,
   toComplexDiscountRule,
   toDiscountRule,
   toLoyaltyProgram,
@@ -11,6 +12,7 @@ import {
   toScheduleAssignment,
   toTaxSettings,
   toWorkSchedule,
+  type CategoryAttrs,
   type ComplexDiscountRuleAttrs,
   type DiscountRuleAttrs,
   type LoyaltyRewardAttrs,
@@ -21,6 +23,7 @@ import {
   type TaxSettingsAttrs,
   type WorkScheduleAttrs,
 } from "@double-a/api-client";
+import { deleteLocalCategory, upsertLocalCategory } from "@/db/categories";
 import {
   deleteLocalComplexDiscountRule,
   deleteLocalDiscountRule,
@@ -126,6 +129,26 @@ interface ProductDeletedPayload {
 interface BrandUpdatedPayload {
   id: string;
   name: string;
+}
+
+/**
+ * Category realtime — fired by CategoryObserver on create/update/delete
+ * (Laravel). Same `company.{companyId}` channel as every other catalogue
+ * event, since categories are company-scoped (CLAUDE.md §9), never
+ * location-scoped. A category is a flat single-table row (no joins a
+ * partial payload could miss, unlike ProductCreated), so create and update
+ * share one event, `.category.updated`, and this just upserts either way —
+ * the admin creating a new category no longer needs a Sync/Refresh for it
+ * to show up on a terminal that's online.
+ */
+interface CategoryUpdatedPayload {
+  id: string;
+  type: string;
+  attributes: CategoryAttrs;
+}
+
+interface CategoryDeletedPayload {
+  id: string;
 }
 
 interface VariantCreatedPayload {
@@ -402,6 +425,14 @@ export async function connectRealtime(
     // see updateProductsBrandName's own comment for why this can't be a
     // per-product ProductUpdated instead.
     void serialized(() => updateProductsBrandName(payload.id, payload.name)).then(onStockTick);
+  });
+  catalogChannel.listen(".category.updated", (payload: CategoryUpdatedPayload) => {
+    if (__DEV__) console.warn("[realtime] category.updated", payload);
+    void serialized(() => upsertLocalCategory(toCategory(payload))).then(onStockTick);
+  });
+  catalogChannel.listen(".category.deleted", (payload: CategoryDeletedPayload) => {
+    if (__DEV__) console.warn("[realtime] category.deleted", payload);
+    void serialized(() => deleteLocalCategory(payload.id)).then(onStockTick);
   });
   catalogChannel.listen(".discount-rule.updated", (payload: DiscountRuleUpdatedPayload) => {
     if (__DEV__) console.warn("[realtime] discount-rule.updated", payload);
