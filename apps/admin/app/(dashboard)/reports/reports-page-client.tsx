@@ -57,6 +57,7 @@ import {
   useReportProfit,
   useReportTopProducts,
 } from "@/lib/query/reports";
+import { PrintSalesReportButton } from "../sales-dashboard/print-sales-report-button";
 import { DashboardBarChart } from "../dashboard-bar-chart";
 import { DeadStockDays } from "./dead-stock-days";
 import { DEAD_STOCK_DEFAULT_DAYS, DEAD_STOCK_WINDOWS } from "./dead-stock-windows";
@@ -198,6 +199,11 @@ export function ReportsPageClient() {
             <ButtonLink href={`/api/export/sales?${rangeQuery}`} icon={Download} download>
               Export sales
             </ButtonLink>
+            {/* Same blob-preview-then-download pattern the Sales Dashboard
+                already uses (print-sales-report-button.tsx) — reused as-is,
+                same report* endpoints this page's own sections already
+                query, just rendered to PDF instead of on-screen cards. */}
+            <PrintSalesReportButton from={range.from} to={range.to} fromDay={fromDay} toDay={toDay} />
             <DateRangePicker
               fromDay={fromDay}
               toDay={toDay}

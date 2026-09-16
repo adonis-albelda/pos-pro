@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Image, Pressable, Text, View } from "react-native";
+import { Image, Modal, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Check, Circle, CircleCheck, Minus, Plus, Square, SquareCheck, X } from "lucide-react-native";
 import {
   formatMoney,
@@ -8,7 +9,7 @@ import {
   type ProductVariant,
 } from "@double-a/shared-types";
 import { variantAttributeLabel } from "@/db/product-variants";
-import { BottomSheet } from "@/components/bottom-sheet";
+import { useKeyboardHeight } from "@/components/bottom-sheet";
 import { CartQtyButton } from "@/components/cart-qty-button";
 import { Badge, Button, Money } from "@/components/ui";
 import { useLayout } from "@/lib/layout";
@@ -85,6 +86,20 @@ export function VariantAddonPicker({
   const { compact, landscape } = useLayout();
   const dialogMaxWidth = !compact && landscape ? TABLET_LANDSCAPE_MAX_WIDTH : undefined;
   const hasAddons = addonGroups.length > 0;
+
+  // A raw Modal with a real computed height, not BottomSheet — BottomSheet's
+  // own body is auto-height, capped only by maxHeight with nothing definite
+  // for a ScrollView inside it to actually bound against, so the Done/
+  // Cancel row at the bottom scrolled away with the rest of the content
+  // instead of staying put (same underlying issue CustomerSheet in
+  // app/pos/index.tsx hit, same fix: ConfirmSaleSheet's pattern).
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const keyboardHeight = useKeyboardHeight();
+  const centered = !compact && landscape;
+  const usableHeight = screenHeight - keyboardHeight - insets.top - insets.bottom;
+  const dialogWidth = Math.min(screenWidth * 0.92, dialogMaxWidth ?? 560);
+  const dialogHeight = Math.min(screenHeight * 0.88, usableHeight * 0.95);
 
   useEffect(() => {
     if (!open) return;
@@ -185,9 +200,52 @@ export function VariantAddonPicker({
     setPicks({});
   }
 
+  if (!open) return null;
+
   return (
-    <BottomSheet open={open} onClose={onCancel} maxWidth={dialogMaxWidth}>
-      <View style={{ gap: space.md }}>
+    <Modal
+      visible={open}
+      transparent
+      animationType={centered ? "fade" : "slide"}
+      statusBarTranslucent
+      onRequestClose={onCancel}
+    >
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: `${color.ink}99`,
+          alignItems: centered ? "center" : undefined,
+          justifyContent: centered ? "center" : "flex-end",
+          paddingBottom: centered ? 0 : keyboardHeight,
+          paddingHorizontal: centered ? space.lg : 0,
+        }}
+      >
+        <Pressable
+          onPress={onCancel}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss"
+          style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+        />
+
+        <View
+          style={{
+            width: dialogWidth,
+            height: dialogHeight,
+            backgroundColor: color.surface,
+            borderTopLeftRadius: radius.lg,
+            borderTopRightRadius: radius.lg,
+            borderBottomLeftRadius: centered ? radius.lg : 0,
+            borderBottomRightRadius: centered ? radius.lg : 0,
+            padding: space.lg,
+            paddingBottom: centered ? space.lg : Math.max(insets.bottom, space.lg),
+            gap: space.md,
+            shadowColor: "#000",
+            shadowOpacity: centered ? 0.22 : 0.18,
+            shadowRadius: centered ? 28 : 24,
+            shadowOffset: { width: 0, height: centered ? 12 : -10 },
+            elevation: centered ? 20 : 16,
+          }}
+        >
         <View
           style={{
             flexDirection: "row",
@@ -207,6 +265,12 @@ export function VariantAddonPicker({
           ) : null}
         </View>
 
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ gap: space.md }}
+          style={{ flex: 1 }}
+        >
         {variants.length > 1 ? (
           <View style={{ gap: space.xs }}>
             <Text style={{ fontSize: fontSize.caption, fontWeight: "700", color: color.inkMuted }}>
@@ -388,6 +452,7 @@ export function VariantAddonPicker({
             })}
           </View>
         ))}
+        </ScrollView>
 
         {hasAddons ? (
           <>
@@ -437,7 +502,8 @@ export function VariantAddonPicker({
             />
           </View>
         )}
+        </View>
       </View>
-    </BottomSheet>
+    </Modal>
   );
 }

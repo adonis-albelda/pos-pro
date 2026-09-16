@@ -15,6 +15,25 @@ import { salesReportToPdf } from "@/lib/sales-report-pdf";
 
 export const runtime = "nodejs";
 
+// The shared ApiClient (packages/api-client/src/http.ts) sets no request
+// timeout anywhere — a slow or unreachable backend just hangs this route's
+// Promise.all forever, which the button's own fetch surfaces as an
+// infinitely spinning "Building the report…" with no error at all. Bound
+// it here so that failure mode becomes a real, visible error instead.
+const REPORT_BUILD_TIMEOUT_MS = 25_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      setTimeout(
+        () => reject(new Error(`${label} took too long (over ${Math.round(ms / 1000)}s) — check the API connection and try again.`)),
+        ms,
+      );
+    }),
+  ]);
+}
+
 /** `day` is a shop-day yyyy-mm-dd (fromDay/toDay from lib/date-range.ts), not `range.to`'s exclusive next-day instant. */
 function formatDayLabel(day: string): string {
   const [year, month, date] = day.split("-").map(Number);
@@ -58,17 +77,21 @@ export async function GET(request: Request): Promise<Response> {
   try {
     const client = getAuthedClient();
     const [profit, topProducts, categories, paymentMethods, byLocation, byCashier, byDevice, refundsVoids, store] =
-      await Promise.all([
-        reportProfit(client, range),
-        reportTopProducts(client, range, 10),
-        reportByCategory(client, range),
-        reportByPaymentMethod(client, range),
-        reportByLocation(client, range),
-        reportByCashier(client, range),
-        reportByDevice(client, range),
-        reportRefundsVoids(client, range),
-        getStoreSettings(client),
-      ]);
+      await withTimeout(
+        Promise.all([
+          reportProfit(client, range),
+          reportTopProducts(client, range, 10),
+          reportByCategory(client, range),
+          reportByPaymentMethod(client, range),
+          reportByLocation(client, range),
+          reportByCashier(client, range),
+          reportByDevice(client, range),
+          reportRefundsVoids(client, range),
+          getStoreSettings(client),
+        ]),
+        REPORT_BUILD_TIMEOUT_MS,
+        "Building the sales report",
+      );
 
     const body = await salesReportToPdf({
       store,
