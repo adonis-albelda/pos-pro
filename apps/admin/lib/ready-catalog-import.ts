@@ -65,6 +65,7 @@ export function buildReadyCatalogProductInput(
     variants: labels.map(() => ({
       price: 0,
       costPrice: 0,
+      isActive: true,
     })),
   };
 }
