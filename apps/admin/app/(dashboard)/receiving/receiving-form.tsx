@@ -1338,7 +1338,12 @@ export function ReceivingForm({
               ref={fileInputRef}
               type="file"
               accept="image/*"
-              capture="environment"
+              // No `capture` attribute on purpose — that forces the OS
+              // straight into the camera on many mobile browsers, hiding
+              // the normal picker's "choose from files/gallery" option
+              // entirely. The button already promises "From your camera or
+              // files"; only the OS's own default file/photo picker (shown
+              // when `capture` is absent) actually offers both.
               className="hidden"
               onChange={(event) => handlePhotoChange(event.target.files?.[0] ?? null)}
             />
