@@ -75,6 +75,7 @@ import {
   useUpdateProductVariant,
   useUpdateProductVariantSupplier,
   useUploadProductVariantPhoto,
+  useVariantStockByLocation,
 } from "@/lib/query/attributes";
 import { useAdjustProductStock } from "@/lib/query/products";
 import { useLocations } from "@/lib/query/locations";
@@ -566,15 +567,16 @@ export function VariantSupplierLinksEditor({
 const STOCK_ADJUST_MODES = [
   { key: "in", label: "Add stock", reason: "restock" as const },
   { key: "out", label: "Remove stock", reason: "adjustment" as const },
+  { key: "count", label: "Set current stock", reason: "adjustment" as const },
 ] as const;
 
 /**
  * Same adjust-stock action the /inventory page's own restock/adjust flow
  * calls — reachable right from the variant it targets via the "View stock"
  * drawer, so a merchant never has to leave the product page to correct a
- * count. "Set counted total" mode stays /inventory-only: that flow already
- * has this location's current quantity loaded to compute the delta from,
- * which this compact form doesn't fetch. Rendered only as a Sheet's
+ * count. "Set current stock" reads this branch's on-hand quantity via
+ * useVariantStockByLocation and records the difference as the movement,
+ * same as /inventory's own "Set counted total". Rendered only as a Sheet's
  * children — the Sheet's own open/close is the reveal mechanism, no
  * collapse state of its own.
  */
@@ -606,7 +608,6 @@ function VariantStockAdjustForm({
   const [note, setNote] = useState("");
   const [branchError, setBranchError] = useState<string | null>(null);
   const [quantityError, setQuantityError] = useState<string | null>(null);
-  const [supplierError, setSupplierError] = useState<string | null>(null);
   const [confirmSubmit, setConfirmSubmit] = useState(false);
 
   useEffect(() => {
@@ -616,26 +617,47 @@ function VariantStockAdjustForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only ever needs to fill in the initial default once branches load.
   }, [locationsQuery.data]);
 
+  // Only "Set current stock" needs this — the on-hand quantity at whichever
+  // branch is selected, so the movement can be recorded as the difference
+  // instead of the raw typed number (same as /inventory's own "Set counted
+  // total"). Add/Remove don't need a baseline at all.
+  const stockQuery = useVariantStockByLocation("count" === mode ? variantId : null);
+  const recordedStock = stockQuery.data?.find((row) => row.locationId === locationId)?.quantity ?? 0;
+
   function reviewSubmit() {
     const magnitude = Number(quantity);
-    const invalidQuantity = quantity.trim() === "" || !Number.isFinite(magnitude) || magnitude <= 0;
-    setQuantityError(invalidQuantity ? "Enter a quantity greater than zero." : null);
+    const floor = "count" === mode ? 0 : 0.001;
+    const invalidQuantity = quantity.trim() === "" || !Number.isFinite(magnitude) || magnitude < floor;
+    setQuantityError(
+      invalidQuantity
+        ? "count" === mode
+          ? "Enter the counted quantity, 0 or more."
+          : "Enter a quantity greater than zero."
+        : null,
+    );
     setBranchError(locationId ? null : "Choose a branch.");
-    const missingSupplier = "in" === mode && !supplierId;
-    setSupplierError(missingSupplier ? "Choose which supplier this stock came from." : null);
-    if (invalidQuantity || !locationId || missingSupplier) return;
+    if (invalidQuantity || !locationId) return;
+    if ("count" === mode && magnitude === recordedStock) {
+      setQuantityError(`Already recorded as ${recordedStock} — nothing to change.`);
+      return;
+    }
     setConfirmSubmit(true);
   }
 
   function submit() {
     const magnitude = Number(quantity);
     const preset = STOCK_ADJUST_MODES.find((option) => option.key === mode);
+    const changeQuantity =
+      "out" === mode ? -magnitude : "count" === mode ? magnitude - recordedStock : magnitude;
     adjustStock.mutate(
       {
-        changeQuantity: mode === "out" ? -magnitude : magnitude,
+        changeQuantity,
         reason: preset?.reason ?? "adjustment",
         locationId,
         variantId,
+        // Optional everywhere, same as /inventory's own restock/adjust flow —
+        // a merchant who just knows the count shouldn't have to first go
+        // link a supplier record before they can save it.
         supplierId: "in" === mode ? supplierId || null : null,
         note: note.trim() || null,
       },
@@ -652,6 +674,11 @@ function VariantStockAdjustForm({
 
   const activeModeLabel = STOCK_ADJUST_MODES.find((option) => option.key === mode)?.label ?? "Adjust";
   const branchName = (locationsQuery.data ?? []).find((branch) => branch.id === locationId)?.name ?? "—";
+  const magnitudeForPreview = Number(quantity);
+  const countDelta =
+    "count" === mode && quantity.trim() !== "" && Number.isFinite(magnitudeForPreview)
+      ? magnitudeForPreview - recordedStock
+      : null;
 
   return (
     <div className="space-y-4">
@@ -690,10 +717,22 @@ function VariantStockAdjustForm({
           </div>
         ) : null}
         <div className={HALF_CELL}>
-          <Field label="Quantity" required>
+          <Field
+            label={"count" === mode ? "Counted quantity" : "Quantity"}
+            hint={
+              "count" === mode
+                ? locationId
+                  ? stockQuery.isPending
+                    ? "Reading current on-hand…"
+                    : `Currently on hand: ${recordedStock}.`
+                  : "Choose a branch to see its on-hand quantity."
+                : undefined
+            }
+            required
+          >
             <Input
               type="number"
-              min="0.001"
+              min={"count" === mode ? "0" : "0.001"}
               step="any"
               value={quantity}
               onChange={(event) => {
@@ -701,27 +740,31 @@ function VariantStockAdjustForm({
                 setQuantityError(null);
               }}
             />
-            {quantityError ? <p className="mt-1 text-caption text-danger">{quantityError}</p> : null}
+            {quantityError ? (
+              <p className="mt-1 text-caption text-danger">{quantityError}</p>
+            ) : countDelta !== null && countDelta !== 0 ? (
+              <p className="mt-1 text-caption text-ink-muted">
+                Recorded as {countDelta > 0 ? "+" : ""}
+                {countDelta}.
+              </p>
+            ) : null}
           </Field>
         </div>
       </div>
       {"in" === mode ? (
-        <Field label="Supplier" required hint="Which supplier this delivery came from.">
-          <Select
-            value={supplierId}
-            onChange={(event) => {
-              setSupplierId(event.target.value);
-              setSupplierError(null);
-            }}
-          >
-            <option value="">Choose supplier</option>
+        <Field
+          label="Supplier"
+          required={false}
+          hint="Optional — which supplier this delivery came from, if known."
+        >
+          <Select value={supplierId} onChange={(event) => setSupplierId(event.target.value)}>
+            <option value="">Not specified</option>
             {suppliers.map((supplier) => (
               <option key={supplier.id} value={supplier.id}>
                 {supplier.name}
               </option>
             ))}
           </Select>
-          {supplierError ? <p className="mt-1 text-caption text-danger">{supplierError}</p> : null}
         </Field>
       ) : null}
       <Field label="Note" required={false}>
@@ -744,7 +787,11 @@ function VariantStockAdjustForm({
         onConfirm={submit}
         pending={adjustStock.isPending}
         title={`${activeModeLabel}?`}
-        description={`${quantity || "0"} unit(s) at ${branchName} for ${variantLabel} — records a movement, same as Inventory.`}
+        description={
+          "count" === mode
+            ? `Sets on hand to ${quantity || "0"} at ${branchName} for ${variantLabel} (${countDelta !== null && countDelta > 0 ? "+" : ""}${countDelta ?? 0}) — records a movement, same as Inventory.`
+            : `${quantity || "0"} unit(s) at ${branchName} for ${variantLabel} — records a movement, same as Inventory.`
+        }
         confirmLabel={activeModeLabel}
         confirmIcon={Check}
       />

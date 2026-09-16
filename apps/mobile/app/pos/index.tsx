@@ -379,6 +379,13 @@ export default function SellScreen() {
   const requestId = useRef(0);
   const loadingMoreRef = useRef(false);
   const heldById = useRef(new Map<string, ProductWithEstimatedStock>());
+  // Out-of-stock Alert / zero-price sheet, both keyed so a rapid burst of
+  // taps on the same variant (e.g. the variant picker replaying several
+  // staged units in a row — see VariantAddonPicker's commitAndClose) only
+  // ever surfaces one prompt, not one per unit. Cleared once the cashier
+  // actually answers (either button/either sheet outcome), so a genuinely
+  // separate later add still prompts fresh.
+  const pendingPromptKeys = useRef(new Set<string>());
   const [lines, setLines] = useState<CartLine[]>([]);
   // Lines whose price the attendant typed in. A manual price is a decision, so
   // it outranks the bulk tier and survives every quantity change after it.
@@ -852,14 +859,22 @@ export default function SellScreen() {
     }
 
     if (product.estimatedStock <= 0) {
+      if (pendingPromptKeys.current.has(product.id)) return;
+      pendingPromptKeys.current.add(product.id);
+
       Alert.alert(
         "Out of stock",
         `${product.name} shows none on hand. Sell it anyway? New stock added later settles this automatically.`,
         [
-          { text: "Cancel", style: "cancel" },
+          {
+            text: "Cancel",
+            style: "cancel",
+            onPress: () => pendingPromptKeys.current.delete(product.id),
+          },
           {
             text: "Sell anyway",
             onPress: () => {
+              pendingPromptKeys.current.delete(product.id);
               requestAddToCart(product, undefined, sourceRect);
             },
           },
@@ -889,15 +904,23 @@ export default function SellScreen() {
     const resolved: ResolvedSelection = { variant, addons, estimatedStock };
 
     if (estimatedStock <= 0) {
+      if (pendingPromptKeys.current.has(variant.id)) return;
+      pendingPromptKeys.current.add(variant.id);
+
       const label = variantAttributeLabel(variant) || variant.sku || "this option";
       Alert.alert(
         "Out of stock",
         `${product.name} (${label}) shows none on hand. Sell it anyway? New stock added later settles this automatically.`,
         [
-          { text: "Cancel", style: "cancel" },
+          {
+            text: "Cancel",
+            style: "cancel",
+            onPress: () => pendingPromptKeys.current.delete(variant.id),
+          },
           {
             text: "Sell anyway",
             onPress: () => {
+              pendingPromptKeys.current.delete(variant.id);
               requestAddToCart(product, resolved, sourceRect);
             },
           },
@@ -995,6 +1018,9 @@ export default function SellScreen() {
       : product.price;
 
     if (shelfPrice <= 0) {
+      const promptKey = `${product.id}:${selection?.variant.id ?? ""}`;
+      if (pendingPromptKeys.current.has(promptKey)) return;
+      pendingPromptKeys.current.add(promptKey);
       setOpenPricePending({ product, selection, sourceRect });
       return;
     }
@@ -2375,10 +2401,17 @@ export default function SellScreen() {
             ? variantAttributeLabel(openPricePending.selection.variant) || null
             : null
         }
-        onCancel={() => setOpenPricePending(null)}
+        onCancel={() => {
+          if (openPricePending) {
+            const { product, selection } = openPricePending;
+            pendingPromptKeys.current.delete(`${product.id}:${selection?.variant.id ?? ""}`);
+          }
+          setOpenPricePending(null);
+        }}
         onConfirm={(price) => {
           if (!openPricePending) return;
           const { product, selection, sourceRect } = openPricePending;
+          pendingPromptKeys.current.delete(`${product.id}:${selection?.variant.id ?? ""}`);
           setOpenPricePending(null);
           commitAddToCart(product, selection, price);
           if (sourceRect) flyToCart(sourceRect, product.photoUrl);

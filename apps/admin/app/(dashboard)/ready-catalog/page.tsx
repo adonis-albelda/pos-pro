@@ -24,8 +24,9 @@ import { useQueryClient } from "@tanstack/react-query";
 
 const STORE_TYPES = [
   { value: "supermarket", label: "Supermarket" },
+  { value: "hardware", label: "Hardware" },
+  { value: "school", label: "School Supply" },
   { value: "sari-sari", label: "Sari-sari", disabled: true },
-  { value: "hardware", label: "Hardware", disabled: true },
 ] as const;
 
 const LOAD_MORE_THRESHOLD_PX = 400;
