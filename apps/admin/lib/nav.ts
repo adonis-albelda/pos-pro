@@ -407,6 +407,46 @@ export const NAV_SECTIONS: NavSection[] = [
 /** Flat group view, section headings dropped — kept for ClassicShell's per-group dropdown menu bar. */
 export const NAV_GROUPS: NavGroup[] = NAV_SECTIONS.flatMap((section) => section.groups);
 
+/** One of the classic top bar's umbrella dropdowns — a handful of NAV_SECTIONS bucketed together. */
+export interface NavMenu {
+  label: string;
+  sections: NavSection[];
+}
+
+/**
+ * Classic top bar used to render one dropdown per NAV_SECTIONS entry (8 of
+ * them) — wrapped onto a second row and broke on tablet width. This buckets
+ * them into 4 umbrella dropdowns instead; each umbrella's own dropdown still
+ * shows its member sections as their own sub-heading (see ClassicShell), so
+ * none of the underlying organization is lost, only the top bar's button
+ * count. Doesn't touch NAV_SECTIONS itself — the drawer and the mobile
+ * "Main menu" page still read that flat list, unchanged.
+ */
+export const NAV_MENUS: NavMenu[] = [
+  {
+    label: "Catalog",
+    sections: NAV_SECTIONS.filter(
+      (section) => section.label === "Product Management" || section.label === "Ready Catalog",
+    ),
+  },
+  {
+    label: "Operations",
+    sections: NAV_SECTIONS.filter(
+      (section) => section.label === "Inventory Management" || section.label === "Sales Management",
+    ),
+  },
+  {
+    label: "Finance & People",
+    sections: NAV_SECTIONS.filter(
+      (section) => section.label === "Finance Management" || section.label === "People Management",
+    ),
+  },
+  {
+    label: "Settings",
+    sections: NAV_SECTIONS.filter((section) => section.label === "Settings"),
+  },
+];
+
 export const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((group) => group.items);
 
 /**
@@ -481,4 +521,24 @@ export function filterNavSectionsByPermissions(
       groups: filterNavGroupsByPermissions(section.groups, can),
     }))
     .filter((section) => section.groups.length > 0);
+}
+
+/** Same as filterNavSectionsByFeatures, one level up — for ClassicShell's umbrella menu bar. */
+export function filterNavMenusByFeatures(
+  menus: NavMenu[],
+  isEnabled: (key: string) => boolean,
+): NavMenu[] {
+  return menus
+    .map((menu) => ({ ...menu, sections: filterNavSectionsByFeatures(menu.sections, isEnabled) }))
+    .filter((menu) => menu.sections.length > 0);
+}
+
+/** Same as filterNavSectionsByPermissions, one level up. */
+export function filterNavMenusByPermissions(
+  menus: NavMenu[],
+  can: (permissionKey: string) => boolean,
+): NavMenu[] {
+  return menus
+    .map((menu) => ({ ...menu, sections: filterNavSectionsByPermissions(menu.sections, can) }))
+    .filter((menu) => menu.sections.length > 0);
 }

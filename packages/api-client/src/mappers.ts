@@ -435,6 +435,7 @@ export interface UserAttrs {
   company_id: string | null;
   location_id?: string | null;
   company_is_active: boolean | null;
+  company_business_type?: string | null;
   is_active: boolean;
   can_sell: boolean;
   must_change_password: boolean;
@@ -471,6 +472,7 @@ export function toUser(resource: JsonApiResource<UserAttrs>): User {
     companyId: a.company_id ?? null,
     locationId: a.location_id ?? null,
     companyIsActive: a.company_is_active ?? true,
+    companyBusinessType: a.company_business_type ?? null,
     emailVerifiedAt: a.email_verified_at ?? null,
     lastLoginAt: a.last_login_at ?? null,
     permissions: Array.isArray(a.permissions) ? a.permissions : undefined,

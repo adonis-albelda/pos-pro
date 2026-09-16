@@ -9,7 +9,7 @@ import { ImportForm } from "./import-form";
 const COLUMN_NOTES: Record<string, string> = {
   name: "What the product is called.",
   sku: "Your code for it. Matches a row to a product by internal SKU or supplier SKU.",
-  price: "The shelf price customers pay. Falls back to Price Level 1, 2, then 3 when empty or zero.",
+  price: "The selling price customers pay. Falls back to Price Level 1, 2, then 3 when empty or zero.",
   cost_price: "What the supplier charges you. Drives every margin figure.",
   unit: "How it is sold: pc, box, set, pack, roll, sheet, m, ft, kg, l, gal or bag.",
   barcode: "Optional. Must be unique across products.",

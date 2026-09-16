@@ -1708,9 +1708,9 @@ function WizardAttributesStep({
                       <div className="space-y-4">
                         <FormSection
                           title="Pricing"
-                          description="Shelf price is what customers pay. Cost can be set here or left for suppliers on the next step."
+                          description="Selling price is what customers pay. Cost can be set here or left for suppliers on the next step."
                         >
-                          <Field label="Shelf price" required={false}>
+                          <Field label="Selling price" required={false}>
                             <MoneyInput
                               type="number"
                               step="0.01"
@@ -2309,7 +2309,7 @@ function SingleProductPreviewDialog({
 
           <section className="grid gap-x-6 gap-y-1 border-b border-border pb-5 sm:grid-cols-2">
             <p>
-              <span className="text-ink-muted">Shelf price: </span>
+              <span className="text-ink-muted">Selling price: </span>
               <Money value={product.price ?? 0} />
             </p>
             <p>
@@ -3363,7 +3363,7 @@ export function ProductForm({
                 label="Category"
                 hint={
                   selectedCategory?.markupApplied
-                    ? `Markup ${selectedCategory.markupPercent}% can fill shelf price from cost.`
+                    ? `Markup ${selectedCategory.markupPercent}% can fill selling price from cost.`
                     : undefined
                 }
                 required={false}
@@ -3664,7 +3664,7 @@ export function ProductForm({
             {product || "single" === productKind ? (
               <FormSection
                 title="Pricing"
-                description="Supplier cost drives margin reports. Shelf price is what customers pay."
+                description="Supplier cost drives margin reports. Selling price is what customers pay."
               >
                 {!product ? (
                   <Field label="Supplier price" required>
@@ -3699,7 +3699,7 @@ export function ProductForm({
                     />
                   </Field>
                 )}
-                <Field label="Shelf price" required>
+                <Field label="Selling price" required>
                   <MoneyInput
                     name="price"
                     type="number"
@@ -3780,7 +3780,7 @@ export function ProductForm({
               className="mt-0.5 shrink-0"
             />
             <span>
-              Shelf price is below supplier cost. You lose{" "}
+              Selling price is below supplier cost. You lose{" "}
               {formatMoney(costValue - priceValue)} per unit sold.
             </span>
           </p>

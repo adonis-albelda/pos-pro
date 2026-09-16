@@ -7,6 +7,7 @@ import { useIdleLock } from "@/lib/idle-lock";
 import { useLayout } from "@/lib/layout";
 import { AccountDrawerProvider } from "@/lib/account-drawer";
 import { CartSummaryProvider } from "@/lib/cart-summary";
+import { DraftSummaryProvider } from "@/lib/draft-summary";
 import { FlyToCartProvider } from "@/lib/fly-to-cart";
 import { PriceInquiryProvider } from "@/lib/price-inquiry";
 import { StoreHeader } from "@/components/store-header";
@@ -54,6 +55,7 @@ export default function PosLayout() {
   return (
     <AccountDrawerProvider>
       <CartSummaryProvider>
+      <DraftSummaryProvider>
         {/* Above StoreHeader and the Stack alike — a flight launches from a
             tile deep inside the Sell screen and lands on the header's cart
             chip, two different subtrees it has to render over both of. */}
@@ -96,6 +98,7 @@ export default function PosLayout() {
             </View>
           </PriceInquiryProvider>
         </FlyToCartProvider>
+      </DraftSummaryProvider>
       </CartSummaryProvider>
     </AccountDrawerProvider>
   );

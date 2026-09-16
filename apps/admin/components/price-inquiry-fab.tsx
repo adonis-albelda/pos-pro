@@ -296,7 +296,7 @@ export function PriceInquiryFab() {
         open={open}
         onClose={close}
         title="Price inquiry"
-        description="Look up a product's cost, stock, supplier and shelf price."
+        description="Look up a product's cost, stock, supplier and selling price."
         className="lg:min-w-4xl"
       >
         {selected ? (
@@ -332,7 +332,7 @@ export function PriceInquiryFab() {
             </div>
 
             <div className="rounded-md border border-primary/30 bg-primary/5 px-4 py-4 text-center">
-              <p className="text-caption font-medium text-primary">Shelf price</p>
+              <p className="text-caption font-medium text-primary">Selling price</p>
               <p className="mt-1 text-heading-lg font-bold text-primary">
                 {formatMoney(selected.price)}
               </p>

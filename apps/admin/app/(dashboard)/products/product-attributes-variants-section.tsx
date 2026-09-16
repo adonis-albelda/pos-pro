@@ -1207,7 +1207,7 @@ function VariantDetailPanel({
 
   function onUpdate() {
     if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
-      toast.error("Shelf price must be zero or more.");
+      toast.error("Selling price must be zero or more.");
       return;
     }
     if (!Number.isFinite(parsedCostPrice) || parsedCostPrice < 0) {
@@ -1370,7 +1370,7 @@ function VariantDetailPanel({
 
           <div className={HALF_ROW}>
             <div className={HALF_CELL}>
-              <Field label="Shelf price">
+              <Field label="Selling price">
                 <MoneyInput
                   type="number"
                   step="0.01"

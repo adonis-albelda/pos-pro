@@ -363,7 +363,7 @@ export function describeNoSubmittableRows(rows: LineRow[]): string {
   }
   const unresolved = unresolvedCount(rows);
   if (unresolved > 0) {
-    return `${unresolved} item${unresolved === 1 ? "" : "s"} still need details — fill quantity, cost, and shelf price.`;
+    return `${unresolved} item${unresolved === 1 ? "" : "s"} still need details — fill quantity, cost, and selling price.`;
   }
   return "Add at least one item — upload a photo or add a line manually.";
 }

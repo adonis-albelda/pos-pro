@@ -1429,7 +1429,7 @@ export function CreateSaleForm() {
                             className="text-primary underline decoration-dotted"
                             onClick={() => resetLinePrice(line.productId, line.variantId)}
                           >
-                            Reset to shelf price
+                            Reset to selling price
                           </button>
                         ) : null}
                       </span>

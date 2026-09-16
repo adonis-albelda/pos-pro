@@ -4,6 +4,8 @@ import type { ApiClient, JsonApiPage, JsonApiResource } from "../http";
 export interface ReadyCatalogProduct {
   name: string;
   variants: string[];
+  /** Optional — when set, import find-or-creates a Brand with this name and links the product to it. */
+  brand?: string | null;
 }
 
 /**

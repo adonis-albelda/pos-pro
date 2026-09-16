@@ -472,7 +472,7 @@ function describeChanges(
   if (existing.name !== values.name) changes.push(`Name → ${values.name}`);
   if (existing.price !== values.price) {
     changes.push(
-      `Shelf price ${formatMoney(existing.price)} → ${formatMoney(values.price)}`,
+      `Selling price ${formatMoney(existing.price)} → ${formatMoney(values.price)}`,
     );
   }
   if (existing.costPrice !== values.cost_price) {

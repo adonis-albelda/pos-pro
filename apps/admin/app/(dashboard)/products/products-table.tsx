@@ -154,7 +154,7 @@ export function ProductsTable({
             <Th>Supplier</Th>
             <Th>Sold by</Th>
             <Th numeric>Supplier price</Th>
-            <Th numeric>Shelf price</Th>
+            <Th numeric>Selling price</Th>
             <Th numeric>Margin</Th>
             <Th numeric>Stock</Th>
             <Th>State</Th>

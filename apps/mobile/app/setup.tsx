@@ -210,10 +210,18 @@ export default function SetupScreen() {
     // a full pull, since no watermark gets set here.
     // "One Last Thing" (business-type survey) shows once per device, ever —
     // not once per sign-in. A returning admin who already answered (or
-    // skipped) it here goes straight to "done".
+    // skipped) it here goes straight to "done". Company already having an
+    // answer (profile.companyBusinessType, saved server-side by whichever
+    // device answered first) skips it too — otherwise enrolling a second
+    // terminal, or reinstalling, asks again even though the shop already
+    // picked one.
     const seenBusinessType = await hasSeenBusinessTypeStep();
     const nextStep: SetupFlowStep =
-      profile.role === ROLES.ADMIN ? (seenBusinessType ? "done" : "business-type") : "first-pull";
+      profile.role === ROLES.ADMIN
+        ? profile.companyBusinessType || seenBusinessType
+          ? "done"
+          : "business-type"
+        : "first-pull";
     if (profile.role === ROLES.ADMIN) {
       await markFirstPullSkipped();
     }

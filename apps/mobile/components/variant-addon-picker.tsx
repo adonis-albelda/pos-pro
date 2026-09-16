@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Image, Pressable, Text, View } from "react-native";
-import { Check, Circle, CircleCheck, Minus, Plus, Square, SquareCheck } from "lucide-react-native";
+import { Check, Circle, CircleCheck, Minus, Plus, Square, SquareCheck, X } from "lucide-react-native";
 import {
   formatMoney,
   roundMoney,
@@ -68,14 +68,20 @@ export function VariantAddonPicker({
    * for the add-on flow, the read-only "in cart" count next to each row. */
   quantities: Map<string, number>;
   onCancel: () => void;
-  /** No-add-on path: +/- tapped directly on a variant row. */
-  onAdjust: (variant: ProductVariant, delta: 1 | -1) => void;
+  /** No-add-on path: replays one staged unit of change against the live cart — called from `Done`, once per net unit, never straight from a stepper tap. May be async (a positive delta re-checks live stock first); awaited sequentially so two replayed units never race the same stock check. */
+  onAdjust: (variant: ProductVariant, delta: 1 | -1) => void | Promise<void>;
   /** Add-on path: full selection confirmed — sheet stays open, caller decides whether to close. */
   onConfirm: (selection: VariantAddonSelection) => void;
 }) {
   const [variantId, setVariantId] = useState<string | null>(null);
   // groupId -> selected addon_group_item ids
   const [picks, setPicks] = useState<Record<string, string[]>>({});
+  // No-add-on path only: variantId -> net unit change since this dialog
+  // opened, staged locally and only replayed against the real cart when
+  // Done is pressed — a stepper tap used to hit `onAdjust` (and so the live
+  // cart) immediately, which read as "just looking" silently adding items.
+  const [pendingDeltas, setPendingDeltas] = useState<Record<string, number>>({});
+  const [committing, setCommitting] = useState(false);
   const { compact, landscape } = useLayout();
   const dialogMaxWidth = !compact && landscape ? TABLET_LANDSCAPE_MAX_WIDTH : undefined;
   const hasAddons = addonGroups.length > 0;
@@ -85,7 +91,35 @@ export function VariantAddonPicker({
     const defaultVariant = variants.find((v) => v.isDefault) ?? variants[0] ?? null;
     setVariantId(defaultVariant?.id ?? null);
     setPicks({});
+    setPendingDeltas({});
   }, [open, variants]);
+
+  /** Cancel discards every staged stepper change — nothing reaches the cart. */
+  function cancel() {
+    setPendingDeltas({});
+    onCancel();
+  }
+
+  /** Done replays each variant's net staged change, one unit at a time (same per-unit stock check/out-of-stock prompt a live tap always went through), then closes. */
+  async function commitAndClose() {
+    setCommitting(true);
+    try {
+      for (const variant of variants) {
+        const delta = pendingDeltas[variant.id] ?? 0;
+        const step: 1 | -1 = delta > 0 ? 1 : -1;
+        for (let i = 0; i < Math.abs(delta); i++) {
+          // Serialized on purpose: each unit must land before the next
+          // re-checks live stock, or two replayed units would race the
+          // same variant's stock cap.
+          await onAdjust(variant, step);
+        }
+      }
+      setPendingDeltas({});
+      onCancel();
+    } finally {
+      setCommitting(false);
+    }
+  }
 
   const selectedVariant = variants.find((v) => v.id === variantId) ?? null;
 
@@ -120,16 +154,18 @@ export function VariantAddonPicker({
 
   const total = roundMoney((selectedVariant?.price ?? 0) + addonsTotal);
 
-  // Sum of every variant row's own price × its current cart qty — the
-  // running total for this product across whichever variants are already
-  // in the cart, not the in-progress add-on combo below (that's `total`).
+  // Sum of every variant row's own price × its current qty (cart qty plus
+  // whatever's staged but not yet committed) — the running total across
+  // whichever variants are already/about to be in the cart, not the
+  // in-progress add-on combo below (that's `total`).
   const variantsCartTotal = useMemo(() => {
     let sum = 0;
     for (const variant of variants) {
-      sum += variant.price * (quantities.get(variant.id) ?? 0);
+      const qty = (quantities.get(variant.id) ?? 0) + (pendingDeltas[variant.id] ?? 0);
+      sum += variant.price * qty;
     }
     return roundMoney(sum);
-  }, [variants, quantities]);
+  }, [variants, quantities, pendingDeltas]);
 
   function confirm() {
     if (!selectedVariant || missingRequired.length > 0) return;
@@ -179,7 +215,8 @@ export function VariantAddonPicker({
             {variants.map((variant) => {
               const label = variantAttributeLabel(variant) || variant.sku || "Default";
               const photoUrl = variant.photoUrl ?? productPhotoUrl ?? null;
-              const qty = quantities.get(variant.id) ?? 0;
+              const baseQty = quantities.get(variant.id) ?? 0;
+              const qty = baseQty + (pendingDeltas[variant.id] ?? 0);
               const outOfStock = variant.stockQuantity <= 0;
               const selected = variant.id === variantId;
 
@@ -249,7 +286,12 @@ export function VariantAddonPicker({
                         icon={Minus}
                         label={`One less ${label}`}
                         disabled={qty === 0}
-                        onPress={() => onAdjust(variant, -1)}
+                        onPress={() =>
+                          setPendingDeltas((current) => ({
+                            ...current,
+                            [variant.id]: (current[variant.id] ?? 0) - 1,
+                          }))
+                        }
                       />
                       <Text
                         style={{
@@ -265,7 +307,12 @@ export function VariantAddonPicker({
                       <CartQtyButton
                         icon={Plus}
                         label={`One more ${label}`}
-                        onPress={() => onAdjust(variant, 1)}
+                        onPress={() =>
+                          setPendingDeltas((current) => ({
+                            ...current,
+                            [variant.id]: (current[variant.id] ?? 0) + 1,
+                          }))
+                        }
                       />
                     </View>
                   )}
@@ -372,7 +419,23 @@ export function VariantAddonPicker({
             </View>
           </>
         ) : (
-          <Button label="Done" style={{ width: "100%" }} onPress={onCancel} />
+          <View style={{ flexDirection: "row", gap: space.sm, marginTop: space.sm }}>
+            <Button
+              label="Cancel"
+              variant="secondary"
+              icon={X}
+              style={{ flex: 1 }}
+              disabled={committing}
+              onPress={cancel}
+            />
+            <Button
+              label="Done"
+              icon={Check}
+              busy={committing}
+              style={{ flex: 1 }}
+              onPress={() => void commitAndClose()}
+            />
+          </View>
         )}
       </View>
     </BottomSheet>

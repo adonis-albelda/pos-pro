@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Animated, Pressable, Text, View } from "react-native";
+import { Animated, Easing, Pressable, Text, View } from "react-native";
 import { usePathname, useRouter } from "expo-router";
 import { CheckCircle2, Menu, ShoppingCart } from "lucide-react-native";
 import { formatMoney, type SyncPhase } from "@double-a/shared-types";
@@ -8,6 +8,7 @@ import { LocationSwitcher } from "@/components/location-switcher";
 import { summariseToday, type LocalDaySummary } from "@/db/sales";
 import { useAccountDrawer } from "@/lib/account-drawer";
 import { useCartSummary } from "@/lib/cart-summary";
+import { useDraftSummary } from "@/lib/draft-summary";
 import { useFlyToCart } from "@/lib/fly-to-cart";
 import { useLayout } from "@/lib/layout";
 import { useSync } from "@/sync/sync-provider";
@@ -23,6 +24,7 @@ import { color, fontSize, radius, space } from "@/theme";
 export function StoreHeader() {
   const state = useSync();
   const cart = useCartSummary();
+  const draft = useDraftSummary();
   const router = useRouter();
   const pathname = usePathname();
   const { compact } = useLayout();
@@ -182,6 +184,15 @@ export function StoreHeader() {
               pendingSales={state.pendingSales}
               onPress={() => router.replace("/pos/sync")}
             />
+            {/* Sell-screen-only, same as the cart chip below — draft.open is
+                only ever published while app/pos/index.tsx (the only screen
+                with parked carts) is actually mounted. */}
+            {onSellScreen && draft.open ? (
+              <>
+                <HeaderStatDivider />
+                <DraftStat count={draft.count} onPress={draft.open} />
+              </>
+            ) : null}
           </View>
         )}
 
@@ -247,18 +258,21 @@ export function StoreHeader() {
               paddingVertical: 4,
             }}
           >
-            <HeaderStat
-              value={formatMoney(daySummary?.revenue ?? 0)}
+            <AnimatedHeaderStat
+              value={daySummary?.revenue ?? 0}
+              format={formatMoney}
               label={`${daySummary?.salesCount ?? 0} sale${(daySummary?.salesCount ?? 0) === 1 ? "" : "s"}`}
             />
             <HeaderStatDivider />
-            <HeaderStat
-              value={formatMoney(daySummary?.discountTotal ?? 0)}
+            <AnimatedHeaderStat
+              value={daySummary?.discountTotal ?? 0}
+              format={formatMoney}
               label={`${daySummary?.discountedSalesCount ?? 0} discount${(daySummary?.discountedSalesCount ?? 0) === 1 ? "" : "s"}`}
             />
             <HeaderStatDivider />
-            <HeaderStat
-              value={formatMoney(daySummary?.refundTotal ?? 0)}
+            <AnimatedHeaderStat
+              value={daySummary?.refundTotal ?? 0}
+              format={formatMoney}
               label={`${daySummary?.refundCount ?? 0} refund${(daySummary?.refundCount ?? 0) === 1 ? "" : "s"}`}
             />
           </View>
@@ -310,11 +324,7 @@ function SyncStat({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${look.text}. ${pendingLabel(pendingSales)}. Opens sync.`}
-      style={({ pressed }) => ({
-        minWidth: 0,
-        flexShrink: 1,
-        opacity: pressed ? 0.7 : 1,
-      })}
+      style={({ pressed }) => [headerButtonStyle(pressed), { minWidth: 0, flexShrink: 1 }]}
     >
       <Text
         numberOfLines={1}
@@ -337,6 +347,47 @@ function SyncStat({
       </Text>
     </Pressable>
   );
+}
+
+/** Count on top, "Draft sales" label below — same two-line shape as HeaderStat, Pressable like SyncStat. */
+function DraftStat({ count, onPress }: { count: number; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={
+        count === 0 ? "No drafts saved" : `Open draft sales, ${count} saved`
+      }
+      disabled={count === 0}
+      style={({ pressed }) => [
+        headerButtonStyle(pressed, count === 0),
+        { minWidth: 0, flexShrink: 1 },
+      ]}
+    >
+      <Text numberOfLines={1} style={{ fontSize: fontSize.body, fontWeight: "700", color: color.onPrimary }}>
+        {count}
+      </Text>
+      <Text numberOfLines={1} style={{ fontSize: fontSize.caption, color: "rgba(255,255,255,0.75)" }}>
+        Draft sales
+      </Text>
+    </Pressable>
+  );
+}
+
+/**
+ * Shared "this is a button" chrome for the header's pressable stats (Synced,
+ * Draft sales) — a faint pill, same treatment the cart chip already uses,
+ * so they read as tappable instead of looking like the plain read-only
+ * HeaderStat twins (time/date) sitting right next to them.
+ */
+function headerButtonStyle(pressed: boolean, disabled = false) {
+  return {
+    borderRadius: radius.sm,
+    paddingHorizontal: space.sm,
+    paddingVertical: 2,
+    backgroundColor: pressed ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.15)",
+    opacity: disabled ? 0.55 : 1,
+  };
 }
 
 function HeaderStatDivider() {
@@ -363,6 +414,83 @@ function HeaderStat({ value, label }: { value: string; label: string }) {
         }}
       >
         {value}
+      </Text>
+      <Text
+        numberOfLines={1}
+        style={{
+          fontSize: fontSize.caption,
+          color: "rgba(255,255,255,0.75)",
+        }}
+      >
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+const COUNT_UP_DURATION_MS = 500;
+
+/**
+ * Tweens from the previous number to the next one instead of jumping —
+ * every completed sale bumps daySummary's revenue/discount/refund totals,
+ * and a flat re-render read as the figure just silently changing; counting
+ * up to it reads as "a sale just landed."
+ */
+function useCountUp(value: number, durationMs = COUNT_UP_DURATION_MS): number {
+  const [display, setDisplay] = useState(value);
+  const previousValue = useRef(value);
+  const animatedValue = useRef(new Animated.Value(value)).current;
+
+  useEffect(() => {
+    if (previousValue.current === value) return;
+    animatedValue.setValue(previousValue.current);
+    previousValue.current = value;
+
+    // JS-driven, not native: the native driver can't hand a live numeric
+    // value back to JS on every frame, and that number is exactly what
+    // formats into the displayed text below.
+    const listenerId = animatedValue.addListener(({ value: current }) => setDisplay(current));
+    const animation = Animated.timing(animatedValue, {
+      toValue: value,
+      duration: durationMs,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    });
+    animation.start(({ finished }) => {
+      if (finished) setDisplay(value);
+    });
+
+    return () => {
+      animation.stop();
+      animatedValue.removeListener(listenerId);
+    };
+  }, [value, durationMs, animatedValue]);
+
+  return display;
+}
+
+/** Same two-line shape as HeaderStat, but the number counts up/down from its previous value instead of jumping straight to the new one. */
+function AnimatedHeaderStat({
+  value,
+  format,
+  label,
+}: {
+  value: number;
+  format: (n: number) => string;
+  label: string;
+}) {
+  const display = useCountUp(value);
+  return (
+    <View style={{ minWidth: 0, flexShrink: 1 }}>
+      <Text
+        numberOfLines={1}
+        style={{
+          fontSize: fontSize.body,
+          fontWeight: "700",
+          color: color.onPrimary,
+        }}
+      >
+        {format(display)}
       </Text>
       <Text
         numberOfLines={1}

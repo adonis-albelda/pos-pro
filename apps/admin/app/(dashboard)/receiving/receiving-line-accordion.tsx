@@ -376,7 +376,7 @@ export function ReceivingLineAccordion({
                   value={row.existingCostPrice ?? (Number(row.unitCost) || 0)}
                 />
                 <ReadOnlyMoneyField
-                  label="Shelf price"
+                  label="Selling price"
                   value={row.existingPrice ?? (Number(row.appliedPrice) || 0)}
                 />
               </div>
@@ -529,7 +529,7 @@ export function ReceivingLineAccordion({
                 </div>
 
                 <div className={HALF_CELL}>
-                <Field label="New shelf price" required>
+                <Field label="New selling price" required>
                   <div className="relative w-full">
                     <MoneyInput
                       type="number"
@@ -621,7 +621,7 @@ export function ReceivingLineAccordion({
                   formatValue={(value) => formatMoney(value)}
                 />
                 <ChangeLine
-                  label="Shelf price"
+                  label="Selling price"
                   before={row.existingPrice}
                   after={newShelf}
                   formatValue={(value) => formatMoney(value)}

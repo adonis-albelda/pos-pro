@@ -105,7 +105,7 @@ export function collectProductFormChanges(
   if (has(form, "price")) {
     pushChange(
       changes,
-      "Shelf price",
+      "Selling price",
       displayMoney(product.price),
       displayMoney(Number(text(form, "price") || 0)),
     );

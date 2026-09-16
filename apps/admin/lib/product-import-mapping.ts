@@ -47,7 +47,7 @@ export const IMPORT_FIELD_META: ImportFieldMeta[] = [
   },
   {
     key: "price",
-    label: "Shelf price",
+    label: "Selling price",
     required: true,
     hint: "What customers pay.",
     aliases: [

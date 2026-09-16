@@ -149,6 +149,7 @@ import {
 } from "@/lib/cart-draft";
 import { getApiClient } from "@/lib/api/session";
 import { useCartSummary } from "@/lib/cart-summary";
+import { useDraftSummary } from "@/lib/draft-summary";
 import { getDeviceId } from "@/lib/device";
 import { useFlyToCart, type FlyRect } from "@/lib/fly-to-cart";
 import { useFeatureFlags } from "@/lib/features";
@@ -634,8 +635,20 @@ export default function SellScreen() {
 
     setHasMore(true);
 
+    // At least PRODUCT_PAGE_SIZE, but never fewer than whatever's already
+    // on screen. This effect also reruns on a bare realtime/focus signal
+    // (dataVersion, focusEpoch) with the same query/category — not just on
+    // an actual new search or category pick. Refetching only page one every
+    // time would silently drop every page a scrolled-down cashier had
+    // already loaded via loadMore, snapping the FlatList's data back under
+    // its own scroll offset — with nothing left to render way down where
+    // they were scrolled to, that read as the whole grid going blank right
+    // as a stock tick happened to land, not any actual bug in what they'd
+    // just tapped.
+    const limit = Math.max(products.length, PRODUCT_PAGE_SIZE);
+
     void listLocalProductsPage({
-      limit: PRODUCT_PAGE_SIZE,
+      limit,
       offset: 0,
       search: query,
       categoryIds,
@@ -645,7 +658,7 @@ export default function SellScreen() {
         await withVariants(next);
         if (id !== requestId.current) return;
         setProducts(next);
-        setHasMore(next.length === PRODUCT_PAGE_SIZE);
+        setHasMore(next.length === limit);
         setLoadingPage(false);
         setReady(true);
       })
@@ -1309,9 +1322,9 @@ export default function SellScreen() {
     await refreshDrafts();
   }
 
-  function openDraftPicker() {
+  const openDraftPicker = useCallback(() => {
     void refreshDrafts().then(() => setDraftPickerOpen(true));
-  }
+  }, [refreshDrafts]);
 
   function applyDraft(draft: CartDraft) {
     setLines(draft.lines);
@@ -1484,6 +1497,15 @@ export default function SellScreen() {
   }, [itemCount, total, compact, setCartSummary]);
   useEffect(() => clearCartSummary, [clearCartSummary]);
 
+  // Publishes into StoreHeader's Draft sales button, same reasoning as the
+  // cart chip above — drafts only exist on this screen, so the header only
+  // shows the button while this effect is actually running.
+  const { setDraftSummary, clearDraftSummary } = useDraftSummary();
+  useEffect(() => {
+    setDraftSummary({ count: drafts.length, open: openDraftPicker });
+  }, [drafts.length, setDraftSummary, openDraftPicker]);
+  useEffect(() => clearDraftSummary, [clearDraftSummary]);
+
   return (
     <View style={{ flex: 1, flexDirection: compact ? "column" : "row" }}>
       {/* Tablet: header lives in this column only — cart is a full-height
@@ -1503,20 +1525,26 @@ export default function SellScreen() {
             minHeight: 0,
           }}
         >
+        <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
         <View
           style={{
+            flex: 3,
             flexDirection: "row",
             alignItems: "center",
             gap: space.sm,
             minHeight: compact ? 48 : 56,
             borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.25)",
+            borderColor: color.primarySoft,
             borderRadius: radius.sm,
-            backgroundColor: color.primary,
+            // Light green field on the dark header bar, not a translucent
+            // overlay of the header's own color — the overlay read as
+            // "barely there." Same primarySoft/primary pairing badges and
+            // chips already use elsewhere, just applied here too.
+            backgroundColor: color.primarySoft,
             paddingHorizontal: space.md,
           }}
         >
-          <Search size={18} color={color.onPrimary} strokeWidth={2} />
+          <Search size={18} color={color.primary} strokeWidth={2} />
           <TextInput
             value={search}
             onChangeText={applyManualSearch}
@@ -1527,13 +1555,13 @@ export default function SellScreen() {
             autoCapitalize="none"
             autoCorrect={false}
             placeholder={compact ? "Search or scan" : "Search by name or SKU, or scan a barcode"}
-            placeholderTextColor="rgba(255,255,255,0.7)"
+            placeholderTextColor={color.inkMuted}
             numberOfLines={1}
             style={{
               flex: 1,
               minHeight: compact ? 48 : 56,
               fontSize: fontSize.bodyLg,
-              color: color.onPrimary,
+              color: color.ink,
             }}
           />
           {search ? (
@@ -1544,7 +1572,7 @@ export default function SellScreen() {
               hitSlop={4}
               style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}
             >
-              <X size={20} color={color.onPrimary} strokeWidth={2} />
+              <X size={20} color={color.primary} strokeWidth={2} />
             </Pressable>
           ) : null}
           {isEnabled("product_vector_search") ? (
@@ -1555,7 +1583,7 @@ export default function SellScreen() {
               hitSlop={4}
               style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}
             >
-              <Sparkles size={20} color={color.onPrimary} strokeWidth={2} />
+              <Sparkles size={20} color={color.primary} strokeWidth={2} />
             </Pressable>
           ) : null}
           {isEnabled("voice_search") ? (
@@ -1566,7 +1594,7 @@ export default function SellScreen() {
               hitSlop={4}
               style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}
             >
-              <Mic size={20} color={color.onPrimary} strokeWidth={2} />
+              <Mic size={20} color={color.primary} strokeWidth={2} />
             </Pressable>
           ) : null}
           {isEnabled("barcode_scan") ? (
@@ -1583,9 +1611,43 @@ export default function SellScreen() {
               hitSlop={4}
               style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}
             >
-              <ScanBarcode size={20} color={color.onPrimary} strokeWidth={2} />
+              <ScanBarcode size={20} color={color.primary} strokeWidth={2} />
             </Pressable>
           ) : null}
+        </View>
+
+        {/* Hidden during Smart search or a typed search: the results
+            already ignore this filter, so a lit-up button beside them
+            would be a lie. */}
+        {!aiResultIds && !search.trim() ? (
+          <Button
+            label={
+              category
+                ? (() => {
+                    const selected = categories.find((entry) => entry.id === category);
+                    return selected
+                      ? `${selected.name} (${selected.productCount} items)`
+                      : "Filter by category";
+                  })()
+                : `All products (${totalProducts} items)`
+            }
+            icon={FolderTree}
+            // Button's own "secondary" variant already is the light-green
+            // primarySoft fill + color.primary text/border this needs —
+            // same look as the search box beside it. A category actually
+            // picked just gets a bolder border instead of switching to a
+            // solid dark fill (that blended into the header and read as
+            // "nothing there").
+            variant="secondary"
+            style={{
+              flex: 1,
+              borderWidth: category ? 2 : 1,
+              borderColor: category ? color.primary : color.primarySoft,
+            }}
+            large={!compact}
+            onPress={() => setCategoryDialogOpen(true)}
+          />
+        ) : null}
         </View>
 
         {aiResultIds ? (
@@ -1617,35 +1679,7 @@ export default function SellScreen() {
               <X size={18} color={color.primaryDark} strokeWidth={2} />
             </Pressable>
           </View>
-        ) : /* Hidden while searching: the results already ignore the filter, so a
-               lit-up button beside them would be a lie. */
-        search.trim() ? null : (
-          <View style={{ flexDirection: "row", gap: space.sm }}>
-            <Button
-              label={
-                category
-                  ? (() => {
-                      const selected = categories.find((entry) => entry.id === category);
-                      return selected
-                        ? `${selected.name} (${selected.productCount} items)`
-                        : "Filter by category";
-                    })()
-                  : `All products (${totalProducts} items)`
-              }
-              icon={FolderTree}
-              variant={category ? "primary" : "secondary"}
-              style={{ flex: 1 }}
-              onPress={() => setCategoryDialogOpen(true)}
-            />
-            <Button
-              label={hasDraft ? `Drafts (${drafts.length})` : "Draft sales"}
-              icon={BookmarkCheck}
-              variant={hasDraft ? "primary" : "secondary"}
-              style={{ flex: 1 }}
-              onPress={openDraftPicker}
-            />
-          </View>
-        )}
+        ) : null}
 
         <View style={{ flex: 1, minHeight: 0, gap: space.sm }}>
           {!ready || (loadingPage && products.length === 0) ? (
@@ -2322,10 +2356,10 @@ export default function SellScreen() {
         addonGroups={pickerState?.addonGroups ?? []}
         quantities={inCartByVariant}
         onCancel={() => setPickerState(null)}
-        onAdjust={(variant, delta) => {
+        onAdjust={async (variant, delta) => {
           if (!pickerState) return;
           if (delta > 0) {
-            void commitVariantSelection(pickerState.product, variant, []);
+            await commitVariantSelection(pickerState.product, variant, []);
           } else {
             changeQuantity(pickerState.product.id, -1, variant.id);
           }
@@ -3947,6 +3981,9 @@ function CustomerSheet({
     };
   }, [open, customer.customerId]);
 
+  const insets = useSafeAreaInsets();
+  const keyboardHeight = useKeyboardHeight();
+
   if (!open) return null;
 
   const draft = normaliseCustomerDetails({
@@ -3956,6 +3993,18 @@ function CustomerSheet({
     address,
   });
   const twoCol = !layout.compact;
+  // BottomSheet's non-scroll body is auto-height, capped only by maxHeight —
+  // nothing definite for this form's own flex:1 ScrollView + fixed button
+  // below it to bound against. With every field (name through the PWD/
+  // Senior toggles) that content routinely exceeds the cap on a phone with
+  // no overflow:hidden anywhere to clip it, so the dialog visibly breaks —
+  // fields run past the card, the Save button ends up unreachable. A raw
+  // Modal with a real computed height (same fix as ConfirmSaleSheet) gives
+  // the ScrollView something to actually scroll within instead.
+  const centered = !layout.compact && layout.landscape;
+  const usableHeight = screenHeight - keyboardHeight - insets.top - insets.bottom;
+  const dialogWidth = Math.min(screenWidth * 0.7, 640);
+  const dialogHeight = Math.min(screenHeight * 0.88, usableHeight * 0.95);
 
   async function save() {
     const next = normaliseCustomerDetails({
@@ -4001,14 +4050,49 @@ function CustomerSheet({
   }
 
   return (
-    <BottomSheet
-      open={open}
-      onClose={onClose}
-      maxWidth={screenWidth * 0.8}
-      maxHeight={screenHeight * 0.8}
-      scroll={false}
+    <Modal
+      visible={open}
+      transparent
+      animationType={centered ? "fade" : "slide"}
+      statusBarTranslucent
+      onRequestClose={onClose}
     >
-      <View style={{ flex: 1, gap: space.md }}>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: `${color.ink}99`,
+          alignItems: centered ? "center" : undefined,
+          justifyContent: centered ? "center" : "flex-end",
+          paddingHorizontal: centered ? space.sm : 0,
+        }}
+      >
+        <Pressable
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss"
+          style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+        />
+
+        <View
+          style={{
+            width: dialogWidth,
+            height: dialogHeight,
+            maxWidth: 640,
+            backgroundColor: color.surface,
+            borderTopLeftRadius: radius.lg,
+            borderTopRightRadius: radius.lg,
+            borderBottomLeftRadius: centered ? radius.lg : 0,
+            borderBottomRightRadius: centered ? radius.lg : 0,
+            padding: space.lg,
+            paddingBottom: centered ? space.lg : Math.max(insets.bottom, space.lg),
+            gap: space.md,
+            shadowColor: "#000",
+            shadowOpacity: centered ? 0.22 : 0.18,
+            shadowRadius: centered ? 28 : 24,
+            shadowOffset: { width: 0, height: centered ? 12 : -10 },
+            elevation: centered ? 20 : 16,
+          }}
+        >
       <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
         <View style={[styles.iconWell, { width: 34, height: 34 }]}>
           <UserRound size={18} color={color.primary} strokeWidth={2} />
@@ -4207,8 +4291,9 @@ function CustomerSheet({
           />
         ) : null}
       </View>
+        </View>
       </View>
-    </BottomSheet>
+    </Modal>
   );
 }
 

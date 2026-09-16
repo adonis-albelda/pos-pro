@@ -162,7 +162,7 @@ export function TaxSettingsCard({ embedded = false }: { embedded?: boolean }) {
       <CardHeader
         icon={Percent}
         title="Tax & discounts"
-        description="VAT-registered shops treat shelf prices as VAT-inclusive. Senior/PWD discounts back VAT out before applying 20%."
+        description="VAT-registered shops treat selling prices as VAT-inclusive. Senior/PWD discounts back VAT out before applying 20%."
       />
       {body}
     </Card>

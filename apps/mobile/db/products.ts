@@ -184,10 +184,28 @@ function buildListQuery(args: ListLocalProductsPageArgs): {
   let orderBy = "p.name";
   if (needle) {
     const like = likeContains(needle);
+    // Product-level name/sku/barcode, OR any of this product's own variants
+    // (sku/barcode, or its attribute_values JSON — variants have no flat
+    // "label" column, but the JSON text still contains the plain attribute
+    // values, e.g. `[{"name":"Size","value":"6\""}]` for a 6" variant, so a
+    // LIKE against it still finds a spoken/typed size, color, etc). A
+    // product name alone missed a query that only named a variant, which
+    // read as the search just not working for anything but the base name.
     clauses.push(
-      `(p.name LIKE ? COLLATE NOCASE OR IFNULL(p.sku, '') LIKE ? COLLATE NOCASE OR IFNULL(p.barcode, '') LIKE ? COLLATE NOCASE)`,
+      `(p.name LIKE ? COLLATE NOCASE
+        OR IFNULL(p.sku, '') LIKE ? COLLATE NOCASE
+        OR IFNULL(p.barcode, '') LIKE ? COLLATE NOCASE
+        OR EXISTS (
+          SELECT 1 FROM product_variants v
+           WHERE v.product_id = p.id
+             AND (
+               IFNULL(v.sku, '') LIKE ? COLLATE NOCASE
+               OR IFNULL(v.barcode, '') LIKE ? COLLATE NOCASE
+               OR v.attribute_values LIKE ? COLLATE NOCASE
+             )
+        ))`,
     );
-    params.push(like, like, like);
+    params.push(like, like, like, like, like, like);
     orderBy = `CASE
       WHEN IFNULL(p.barcode, '') = ? COLLATE NOCASE THEN 0
       WHEN IFNULL(p.sku, '') = ? COLLATE NOCASE THEN 1

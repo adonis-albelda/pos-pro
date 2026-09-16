@@ -300,7 +300,7 @@ export function MoveIntoProductDialog({
         source
           ? step === "setup"
             ? `Turn “${source.productName}” into a variant under a parent — or merge into an existing variant when it’s the same size from another supplier.`
-            : "Check stock and shelf price before confirming."
+            : "Check stock and selling price before confirming."
           : undefined
       }
       className={step === "preview" ? "max-w-xl" : undefined}
@@ -592,7 +592,7 @@ function PreviewBody({
 
       <section className="space-y-3">
         <h3 className="text-caption font-semibold uppercase tracking-wide text-ink-muted">
-          Shelf price
+          Selling price
         </h3>
         {mode === "merge" ? (
           <>
@@ -603,7 +603,7 @@ function PreviewBody({
             </div>
             {pricesDiffer ? (
               <p className="text-caption text-ink-muted">
-                Prices differ — pick which shelf price the merged variant keeps.
+                Prices differ — pick which selling price the merged variant keeps.
               </p>
             ) : (
               <p className="text-caption text-ink-muted">Both already at the same price.</p>
@@ -652,7 +652,7 @@ function PreviewBody({
               />
             </div>
             {priceChoice === "custom" ? (
-              <Field label="Custom shelf price">
+              <Field label="Custom selling price">
                 <MoneyInput
                   value={customPrice}
                   onChange={(event) => onCustomPriceChange(event.target.value)}
@@ -683,7 +683,7 @@ function PreviewBody({
               />
             </div>
             {priceChoice === "custom" ? (
-              <Field label="Shelf price after move">
+              <Field label="Selling price after move">
                 <MoneyInput
                   value={customPrice}
                   onChange={(event) => onCustomPriceChange(event.target.value)}

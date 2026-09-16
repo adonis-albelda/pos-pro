@@ -613,7 +613,7 @@ function ReportsBody({
           <EmptyState
             icon={HandCoins}
             title="Nothing was discounted"
-            instruction="Every item in this range sold at its shelf price."
+            instruction="Every item in this range sold at its selling price."
           />
         ) : (
           <Table>
@@ -624,7 +624,7 @@ function ReportsBody({
                 <Th>Terminal</Th>
                 <Th>Product</Th>
                 <Th numeric>Qty</Th>
-                <Th numeric>Shelf price</Th>
+                <Th numeric>Selling price</Th>
                 <Th numeric>Sold for</Th>
                 <Th numeric>Given away</Th>
                 <Th>Flag</Th>
@@ -792,7 +792,7 @@ function ReportsBody({
           value={formatMoney(stockCost)}
           hint="Money tied up on the shelves"
         />
-        <StatCard icon={Banknote} label="Stock at shelf price" value={formatMoney(stockRetail)} />
+        <StatCard icon={Banknote} label="Stock at selling price" value={formatMoney(stockRetail)} />
         <StatCard
           icon={Coins}
           label="Profit if it all sells"

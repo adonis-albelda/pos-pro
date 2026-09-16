@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import type { Route } from "next";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronDown, LayoutGrid, LogOut, Menu, X } from "lucide-react";
+import { ChartColumn, ChevronDown, LayoutDashboard, LayoutGrid, LogOut, Menu, X } from "lucide-react";
 import { storeInitial } from "@double-a/shared-types";
 import { signOut } from "@/app/login/actions";
 import { LocationSwitcher } from "@/components/location-switcher";
@@ -13,11 +14,11 @@ import { UiModeToggle } from "@/components/ui-mode-toggle";
 import {
   filterNavGroupsByFeatures,
   filterNavGroupsByPermissions,
-  filterNavSectionsByFeatures,
-  filterNavSectionsByPermissions,
+  filterNavMenusByFeatures,
+  filterNavMenusByPermissions,
   isNavItemActive,
   NAV_GROUPS,
-  NAV_SECTIONS,
+  NAV_MENUS,
 } from "@/lib/nav";
 import { useNavFeatureEnabled } from "@/lib/query/nav-features";
 import { useCurrentUser } from "@/lib/query/session";
@@ -53,12 +54,14 @@ export function ClassicShell({
     filterNavGroupsByFeatures(NAV_GROUPS, isEnabled),
     (key) => canPermission(user, key),
   );
-  // Classic top bar groups by section (Sales Management, Finance Management,
-  // ...), not the finer-grained sub-groups the drawer uses — a dropdown per
-  // section keeps the whole area's items together instead of the sub-groups
-  // and ungrouped items scattering one-by-one across the bar.
-  const navSections = filterNavSectionsByPermissions(
-    filterNavSectionsByFeatures(NAV_SECTIONS, isEnabled),
+  // Classic top bar groups by umbrella menu (Catalog, Operations, Finance &
+  // People, Settings — see NAV_MENUS), not one dropdown per NAV_SECTIONS
+  // entry: 8 section-dropdowns wrapped onto a second row and broke on
+  // tablet width. Each umbrella's own dropdown still shows its member
+  // sections as their own sub-heading, so the finer organization survives
+  // one level down instead of being lost.
+  const navMenus = filterNavMenusByPermissions(
+    filterNavMenusByFeatures(NAV_MENUS, isEnabled),
     (key) => canPermission(user, key),
   );
 
@@ -175,10 +178,36 @@ export function ClassicShell({
             Main menu
           </Link>
 
-          {navSections.map((section) => {
-            const label = section.label ?? "Dashboards";
+          {/* The two highest-traffic pages get a plain one-click link, same
+              treatment as Main menu — burying either behind an umbrella
+              dropdown's extra click wasn't worth it just to save one button. */}
+          <Link
+            href="/"
+            className={[
+              "inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1.5 text-caption font-medium transition-colors",
+              pathname === "/" ? "bg-border/70 text-ink" : "text-ink hover:bg-border/60",
+            ].join(" ")}
+          >
+            <LayoutDashboard size={14} strokeWidth={2} />
+            Dashboard
+          </Link>
+          <Link
+            href={"/sales-dashboard" as Route}
+            className={[
+              "inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1.5 text-caption font-medium transition-colors",
+              isActive("/sales-dashboard") ? "bg-border/70 text-ink" : "text-ink hover:bg-border/60",
+            ].join(" ")}
+          >
+            <ChartColumn size={14} strokeWidth={2} />
+            Sales Dashboard
+          </Link>
+
+          {navMenus.map((menu) => {
+            const label = menu.label;
             const open = openGroup === label;
-            const items = section.groups.flatMap((group) => group.items);
+            const items = menu.sections.flatMap((section) =>
+              section.groups.flatMap((group) => group.items),
+            );
             const active = items.some((item) => isActive(item.href));
 
             return (
@@ -199,23 +228,40 @@ export function ClassicShell({
                 </button>
 
                 {open ? (
-                  <div className="absolute top-full left-0 z-30 mt-0.5 grid w-[min(90vw,640px)] grid-cols-1 gap-x-6 gap-y-3 rounded-sm border border-border bg-surface p-4 shadow-md sm:grid-cols-2">
-                    {items.map(({ href, label: itemLabel, blurb, icon: Icon }) => (
-                      <Link
-                        key={href}
-                        href={href}
-                        onClick={() => setOpenGroup(null)}
-                        className={[
-                          "flex items-start gap-2.5 rounded-sm p-2 text-left transition-colors hover:bg-primary-tint",
-                          isActive(href) ? "bg-border/50" : "",
-                        ].join(" ")}
-                      >
-                        <Icon size={17} strokeWidth={2} className="mt-0.5 shrink-0 text-ink-muted" />
-                        <span className="min-w-0">
-                          <span className="block text-body font-semibold text-ink">{itemLabel}</span>
-                          <span className="block text-caption text-ink-muted">{blurb}</span>
-                        </span>
-                      </Link>
+                  <div className="absolute top-full left-0 z-30 mt-0.5 grid w-[min(90vw,720px)] grid-cols-1 gap-x-6 gap-y-4 rounded-sm border border-border bg-surface p-4 shadow-md sm:grid-cols-2">
+                    {/* Second nesting level: each member section (e.g. "Product
+                        Management", "Ready Catalog") gets its own sub-heading
+                        and column instead of every item in the umbrella
+                        flattening into one undifferentiated list. */}
+                    {menu.sections.map((section) => (
+                      <div key={section.label ?? "_"} className="space-y-2">
+                        {section.label ? (
+                          <p className="px-1 text-[0.6875rem] font-semibold tracking-wide text-ink-muted uppercase">
+                            {section.label}
+                          </p>
+                        ) : null}
+                        <div className="space-y-1">
+                          {section.groups
+                            .flatMap((group) => group.items)
+                            .map(({ href, label: itemLabel, blurb, icon: Icon }) => (
+                              <Link
+                                key={href}
+                                href={href}
+                                onClick={() => setOpenGroup(null)}
+                                className={[
+                                  "flex items-start gap-2.5 rounded-sm p-2 text-left transition-colors hover:bg-primary-tint",
+                                  isActive(href) ? "bg-border/50" : "",
+                                ].join(" ")}
+                              >
+                                <Icon size={17} strokeWidth={2} className="mt-0.5 shrink-0 text-ink-muted" />
+                                <span className="min-w-0">
+                                  <span className="block text-body font-semibold text-ink">{itemLabel}</span>
+                                  <span className="block text-caption text-ink-muted">{blurb}</span>
+                                </span>
+                              </Link>
+                            ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
                 ) : null}

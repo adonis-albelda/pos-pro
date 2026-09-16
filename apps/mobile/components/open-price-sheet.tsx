@@ -37,7 +37,7 @@ export function OpenPriceSheet({
         </Text>
         <Text style={{ fontSize: fontSize.body, color: color.inkMuted, lineHeight: 20 }}>
           {productName}
-          {variantLabel ? ` · ${variantLabel}` : ""} has no shelf price. Type what to charge.
+          {variantLabel ? ` · ${variantLabel}` : ""} has no selling price. Type what to charge.
         </Text>
         <View
           style={{

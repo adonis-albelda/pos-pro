@@ -209,7 +209,7 @@ export function ReceivingPreviewDialog({
                   <Th>Status</Th>
                   <Th numeric>Qty</Th>
                   <Th numeric>Cost price</Th>
-                  <Th numeric>Shelf price</Th>
+                  <Th numeric>Selling price</Th>
                   <Th numeric>Stock</Th>
                 </tr>
               </thead>

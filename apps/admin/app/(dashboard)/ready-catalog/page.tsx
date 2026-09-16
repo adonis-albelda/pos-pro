@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { BookCopy, ChevronDown, Loader2, Package, TriangleAlert, X } from "lucide-react";
+import { BookCopy, ChevronDown, Loader2, Package, RotateCcw, TriangleAlert, X } from "lucide-react";
 import { toast } from "sonner";
 import type { ReadyCatalogCategory, ReadyCatalogProduct } from "@double-a/api-client/queries";
 import {
@@ -9,6 +9,7 @@ import {
   Card,
   CardBody,
   Field,
+  Input,
   PageHeader,
   Select,
   Skeleton,
@@ -222,6 +223,10 @@ export default function ReadyCatalogPage() {
   const [importingCategoryId, setImportingCategoryId] = useState<string | null>(null);
   const [confirmImport, setConfirmImport] = useState<ImportConfirmState | null>(null);
   const [importProgress, setImportProgress] = useState<ImportProgressState | null>(null);
+  // Keyed by the catalog's own suggested name (stable for the life of one
+  // confirm dialog) — lets the admin rename before import without touching
+  // `selected`, which stays keyed on the original name throughout.
+  const [nameOverrides, setNameOverrides] = useState<Record<string, string>>({});
 
   const catalogQuery = useReadyCatalogCategories(storeType || null);
   const invalidateCategories = useInvalidateCategories();
@@ -297,12 +302,20 @@ export default function ReadyCatalogPage() {
       toast.error("Select at least one product");
       return;
     }
+    setNameOverrides({});
     setConfirmImport({ block, products: picked });
   }
 
   async function runConfirmedImport() {
     if (!confirmImport) return;
-    const { block, products: picked } = confirmImport;
+    const { block, products: original } = confirmImport;
+    // Renamed products go in with whatever the admin left in the name field
+    // (their edit, or the untouched suggestion) — `selected`/dedup below
+    // still keys off the catalog's own original name, never the rename.
+    const picked = original.map((product) => {
+      const renamed = nameOverrides[product.name]?.trim();
+      return renamed ? { ...product, name: renamed } : product;
+    });
     setConfirmImport(null);
     setImportingCategoryId(block.id);
     setImportProgress({
@@ -335,7 +348,7 @@ export default function ReadyCatalogPage() {
 
       setSelected((prev) => {
         const next = new Set(prev);
-        for (const p of picked) next.delete(productKey(block.id, p.name));
+        for (const p of original) next.delete(productKey(block.id, p.name));
         return next;
       });
 
@@ -489,19 +502,49 @@ export default function ReadyCatalogPage() {
       >
         {confirmImport ? (
           <ul className="max-h-80 space-y-2 overflow-y-auto">
-            {confirmImport.products.map((product) => (
-              <li
-                key={product.name}
-                className="rounded-sm border border-border bg-paper px-3 py-2"
-              >
-                <p className="text-body font-medium text-ink">{product.name}</p>
-                {product.variants.length > 0 ? (
-                  <p className="mt-0.5 text-caption text-ink-muted">
-                    {product.variants.join(" · ")}
-                  </p>
-                ) : null}
-              </li>
-            ))}
+            {confirmImport.products.map((product) => {
+              const value = nameOverrides[product.name] ?? product.name;
+              const renamed = value !== product.name;
+              return (
+                <li
+                  key={product.name}
+                  className="rounded-sm border border-border bg-paper px-3 py-2"
+                >
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={value}
+                      onChange={(e) =>
+                        setNameOverrides((prev) => ({ ...prev, [product.name]: e.target.value }))
+                      }
+                      className="h-8 flex-1 text-body font-medium"
+                      aria-label={`Product name for ${product.name}`}
+                    />
+                    {renamed ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        icon={RotateCcw}
+                        className="h-8 shrink-0 px-2 text-caption"
+                        onClick={() =>
+                          setNameOverrides((prev) => {
+                            const next = { ...prev };
+                            delete next[product.name];
+                            return next;
+                          })
+                        }
+                      >
+                        Use suggested name
+                      </Button>
+                    ) : null}
+                  </div>
+                  {product.variants.length > 0 ? (
+                    <p className="mt-1 text-caption text-ink-muted">
+                      {product.variants.join(" · ")}
+                    </p>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         ) : null}
       </Dialog>

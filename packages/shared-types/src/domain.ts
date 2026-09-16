@@ -333,6 +333,8 @@ export interface User {
   locationId: string | null;
   /** False when the shop account is disabled. Superadmin has no company — true. */
   companyIsActive: boolean;
+  /** companies.business_type — null until the "what kind of business is this?" setup step is answered. Lets a device gate that step on the saved answer instead of a per-device "seen it" flag, so a second terminal or reinstall doesn't ask again once any device already answered. */
+  companyBusinessType: string | null;
   /** Whether this account has a PIN set (for soft-lock / unlock UI). Never the hash. */
   hasPin: boolean;
   /** Self-service opt-out of admin web's idle-lock PIN prompt (SessionLockProvider). */

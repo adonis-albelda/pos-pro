@@ -87,7 +87,7 @@ export function CategoryForm({
       </div>
 
       <InfoNote>
-        Markup only fills shelf price on a product with no supplier attached. A
+        Markup only fills selling price on a product with no supplier attached. A
         product tied to a supplier prices off that supplier&apos;s cost instead.
       </InfoNote>
 
@@ -105,7 +105,7 @@ export function CategoryForm({
             defaultValue={category?.markupPercent ?? 0}
           />
         </Field>
-        <Field label="Apply markup" hint="Off = owner types shelf price by hand." required={false}>
+        <Field label="Apply markup" hint="Off = owner types selling price by hand." required={false}>
           <label className="flex min-h-11 items-center gap-2 rounded-sm border border-border bg-surface px-3 text-body">
             <input
               type="checkbox"

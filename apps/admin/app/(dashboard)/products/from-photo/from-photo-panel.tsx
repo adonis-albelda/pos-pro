@@ -303,7 +303,7 @@ function DraftRow({
             onChange={(event) => applyMarkup(draft.categoryId, event.target.value)}
           />
         </Field>
-        <Field label="Shelf price">
+        <Field label="Selling price">
           <MoneyInput
             type="number"
             step="0.01"

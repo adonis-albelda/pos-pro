@@ -66,17 +66,25 @@ export default function HistoryScreen() {
   const boundaryIndex = pending.length > 0 && sent.length > 0 ? pending.length : -1;
 
   return (
-    <View
-      style={{
-        flex: 1,
-        padding: layout.gutter,
-        gap: layout.compact ? space.lg : space.xl,
-        width: "100%",
-        maxWidth: layout.readableMaxWidth,
-        alignSelf: "center",
-      }}
-    >
+    <View style={{ flex: 1 }}>
+      {/* Full screen width on purpose — WaveBackdrop draws itself at the
+          real window width/height, so it must sit outside the
+          maxWidth+centered content box below or it gets squeezed into that
+          narrower box instead of reaching both edges (visible as a
+          not-full-width wave in landscape, where readableMaxWidth caps well
+          under the screen width). */}
       <WaveBackdrop />
+
+      <View
+        style={{
+          flex: 1,
+          padding: layout.gutter,
+          gap: layout.compact ? space.lg : space.xl,
+          width: "100%",
+          maxWidth: layout.readableMaxWidth,
+          alignSelf: "center",
+        }}
+      >
 
       <Card style={[{ gap: space.md }, styles.floatShadow, { borderRadius: radius.sm }]}>
         <SectionTitle
@@ -202,6 +210,7 @@ export default function HistoryScreen() {
           )}
         />
       )}
+      </View>
     </View>
   );
 }

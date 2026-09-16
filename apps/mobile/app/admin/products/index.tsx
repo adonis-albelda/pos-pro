@@ -246,7 +246,7 @@ function ProductForm({ product, onDone }: { product: Product | null; onDone: () 
       if (!trimmedName) throw new Error("Give the product a name.");
       const priceValue = Number(price);
       const costValue = Number(costPrice);
-      if (!Number.isFinite(priceValue) || priceValue < 0) throw new Error("Enter a valid shelf price.");
+      if (!Number.isFinite(priceValue) || priceValue < 0) throw new Error("Enter a valid selling price.");
       if (!Number.isFinite(costValue) || costValue < 0) throw new Error("Enter a valid supplier price.");
 
       const input: ProductInput = {
@@ -312,7 +312,7 @@ function ProductForm({ product, onDone }: { product: Product | null; onDone: () 
         <TextInput
           value={price}
           onChangeText={setPrice}
-          placeholder="Shelf price"
+          placeholder="Selling price"
           keyboardType="decimal-pad"
           placeholderTextColor={color.inkMuted}
           style={[inputStyle, { flex: 1 }]}
