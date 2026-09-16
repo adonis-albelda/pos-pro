@@ -10,6 +10,7 @@ import { useIdleLock, IdleActivityProvider } from "@/lib/idle-lock";
 import { ensureFreshSession } from "@/lib/api/session";
 import { AccountDrawerProvider } from "@/lib/account-drawer";
 import { CartSummaryProvider } from "@/lib/cart-summary";
+import { DraftSummaryProvider } from "@/lib/draft-summary";
 import { FlyToCartProvider } from "@/lib/fly-to-cart";
 import { Button } from "@/components/ui";
 import { LoadingState } from "@/components/loading-state";
@@ -25,9 +26,10 @@ type SessionCheck = "checking" | "ready" | "error";
  * screens kept aside under /admin/native and /admin/*. Online-only — same as
  * apps/admin (CLAUDE.md §5). Same chrome as the POS tabs (StoreHeader +
  * BottomTabBar, see app/pos/_layout.tsx) — Admin is just another tab, not a
- * separate app-within-an-app, so it carries its own CartSummary/FlyToCart
- * providers only because StoreHeader needs them, not because either does
- * anything here (no cart on this tab; the chip stays hidden off /pos).
+ * separate app-within-an-app, so it carries its own CartSummary/
+ * DraftSummary/FlyToCart providers only because StoreHeader needs them, not
+ * because any of them does anything here (no cart or drafts on this tab;
+ * those chips stay hidden off /pos — see each provider's own doc comment).
  */
 export default function AdminLayout() {
   const { cashier } = useSession();
@@ -120,6 +122,7 @@ export default function AdminLayout() {
   return (
     <AccountDrawerProvider>
       <CartSummaryProvider>
+      <DraftSummaryProvider>
         <FlyToCartProvider>
           <IdleActivityProvider recordActivity={recordActivity}>
             <View
@@ -142,6 +145,7 @@ export default function AdminLayout() {
             </View>
           </IdleActivityProvider>
         </FlyToCartProvider>
+      </DraftSummaryProvider>
       </CartSummaryProvider>
     </AccountDrawerProvider>
   );

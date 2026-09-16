@@ -62,15 +62,9 @@ export function buildReadyCatalogProductInput(
         values: labels.map((name) => ({ name })),
       },
     ],
-    // Hidden from terminals until the owner reviews it and sets a real
-    // price — ready-catalog rows land at price 0 with no cost, and the
-    // page's own warning banner already tells the owner to clean these up
-    // before selling off them. Visible-but-unsellable-at-₱0 was worse than
-    // just not showing up on the POS grid yet.
     variants: labels.map(() => ({
       price: 0,
       costPrice: 0,
-      isActive: false,
     })),
   };
 }

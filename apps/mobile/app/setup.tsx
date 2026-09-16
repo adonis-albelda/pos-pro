@@ -335,8 +335,8 @@ export default function SetupScreen() {
       setVerificationSentAt(Date.now());
       setVerificationExpired(false);
     } catch (cause) {
-      // A 422 here always means the field-level message (e.g. "An account
-      // already exists for this email") — cause.message is only ever
+      // A 422 here always means the field-level message (e.g. "An existing
+      // company has already used this email") — cause.message is only ever
       // Laravel's generic "The given data was invalid." wrapper text, never
       // the actual reason, so read the field error out of .errors instead.
       const fieldError =
@@ -790,6 +790,9 @@ export default function SetupScreen() {
                       <Text style={{ fontSize: fontSize.caption, color: color.inkMuted, textAlign: "center" }}>
                         Sent to {registerEmail.trim()}
                       </Text>
+                      <Text style={{ fontSize: fontSize.caption, color: color.inkMuted, textAlign: "center" }}>
+                        The same email has your admin account's PIN — you'll need it to unlock this terminal.
+                      </Text>
                     </View>
                     {verificationExpired ? (
                       <>
@@ -1069,7 +1072,7 @@ export default function SetupScreen() {
       >
         <Text
           style={{
-            textAlign: "right",
+            textAlign: "center",
             fontSize: fontSize.caption,
             color: color.sageLight,
             opacity: 0.8,
