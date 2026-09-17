@@ -9,6 +9,7 @@ import {
   companyStats,
   createCompany as apiCreateCompany,
   createUser,
+  deleteCompany as apiDeleteCompany,
   listCompanyUsers,
   listDemoAccessCodes,
   listUsers,
@@ -93,6 +94,23 @@ export function useSetCompanyAiPlan() {
       updateCompany(getBrowserApiClient(), companyId, { aiPlanId }),
     onSuccess: (company) => {
       patchCompanyStatsRow(queryClient, company.id, { aiPlanId: company.aiPlanId });
+    },
+  });
+}
+
+/** Soft-deletes the company and its data (SoftDeleteCompanyAction) — irreversible from this app. */
+export function useDeleteCompany() {
+  const queryClient = useQueryClient();
+  const router = useRouter();
+  return useMutation({
+    mutationFn: (companyId: string) => apiDeleteCompany(getBrowserApiClient(), companyId),
+    onSuccess: async (_void, companyId) => {
+      queryClient.setQueryData<CompanyStats[]>(queryKeys.companies.stats(), (current) =>
+        current?.filter((row) => row.id !== companyId),
+      );
+      await queryClient.invalidateQueries({ queryKey: queryKeys.companies.stats() });
+      toast.success("Company deleted.");
+      router.push("/platform");
     },
   });
 }

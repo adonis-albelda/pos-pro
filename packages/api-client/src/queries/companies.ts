@@ -78,6 +78,16 @@ export async function updateCompany(client: ApiClient, id: string, patch: Update
 }
 
 /**
+ * Soft-deletes the company and cascades to every company-scoped table that
+ * supports soft deletes (SoftDeleteCompanyAction) — never a hard delete.
+ * Irreversible from this app (no "undelete" endpoint); the company row and
+ * its data stay in the database, just marked deleted_at.
+ */
+export async function deleteCompany(client: ApiClient, id: string): Promise<void> {
+  await client.delete(`/superadmin/companies/${id}`);
+}
+
+/**
  * Issues a new bearer token carrying `acting_company_id`, scoping the
  * superadmin's own session to this company's shop API (CLAUDE.md §15 —
  * impersonation, not a second login). The caller (auth layer) must swap its

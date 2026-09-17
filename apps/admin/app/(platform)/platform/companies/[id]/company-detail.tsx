@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { KeyRound, Lock, Mail, ShieldCheck, UserRound } from "lucide-react";
+import { KeyRound, Lock, Mail, ShieldCheck, Trash2, UserRound } from "lucide-react";
 import { ROLES, type User, type AiPlanId, type AiSubscriptionPlan } from "@double-a/shared-types";
 import {
   Badge,
@@ -14,10 +14,12 @@ import {
   Td,
   Th,
 } from "@/components/ui";
+import { ConfirmDialog } from "@/components/overlay";
 import { PasswordInput } from "@/components/password-input";
 import { isValidPin } from "@double-a/shared-types";
 import {
   useAddCompanyAdmin,
+  useDeleteCompany,
   useOpenCompany,
   useResetCompanyUserPassword,
   useResetCompanyUserPin,
@@ -276,6 +278,34 @@ function ToggleActiveButton({ companyId, isActive }: { companyId: string; isActi
   );
 }
 
+function DeleteCompanyButton({ companyId, companyName }: { companyId: string; companyName: string }) {
+  const [open, setOpen] = useState(false);
+  const mutation = useDeleteCompany();
+
+  return (
+    <>
+      <Button type="button" variant="danger" icon={Trash2} onClick={() => setOpen(true)}>
+        Delete company
+      </Button>
+      <ConfirmDialog
+        open={open}
+        onClose={() => setOpen(false)}
+        onConfirm={() => mutation.mutate(companyId)}
+        title="Delete this company?"
+        description="Soft-deletes the company and every product, category, customer, supplier, purchase order, location, terminal and user under it. The shop's sales and inventory history stay in the database for records, but its API access is cut off immediately. This cannot be undone from here."
+        confirmLabel="Delete company"
+        confirmationText={companyName}
+        pending={mutation.isPending}
+      />
+      {mutation.isError ? (
+        <ErrorNote>
+          {mutation.error instanceof Error ? mutation.error.message : "Could not delete this company."}
+        </ErrorNote>
+      ) : null}
+    </>
+  );
+}
+
 function AppPlanSelector({
   companyId,
   aiPlanId,
@@ -337,11 +367,13 @@ function OpenCompanyButton({ companyId }: { companyId: string }) {
 
 export function CompanyControls({
   companyId,
+  companyName,
   isActive,
   aiPlanId,
   plans,
 }: {
   companyId: string;
+  companyName: string;
   isActive: boolean;
   aiPlanId: AiPlanId;
   plans: AiSubscriptionPlan[];
@@ -351,6 +383,7 @@ export function CompanyControls({
       <div className="flex flex-col gap-2 sm:flex-row">
         <OpenCompanyButton companyId={companyId} />
         <ToggleActiveButton companyId={companyId} isActive={isActive} />
+        <DeleteCompanyButton companyId={companyId} companyName={companyName} />
       </div>
       <AppPlanSelector companyId={companyId} aiPlanId={aiPlanId} plans={plans} />
     </div>

@@ -90,6 +90,7 @@ export function CompanyDetailPageClient({ companyId }: { companyId: string }) {
         <>
           <CompanyControls
             companyId={companyId}
+            companyName={stats.name}
             isActive={stats.isActive}
             aiPlanId={stats.aiPlanId}
             plans={plansQuery.data.plans}
