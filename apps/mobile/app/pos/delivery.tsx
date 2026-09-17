@@ -54,17 +54,23 @@ export default function DeliveryScreen() {
   }
 
   return (
-    <View
-      style={{
-        flex: 1,
-        padding: layout.gutter,
-        gap: layout.compact ? space.lg : space.xl,
-        width: "100%",
-        maxWidth: layout.readableMaxWidth,
-        alignSelf: "center",
-      }}
-    >
+    <View style={{ flex: 1 }}>
+      {/* Full screen width on purpose — same fix as history.tsx: WaveBackdrop
+          draws itself at the real window size, so it must sit outside the
+          maxWidth+centered content box below or it gets squeezed into that
+          narrower box instead of reaching both edges. */}
       <WaveBackdrop />
+
+      <View
+        style={{
+          flex: 1,
+          padding: layout.gutter,
+          gap: layout.compact ? space.lg : space.xl,
+          width: "100%",
+          maxWidth: layout.readableMaxWidth,
+          alignSelf: "center",
+        }}
+      >
 
       <SectionTitle
         icon={Truck}
@@ -145,6 +151,7 @@ export default function DeliveryScreen() {
           }}
         />
       )}
+      </View>
     </View>
   );
 }

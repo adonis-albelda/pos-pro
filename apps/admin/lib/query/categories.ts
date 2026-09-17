@@ -1,11 +1,12 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { CategoryType } from "@double-a/shared-types";
 import { countProductsByCategory, createCategory, listCategories } from "@double-a/api-client/queries";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 import { queryKeys } from "./keys";
 
-export function useCategories(options: { includeInactive?: boolean } = {}) {
+export function useCategories(options: { includeInactive?: boolean; categoryType?: CategoryType } = {}) {
   return useQuery({
     queryKey: queryKeys.categories.list(options),
     queryFn: () => listCategories(getBrowserApiClient(), options),

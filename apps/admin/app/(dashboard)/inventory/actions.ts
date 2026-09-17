@@ -19,11 +19,11 @@ type Mode = (typeof MODES)[number];
  * and a trigger applies it to products.stock_quantity, so stock always equals
  * the sum of its movements.
  *
- * Three ways in: add units, remove units, or state the counted total after a
- * stock take. A count is still recorded as the difference — the movement row is
- * the fact, the count is only how the number was arrived at, and the difference
- * is worked out here against the server's stock rather than against whatever the
- * browser was last told.
+ * Three ways in: add units, remove units, or replace the total outright (a
+ * stock take, or an outright correction). A replace is still recorded as the
+ * difference — the movement row is the fact, the new total is only how the
+ * number was arrived at, and the difference is worked out here against the
+ * server's stock rather than against whatever the browser was last told.
  */
 export async function moveStock(
   _prev: FormState,
@@ -64,7 +64,7 @@ export async function moveStock(
     return {
       error:
         mode === "count"
-          ? "Counted quantity must be a whole number, 0 or more."
+          ? "New stock quantity must be a whole number, 0 or more."
           : "Quantity must be a whole number greater than zero.",
       ok: false,
     };
@@ -77,12 +77,12 @@ export async function moveStock(
     changeQuantity = roundQuantity(magnitude - recordedStock);
     if (changeQuantity === 0) {
       return {
-        error: `The count matches what is recorded (${recordedStock}). Nothing to record.`,
+        error: `That already matches what is recorded (${recordedStock}). Nothing to record.`,
         ok: false,
       };
     }
 
-    const counted = `Counted ${magnitude}, was ${recordedStock}`;
+    const counted = `Replaced with ${magnitude}, was ${recordedStock}`;
     movementNote = note ? `${counted}. ${note}` : counted;
   }
 

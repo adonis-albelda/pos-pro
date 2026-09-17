@@ -4,7 +4,7 @@ import { useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { ROLES, type AiPlanId, type CompanyStats, type InvoiceNumberMode } from "@double-a/shared-types";
+import { ROLES, type AiPlanId, type CompanyStats } from "@double-a/shared-types";
 import {
   companyStats,
   createCompany as apiCreateCompany,
@@ -15,7 +15,6 @@ import {
   openCompany as apiOpenCompany,
   resetUserPassword,
   resetUserPin,
-  setCompanyInvoiceMode,
   setUserDemoFlag,
   updateCompany,
 } from "@double-a/api-client/queries";
@@ -94,17 +93,6 @@ export function useSetCompanyAiPlan() {
       updateCompany(getBrowserApiClient(), companyId, { aiPlanId }),
     onSuccess: (company) => {
       patchCompanyStatsRow(queryClient, company.id, { aiPlanId: company.aiPlanId });
-    },
-  });
-}
-
-export function useSetCompanyInvoiceMode() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ companyId, mode }: { companyId: string; mode: InvoiceNumberMode }) =>
-      setCompanyInvoiceMode(getBrowserApiClient(), companyId, mode),
-    onSuccess: (mode, { companyId }) => {
-      patchCompanyStatsRow(queryClient, companyId, { invoiceNumberMode: mode });
     },
   });
 }

@@ -251,6 +251,7 @@ export function toAddonGroup(resource: JsonApiResource<AddonGroupAttrs>): AddonG
 export interface CategoryAttrs {
   name: string;
   parent_id: string | null;
+  category_type?: string | null;
   is_active: boolean;
   markup_percent: number;
   markup_applied: boolean;
@@ -264,6 +265,7 @@ export function toCategory(resource: JsonApiResource<CategoryAttrs>): Category {
     id: resource.id,
     name: a.name,
     parentId: a.parent_id,
+    categoryType: a.category_type === "expense" ? "expense" : "product",
     isActive: a.is_active,
     markupPercent: Number(a.markup_percent ?? 0),
     markupApplied: a.markup_applied ?? false,
@@ -832,7 +834,6 @@ export function toInventoryMovement(resource: JsonApiResource<InventoryMovementA
 export interface CompanyAttrs {
   name: string;
   is_active: boolean;
-  invoice_number_mode?: string | null;
   ai_plan_id?: number;
   created_at: string | null;
 }
@@ -843,7 +844,6 @@ export function toCompany(resource: JsonApiResource<CompanyAttrs>): Company {
     id: resource.id,
     name: a.name,
     isActive: a.is_active,
-    invoiceNumberMode: a.invoice_number_mode === "incremental" ? "incremental" : "random",
     aiPlanId: (a.ai_plan_id ?? 1) as AiPlanId,
     createdAt: a.created_at ?? "",
   };

@@ -1,4 +1,4 @@
-import type { Category } from "@double-a/shared-types";
+import type { Category, CategoryType } from "@double-a/shared-types";
 import { ApiError, type ApiClient, type JsonApiResource } from "../http";
 import { type CategoryAttrs, toCategory } from "../mappers";
 
@@ -15,6 +15,7 @@ import { type CategoryAttrs, toCategory } from "../mappers";
 export interface CategoryInput {
   name: string;
   parentId?: string | null;
+  categoryType?: CategoryType;
   isActive?: boolean;
   markupPercent?: number;
   markupApplied?: boolean;
@@ -24,6 +25,7 @@ function toPayload(input: Partial<CategoryInput>): Record<string, unknown> {
   const payload: Record<string, unknown> = {};
   if (input.name !== undefined) payload.name = input.name;
   if (input.parentId !== undefined) payload.parent_id = input.parentId;
+  if (input.categoryType !== undefined) payload.category_type = input.categoryType;
   if (input.isActive !== undefined) payload.is_active = input.isActive;
   if (input.markupPercent !== undefined) payload.markup_percent = input.markupPercent;
   if (input.markupApplied !== undefined) payload.markup_applied = input.markupApplied;
@@ -43,9 +45,11 @@ function toPayload(input: Partial<CategoryInput>): Record<string, unknown> {
  */
 export async function listCategories(
   client: ApiClient,
-  options: { includeInactive?: boolean } = {},
+  options: { includeInactive?: boolean; categoryType?: CategoryType } = {},
 ): Promise<Category[]> {
-  const { data } = await client.get<{ data: JsonApiResource<CategoryAttrs>[] }>("/categories");
+  const { data } = await client.get<{ data: JsonApiResource<CategoryAttrs>[] }>("/categories", {
+    type: options.categoryType,
+  });
   const categories = data.map(toCategory);
   return options.includeInactive ? categories : categories.filter((c) => c.isActive);
 }

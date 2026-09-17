@@ -455,9 +455,6 @@ export interface StockTransfer {
   receipts: StockTransferReceipt[];
 }
 
-/** A tenant the platform superadmin creates. Shop identity still lives in store_settings. */
-export type InvoiceNumberMode = "incremental" | "random";
-
 export type AiPlanId = 1 | 2 | 3;
 
 export interface AiSubscriptionPlan {
@@ -472,8 +469,6 @@ export interface Company {
   id: string;
   name: string;
   isActive: boolean;
-  /** Superadmin-only dial — see AssignInvoiceNumber. Defaults to "random" for a new company. */
-  invoiceNumberMode: InvoiceNumberMode;
   /** Superadmin-only app subscription tier (Basic / Standard / Premium). */
   aiPlanId: AiPlanId;
   createdAt: string;
@@ -490,11 +485,15 @@ export interface CompanyStats extends Company {
   stockUnits: number;
 }
 
+export type CategoryType = "product" | "expense";
+
 /** A node in the category tree, e.g. Plumbing / Pipes / PVC. */
 export interface Category {
   id: string;
   name: string;
   parentId: string | null;
+  /** "product" (default — the catalog tree) or "expense" (flat, picked from the expense form). */
+  categoryType: CategoryType;
   isActive: boolean;
   /**
    * When `markupApplied`, a new product under this category gets a shelf price

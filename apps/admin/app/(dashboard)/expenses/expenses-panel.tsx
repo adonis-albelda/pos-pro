@@ -160,6 +160,7 @@ export function ExpensesPanel({
         open={editing !== null}
         onClose={() => setEditing(null)}
         title={editing ? `Edit ${editing.description}` : "Edit expense"}
+        className="max-w-3xl"
       >
         {editing ? (
           <ExpenseForm

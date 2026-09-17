@@ -55,8 +55,8 @@ const MODES: { key: Mode; label: string; hint: string; reason: string }[] = [
   },
   {
     key: "count",
-    label: "Set counted total",
-    hint: "After a stock take. The difference is recorded as the movement.",
+    label: "Replace stock",
+    hint: "Type the exact new total — after a stock take, or to correct it outright. The difference is recorded as the movement.",
     reason: "adjustment",
   },
 ];
@@ -196,7 +196,7 @@ export function StockForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <Field
-            label={mode === "count" ? "Counted quantity" : "Quantity"}
+            label={mode === "count" ? "New stock quantity" : "Quantity"}
             hint={
               product
                 ? `Counted in ${product.unit}.`

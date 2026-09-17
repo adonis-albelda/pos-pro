@@ -177,8 +177,14 @@ export function StoreHeader() {
               borderRightColor: "rgba(255,255,255,0.25)",
             }}
           >
-            <HeaderStat value={timeLabel} label={dateLabel} />
-            <HeaderStatDivider />
+            {/* Phone: too crowded with sync/drafts/cart already fighting for
+                the same row — dropped entirely. Tablet keeps it, there's room. */}
+            {compact ? null : (
+              <>
+                <HeaderStat value={timeLabel} label={dateLabel} />
+                <HeaderStatDivider />
+              </>
+            )}
             <SyncStat
               look={look}
               pendingSales={state.pendingSales}

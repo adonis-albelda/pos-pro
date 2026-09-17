@@ -1,4 +1,4 @@
-import type { Company, CompanyStats, InvoiceNumberMode, User, AiPlanId } from "@double-a/shared-types";
+import type { Company, CompanyStats, User, AiPlanId } from "@double-a/shared-types";
 import type { ApiClient, DataEnvelope, JsonApiOne, JsonApiResource } from "../http";
 import { type CompanyAttrs, type CompanyStatsAttrs, type UserAttrs, toCompany, toCompanyStats, toUser } from "../mappers";
 
@@ -109,24 +109,6 @@ export async function listCompanyUsers(
   );
   const users = data.map(toUser);
   return options.includeInactive ? users : users.filter((user) => user.isActive);
-}
-
-/**
- * "incremental" (JH-000001, a locked counter) or "random" (JH-7K4QX2N9,
- * unguessable) — see AssignInvoiceNumber. Superadmin-only; deliberately not
- * part of `updateStoreSettings` (queries/settings.ts), which the shop admin's
- * own settings page writes to.
- */
-export async function setCompanyInvoiceMode(
-  client: ApiClient,
-  companyId: string,
-  mode: InvoiceNumberMode,
-): Promise<InvoiceNumberMode> {
-  const { data } = await client.put<DataEnvelope<{ company_id: string; invoice_number_mode: string }>>(
-    `/superadmin/companies/${companyId}/invoice-mode`,
-    { mode },
-  );
-  return data.invoice_number_mode === "incremental" ? "incremental" : "random";
 }
 
 export interface DemoAccessRedemption {

@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { KeyRound, Lock, Mail, ShieldCheck, UserRound } from "lucide-react";
-import { ROLES, type InvoiceNumberMode, type User, type AiPlanId, type AiSubscriptionPlan } from "@double-a/shared-types";
+import { ROLES, type User, type AiPlanId, type AiSubscriptionPlan } from "@double-a/shared-types";
 import {
   Badge,
   Button,
@@ -23,7 +23,6 @@ import {
   useResetCompanyUserPin,
   useSetCompanyActive,
   useSetCompanyAiPlan,
-  useSetCompanyInvoiceMode,
   useSetCompanyUserDemoFlag,
 } from "@/lib/query/companies";
 
@@ -277,63 +276,6 @@ function ToggleActiveButton({ companyId, isActive }: { companyId: string; isActi
   );
 }
 
-function InvoiceModeToggle({
-  companyId,
-  mode,
-}: {
-  companyId: string;
-  mode: InvoiceNumberMode;
-}) {
-  const mutation = useSetCompanyInvoiceMode();
-
-  function submit(next: InvoiceNumberMode) {
-    if (next === mode || mutation.isPending) return;
-    mutation.mutate({ companyId, mode: next });
-  }
-
-  return (
-    <div className="flex flex-col gap-2 rounded-md border border-border p-3 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <p className="text-body-sm font-medium text-ink">Invoice numbers</p>
-        <p className="text-caption text-ink-muted">
-          {mode === "random"
-            ? "Random unguessable strings (e.g. JH-7K4QX2N9)."
-            : "Sequential counter (e.g. JH-000001), set by the shop admin."}
-        </p>
-      </div>
-      <div className="flex flex-col gap-2 sm:items-end">
-        <div className="flex gap-2">
-          <Button
-            type="button"
-            variant={mode === "random" ? "primary" : "secondary"}
-            size="sm"
-            loading={mutation.isPending}
-            onClick={() => submit("random")}
-          >
-            Random
-          </Button>
-          <Button
-            type="button"
-            variant={mode === "incremental" ? "primary" : "secondary"}
-            size="sm"
-            loading={mutation.isPending}
-            onClick={() => submit("incremental")}
-          >
-            Incremental
-          </Button>
-        </div>
-        {mutation.isError ? (
-          <ErrorNote>
-            {mutation.error instanceof Error
-              ? mutation.error.message
-              : "Could not update invoice mode."}
-          </ErrorNote>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
 function AppPlanSelector({
   companyId,
   aiPlanId,
@@ -396,13 +338,11 @@ function OpenCompanyButton({ companyId }: { companyId: string }) {
 export function CompanyControls({
   companyId,
   isActive,
-  invoiceNumberMode,
   aiPlanId,
   plans,
 }: {
   companyId: string;
   isActive: boolean;
-  invoiceNumberMode: InvoiceNumberMode;
   aiPlanId: AiPlanId;
   plans: AiSubscriptionPlan[];
 }) {
@@ -413,7 +353,6 @@ export function CompanyControls({
         <ToggleActiveButton companyId={companyId} isActive={isActive} />
       </div>
       <AppPlanSelector companyId={companyId} aiPlanId={aiPlanId} plans={plans} />
-      <InvoiceModeToggle companyId={companyId} mode={invoiceNumberMode} />
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useId, useRef, useState } from "react";
 import { Camera, Check, FileText, Wallet, X } from "lucide-react";
+import { toast } from "sonner";
 import {
   EXPENSE_CATEGORY_MAX,
   EXPENSE_DESCRIPTION_MAX,
@@ -21,7 +22,68 @@ import {
 } from "@/components/ui";
 import { EMPTY_FORM_STATE } from "@/lib/form-state";
 import { useAttachExpenseReceipt, useInvalidateExpenses } from "@/lib/query/expenses";
+import { useCategories, useCreateCategory } from "@/lib/query/categories";
 import { saveExpense } from "./actions";
+
+/**
+ * "Type to search, or create it" Combobox picker, same pattern as
+ * BrandPicker (product-form.tsx) — except the value here is the category
+ * *name* itself, not an id: expenses.category is a plain string column, not
+ * a foreign key (unlike products.category_id), so there's nothing to join
+ * back to. Options are every category with category_type "expense" only —
+ * the product catalog tree never shows up here.
+ */
+function ExpenseCategoryPicker({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (name: string) => void;
+}) {
+  const categoriesQuery = useCategories({ categoryType: "expense" });
+  const createCategory = useCreateCategory();
+  const categories = categoriesQuery.data ?? [];
+
+  function onCreate(name: string) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    if (trimmed.length > EXPENSE_CATEGORY_MAX) {
+      toast.error(`Category name can't be longer than ${EXPENSE_CATEGORY_MAX} characters.`);
+      return;
+    }
+    const existing = categories.find(
+      (category) => category.name.trim().toLowerCase() === trimmed.toLowerCase(),
+    );
+    if (existing) {
+      onChange(existing.name);
+      return;
+    }
+    createCategory.mutate(
+      { name: trimmed, categoryType: "expense" },
+      {
+        onSuccess: (created) => onChange(created.name),
+        onError: (error) =>
+          toast.error(error instanceof Error ? error.message : "Could not create that category."),
+      },
+    );
+  }
+
+  return (
+    <Combobox
+      value={value}
+      onChange={onChange}
+      placeholder={categoriesQuery.isPending ? "Loading…" : "No category"}
+      emptyLabel={categoriesQuery.isPending ? "Loading…" : undefined}
+      options={[
+        { value: "", label: "No category" },
+        ...categories.map((category) => ({ value: category.name, label: category.name })),
+      ]}
+      creatable
+      createOptionLabel={(typed) => `"${typed}" doesn't exist — create it`}
+      onCreate={onCreate}
+    />
+  );
+}
 
 export function ExpenseForm({
   expense,
@@ -40,6 +102,7 @@ export function ExpenseForm({
   const [state, action, pending] = useActionState(saveExpense, EMPTY_FORM_STATE);
   const invalidateExpenses = useInvalidateExpenses();
   const attachReceipt = useAttachExpenseReceipt();
+  const [category, setCategory] = useState(expense?.category ?? "");
 
   // Creating: no expense id exists yet, so a picked file waits here and
   // uploads once the action above returns the newly created row's id.
@@ -142,11 +205,8 @@ export function ExpenseForm({
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Category" hint="Optional — rent, wages, utilities…" required={false}>
-            <Input
-              name="category"
-              defaultValue={expense?.category ?? ""}
-              maxLength={EXPENSE_CATEGORY_MAX}
-            />
+            <ExpenseCategoryPicker value={category} onChange={setCategory} />
+            <input type="hidden" name="category" value={category} />
           </Field>
           <Field
             label="Paid with"

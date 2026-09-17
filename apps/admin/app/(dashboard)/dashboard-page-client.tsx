@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { Route } from "next";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   CalendarClock,
   ChartColumn,
@@ -24,6 +25,7 @@ import { formatMoney, formatPercent, stockLevel } from "@double-a/shared-types";
 import { summariseProfit } from "@double-a/api-client/queries";
 import type { UpcomingSupplierPayment } from "@double-a/api-client/queries";
 import { resolveRange, formatStoreDay } from "@/lib/date-range";
+import { DateRangePicker, type DayWindowValue } from "@/components/date-range-picker";
 import {
   Badge,
   Card,
@@ -67,8 +69,24 @@ type OversoldProduct = Product & { oversoldBy: number };
 
 export function DashboardPageClient() {
   const [panel, setPanel] = useState<DashboardPanel>(null);
-  const { range, fromDay, toDay } = resolveRange({ preset: "today" });
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { range, fromDay, toDay, label } = resolveRange({
+    preset: searchParams.get("preset") ?? undefined,
+    from: searchParams.get("from") ?? undefined,
+    to: searchParams.get("to") ?? undefined,
+  });
   const { locationId } = useLocationFilter();
+
+  function applyWindow(window: DayWindowValue) {
+    const next = new URLSearchParams(searchParams.toString());
+    if (window.fromDay) next.set("from", window.fromDay);
+    else next.delete("from");
+    if (window.toDay) next.set("to", window.toDay);
+    else next.delete("to");
+    next.delete("preset");
+    router.push(`/?${next.toString()}` as Route);
+  }
 
   const salesQuery = useRecentSales(200, locationId, { from: range.from, to: range.to });
   const lowStockQuery = useBelowReorder();
@@ -103,7 +121,7 @@ export function DashboardPageClient() {
 
     const profit = profitRows ? summariseProfit(profitRows) : null;
     const cashierNameById = new Map(users.map((user) => [user.id, user.name]));
-    // Already scoped to today server-side via useRecentSales' from/to.
+    // Already scoped to the selected period server-side via useRecentSales' from/to.
     const todaysSales = recentSales;
     const oversold: OversoldProduct[] = oversoldRows.map((product) => ({
       ...product,
@@ -225,18 +243,22 @@ export function DashboardPageClient() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        icon={Sun}
-        title="Dashboard"
-        description="Today's pulse — tap a stat or alert to open the full list."
-      />
+      <div className="flex w-full flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <PageHeader
+          icon={Sun}
+          title="Dashboard"
+          description="Tap a stat or alert to open the full list."
+        />
+        <DateRangePicker fromDay={fromDay} toDay={toDay} onApply={applyWindow} className="sm:w-64" />
+      </div>
+      <p className="text-caption text-ink-muted">{label}</p>
 
       <div className="grid gap-4 xl:grid-cols-2">
         <Card className="px-4 py-5 sm:px-6">
           <CardHeader
             icon={ChartColumn}
             title="Sales by hour"
-            description="Completed sales synced today, bucketed by time."
+            description="Completed sales synced in the selected period, bucketed by time."
           />
           {salesQuery.isPending ? (
             <Skeleton className="h-40 w-full" />
@@ -250,8 +272,8 @@ export function DashboardPageClient() {
         <Card className="px-4 py-5 sm:px-6">
           <CardHeader
             icon={TrendingUp}
-            title="Money today"
-            description="Revenue against costs and what is left."
+            title="Money"
+            description="Revenue against costs and what is left, for the selected period."
           />
           {salesQuery.isPending ? (
             <Skeleton className="h-40 w-full" />
@@ -278,8 +300,8 @@ export function DashboardPageClient() {
             expensesTotal === null
               ? "Sign in as the owner to see expenses"
               : expensesTotal > 0
-                ? "Logged for today"
-                : "Nothing logged today"
+                ? "Logged in this period"
+                : "Nothing logged in this period"
           }
           tone={expensesTotal && expensesTotal > 0 ? "warning" : "neutral"}
           loading={expensesQuery.isPending}
@@ -291,7 +313,7 @@ export function DashboardPageClient() {
           hint={
             net === null
               ? "Revenue minus supplier cost minus expenses"
-              : "Today's true bottom line — always at or below Gross profit"
+              : "True bottom line for the period — always at or below Gross profit"
           }
           tone={net !== null && net < 0 ? "danger" : "success"}
           loading={salesQuery.isPending || expensesQuery.isPending || profitQuery.isPending}
@@ -312,14 +334,14 @@ export function DashboardPageClient() {
           icon={Percent}
           label="Margin"
           value={profit ? formatPercent(profit.marginPercent) : "—"}
-          hint={profit ? "Share of today's revenue kept" : undefined}
+          hint={profit ? "Share of this period's revenue kept" : undefined}
           loading={profitQuery.isPending}
         />
         <StatCard
           icon={Receipt}
           label="Sales"
           value={String(completed.length)}
-          hint="Tap to view today's sales"
+          hint="Tap to view sales for the period"
           loading={salesQuery.isPending}
           onClick={salesQuery.isPending ? undefined : () => setPanel("sales")}
         />
@@ -327,7 +349,7 @@ export function DashboardPageClient() {
           icon={ShoppingBag}
           label="Items sold"
           value={String(itemsSold)}
-          hint="Tap to view today's sales"
+          hint="Tap to view sales for the period"
           loading={salesQuery.isPending}
           onClick={salesQuery.isPending ? undefined : () => setPanel("sales")}
         />
@@ -453,8 +475,8 @@ function DashboardDetailSheet({
       description: "Products at or below their own reorder point.",
     },
     sales: {
-      title: "Today's sales",
-      description: "Sales synced from terminals today.",
+      title: "Sales for the period",
+      description: "Sales synced from terminals in the selected period.",
     },
     "supplier-payments": {
       title: "Upcoming supplier payments",

@@ -149,7 +149,17 @@ export default function SetupScreen() {
    * background poll, since both end at the same place (an enrolled device,
    * headed to onboarding/business-type/first-pull).
    */
-  async function completeSignIn(signedIn: Awaited<ReturnType<typeof login>>): Promise<boolean> {
+  async function completeSignIn(
+    signedIn: Awaited<ReturnType<typeof login>>,
+    options?: {
+      /** A brand-new registration always gets the feature tour once, even
+       * on a device that already saw it for a different account (a reused
+       * demo/QA device, a second business on the same tablet) — the
+       * per-device "seen it" flag below is what a returning admin's normal
+       * sign-in checks instead. */
+      forceOnboarding?: boolean;
+    },
+  ): Promise<boolean> {
     const profile = signedIn.user;
 
     if (profile.role !== ROLES.ADMIN && profile.role !== ROLES.TERMINAL) {
@@ -227,8 +237,9 @@ export default function SetupScreen() {
     }
 
     // First-install feature tour — right after sign-in, before catalog /
-    // business-type. Returning installs that already finished skip it.
-    const seenOnboarding = await hasSeenFeatureOnboarding();
+    // business-type. Returning installs that already finished skip it,
+    // unless this sign-in is a brand-new registration (forceOnboarding).
+    const seenOnboarding = options?.forceOnboarding ? false : await hasSeenFeatureOnboarding();
     if (!seenOnboarding) {
       setAfterOnboardingStep(nextStep);
       setStep("feature-onboarding");
@@ -438,7 +449,7 @@ export default function SetupScreen() {
           });
           if (cancelled) return;
           clearInterval(timer);
-          await completeSignIn(signedIn);
+          await completeSignIn(signedIn, { forceOnboarding: true });
         } catch {
           // Not verified yet — same 422 as a wrong password either way
           // (LoginController can't tell them apart), or a dropped

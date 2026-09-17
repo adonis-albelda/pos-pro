@@ -91,7 +91,6 @@ export function CompanyDetailPageClient({ companyId }: { companyId: string }) {
           <CompanyControls
             companyId={companyId}
             isActive={stats.isActive}
-            invoiceNumberMode={stats.invoiceNumberMode}
             aiPlanId={stats.aiPlanId}
             plans={plansQuery.data.plans}
           />
