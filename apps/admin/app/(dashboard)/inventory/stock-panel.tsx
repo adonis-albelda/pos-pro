@@ -28,6 +28,7 @@ import { useLocationFilter } from "@/components/location-filter-provider";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 import { indentLabel, type CategoryOption } from "@/lib/category-options";
 import { queryKeys } from "@/lib/query/keys";
+import { PrintInventoryReportButton } from "./print-inventory-report-button";
 import { RestockSheet } from "./restock-sheet";
 import {
   STOCK_SORTS,
@@ -285,9 +286,10 @@ export function StockPanel({
                 addLabel="Restock or adjust"
                 onAdd={() => setRestocking({})}
                 addDisabled={mutationsLocked}
-                exportHref="/api/export/valuation"
                 preserve={preserve}
-              />
+              >
+                <PrintInventoryReportButton />
+              </RecordToolbar>
             </div>
           </div>
 

@@ -776,7 +776,6 @@ export default function SetupScreen() {
                   <TextLink label="Forgot password?" onPress={() => setForgotOpen(true)} disabled={busy} />
                   <TextLink label="New to POSPro One?" onPress={() => setRegisterOpen(true)} disabled={busy} />
                 </View>
-                <InfoLine text="One-time setup, admin or terminal account only — needs an internet connection." />
               </>
             ) : null}
 
