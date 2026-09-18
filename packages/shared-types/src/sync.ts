@@ -65,7 +65,10 @@ export function timeAgo(
   timestamp: string | null,
   now: number = Date.now(),
 ): string {
-  if (!timestamp) return "never";
+  // Every caller slots this into "Last synced: {this}" (or shows it bare
+  // next to the sync icon, like the header's compact pill) — "never" read as
+  // alarming/permanent. "not yet" reads as "hasn't happened yet, still can."
+  if (!timestamp) return "not yet";
 
   const elapsed = now - new Date(timestamp).getTime();
   if (elapsed < 60_000) return "just now";

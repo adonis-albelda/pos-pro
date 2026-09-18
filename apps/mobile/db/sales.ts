@@ -414,6 +414,32 @@ export async function listLocalSales(
   return hydrateSales(sales);
 }
 
+/**
+ * Local-calendar-day bounds, inclusive both ends — `fromDay`/`toDay` are
+ * YYYY-MM-DD in the device's own timezone, same convention as
+ * lib/date.ts#toIsoDateString. Mirrors summariseToday()'s own
+ * new Date(y,m,d) boundary construction so "today" here and there never
+ * disagree by a timezone offset.
+ */
+export async function listLocalSalesByRange(
+  fromDay: string,
+  toDay: string,
+  limit = 500,
+): Promise<LocalSaleWithItems[]> {
+  const [fy, fm, fd] = fromDay.split("-").map(Number);
+  const [ty, tm, td] = toDay.split("-").map(Number);
+  const start = new Date(fy ?? 1970, (fm ?? 1) - 1, fd ?? 1).toISOString();
+  const end = new Date(ty ?? 1970, (tm ?? 1) - 1, (td ?? 1) + 1).toISOString();
+
+  const sales = await getDb().getAllAsync<SaleRow>(
+    "SELECT * FROM sales WHERE created_at >= ? AND created_at < ? ORDER BY created_at DESC LIMIT ?",
+    start,
+    end,
+    limit,
+  );
+  return hydrateSales(sales);
+}
+
 export async function listPendingSales(): Promise<LocalSaleWithItems[]> {
   const sales = await getDb().getAllAsync<SaleRow>(
     "SELECT * FROM sales WHERE sync_status = 'pending' ORDER BY created_at",
@@ -542,12 +568,24 @@ export interface LocalDaySummary {
 
 export async function summariseToday(): Promise<LocalDaySummary> {
   const now = new Date();
-  const startOfDay = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-  ).toISOString();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return summariseBetween(startOfDay.toISOString(), null);
+}
 
+/**
+ * Same figures as summariseToday(), for an arbitrary local-calendar-day
+ * range instead of always today — `fromDay`/`toDay` are YYYY-MM-DD in the
+ * device's own timezone (lib/date.ts#toIsoDateString), inclusive both ends.
+ */
+export async function summariseRange(fromDay: string, toDay: string): Promise<LocalDaySummary> {
+  const [fy, fm, fd] = fromDay.split("-").map(Number);
+  const [ty, tm, td] = toDay.split("-").map(Number);
+  const start = new Date(fy ?? 1970, (fm ?? 1) - 1, fd ?? 1).toISOString();
+  const end = new Date(ty ?? 1970, (tm ?? 1) - 1, (td ?? 1) + 1).toISOString();
+  return summariseBetween(start, end);
+}
+
+async function summariseBetween(startIso: string, endIso: string | null): Promise<LocalDaySummary> {
   const db = getDb();
   const totals = await db.getFirstAsync<{
     sales_count: number;
@@ -567,16 +605,16 @@ export async function summariseToday(): Promise<LocalDaySummary> {
         SUM(CASE WHEN status IN ('refunded', 'voided') THEN 1 ELSE 0 END) AS refund_count,
         SUM(CASE WHEN status IN ('refunded', 'voided') THEN total_amount ELSE 0 END) AS refund_total
        FROM sales
-      WHERE created_at >= ?`,
-    startOfDay,
+      WHERE created_at >= ?${endIso ? " AND created_at < ?" : ""}`,
+    ...(endIso ? [startIso, endIso] : [startIso]),
   );
 
   const items = await db.getFirstAsync<{ items_sold: number | null }>(
     `SELECT SUM(si.quantity) AS items_sold
        FROM sale_items si
        JOIN sales s ON s.id = si.sale_id
-      WHERE s.created_at >= ? AND s.status = 'completed'`,
-    startOfDay,
+      WHERE s.created_at >= ?${endIso ? " AND s.created_at < ?" : ""} AND s.status = 'completed'`,
+    ...(endIso ? [startIso, endIso] : [startIso]),
   );
 
   return {

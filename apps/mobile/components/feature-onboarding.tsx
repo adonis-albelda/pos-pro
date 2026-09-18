@@ -13,7 +13,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react-native";
 import { Button } from "@/components/ui";
 import { WaveBackdrop } from "@/components/wave-backdrop";
 import { markFeatureOnboardingSeen } from "@/lib/onboarding";
-import { circleRadius, color, fontSize, radius, space } from "@/theme";
+import { color, fontSize, radius, space } from "@/theme";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- asset-require pattern; no image module declaration
 const LOGO = require("../assets/logo.webp");
@@ -159,25 +159,9 @@ export function FeatureOnboarding({ onDone }: { onDone: () => void }) {
           gap: space.xl,
         }}
       >
-        {/* Same circular logo badge + greeting as setup sign-in. */}
+        {/* Bare logo, transparent — same as setup sign-in. */}
         <View style={{ alignItems: "center", gap: space.md }}>
-          <View
-            style={{
-              width: 100,
-              height: 100,
-              borderRadius: circleRadius(100),
-              backgroundColor: color.surface,
-              alignItems: "center",
-              justifyContent: "center",
-              shadowColor: color.primaryDark,
-              shadowOpacity: 0.3,
-              shadowRadius: 14,
-              shadowOffset: { width: 0, height: 6 },
-              elevation: 6,
-            }}
-          >
-            <Image source={LOGO} style={{ width: 68, height: 68 }} resizeMode="contain" />
-          </View>
+          <Image source={LOGO} style={{ width: 100, height: 100 }} resizeMode="contain" />
 
           <View style={{ alignItems: "center", gap: space.xs }}>
             <Text
@@ -199,6 +183,7 @@ export function FeatureOnboarding({ onDone }: { onDone: () => void }) {
         <Animated.View
           style={{
             width: "100%",
+            position: "relative",
             backgroundColor: color.surface,
             borderRadius: radius.lg,
             borderWidth: 1,
@@ -215,6 +200,39 @@ export function FeatureOnboarding({ onDone }: { onDone: () => void }) {
             transform: [{ translateX }],
           }}
         >
+        {!isLast ? (
+          <Pressable
+            onPress={() => void finish()}
+            disabled={busy}
+            accessibilityRole="button"
+            accessibilityLabel="Skip introduction"
+            style={{
+              position: "absolute",
+              top: space.md,
+              right: space.md,
+              zIndex: 1,
+              // Pinned over the step illustration now, not blank card padding —
+              // a translucent pill keeps "Skip" readable over any artwork.
+              backgroundColor: "rgba(0,0,0,0.35)",
+              borderRadius: radius.sm,
+              paddingVertical: space.xs,
+              paddingHorizontal: space.sm,
+              opacity: busy ? 0.5 : 1,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: fontSize.caption,
+                fontWeight: "600",
+                color: "#fff",
+                letterSpacing: 0.3,
+              }}
+            >
+              Skip
+            </Text>
+          </Pressable>
+        ) : null}
+
         <Image
           source={step.image}
           style={{
@@ -307,33 +325,6 @@ export function FeatureOnboarding({ onDone }: { onDone: () => void }) {
             style={{ flex: 1.4 }}
           />
         </View>
-
-        {!isLast ? (
-          <Pressable
-            onPress={() => void finish()}
-            disabled={busy}
-            accessibilityRole="button"
-            accessibilityLabel="Skip introduction"
-            style={{
-              marginTop: space.md,
-              alignSelf: "center",
-              paddingVertical: space.sm,
-              paddingHorizontal: space.md,
-              opacity: busy ? 0.5 : 1,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: fontSize.caption,
-                fontWeight: "600",
-                color: color.inkMuted,
-                letterSpacing: 0.3,
-              }}
-            >
-              Skip
-            </Text>
-          </Pressable>
-        ) : null}
       </Animated.View>
       </View>
     </View>

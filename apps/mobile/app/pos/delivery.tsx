@@ -13,7 +13,6 @@ import {
 } from "@/db/sales";
 import { useLayout } from "@/lib/layout";
 import { useSync } from "@/sync/sync-provider";
-import { WaveBackdrop } from "@/components/wave-backdrop";
 import { Badge, Button, Card, EmptyState, Money, SectionTitle } from "@/components/ui";
 import { color, fontSize, space, styles } from "@/theme";
 
@@ -55,12 +54,6 @@ export default function DeliveryScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      {/* Full screen width on purpose — same fix as history.tsx: WaveBackdrop
-          draws itself at the real window size, so it must sit outside the
-          maxWidth+centered content box below or it gets squeezed into that
-          narrower box instead of reaching both edges. */}
-      <WaveBackdrop />
-
       <View
         style={{
           flex: 1,

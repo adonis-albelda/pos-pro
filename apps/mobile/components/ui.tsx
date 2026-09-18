@@ -424,7 +424,7 @@ export function Stat({
     tone === "primary" ? color.primary : tone === "accent" ? color.accentInk : color.ink;
   const fill =
     tone === "primary"
-      ? color.primaryTint
+      ? color.primarySoft
       : tone === "accent"
         ? color.accentSoft
         : color.paper;

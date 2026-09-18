@@ -23,6 +23,7 @@ export * from "./auth";
 export * from "./sales";
 export * from "./purchase-orders";
 export * from "./goods-receipts";
+export * from "./receipt-templates";
 export * from "./gallery-photos";
 export * from "./features";
 export * from "./backups";

@@ -365,10 +365,17 @@ export default function UnlockScreen() {
                     borderRadius: circleRadius(56),
                     alignItems: "center",
                     justifyContent: "center",
+                    overflow: "hidden",
                     backgroundColor: active ? color.primary : color.primarySoft,
                   }}
                 >
-                  {cashier.role === ROLES.ADMIN ? (
+                  {cashier.avatarUrl ? (
+                    <Image
+                      source={{ uri: cashier.avatarUrl }}
+                      style={{ width: 56, height: 56 }}
+                      resizeMode="cover"
+                    />
+                  ) : cashier.role === ROLES.ADMIN ? (
                     <Shield
                       size={24}
                       color={active ? color.onPrimary : color.primary}

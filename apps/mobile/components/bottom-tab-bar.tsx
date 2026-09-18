@@ -1,21 +1,23 @@
 import { Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePathname, useRouter } from "expo-router";
-import { CalendarClock, Receipt, ShoppingCart, Tag, Truck, type LucideIcon } from "lucide-react-native";
+import { Receipt, ShoppingCart, Tag, Truck, User, type LucideIcon } from "lucide-react-native";
 import { usePriceInquiryOptional } from "@/lib/price-inquiry";
 import { color, fontSize, space } from "@/theme";
 
+// Attendance removed for now (still routable at /pos/attendance, just no
+// entry point) — not deleted, in case it comes back.
 const TABS = [
   { href: "/pos", label: "POS", icon: ShoppingCart },
   { href: "/pos/delivery", label: "Delivery", icon: Truck },
-  { href: "/pos/history", label: "History", icon: Receipt },
-  { href: "/pos/attendance", label: "Attendance", icon: CalendarClock },
+  { href: "/pos/history", label: "Sales", icon: Receipt },
+  { href: "/pos/account", label: "Account", icon: User },
 ] as const;
 
 const CENTER_BUTTON_SIZE = 52;
 
 /**
- * Persistent bottom navigation for Sell/Delivery/History/Attendance —
+ * Persistent bottom navigation for Sell/Delivery/Sales/Account —
  * previously only reachable from the account drawer (a few taps away from
  * whatever screen a cashier was on). Shown at every width and orientation
  * (phone and tablet, portrait or landscape) — a tablet's own chrome

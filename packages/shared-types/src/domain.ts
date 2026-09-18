@@ -276,6 +276,38 @@ export const DEFAULT_RECEIPT_LAYOUT: ReceiptLayout = {
   updatedAt: "",
 };
 
+export type ReceiptTemplateFontSize = "normal" | "large";
+
+/**
+ * A named, custom receipt for a purpose other than the one fixed customer
+ * receipt above — e.g. a "Kitchen Order" slip. Same block toggles and same
+ * PT-210/58mm renderer (formatReceiptLines), plus its own printed title,
+ * description, and heading font size. An owner can define any number of
+ * these; nothing prints one automatically yet — see receipt-page-client.tsx.
+ */
+export interface ReceiptTemplate {
+  id: string;
+  /** Internal label shown in the admin list, e.g. "Kitchen Order". */
+  name: string;
+  /** What actually prints as the heading — not the name above. */
+  title: string | null;
+  description: string | null;
+  fontSize: ReceiptTemplateFontSize;
+  showShopName: boolean;
+  showAddress: boolean;
+  showPhone: boolean;
+  showLogoLine: boolean;
+  showCashier: boolean;
+  showTerminal: boolean;
+  showCustomer: boolean;
+  showDiscounts: boolean;
+  showPayment: boolean;
+  showFooter: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** PT-210 character budget. Never invent a different width for this shop. */
 export const RECEIPT_COLUMNS = 32;
 export const RECEIPT_PAPER_WIDTH_MM = 58;

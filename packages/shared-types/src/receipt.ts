@@ -89,6 +89,9 @@ export function formatReceiptLines(
   options: {
     layout?: ReceiptLayout;
     store?: StoreSettings;
+    /** A custom receipt template's own heading — e.g. "ORDER RECEIPT" for a Kitchen Order slip. Printed before everything else. */
+    title?: string | null;
+    description?: string | null;
   } = {},
 ): string[] {
   const layout = options.layout ?? DEFAULT_RECEIPT_LAYOUT;
@@ -101,6 +104,16 @@ export function formatReceiptLines(
     const pad = Math.max(0, Math.floor((columns - trimmed.length) / 2));
     lines.push(`${" ".repeat(pad)}${trimmed}`);
   };
+
+  if (options.title) {
+    pushCentered(options.title.toUpperCase());
+  }
+  if (options.description) {
+    for (const part of wrapWords(options.description, columns)) pushCentered(part);
+  }
+  if (options.title || options.description) {
+    lines.push(divider(columns));
+  }
 
   if (layout.showShopName) {
     pushCentered(store.name);
@@ -180,7 +193,12 @@ export function formatReceiptLines(
 /** One string the admin preview paints inside a 58mm paper frame. */
 export function formatReceiptPreview(
   sale: ReceiptPreviewSale = SAMPLE_RECEIPT_SALE,
-  options: { layout?: ReceiptLayout; store?: StoreSettings } = {},
+  options: {
+    layout?: ReceiptLayout;
+    store?: StoreSettings;
+    title?: string | null;
+    description?: string | null;
+  } = {},
 ): string {
   return formatReceiptLines(sale, options).join("\n");
 }

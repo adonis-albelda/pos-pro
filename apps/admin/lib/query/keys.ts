@@ -120,6 +120,10 @@ export const queryKeys = {
     all: ["receipt-layout"] as const,
     detail: () => ["receipt-layout", "detail"] as const,
   },
+  receiptTemplates: {
+    all: ["receipt-templates"] as const,
+    list: () => ["receipt-templates", "list"] as const,
+  },
   /** No mutations — every key carries its own params so distinct date ranges cache independently. */
   reports: {
     all: ["reports"] as const,

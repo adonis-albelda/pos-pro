@@ -26,6 +26,7 @@ import type {
   PurchaseOrderPayment,
   PurchaseOrderStatus,
   ReceiptLayout,
+  ReceiptTemplate,
   Sale,
   SaleItem,
   SaleItemAddon,
@@ -545,6 +546,50 @@ export function toReceiptLayout(resource: JsonApiResource<ReceiptLayoutAttrs>): 
     paperWidthMm: 58,
     columns: 32,
     printerModel: "PT-210",
+    updatedAt: a.updated_at ?? "",
+  };
+}
+
+export interface ReceiptTemplateAttrs {
+  name: string;
+  title: string | null;
+  description: string | null;
+  font_size: string;
+  show_shop_name: boolean;
+  show_address: boolean;
+  show_phone: boolean;
+  show_logo_line: boolean;
+  show_cashier: boolean;
+  show_terminal: boolean;
+  show_customer: boolean;
+  show_discounts: boolean;
+  show_payment: boolean;
+  show_footer: boolean;
+  is_active: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export function toReceiptTemplate(resource: JsonApiResource<ReceiptTemplateAttrs>): ReceiptTemplate {
+  const a = resource.attributes;
+  return {
+    id: resource.id,
+    name: a.name,
+    title: a.title,
+    description: a.description,
+    fontSize: "large" === a.font_size ? "large" : "normal",
+    showShopName: a.show_shop_name,
+    showAddress: a.show_address,
+    showPhone: a.show_phone,
+    showLogoLine: a.show_logo_line,
+    showCashier: a.show_cashier,
+    showTerminal: a.show_terminal,
+    showCustomer: a.show_customer,
+    showDiscounts: a.show_discounts,
+    showPayment: a.show_payment,
+    showFooter: a.show_footer,
+    isActive: a.is_active,
+    createdAt: a.created_at ?? "",
     updatedAt: a.updated_at ?? "",
   };
 }

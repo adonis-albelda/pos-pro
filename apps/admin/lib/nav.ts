@@ -450,22 +450,16 @@ export const NAV_MENUS: NavMenu[] = [
 export const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((group) => group.items);
 
 /**
- * Some pages are conceptually part of another item's area even though they
- * live in their own top-level section — Sales Dashboard sits under Overview,
- * but it's still the Sales area, so "Sales" and "New Sale" should read as
- * active there too, not just when their own exact routes are open.
+ * Shared by SidebarNav and ClassicShell so both highlight the same items the
+ * same way. A nested/detail route still highlights its parent (`/sales/abc`
+ * highlights `/sales`) — but only across a real path-segment boundary. A
+ * plain `pathname.startsWith(href)` would also match "/sales-dashboard"
+ * against href "/sales", since that's a string prefix even though it's a
+ * completely different page — hence the explicit "/" boundary below.
  */
-const RELATED_ACTIVE_HREFS: Record<string, Route[]> = {
-  "/sales-dashboard": ["/sales" as Route, "/sales/new" as Route],
-};
-
-/** Shared by SidebarNav and ClassicShell so both highlight the same items the same way. */
 export function isNavItemActive(pathname: string, href: string): boolean {
   if ("/" === href) return "/" === pathname;
-  if (pathname.startsWith(href)) return true;
-  return Object.entries(RELATED_ACTIVE_HREFS).some(
-    ([sourceHref, relatedHrefs]) => pathname.startsWith(sourceHref) && relatedHrefs.includes(href as Route),
-  );
+  return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 /** Drops items a superadmin has turned off for this company; a group left with nothing is dropped too. */

@@ -8,11 +8,7 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { ApiError } from "@double-a/api-client";
-import { changePin, updateMe } from "@double-a/api-client/queries";
 import {
-  PIN_LENGTH_MAX,
-  PIN_LENGTH_MIN,
   RECEIPT_COLUMNS,
   RECEIPT_PAPER_WIDTH_MM,
   RECEIPT_PRINTER_MODEL,
@@ -22,10 +18,8 @@ import { getSyncMeta } from "@/db/meta";
 import { countLocalProducts } from "@/db/products";
 import { countPendingSales } from "@/db/sales";
 import { countLocalUsers } from "@/db/users";
-import { ensureFreshSession, getSelfServiceApiClient } from "@/lib/api/session";
 import { getDeviceId, getDeviceLabel } from "@/lib/device";
 import { useLayout } from "@/lib/layout";
-import { cacheLocalPin } from "@/lib/pin";
 import { useSession } from "@/lib/session";
 import { useStoreSettings } from "@/lib/store";
 import { useSync } from "@/sync/sync-provider";
@@ -35,16 +29,13 @@ import { transportFor, type PrinterSettings } from "@/printing/transport";
 import {
   Bluetooth,
   Check,
-  Clock,
   FileText,
-  KeyRound,
   LogOut,
   Printer,
   RefreshCw,
   Send,
   Smartphone,
   Store,
-  User as UserIcon,
 } from "lucide-react-native";
 import { WaveBackdrop } from "@/components/wave-backdrop";
 import { Badge, Button, Card, ErrorNote, SectionTitle, SuccessNote } from "@/components/ui";
@@ -55,20 +46,12 @@ interface BtDevice {
   name: string;
 }
 
-type SettingsTab = "general" | "printer" | "account";
-
-function errorMessage(error: unknown, fallback: string): string {
-  if (error instanceof ApiError) {
-    const first = error.errors ? Object.values(error.errors)[0]?.[0] : undefined;
-    return first ?? error.message;
-  }
-  return error instanceof Error ? error.message : fallback;
-}
+type SettingsTab = "general" | "printer";
 
 export default function SettingsScreen() {
   const router = useRouter();
   const layout = useLayout();
-  const { cashier, lock, updateCashier } = useSession();
+  const { lock } = useSession();
   const { dataVersion } = useSync();
   const store = useStoreSettings();
 
@@ -90,22 +73,6 @@ export default function SettingsScreen() {
     pending: 0,
     lastSyncedAt: null as string | null,
   });
-
-  // Account tab — change PIN.
-  const [currentPin, setCurrentPin] = useState("");
-  const [newPin, setNewPin] = useState("");
-  const [confirmPin, setConfirmPin] = useState("");
-  const [pinBusy, setPinBusy] = useState(false);
-  const [pinError, setPinError] = useState<string | null>(null);
-  const [pinMessage, setPinMessage] = useState<string | null>(null);
-
-  // Account tab — personal idle timeout override.
-  const [idleMinutesInput, setIdleMinutesInput] = useState(
-    cashier && cashier.idleTimeoutMinutes !== null ? String(cashier.idleTimeoutMinutes) : "",
-  );
-  const [idleBusy, setIdleBusy] = useState(false);
-  const [idleError, setIdleError] = useState<string | null>(null);
-  const [idleMessage, setIdleMessage] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -300,75 +267,6 @@ export default function SettingsScreen() {
     }
   }
 
-  async function submitChangePin() {
-    if (!cashier) return;
-    setPinError(null);
-    setPinMessage(null);
-
-    if (newPin.length < PIN_LENGTH_MIN || newPin.length > PIN_LENGTH_MAX) {
-      setPinError(`PIN must be ${PIN_LENGTH_MIN}-${PIN_LENGTH_MAX} digits.`);
-      return;
-    }
-    if (newPin !== confirmPin) {
-      setPinError("Those two PINs don't match.");
-      return;
-    }
-    if (cashier.hasPin && currentPin.length < PIN_LENGTH_MIN) {
-      setPinError("Enter your current PIN.");
-      return;
-    }
-
-    setPinBusy(true);
-    try {
-      await ensureFreshSession();
-      const client = getSelfServiceApiClient();
-      await changePin(client, {
-        currentPin: cashier.hasPin ? currentPin : undefined,
-        pin: newPin,
-      });
-      await cacheLocalPin(cashier.id, newPin);
-      updateCashier({ hasPin: true });
-      setCurrentPin("");
-      setNewPin("");
-      setConfirmPin("");
-      setPinMessage("PIN changed.");
-    } catch (cause) {
-      setPinError(errorMessage(cause, "Could not change the PIN."));
-    } finally {
-      setPinBusy(false);
-    }
-  }
-
-  async function submitIdleTimeout() {
-    if (!cashier) return;
-    setIdleError(null);
-    setIdleMessage(null);
-
-    const trimmed = idleMinutesInput.trim();
-    const idleTimeoutMinutes = trimmed === "" ? null : Number(trimmed);
-    if (idleTimeoutMinutes !== null && (!Number.isFinite(idleTimeoutMinutes) || idleTimeoutMinutes < 0 || idleTimeoutMinutes > 120)) {
-      setIdleError("Enter a number of minutes between 0 and 120, or leave it blank.");
-      return;
-    }
-
-    setIdleBusy(true);
-    try {
-      await ensureFreshSession();
-      const client = getSelfServiceApiClient();
-      const updated = await updateMe(client, { idleTimeoutMinutes });
-      updateCashier({ idleTimeoutMinutes: updated.idleTimeoutMinutes });
-      setIdleMessage(
-        idleTimeoutMinutes === null
-          ? `Saved. Using the shop default (${store.idleTimeoutMinutes} min).`
-          : "Saved.",
-      );
-    } catch (cause) {
-      setIdleError(errorMessage(cause, "Could not save the idle timeout."));
-    } finally {
-      setIdleBusy(false);
-    }
-  }
-
   return (
     <View style={styles.screen}>
       <WaveBackdrop />
@@ -384,12 +282,6 @@ export default function SettingsScreen() {
         }}
       >
         <SettingsTabButton label="General" selected={tab === "general"} onPress={() => setTab("general")} />
-        <SettingsTabButton
-          label="Account"
-          icon={UserIcon}
-          selected={tab === "account"}
-          onPress={() => setTab("account")}
-        />
         <SettingsTabButton
           label="Printer"
           icon={Printer}
@@ -565,97 +457,6 @@ export default function SettingsScreen() {
               variant="secondary"
               icon={Send}
               onPress={() => void testPrint()}
-            />
-          </Card>
-        </>
-      ) : null}
-
-      {tab === "account" ? (
-        <>
-          <Card style={[{ gap: space.md }, styles.floatShadow, { borderRadius: radius.sm }]}>
-            <SectionTitle
-              icon={KeyRound}
-              title="Change PIN"
-              hint={cashier?.hasPin ? "Used to unlock this terminal." : "No PIN set yet — set one below."}
-            />
-
-            {cashier?.hasPin ? (
-              <Labelled label="Current PIN">
-                <TextInput
-                  value={currentPin}
-                  onChangeText={setCurrentPin}
-                  placeholder="••••"
-                  placeholderTextColor={color.inkMuted}
-                  keyboardType="number-pad"
-                  secureTextEntry
-                  maxLength={PIN_LENGTH_MAX}
-                  style={inputStyle}
-                />
-              </Labelled>
-            ) : null}
-
-            <Labelled label="New PIN">
-              <TextInput
-                value={newPin}
-                onChangeText={setNewPin}
-                placeholder={`${PIN_LENGTH_MIN}-${PIN_LENGTH_MAX} digits`}
-                placeholderTextColor={color.inkMuted}
-                keyboardType="number-pad"
-                secureTextEntry
-                maxLength={PIN_LENGTH_MAX}
-                style={inputStyle}
-              />
-            </Labelled>
-
-            <Labelled label="Confirm new PIN">
-              <TextInput
-                value={confirmPin}
-                onChangeText={setConfirmPin}
-                placeholder={`${PIN_LENGTH_MIN}-${PIN_LENGTH_MAX} digits`}
-                placeholderTextColor={color.inkMuted}
-                keyboardType="number-pad"
-                secureTextEntry
-                maxLength={PIN_LENGTH_MAX}
-                style={inputStyle}
-              />
-            </Labelled>
-
-            {pinError ? <ErrorNote>{pinError}</ErrorNote> : null}
-            {pinMessage ? <SuccessNote>{pinMessage}</SuccessNote> : null}
-
-            <Button
-              label={pinBusy ? "Saving…" : "Save PIN"}
-              icon={Check}
-              busy={pinBusy}
-              onPress={() => void submitChangePin()}
-            />
-          </Card>
-
-          <Card style={[{ gap: space.md }, styles.floatShadow, { borderRadius: radius.sm }]}>
-            <SectionTitle
-              icon={Clock}
-              title="Idle timeout"
-              hint={`Shop default is ${store.idleTimeoutMinutes} min. Leave blank to use it.`}
-            />
-            <Labelled label="Lock me after (minutes)">
-              <TextInput
-                value={idleMinutesInput}
-                onChangeText={setIdleMinutesInput}
-                placeholder={String(store.idleTimeoutMinutes)}
-                placeholderTextColor={color.inkMuted}
-                keyboardType="number-pad"
-                style={inputStyle}
-              />
-            </Labelled>
-
-            {idleError ? <ErrorNote>{idleError}</ErrorNote> : null}
-            {idleMessage ? <SuccessNote>{idleMessage}</SuccessNote> : null}
-
-            <Button
-              label={idleBusy ? "Saving…" : "Save"}
-              icon={Check}
-              busy={idleBusy}
-              onPress={() => void submitIdleTimeout()}
             />
           </Card>
         </>

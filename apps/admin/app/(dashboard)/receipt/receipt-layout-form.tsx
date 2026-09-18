@@ -132,7 +132,7 @@ export function ReceiptLayoutForm({
         <div
           className="relative isolate mx-auto overflow-hidden rounded-sm border border-border bg-[#f7f4ea] shadow-xs"
           style={{ width: 240 }}
-          aria-label="Delivery receipt preview at 58mm width"
+          aria-label="Customer receipt preview at 58mm width"
         >
           <ReceiptDisclaimerWatermark />
           <div className="relative z-10 border-b border-dashed border-border/80 bg-[#f7f4ea]/80 px-3 py-1.5 text-center text-[10px] text-ink-muted">
@@ -153,7 +153,7 @@ export function ReceiptLayoutForm({
   );
 }
 
-/** Scattered gray disclaimer behind delivery preview text — never covers the receipt body. */
+/** Scattered gray disclaimer behind the preview text — never covers the receipt body. */
 function ReceiptDisclaimerWatermark() {
   return (
     <div

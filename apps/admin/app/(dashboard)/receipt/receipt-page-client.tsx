@@ -1,20 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { BadgeCheck, FileText, Printer, Truck } from "lucide-react";
+import { BadgeCheck, FileText, Printer, ScrollText } from "lucide-react";
 import { Card, CardHeader, EmptyState, PageHeader } from "@/components/ui";
 import { ReceiptLayoutForm } from "./receipt-layout-form";
+import { ReceiptTemplatesPanel } from "./receipt-templates-panel";
 import { useReceiptLayout, useStoreSettings } from "@/lib/query/settings";
 
-type ReceiptTab = "official" | "delivery";
+type ReceiptTab = "official" | "customer" | "custom";
 
 const TABS: { id: ReceiptTab; label: string; icon: typeof Printer }[] = [
   { id: "official", label: "Official Receipt", icon: BadgeCheck },
-  { id: "delivery", label: "Delivery Receipt", icon: Truck },
+  { id: "customer", label: "Customer Receipt", icon: Printer },
+  { id: "custom", label: "Custom Receipt", icon: ScrollText },
 ];
 
 export function ReceiptPageClient() {
-  const [tab, setTab] = useState<ReceiptTab>("delivery");
+  const [tab, setTab] = useState<ReceiptTab>("customer");
   const layoutQuery = useReceiptLayout();
   const storeQuery = useStoreSettings();
 
@@ -72,16 +74,16 @@ export function ReceiptPageClient() {
             <EmptyState
               icon={FileText}
               title="Official Receipt coming soon"
-              instruction="We're currently accrediting with the BIR so this system can generate Official Receipts. Delivery receipts stay available in the meantime."
+              instruction="We're currently accrediting with the BIR so this system can generate Official Receipts. The customer receipt stays available in the meantime."
             />
           </div>
         </Card>
-      ) : (
+      ) : tab === "customer" ? (
         <Card className="relative z-0 overflow-visible">
           <CardHeader
-            icon={Truck}
-            title="Blocks on the delivery receipt"
-            description="Toggle sections. The preview on the right is the paper output — not an Official Receipt."
+            icon={Printer}
+            title="Blocks on the customer receipt"
+            description="Toggle sections. The preview on the right is the paper output — not an Official Receipt. Every sale prints this."
           />
           <div className="relative z-0 px-4 py-5 sm:px-6">
             {isPending ? (
@@ -95,6 +97,14 @@ export function ReceiptPageClient() {
             )}
           </div>
         </Card>
+      ) : isPending ? (
+        <p className="py-8 text-center text-body text-ink-muted">Loading…</p>
+      ) : error ? (
+        <p className="py-8 text-center text-body text-danger">
+          {error instanceof Error ? error.message : "Could not load store settings."}
+        </p>
+      ) : (
+        <ReceiptTemplatesPanel store={storeQuery.data!} />
       )}
     </div>
   );

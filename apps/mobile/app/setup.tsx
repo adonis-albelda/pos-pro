@@ -44,7 +44,7 @@ import { useKeyboardHeight } from "@/components/bottom-sheet";
 import { FeatureOnboarding } from "@/components/feature-onboarding";
 import { WaveBackdrop } from "@/components/wave-backdrop";
 import { hasSeenBusinessTypeStep, hasSeenFeatureOnboarding, markBusinessTypeStepSeen } from "@/lib/onboarding";
-import { circleRadius, color, fontSize, radius, space } from "@/theme";
+import { color, fontSize, radius, space } from "@/theme";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- same asset-require pattern as company-intro.tsx; no *.png module declaration in this project
 const LOGO = require("../assets/logo.webp");
@@ -94,6 +94,10 @@ export default function SetupScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const layout = useLayout();
+  // Button's own `large` variant is a fixed 56dp everywhere else in the app
+  // (POS "Charge", etc) — shrinking that globally would ripple into screens
+  // this flow has nothing to do with. Phone only, this flow's own buttons.
+  const largeButtonStyle = layout.compact ? { minHeight: 48 } : undefined;
   const keyboardHeight = useKeyboardHeight();
   const { notifyEnrollmentChanged } = useSync();
 
@@ -273,7 +277,16 @@ export default function SetupScreen() {
         });
       } catch (cause) {
         if (cause instanceof ApiError && (cause.isValidation || cause.isUnauthenticated)) {
-          setError("That email and password do not match an account.");
+          // Server only ever reveals "unverified" once the password already
+          // matched (see LoginController) — safe to show that distinctly here
+          // since reaching this branch means it already proved that. Wrong
+          // password / no such account still share one generic message below,
+          // same as always — the server never distinguishes those two.
+          const unverified = cause.errors?.email_unverified?.[0];
+          setError(
+            unverified ??
+              "That email and password do not match an account. Double-check them and try again.",
+          );
           return;
         }
         throw cause;
@@ -614,7 +627,11 @@ export default function SetupScreen() {
           // visibly drift instead of sitting still at the top.
           justifyContent:
             keyboardHeight > 0 || registerSent || "first-pull" === step ? "flex-start" : "center",
-          paddingHorizontal: layout.gutter,
+          // Phone: layout.gutter alone (space.sm) left the sign-in/forgot-password/
+          // register card spanning nearly edge to edge. Every step in this flow
+          // shares this one container, so the extra inset narrows all of them at
+          // once. Tablet already gets real narrowing from maxWidth below.
+          paddingHorizontal: layout.compact ? layout.gutter + space.lg : layout.gutter,
           // Must stay equal top/bottom when no keyboard — that symmetry is
           // what makes the sole flow child (the card) land at the screen's
           // true vertical middle. The leftover space this centering creates
@@ -653,23 +670,7 @@ export default function SetupScreen() {
             onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
             style={{ alignItems: "center", gap: space.md }}
           >
-            <View
-              style={{
-                width: 100,
-                height: 100,
-                borderRadius: circleRadius(100),
-                backgroundColor: color.surface,
-                alignItems: "center",
-                justifyContent: "center",
-                shadowColor: color.primaryDark,
-                shadowOpacity: 0.3,
-                shadowRadius: 14,
-                shadowOffset: { width: 0, height: 6 },
-                elevation: 6,
-              }}
-            >
-              <Image source={LOGO} style={{ width: 68, height: 68 }} resizeMode="contain" />
-            </View>
+            <Image source={LOGO} style={{ width: 100, height: 100 }} resizeMode="contain" />
 
             <View style={{ alignItems: "center", gap: space.xs }}>
               <Text
@@ -693,6 +694,7 @@ export default function SetupScreen() {
           {/* Form card — floats over the wave; a soft edge plus the shadow, not shadow alone. */}
           <View
             style={{
+              position: "relative",
               backgroundColor: color.surface,
               borderRadius: radius.lg,
               borderWidth: 1,
@@ -707,6 +709,12 @@ export default function SetupScreen() {
               elevation: 10,
             }}
           >
+            {step === "business-type" ? (
+              <View style={{ position: "absolute", top: space.md, right: space.md, zIndex: 1 }}>
+                <TextLink label="Skip" onPress={skipBusinessType} disabled={businessTypeBusy} />
+              </View>
+            ) : null}
+
             {/* Card heading — the step-specific action, mirrors the outer greeting/card split */}
             <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
               <View
@@ -737,6 +745,9 @@ export default function SetupScreen() {
 
             {step === "sign-in" && !forgotOpen && !registerOpen ? (
               <>
+                {error ? (
+                  <Text style={{ fontSize: fontSize.body, color: color.danger }}>{error}</Text>
+                ) : null}
                 <FilledInput
                   label="Email/Username"
                   icon={<Mail size={16} color={color.inkMuted} strokeWidth={2} />}
@@ -756,10 +767,10 @@ export default function SetupScreen() {
                   autoComplete="password"
                   placeholder="••••••••"
                 />
-                {error ? <ErrorNote>{error}</ErrorNote> : null}
                 <Button
                   label={busy ? "Signing in..." : "Sign In"}
                   large
+                  style={largeButtonStyle}
                   busy={busy}
                   onPress={() => void connectTerminal()}
                  
@@ -818,6 +829,7 @@ export default function SetupScreen() {
                         <Button
                           label={resendBusy ? "Sending..." : "Resend verification email"}
                           large
+                          style={largeButtonStyle}
                           busy={resendBusy}
                           onPress={() => void resendVerification()}
                          
@@ -902,6 +914,7 @@ export default function SetupScreen() {
                     <Button
                       label={registerBusy ? "Creating account..." : "Create Account"}
                       large
+                      style={largeButtonStyle}
                       busy={registerBusy}
                       disabled={!acceptedTerms}
                       onPress={() => void submitRegistration()}
@@ -948,6 +961,7 @@ export default function SetupScreen() {
                     <Button
                       label={forgotBusy ? "Sending..." : "Send Reset Link"}
                       large
+                      style={largeButtonStyle}
                       busy={forgotBusy}
                       onPress={() => void sendResetLink()}
                      
@@ -984,6 +998,7 @@ export default function SetupScreen() {
                 <Button
                   label={busy ? "Downloading..." : "Download Products"}
                   large
+                  style={largeButtonStyle}
                   busy={busy}
                   onPress={() => void firstPull()}
                  
@@ -1024,7 +1039,6 @@ export default function SetupScreen() {
                     </Pressable>
                   ))}
                 </View>
-                <TextLink label="Skip" onPress={skipBusinessType} disabled={businessTypeBusy} />
               </>
             ) : null}
 
@@ -1052,6 +1066,7 @@ export default function SetupScreen() {
                 <Button
                   label="Start Shift"
                   large
+                  style={largeButtonStyle}
                   onPress={() => router.replace("/unlock")}
                  
                   icon={Play}

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { ImageBackground, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, {
   FadeInDown,
@@ -17,7 +17,7 @@ import { color, fontSize, radius, space, styles } from "@/theme";
 import { BottomSheet } from "./bottom-sheet";
 import { Badge, IconButton } from "./ui";
 
-export function ProductTile({
+function ProductTileImpl({
   product,
   inCart,
   compact = false,
@@ -401,6 +401,35 @@ export function ProductTile({
 
   return floating;
 }
+
+/**
+ * The product-fetch effect on the Sell screen (app/pos/index.tsx) now keeps a
+ * product row's object reference stable across a realtime/focus refetch
+ * whenever nothing about it actually changed (mergeProducts + gridTiles'
+ * cache) — this memo is what actually cashes that in, so an unchanged tile
+ * skips its own re-render (SVG gradient, Reanimated shared value, image)
+ * instead of every mounted tile redoing that work on every stock tick.
+ * Callback props (onPress/onRemove/...) are deliberately not compared —
+ * they don't affect what a tile looks like, only what tapping it does, and
+ * excluding them keeps this a cheap reference check instead of a functions
+ * comparison that would always report "different" anyway.
+ */
+function productTilePropsEqual(
+  prev: Parameters<typeof ProductTileImpl>[0],
+  next: Parameters<typeof ProductTileImpl>[0],
+): boolean {
+  return (
+    prev.product === next.product &&
+    prev.inCart === next.inCart &&
+    prev.compact === next.compact &&
+    prev.minHeight === next.minHeight &&
+    prev.padding === next.padding &&
+    prev.justCreated === next.justCreated &&
+    prev.enterIndex === next.enterIndex
+  );
+}
+
+export const ProductTile = memo(ProductTileImpl, productTilePropsEqual);
 
 /**
  * Alternate L→R / R→L slide on mount. Outer View owns flex layout so the cell

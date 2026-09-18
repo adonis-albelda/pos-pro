@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, Pressable, Text, View } from "react-native";
 import { usePathname, useRouter } from "expo-router";
-import { CheckCircle2, Menu, ShoppingCart } from "lucide-react-native";
+import { CheckCircle2, FileText, Menu, ShoppingCart, Wifi, WifiOff, type LucideIcon } from "lucide-react-native";
 import { formatMoney, type SyncPhase } from "@double-a/shared-types";
 import { AccountDrawer } from "@/components/account-drawer";
 import { LocationSwitcher } from "@/components/location-switcher";
@@ -11,6 +11,8 @@ import { useCartSummary } from "@/lib/cart-summary";
 import { useDraftSummary } from "@/lib/draft-summary";
 import { useFlyToCart } from "@/lib/fly-to-cart";
 import { useLayout } from "@/lib/layout";
+import { useNetworkStatus } from "@/lib/network";
+import { useSession } from "@/lib/session";
 import { useSync } from "@/sync/sync-provider";
 import { pendingLabel, syncLook, useMinuteTick, type SyncLook } from "@/sync/status";
 import { color, fontSize, radius, space } from "@/theme";
@@ -21,6 +23,10 @@ import { color, fontSize, radius, space } from "@/theme";
  * today's sales (tablet). Sync chip taps through to Sync — does not sync
  * itself.
  */
+
+/** Shared minimum height for every pressable header pill (Synced, Draft sales, Cart) so they line up regardless of one-line vs two-line content. */
+const HEADER_BUTTON_MIN_HEIGHT = 36;
+
 export function StoreHeader() {
   const state = useSync();
   const cart = useCartSummary();
@@ -29,6 +35,11 @@ export function StoreHeader() {
   const pathname = usePathname();
   const { compact } = useLayout();
   const { open: drawerOpen, openDrawer, closeDrawer } = useAccountDrawer();
+  // Effective online, not raw connectivity — a device with a signal but
+  // Offline mode turned on (account drawer) still won't auto-sync, and the
+  // cashier reading this icon cares about "will it sync," not the radio.
+  const { isConnected } = useNetworkStatus();
+  const effectiveOnline = isConnected && !state.offlineModeEnabled;
   const [daySummary, setDaySummary] = useState<LocalDaySummary | null>(null);
   const onSellScreen = pathname === "/pos";
   // The embedded web dashboard has its own live data — this chrome's time/
@@ -72,8 +83,6 @@ export function StoreHeader() {
     const timer = setTimeout(() => setBanner(null), 3000);
     return () => clearTimeout(timer);
   }, [banner]);
-
-  const logoSize = compact ? 32 : 36;
 
   // Tablet: today's terminal totals in the space the cart chip used to hold.
   // Re-read when pendingSales moves (sale just completed calls refresh()) or
@@ -121,15 +130,195 @@ export function StoreHeader() {
     previousItemCount.current = cart.itemCount;
   }, [cart.itemCount, cartScale]);
 
+  const { cashier } = useSession();
+  const firstName = cashier?.name.trim().split(/\s+/)[0] ?? "there";
+  const greetingWord =
+    now.getHours() < 12 ? "Good morning" : now.getHours() < 18 ? "Good afternoon" : "Good evening";
+
+  if (compact) {
+    // Phone only — two thin tiers instead of one crowded row: identity
+    // (menu, a greeting instead of the shop name — the cashier already
+    // knows what shop they're standing in, they don't get greeted by name
+    // anywhere else, and online dot) on top, sync/drafts/cart as an even
+    // strip of flat icon pills below. Tablet is untouched, see the branch
+    // further down.
+    const syncTint = look.failed ? color.danger : look.stale ? color.warning : color.onPrimary;
+    // Compact form for the icon badge — "2m", "40m", "3h" — not the full
+    // "2m ago" sentence there's no room for on a tiny badge. Hidden for a
+    // terminal that's never synced and isn't currently doing anything, same
+    // reasoning as the pill this replaced.
+    const syncBadge =
+      look.busy || look.failed
+        ? null
+        : state.lastSyncedAt
+          ? look.shortText === "just now"
+            ? "now"
+            : look.shortText.replace(/\s*ago$/, "")
+          : null;
+    return (
+      <>
+        <View style={{ backgroundColor: color.primary }}>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: space.sm,
+              paddingHorizontal: space.md,
+              paddingVertical: space.sm,
+            }}
+          >
+            <Pressable
+              onPress={openDrawer}
+              accessibilityRole="button"
+              accessibilityLabel="Open menu"
+              hitSlop={8}
+              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+            >
+              <Menu size={20} color={color.onPrimary} strokeWidth={2.25} />
+            </Pressable>
+            <Text
+              numberOfLines={1}
+              style={{
+                flex: 1,
+                fontSize: fontSize.body,
+                fontWeight: "600",
+                color: color.onPrimary,
+                letterSpacing: 0.1,
+              }}
+            >
+              {onAdminScreen ? "Viewing Backoffice" : `${greetingWord}, ${firstName}!`}
+            </Text>
+            <Pressable
+              onPress={() => router.replace("/pos/sync")}
+              accessibilityRole="button"
+              accessibilityLabel={`${look.text}. ${pendingLabel(state.pendingSales)}. Opens sync.`}
+              hitSlop={8}
+              style={{ width: 20, height: 20 }}
+            >
+              <look.icon size={18} color={syncTint} strokeWidth={2.25} />
+              {syncBadge ? (
+                <View
+                  style={{
+                    position: "absolute",
+                    top: -6,
+                    right: -10,
+                    minWidth: 16,
+                    height: 14,
+                    paddingHorizontal: 3,
+                    borderRadius: 7,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: color.surface,
+                  }}
+                >
+                  <Text style={{ fontSize: 9, fontWeight: "700", color: syncTint }}>{syncBadge}</Text>
+                </View>
+              ) : null}
+            </Pressable>
+            <View accessibilityRole="image" accessibilityLabel={effectiveOnline ? "Online" : "Offline"}>
+              {effectiveOnline ? (
+                <Wifi size={18} color={color.onPrimary} strokeWidth={2.25} />
+              ) : (
+                <WifiOff size={18} color={color.danger} strokeWidth={2.25} />
+              )}
+            </View>
+          </View>
+
+          {!onAdminScreen ? (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "stretch",
+                gap: space.xs,
+                paddingHorizontal: space.md,
+                paddingBottom: space.sm,
+              }}
+            >
+              {onSellScreen && draft.open ? (
+                <PhoneStatPill
+                  icon={FileText}
+                  label={`Hold sales: ${draft.count}`}
+                  onPress={draft.open}
+                  disabled={draft.count === 0}
+                  accessibilityLabel={
+                    draft.count === 0 ? "No drafts saved" : `Open draft sales, ${draft.count} saved`
+                  }
+                />
+              ) : null}
+              {onSellScreen ? (
+                <Pressable
+                  ref={cartChipRef}
+                  onLayout={measureCartChip}
+                  onPress={cart.open}
+                  disabled={!cart.open || cart.itemCount === 0}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    cart.itemCount === 0
+                      ? "Cart is empty"
+                      : `Open cart, ${cart.itemCount} item${cart.itemCount === 1 ? "" : "s"}, ${formatMoney(cart.total)}`
+                  }
+                  style={({ pressed }) => [
+                    phoneStatPillStyle(pressed, false),
+                    { flex: 1.3 },
+                  ]}
+                >
+                  <Animated.View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: space.xs,
+                      transform: [{ scale: cartScale }],
+                    }}
+                  >
+                    <ShoppingCart size={15} color={color.onPrimary} strokeWidth={2.25} />
+                    <Text
+                      numberOfLines={1}
+                      style={{ fontSize: fontSize.caption, fontWeight: "700", color: color.onPrimary }}
+                    >
+                      {cart.itemCount === 0 ? "Empty" : `${cart.itemCount} · ${formatMoney(cart.total)}`}
+                    </Text>
+                  </Animated.View>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
+        </View>
+
+        {banner ? (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: space.xs,
+              paddingVertical: space.xs,
+              backgroundColor: color.successSoft,
+              borderBottomWidth: 1,
+              borderBottomColor: color.successInk + "33",
+            }}
+          >
+            <CheckCircle2 size={14} color={color.successInk} strokeWidth={2.5} />
+            <Text style={{ fontSize: fontSize.caption, fontWeight: "700", color: color.successInk }}>
+              {banner}
+            </Text>
+          </View>
+        ) : null}
+
+        <AccountDrawer open={drawerOpen} onClose={closeDrawer} />
+      </>
+    );
+  }
+
   return (
     <>
       <View
         style={{
           flexDirection: "row",
           alignItems: "center",
-          gap: compact ? space.xs : space.sm,
-          paddingHorizontal: compact ? space.sm : space.md,
-          paddingVertical: compact ? space.xs : space.sm,
+          gap: space.sm,
+          paddingHorizontal: space.md,
+          paddingVertical: space.sm,
           backgroundColor: color.primary,
           borderBottomWidth: 1,
           borderBottomColor: "rgba(255,255,255,0.15)",
@@ -142,14 +331,14 @@ export function StoreHeader() {
           accessibilityLabel="Open menu"
           hitSlop={4}
           style={({ pressed }) => ({
-            width: logoSize,
-            height: logoSize,
+            width: 36,
+            height: 36,
             alignItems: "center",
             justifyContent: "center",
             opacity: pressed ? 0.6 : 1,
           })}
         >
-          <Menu size={compact ? 20 : 22} color={color.onPrimary} strokeWidth={2.25} />
+          <Menu size={22} color={color.onPrimary} strokeWidth={2.25} />
         </Pressable>
 
         {/* Time + sync as HeaderStat twins, then a rule before cart/sales —
@@ -170,21 +359,15 @@ export function StoreHeader() {
             style={{
               flexDirection: "row",
               alignItems: "center",
-              gap: space.md,
+              // Same gap the outer row uses between this group and the cart
+              // chip — Synced/Draft sales/Cart now read as one evenly spaced
+              // set of pills instead of two different gaps.
+              gap: space.sm,
               flexShrink: 0,
-              paddingRight: space.sm,
-              borderRightWidth: 1,
-              borderRightColor: "rgba(255,255,255,0.25)",
             }}
           >
-            {/* Phone: too crowded with sync/drafts/cart already fighting for
-                the same row — dropped entirely. Tablet keeps it, there's room. */}
-            {compact ? null : (
-              <>
-                <HeaderStat value={timeLabel} label={dateLabel} />
-                <HeaderStatDivider />
-              </>
-            )}
+            <HeaderStat value={timeLabel} label={dateLabel} />
+            <HeaderStatDivider />
             <SyncStat
               look={look}
               pendingSales={state.pendingSales}
@@ -192,66 +375,18 @@ export function StoreHeader() {
             />
             {/* Sell-screen-only, same as the cart chip below — draft.open is
                 only ever published while app/pos/index.tsx (the only screen
-                with parked carts) is actually mounted. */}
+                with parked carts) is actually mounted. Both are their own
+                pill now (headerButtonStyle), so no divider needed between them. */}
             {onSellScreen && draft.open ? (
-              <>
-                <HeaderStatDivider />
-                <DraftStat count={draft.count} onPress={draft.open} />
-              </>
+              <DraftStat count={draft.count} onPress={draft.open} />
             ) : null}
           </View>
         )}
 
-        {/* Phone Sell: cart chip. Tablet: today's sales (CartShell already shows
-            the cart — this chip was redundant). Other phone tabs: spacer.
-            Admin dashboard: nothing — the label above already took the flex slot. */}
-        {onAdminScreen ? null : onSellScreen && compact ? (
-          <Pressable
-            ref={cartChipRef}
-            onLayout={measureCartChip}
-            onPress={cart.open}
-            disabled={!cart.open || cart.itemCount === 0}
-            accessibilityRole="button"
-            accessibilityLabel={
-              cart.itemCount === 0
-                ? "Cart is empty"
-                : `Open cart, ${cart.itemCount} item${cart.itemCount === 1 ? "" : "s"}, ${formatMoney(cart.total)}`
-            }
-            style={({ pressed }) => ({
-              flex: 1,
-              minWidth: 0,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: space.xs,
-              paddingHorizontal: space.sm,
-              paddingVertical: 6,
-              borderRadius: radius.sm,
-              backgroundColor: "rgba(255,255,255,0.15)",
-              opacity: pressed ? 0.8 : 1,
-            })}
-          >
-            <Animated.View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: space.xs,
-                transform: [{ scale: cartScale }],
-              }}
-            >
-              <ShoppingCart size={16} color={color.onPrimary} strokeWidth={2.25} />
-              <Text
-                numberOfLines={1}
-                style={{
-                  fontSize: fontSize.body,
-                  fontWeight: "700",
-                  color: color.onPrimary,
-                }}
-              >
-                {cart.itemCount === 0 ? "Cart empty" : `${cart.itemCount} · ${formatMoney(cart.total)}`}
-              </Text>
-            </Animated.View>
-          </Pressable>
-        ) : !compact ? (
+        {/* Tablet: today's sales (CartShell already shows the cart, so a
+            chip here would be redundant). Admin dashboard: nothing — the
+            label above already took the flex slot. */}
+        {onAdminScreen ? null : (
           <View
             accessibilityLabel={`Today ${daySummary?.salesCount ?? 0} sales, ${formatMoney(daySummary?.revenue ?? 0)}. Discounts ${formatMoney(daySummary?.discountTotal ?? 0)} on ${daySummary?.discountedSalesCount ?? 0} sales. Refunds ${formatMoney(daySummary?.refundTotal ?? 0)}, ${daySummary?.refundCount ?? 0}.`}
             style={{
@@ -282,13 +417,31 @@ export function StoreHeader() {
               label={`${daySummary?.refundCount ?? 0} refund${(daySummary?.refundCount ?? 0) === 1 ? "" : "s"}`}
             />
           </View>
-        ) : (
-          <View style={{ flex: 1, minWidth: 0 }} />
         )}
 
-        {/* Phone: too crowded next to the cart chip — moved into the account
-            drawer instead. Tablet keeps it here. */}
-        {compact ? null : <LocationSwitcher />}
+        {/* Right of the cart/sales section — so a cashier can tell at a
+            glance whether this terminal will actually sync right now,
+            without going into the drawer to check. */}
+        <View
+          accessibilityRole="image"
+          accessibilityLabel={effectiveOnline ? "Online" : "Offline"}
+          style={{
+            width: 24,
+            height: 24,
+            borderRadius: 12,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: effectiveOnline ? color.success : color.danger,
+          }}
+        >
+          {effectiveOnline ? (
+            <Wifi size={14} color="#fff" strokeWidth={2.5} />
+          ) : (
+            <WifiOff size={14} color="#fff" strokeWidth={2.5} />
+          )}
+        </View>
+
+        <LocationSwitcher />
       </View>
 
       {banner ? (
@@ -388,12 +541,59 @@ function DraftStat({ count, onPress }: { count: number; onPress: () => void }) {
  */
 function headerButtonStyle(pressed: boolean, disabled = false) {
   return {
+    minHeight: HEADER_BUTTON_MIN_HEIGHT,
+    justifyContent: "center" as const,
     borderRadius: radius.sm,
     paddingHorizontal: space.sm,
-    paddingVertical: 2,
     backgroundColor: pressed ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.15)",
     opacity: disabled ? 0.55 : 1,
   };
+}
+
+/** Phone status strip — flat, single-line icon+label pill, evenly spaced via flex:1. */
+function phoneStatPillStyle(pressed: boolean, disabled: boolean) {
+  return {
+    flex: 1,
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+    gap: space.xs,
+    minHeight: 34,
+    borderRadius: radius.sm,
+    backgroundColor: pressed ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.12)",
+    opacity: disabled ? 0.5 : 1,
+  };
+}
+
+function PhoneStatPill({
+  icon: Icon,
+  iconColor = color.onPrimary,
+  label,
+  onPress,
+  disabled = false,
+  accessibilityLabel,
+}: {
+  icon: LucideIcon;
+  iconColor?: string;
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  accessibilityLabel: string;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      style={({ pressed }) => phoneStatPillStyle(pressed, disabled)}
+    >
+      <Icon size={14} color={iconColor} strokeWidth={2.5} />
+      <Text numberOfLines={1} style={{ fontSize: fontSize.caption, fontWeight: "700", color: color.onPrimary }}>
+        {label}
+      </Text>
+    </Pressable>
+  );
 }
 
 function HeaderStatDivider() {

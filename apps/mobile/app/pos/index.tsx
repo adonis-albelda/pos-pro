@@ -34,6 +34,7 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   CreditCard,
   FolderTree,
@@ -279,6 +280,47 @@ function toVariantTileDisplay(
   };
 }
 
+/**
+ * Field-by-field equality, not a reference check — every SQLite requery
+ * builds brand-new row objects even for products nothing actually changed
+ * about. Array/object fields (supplierLinks, bundleItems, tags,
+ * addonGroupIds) are tiny, so a JSON.stringify compare on those specifically
+ * is cheap; everything else is a plain primitive.
+ */
+function productRowEqual(a: ProductWithEstimatedStock, b: ProductWithEstimatedStock): boolean {
+  if (a === b) return true;
+  for (const key of Object.keys(a) as (keyof ProductWithEstimatedStock)[]) {
+    const av = a[key];
+    const bv = b[key];
+    if (av === bv) continue;
+    if (Array.isArray(av) && Array.isArray(bv)) {
+      if (JSON.stringify(av) === JSON.stringify(bv)) continue;
+    }
+    return false;
+  }
+  return true;
+}
+
+/**
+ * A realtime/focus refetch (see the product-fetch effect below) re-queries
+ * the whole currently-loaded window every time, not a delta — but the vast
+ * majority of those rows are unchanged between ticks. Keeping the OLD object
+ * reference for anything unchanged is what lets gridTiles' own cache below,
+ * and the FlatList itself, skip re-rendering that row entirely instead of
+ * re-rendering every mounted tile on every stock tick.
+ */
+function mergeProducts(
+  previous: ProductWithEstimatedStock[],
+  next: ProductWithEstimatedStock[],
+): ProductWithEstimatedStock[] {
+  if (previous.length === 0) return next;
+  const byId = new Map(previous.map((row) => [row.id, row]));
+  return next.map((row) => {
+    const old = byId.get(row.id);
+    return old && productRowEqual(old, row) ? old : row;
+  });
+}
+
 export default function SellScreen() {
   const { cashier } = useSession();
   const {
@@ -328,6 +370,19 @@ export default function SellScreen() {
     };
   }, [products, productViewMode]);
 
+  // Per-product tile cache, keyed by product id — reused across renders
+  // whenever that product's (and, in variant mode, its variants') object
+  // reference is unchanged. `.map()`/`.flatMap()` alone would build brand-new
+  // wrapper objects for every product on every call regardless of whether
+  // anything about it actually changed, which is exactly what forces the
+  // FlatList to re-render every mounted tile on every realtime/focus product
+  // refetch (see mergeProducts above) — this cache is what lets an unchanged
+  // row's tile object stay referentially identical instead, so the FlatList
+  // skips re-rendering it entirely.
+  const gridTileCache = useRef(
+    new Map<string, { product: ProductWithEstimatedStock; variants: VariantWithEstimatedStock[] | undefined; tiles: GridTile[] }>(),
+  );
+
   // One tile per product in "By product" mode. In "By variant" mode, a
   // product with 2+ variants becomes one tile per variant; 0 or 1 variant
   // still renders as a single tile (that one variant's own price/stock,
@@ -335,14 +390,23 @@ export default function SellScreen() {
   // true product row (add-ons, category id, etc. all key off it); `variant`
   // is only set for a tile that resolves to one specific variant.
   const gridTiles = useMemo<GridTile[]>(() => {
-    if (productViewMode !== "variant") {
-      return products.map((product) => ({ display: product, realProduct: product }));
-    }
-    return products.flatMap((product) => {
-      const variants = variantsByProduct.get(product.id);
-      if (!variants || variants.length <= 1) {
+    const cache = gridTileCache.current;
+    const seen = new Set<string>();
+
+    function tilesFor(product: ProductWithEstimatedStock): GridTile[] {
+      seen.add(product.id);
+      const variants = productViewMode === "variant" ? variantsByProduct.get(product.id) : undefined;
+      const cached = cache.get(product.id);
+      if (cached && cached.product === product && cached.variants === variants) {
+        return cached.tiles;
+      }
+
+      let tiles: GridTile[];
+      if (productViewMode !== "variant") {
+        tiles = [{ display: product, realProduct: product }];
+      } else if (!variants || variants.length <= 1) {
         const only = variants?.[0];
-        return [
+        tiles = [
           {
             display: only
               ? toVariantTileDisplay(product, only.variant, only.estimatedStock)
@@ -351,13 +415,27 @@ export default function SellScreen() {
             variant: only?.variant,
           },
         ];
+      } else {
+        tiles = variants.map(({ variant, estimatedStock }) => ({
+          display: toVariantTileDisplay(product, variant, estimatedStock),
+          realProduct: product,
+          variant,
+        }));
       }
-      return variants.map(({ variant, estimatedStock }) => ({
-        display: toVariantTileDisplay(product, variant, estimatedStock),
-        realProduct: product,
-        variant,
-      }));
-    });
+
+      cache.set(product.id, { product, variants, tiles });
+      return tiles;
+    }
+
+    const result = products.flatMap(tilesFor);
+
+    // Evict products no longer in the loaded window so the cache doesn't
+    // grow unbounded across a long shift's worth of searches/categories.
+    for (const id of cache.keys()) {
+      if (!seen.has(id)) cache.delete(id);
+    }
+
+    return result;
   }, [products, variantsByProduct, productViewMode]);
 
   // Pads the last row up to a full `columns` width with invisible fillers —
@@ -369,6 +447,15 @@ export default function SellScreen() {
     return [...gridTiles, ...Array<null>(columns - remainder).fill(null)];
   }, [gridTiles, columns]);
   const [search, setSearch] = useState("");
+  // Phone only — the search pill collapses to just its icon until tapped, to
+  // leave the category button real width on a narrow screen. Tablet always
+  // shows the full field, same as before this existed.
+  const [phoneSearchOpen, setPhoneSearchOpen] = useState(false);
+  const searchInputRef = useRef<TextInput>(null);
+  // Smart search / voice / scan collapse behind a chevron too — same "icon
+  // until tapped" treatment as the search field itself, one less row of
+  // buttons sitting there by default.
+  const [searchActionsOpen, setSearchActionsOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [hasMore, setHasMore] = useState(true);
   const [loadingPage, setLoadingPage] = useState(true);
@@ -495,6 +582,17 @@ export default function SellScreen() {
   function applyManualSearch(text: string) {
     if (aiResultIds) clearAiSearch();
     setSearch(text);
+  }
+
+  // The field only mounts once phoneSearchOpen flips true, so focusing it in
+  // the same tap handler that sets the state would fire before it exists.
+  useEffect(() => {
+    if (phoneSearchOpen) searchInputRef.current?.focus();
+  }, [phoneSearchOpen]);
+
+  function collapsePhoneSearch() {
+    applyManualSearch("");
+    setPhoneSearchOpen(false);
   }
 
   const refreshDrafts = useCallback(async () => {
@@ -664,7 +762,12 @@ export default function SellScreen() {
         if (id !== requestId.current) return;
         await withVariants(next);
         if (id !== requestId.current) return;
-        setProducts(next);
+        // Merge, don't replace — a realtime/focus tick re-fetches this whole
+        // window every time (see the comment above), but almost none of it
+        // actually changed. Keeping unchanged rows' object references is what
+        // lets gridTiles' cache and the FlatList itself skip re-rendering
+        // every mounted tile on every stock tick.
+        setProducts((current) => mergeProducts(current, next));
         setHasMore(next.length === limit);
         setLoadingPage(false);
         setReady(true);
@@ -1552,9 +1655,30 @@ export default function SellScreen() {
           }}
         >
         <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
+        {compact && !phoneSearchOpen ? (
+          // Phone, collapsed: just the icon — leaves the category button
+          // real width on a narrow screen instead of two cramped pills.
+          <Pressable
+            onPress={() => setPhoneSearchOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Search products"
+            style={{
+              width: 48,
+              height: 48,
+              alignItems: "center",
+              justifyContent: "center",
+              borderWidth: 1,
+              borderColor: color.primarySoft,
+              borderRadius: radius.sm,
+              backgroundColor: color.primarySoft,
+            }}
+          >
+            <Search size={20} color={color.primary} strokeWidth={2} />
+          </Pressable>
+        ) : (
         <View
           style={{
-            flex: 3,
+            flex: compact ? 1 : 3,
             flexDirection: "row",
             alignItems: "center",
             gap: space.sm,
@@ -1570,8 +1694,21 @@ export default function SellScreen() {
             paddingHorizontal: space.md,
           }}
         >
-          <Search size={18} color={color.primary} strokeWidth={2} />
+          {compact ? (
+            <Pressable
+              onPress={collapsePhoneSearch}
+              accessibilityRole="button"
+              accessibilityLabel="Close search"
+              hitSlop={4}
+              style={{ width: 24, height: 24, alignItems: "center", justifyContent: "center" }}
+            >
+              <ChevronLeft size={20} color={color.primary} strokeWidth={2} />
+            </Pressable>
+          ) : (
+            <Search size={18} color={color.primary} strokeWidth={2} />
+          )}
           <TextInput
+            ref={searchInputRef}
             value={search}
             onChangeText={applyManualSearch}
             onSubmitEditing={() => void submitSearch()}
@@ -1601,51 +1738,99 @@ export default function SellScreen() {
               <X size={20} color={color.primary} strokeWidth={2} />
             </Pressable>
           ) : null}
-          {isEnabled("product_vector_search") ? (
-            <Pressable
-              onPress={() => setAiSearchOpen(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Smart search with AI"
-              hitSlop={4}
-              style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}
-            >
-              <Sparkles size={20} color={color.primary} strokeWidth={2} />
-            </Pressable>
-          ) : null}
-          {isEnabled("voice_search") ? (
-            <Pressable
-              onPress={openVoiceSearch}
-              accessibilityRole="button"
-              accessibilityLabel="Search by voice"
-              hitSlop={4}
-              style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}
-            >
-              <Mic size={20} color={color.primary} strokeWidth={2} />
-            </Pressable>
-          ) : null}
-          {isEnabled("barcode_scan") ? (
-            <Pressable
-              // Tap opens the small floating camera — stays docked over
-              // whatever screen is already showing, scans one item after
-              // another without closing. Hold for the old one-shot,
-              // full-screen scanner (fills the search box, then closes) —
-              // still there for the rare case that's actually wanted.
-              onPress={() => setFloatingScannerOpen(true)}
-              onLongPress={() => setBarcodeScanOpen(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Scan a barcode or QR code with the floating camera. Hold for a one-time full-screen scan"
-              hitSlop={4}
-              style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}
-            >
-              <ScanBarcode size={20} color={color.primary} strokeWidth={2} />
-            </Pressable>
+          {/* Tablet only — plenty of width in the field itself, so these stay
+              inside it same as before. Phone keeps them outside/collapsed
+              below; there's no room to spare in the field there. */}
+          {!compact ? (
+            <>
+              {isEnabled("product_vector_search") ? (
+                <Pressable
+                  onPress={() => setAiSearchOpen(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Smart search with AI"
+                  hitSlop={4}
+                  style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}
+                >
+                  <Sparkles size={20} color={color.primary} strokeWidth={2} />
+                </Pressable>
+              ) : null}
+              {isEnabled("voice_search") ? (
+                <Pressable
+                  onPress={openVoiceSearch}
+                  accessibilityRole="button"
+                  accessibilityLabel="Search by voice"
+                  hitSlop={4}
+                  style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}
+                >
+                  <Mic size={20} color={color.primary} strokeWidth={2} />
+                </Pressable>
+              ) : null}
+              {isEnabled("barcode_scan") ? (
+                <Pressable
+                  // Tap opens the small floating camera — stays docked over
+                  // whatever screen is already showing, scans one item after
+                  // another without closing. Hold for the old one-shot,
+                  // full-screen scanner (fills the search box, then closes) —
+                  // still there for the rare case that's actually wanted.
+                  onPress={() => setFloatingScannerOpen(true)}
+                  onLongPress={() => setBarcodeScanOpen(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Scan a barcode or QR code with the floating camera. Hold for a one-time full-screen scan"
+                  hitSlop={4}
+                  style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}
+                >
+                  <ScanBarcode size={20} color={color.primary} strokeWidth={2} />
+                </Pressable>
+              ) : null}
+            </>
           ) : null}
         </View>
+        )}
+
+        {/* Phone only: Voice/Smart search/Scan collapsed behind a chevron,
+            same "icon until tapped" treatment as the search field itself.
+            Same visibility as the category button beside them. Tablet
+            renders these inside the field above instead — see there. */}
+        {compact && !phoneSearchOpen ? (
+          <>
+            <IconButton
+              icon={searchActionsOpen ? ChevronLeft : ChevronRight}
+              label={searchActionsOpen ? "Hide search options" : "More search options"}
+              tone="primary"
+              onPress={() => setSearchActionsOpen((open) => !open)}
+            />
+            {searchActionsOpen ? (
+              <>
+                {isEnabled("product_vector_search") ? (
+                  <IconButton
+                    icon={Sparkles}
+                    label="Smart search with AI"
+                    tone="primary"
+                    onPress={() => setAiSearchOpen(true)}
+                  />
+                ) : null}
+                {isEnabled("voice_search") ? (
+                  <IconButton icon={Mic} label="Search by voice" tone="primary" onPress={openVoiceSearch} />
+                ) : null}
+                {isEnabled("barcode_scan") ? (
+                  <IconButton
+                    icon={ScanBarcode}
+                    label="Scan a barcode or QR code with the floating camera. Hold for a one-time full-screen scan"
+                    tone="primary"
+                    onPress={() => setFloatingScannerOpen(true)}
+                    onLongPress={() => setBarcodeScanOpen(true)}
+                  />
+                ) : null}
+              </>
+            ) : null}
+          </>
+        ) : null}
 
         {/* Hidden during Smart search or a typed search: the results
             already ignore this filter, so a lit-up button beside them
-            would be a lie. */}
-        {!aiResultIds && !search.trim() ? (
+            would be a lie — same reason it hides while the phone search
+            field is expanded and taking the whole row. */}
+        {!aiResultIds && !search.trim() && !(compact && phoneSearchOpen) ? (
           <Button
             label={
               category

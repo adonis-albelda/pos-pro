@@ -39,11 +39,9 @@ import { useSync } from "@/sync/sync-provider";
 import { BranchPickerDialog, useBranchPicker } from "@/components/location-switcher";
 import { circleRadius, color, fontSize, radius, space } from "@/theme";
 
-// Sell / Delivery / History / Attendance stay on BottomTabBar only (phone
-// only) — tablet has no bar, but attendance is a shift-start/end action, not
-// an occasional settings visit, so it doesn't belong duplicated in here.
-// Theme/Settings/Sync are occasional push visits. Admin dashboard stays
-// gated below.
+// Sell / Delivery / History / Account stay on BottomTabBar only — shown at
+// every width, not just phone. Theme/Settings/Sync are occasional push
+// visits, so they stay here instead. Admin dashboard stays gated below.
 const POS_TABS = [
   { href: "/pos/theme", label: "Theme", icon: Palette },
   { href: "/pos/settings", label: "Settings", icon: Settings },
