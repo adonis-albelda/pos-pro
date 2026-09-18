@@ -22,6 +22,7 @@ import {
 } from "@/lib/nav";
 import { useNavFeatureEnabled } from "@/lib/query/nav-features";
 import { useCurrentUser } from "@/lib/query/session";
+import { useLocations } from "@/lib/query/locations";
 import { canPermission } from "@/lib/authz";
 import type { UiMode } from "@/lib/ui-mode";
 
@@ -50,6 +51,12 @@ export function ClassicShell({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { isEnabled } = useNavFeatureEnabled();
   const { data: user } = useCurrentUser();
+  // Same rule LocationSwitcher hides itself on — one branch has nothing to
+  // switch between, so the embedded phone bar's Main menu link fills the row
+  // instead of sitting stranded beside empty space where the switcher
+  // would've been.
+  const locationsQuery = useLocations({ includeInactive: false });
+  const hasMultipleLocations = (locationsQuery.data ?? []).length > 1;
   const navGroups = filterNavGroupsByPermissions(
     filterNavGroupsByFeatures(NAV_GROUPS, isEnabled),
     (key) => canPermission(user, key),
@@ -97,7 +104,8 @@ export function ClassicShell({
           <Link
             href="/menu"
             className={[
-              "inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-sm border px-2 text-caption font-medium transition-colors",
+              "inline-flex min-h-9 items-center justify-center gap-1.5 rounded-sm border px-2 text-caption font-medium transition-colors",
+              hasMultipleLocations ? "shrink-0" : "flex-1",
               pathname === "/menu"
                 ? "border-primary/40 bg-primary/10 text-primary"
                 : "border-border text-ink hover:bg-border/60",
@@ -106,7 +114,7 @@ export function ClassicShell({
             <LayoutGrid size={14} strokeWidth={2} />
             Main menu
           </Link>
-          <LocationSwitcher />
+          {hasMultipleLocations ? <LocationSwitcher className="flex-1" /> : null}
         </div>
       ) : (
         <div className="flex items-center gap-2 bg-primary px-2 py-2 pt-[calc(0.5rem+env(safe-area-inset-top))] text-white sm:gap-3 sm:px-3">

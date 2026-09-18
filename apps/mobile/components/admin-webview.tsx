@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, type ForwardRefExoticComponent, type RefAttributes } from "react";
-import { Text, View } from "react-native";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import RNWebView from "react-native-webview";
 import type {
@@ -21,7 +21,6 @@ import { getAdminToken, getAdminTokenExpiresAt } from "@/lib/api/session";
 import { useIdleActivity } from "@/lib/idle-lock";
 import { useSession } from "@/lib/session";
 import { Button } from "@/components/ui";
-import { LoadingState } from "@/components/loading-state";
 import { color, space, styles } from "@/theme";
 
 /** WebView → RN idle ping. Kept short so postMessage spam stays cheap. */
@@ -164,7 +163,24 @@ export function AdminWebView() {
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
-      {!ready ? <LoadingState text="Opening Backoffice…" /> : null}
+      {/* Bare spinner, no text — admin/_layout.tsx already said "Opening
+          Backoffice…" during the session check that ran before this
+          component mounted, and the dashboard shows its own loading state
+          moments after this one clears. A second identical sentence here
+          just stacked redundant messaging in front of the cashier. */}
+      {!ready ? (
+        <View
+          style={{
+            ...StyleSheet.absoluteFill,
+            zIndex: 1,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: color.surface,
+          }}
+        >
+          <ActivityIndicator color={color.primary} />
+        </View>
+      ) : null}
       <WebView
         key={attempt}
         ref={webRef}

@@ -257,10 +257,7 @@ export function StoreHeader() {
                       ? "Cart is empty"
                       : `Open cart, ${cart.itemCount} item${cart.itemCount === 1 ? "" : "s"}, ${formatMoney(cart.total)}`
                   }
-                  style={({ pressed }) => [
-                    phoneStatPillStyle(pressed, false),
-                    { flex: 1.3 },
-                  ]}
+                  style={({ pressed }) => phoneStatPillStyle(pressed, false)}
                 >
                   <Animated.View
                     style={{
