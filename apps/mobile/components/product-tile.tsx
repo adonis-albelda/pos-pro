@@ -1,12 +1,6 @@
-import { memo, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { memo, useId, useRef, useState } from "react";
 import { ImageBackground, Pressable, StyleSheet, Text, View } from "react-native";
-import Animated, {
-  FadeInDown,
-  useAnimatedStyle,
-  useSharedValue,
-  withDelay,
-  withTiming,
-} from "react-native-reanimated";
+import Animated, { FadeInDown } from "react-native-reanimated";
 import { Image } from "expo-image";
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
 import { Minus, Package, Trash2, Truck, X } from "lucide-react-native";
@@ -30,12 +24,6 @@ function ProductTileImpl({
   onHoldView,
   /** Flagged by sync/sync-provider.tsx's justCreatedProductIds — a tile for a product that just arrived over realtime (as opposed to one loaded normally on mount/scroll) slides/fades in instead of just appearing. */
   justCreated = false,
-  /**
-   * Sell grid stagger index for the first screenful after a list reveal
-   * (load / search / category). Omit / null = no enter (scroll recycle,
-   * load-more rows). justCreated wins when both set.
-   */
-  enterIndex,
 }: {
   product: ProductWithEstimatedStock;
   inCart: number;
@@ -50,7 +38,6 @@ function ProductTileImpl({
   /** Holding a tile not yet in the cart opens the full name/description/supplier detail sheet. */
   onHoldView: () => void;
   justCreated?: boolean;
-  enterIndex?: number | null;
 }) {
   // Per product, not one shop-wide number: a box of screws and a length of GI
   // pipe run out at very different counts.
@@ -395,10 +382,6 @@ function ProductTileImpl({
     );
   }
 
-  if (enterIndex != null) {
-    return <TileEnter index={enterIndex}>{floating}</TileEnter>;
-  }
-
   return floating;
 }
 
@@ -424,42 +407,11 @@ function productTilePropsEqual(
     prev.compact === next.compact &&
     prev.minHeight === next.minHeight &&
     prev.padding === next.padding &&
-    prev.justCreated === next.justCreated &&
-    prev.enterIndex === next.enterIndex
+    prev.justCreated === next.justCreated
   );
 }
 
 export const ProductTile = memo(ProductTileImpl, productTilePropsEqual);
-
-/**
- * Alternate L→R / R→L slide on mount. Outer View owns flex layout so the cell
- * is always full width; presets like FadeInLeft left translateX stuck at -25
- * (~10% of a tile) when FlatList interrupted the entering animation.
- */
-function TileEnter({ index, children }: { index: number; children: ReactNode }) {
-  const slideMs = 100;
-  const delay = Math.min(index, 11) * slideMs;
-  const fromX = index % 2 === 0 ? -16 : 16;
-  const tx = useSharedValue(fromX);
-  const opacity = useSharedValue(0);
-
-  useEffect(() => {
-    opacity.value = withDelay(delay, withTiming(1, { duration: slideMs }));
-    tx.value = withDelay(delay, withTiming(0, { duration: slideMs }));
-  }, [delay, opacity, tx]);
-
-  const animStyle = useAnimatedStyle(() => ({
-    flex: 1,
-    opacity: opacity.value,
-    transform: [{ translateX: tx.value }],
-  }));
-
-  return (
-    <View style={{ flex: 1, overflow: "hidden" }}>
-      <Animated.View style={animStyle}>{children}</Animated.View>
-    </View>
-  );
-}
 
 /**
  * Soft dark wash dominant on the bottom half of a product tile — top stays

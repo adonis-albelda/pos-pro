@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  deleteMyAccount,
   deleteMyAvatar,
   me,
   updateMe,
@@ -58,5 +59,17 @@ export function useDeleteMyAvatar() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.session.me() });
     },
+  });
+}
+
+/**
+ * Self-service account deletion. No cache invalidation on success — the
+ * caller signs out and navigates to /login right after, dropping the whole
+ * TanStack Query cache along with the now-gone session (see signOut(),
+ * app/login/actions.ts).
+ */
+export function useDeleteMyAccount() {
+  return useMutation({
+    mutationFn: (password: string) => deleteMyAccount(getBrowserApiClient(), password),
   });
 }

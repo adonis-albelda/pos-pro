@@ -166,7 +166,7 @@ import { BarcodeScanModal } from "@/components/barcode-scan-modal";
 import { FloatingBarcodeScanner } from "@/components/floating-barcode-scanner";
 import { CartQtyButton } from "@/components/cart-qty-button";
 import { CategoryDialog, type CategoryFilter } from "@/components/category-tabs";
-import { LoadingState } from "@/components/loading-state";
+import { ProductGridSkeleton } from "@/components/product-grid-skeleton";
 import { ProductDetailSheet, ProductTile } from "@/components/product-tile";
 import { SelectField } from "@/components/select-field";
 import { ThemeBackgroundEffect } from "@/components/theme-background-effect";
@@ -552,20 +552,6 @@ export default function SellScreen() {
   // exactly these (in this order) instead of the normal query/category list.
   const [aiResultIds, setAiResultIds] = useState<string[] | null>(null);
   const [aiResultLabel, setAiResultLabel] = useState("");
-
-  // Remount + stagger enter when the *set* of tiles changes for the cashier
-  // (search / category / AI / product-vs-variant). Not dataVersion — live stock
-  // ticks would replay the whole grid every few seconds. Applied only after
-  // the matching fetch lands (`loadingPage` false) so mid-fetch remounts
-  // don't slide the previous page in again.
-  const pendingListEnterKey = `${query}\0${category ?? ""}\0${aiResultIds?.join(",") ?? ""}\0${productViewMode}`;
-  const [listEnterKey, setListEnterKey] = useState(pendingListEnterKey);
-  // First ~screenful only. Higher indices are load-more / off-screen.
-  const LIST_ENTER_MAX = Math.min(columns * 4, 12);
-
-  useEffect(() => {
-    if (!loadingPage) setListEnterKey(pendingListEnterKey);
-  }, [loadingPage, pendingListEnterKey]);
 
   /** Product names, fetched fresh each time the mic opens — biases recognition toward this shop's actual catalogue. */
   function openVoiceSearch() {
@@ -1894,7 +1880,7 @@ export default function SellScreen() {
 
         <View style={{ flex: 1, minHeight: 0, gap: space.sm }}>
           {!ready || (loadingPage && products.length === 0) ? (
-            <LoadingState text="Loading products…" />
+            <ProductGridSkeleton columns={columns} gap={layout.gap} tileMinHeight={layout.tileMinHeight} />
           ) : products.length === 0 && !query && category === null && !aiResultIds ? (
             <EmptyState
               icon={PackageSearch}
@@ -1925,9 +1911,8 @@ export default function SellScreen() {
                   : `filler-${index}`
               }
               // numColumns cannot change on a mounted list, so the column count is
-              // part of the key and a rotation remounts the grid. listEnterKey
-              // remounts on search/category so alternate SlideIn entering can fire once.
-              key={`grid-${columns}-${listEnterKey}`}
+              // part of the key and a rotation remounts the grid.
+              key={`grid-${columns}`}
               numColumns={columns}
               // Floating tile shadows eat into space between rows but sit open
               // at the top edge. Half-gap on every cell handles between + sides;
@@ -1943,9 +1928,6 @@ export default function SellScreen() {
               initialNumToRender={PRODUCT_PAGE_SIZE}
               maxToRenderPerBatch={PRODUCT_PAGE_SIZE}
               windowSize={5}
-              // Entering slides travel off-cell; clipping mid-animation leaves
-              // the first tile stuck partially off-screen on Android.
-              removeClippedSubviews={false}
               onEndReached={loadMore}
               onEndReachedThreshold={0.4}
               ListFooterComponent={
@@ -1985,7 +1967,6 @@ export default function SellScreen() {
                       minHeight={layout.tileMinHeight}
                       padding={space.md}
                       justCreated={justCreatedProductIds.has(item.display.id)}
-                      enterIndex={index < LIST_ENTER_MAX ? index : null}
                       onPress={(sourceRect) => void handleTilePress(item, sourceRect)}
                       onRemove={() => void handleTileDecrement(item, "decrement")}
                       onHoldRemove={() => void handleTileDecrement(item, "hold-remove")}
@@ -2229,7 +2210,13 @@ export default function SellScreen() {
                 </Pressable>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
                   {applicableDiscountCount > 0 ? (
-                    <Badge tone="success" label={`${applicableDiscountCount} available`} />
+                    <Pressable
+                      onPress={() => setDiscountSheetOpen(true)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${applicableDiscountCount} discounts available for this cart. Add a discount.`}
+                    >
+                      <Badge tone="success" label={`${applicableDiscountCount} available`} />
+                    </Pressable>
                   ) : null}
                   {discount > 0 ? (
                     <Text
@@ -4219,9 +4206,12 @@ function CustomerSheet({
   // fields run past the card, the Save button ends up unreachable. A raw
   // Modal with a real computed height (same fix as ConfirmSaleSheet) gives
   // the ScrollView something to actually scroll within instead.
-  const centered = !layout.compact && layout.landscape;
+  // Any tablet (portrait or landscape) gets the centered 70%-wide floating
+  // dialog, matching `twoCol` above — only phone stays a full-width bottom
+  // sheet.
+  const centered = !layout.compact;
   const usableHeight = screenHeight - keyboardHeight - insets.top - insets.bottom;
-  const dialogWidth = Math.min(screenWidth * 0.7, 640);
+  const dialogWidth = centered ? Math.min(screenWidth * 0.8, 640) : screenWidth;
   const dialogHeight = Math.min(screenHeight * 0.88, usableHeight * 0.95);
 
   async function save() {
@@ -4293,9 +4283,12 @@ function CustomerSheet({
 
         <View
           style={{
+            // dialogWidth already caps itself (min(70%, 640) centered, full
+            // screenWidth in sheet mode) — a separate maxWidth:640 here used
+            // to re-clip the sheet-mode case below its true full width on
+            // any phone 640-719dp wide (compact's own upper bound).
             width: dialogWidth,
             height: dialogHeight,
-            maxWidth: 640,
             backgroundColor: color.surface,
             borderTopLeftRadius: radius.lg,
             borderTopRightRadius: radius.lg,
@@ -4344,7 +4337,11 @@ function CustomerSheet({
       <View
         style={{
           flexDirection: twoCol ? "row" : "column",
-          flexWrap: "wrap",
+          // Wrap only makes sense for the two-column row layout — on a
+          // single-column phone this let Yoga wrap the column itself into
+          // side-by-side tracks (each field basis reads as ~50% wide)
+          // instead of a plain vertical stack.
+          flexWrap: twoCol ? "wrap" : "nowrap",
           gap: space.md,
         }}
       >
@@ -4451,7 +4448,7 @@ function CustomerSheet({
         <View
           style={{
             flexDirection: twoCol ? "row" : "column",
-            flexWrap: "wrap",
+            flexWrap: twoCol ? "wrap" : "nowrap",
             gap: space.md,
           }}
         >

@@ -2,7 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Check, KeyRound, Lock, Mail, ShieldOff, Trash2, User as UserIcon, UserRound } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  KeyRound,
+  Lock,
+  Mail,
+  ShieldOff,
+  Trash2,
+  User as UserIcon,
+  UserRound,
+} from "lucide-react";
 import { ApiError } from "@double-a/api-client";
 import { changePassword } from "@double-a/api-client/queries";
 import {
@@ -20,10 +30,12 @@ import {
   SuccessNote,
 } from "@/components/ui";
 import { PasswordInput } from "@/components/password-input";
+import { signOut } from "@/app/login/actions";
 import { getBrowserApiClient } from "@/lib/api/browser-client";
 import { isImageFile, NOT_AN_IMAGE_MESSAGE } from "@/lib/is-image-file";
 import {
   useCurrentUser,
+  useDeleteMyAccount,
   useDeleteMyAvatar,
   useUpdateMe,
   useUploadMyAvatar,
@@ -91,6 +103,7 @@ export default function ProfilePage() {
           />
           <SessionLockCard skipSessionLock={user.skipSessionLock} />
           <PasswordCard />
+          <DangerZoneCard />
         </div>
       </div>
     </div>
@@ -381,6 +394,64 @@ function PasswordCard() {
           {success ? <SuccessNote>Password changed.</SuccessNote> : null}
           <Button type="submit" icon={Check} loading={pending}>
             {pending ? "Saving..." : "Change password"}
+          </Button>
+        </form>
+      </CardBody>
+    </Card>
+  );
+}
+
+/**
+ * Google Play Data Safety requires a deletion path for any account a user
+ * can create in-app (RegisterController's self-signup is always
+ * role=admin). Re-entering the password is the only confirmation step —
+ * same gate ChangePasswordController already requires for a less
+ * destructive change, no separate "type DELETE to confirm" dialog on top.
+ */
+function DangerZoneCard() {
+  const deleteAccount = useDeleteMyAccount();
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+
+    if (!window.confirm("Delete your account? This cannot be undone.")) {
+      return;
+    }
+
+    deleteAccount.mutate(password, {
+      onSuccess: () => void signOut(),
+      onError: (cause) => {
+        setError(errorMessage(cause, "Could not delete your account."));
+        setPassword("");
+      },
+    });
+  }
+
+  return (
+    <Card className="border-danger/30">
+      <CardHeader
+        icon={AlertTriangle}
+        title="Delete account"
+        description="Permanently deletes your account. This cannot be undone."
+      />
+      <CardBody>
+        <form onSubmit={onSubmit} className="space-y-4">
+          <Field label="Current password" required>
+            <PasswordInput
+              icon={Lock}
+              name="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(event) => setPassword(event.currentTarget.value)}
+              required
+            />
+          </Field>
+          {error ? <ErrorNote>{error}</ErrorNote> : null}
+          <Button type="submit" variant="danger" icon={Trash2} loading={deleteAccount.isPending}>
+            {deleteAccount.isPending ? "Deleting..." : "Delete my account"}
           </Button>
         </form>
       </CardBody>

@@ -113,6 +113,17 @@ export async function deleteMyAvatar(client: ApiClient): Promise<User> {
   return toUser(data);
 }
 
+/**
+ * Self-service account deletion (Google Play Data Safety — every
+ * self-creatable account needs a deletion path; RegisterController's
+ * self-signup is always role=admin). Soft-deletes and revokes every token
+ * for this account server-side. Throws (ApiError, field-level `password`
+ * message) on a wrong password or if this is the company's only admin.
+ */
+export async function deleteMyAccount(client: ApiClient, password: string): Promise<void> {
+  await client.delete<{ message: string }>("/auth/me", { password });
+}
+
 export interface ConfirmPinResult {
   verified: boolean;
   hasPin: boolean;
@@ -241,13 +252,35 @@ export async function revokeAllTokens(client: ApiClient): Promise<void> {
 
 /**
  * Unauthenticated. Always responds with the same generic message whether or
- * not the email exists (Laravel's `Password::broker()` behavior) — do not
- * branch UI copy on this beyond "check your email." Needs `Idempotency-Key`
- * (route carries `idempotency` middleware) — a doubled tap must not queue a
- * second reset email.
+ * not the email exists — do not branch UI copy on this beyond "check your
+ * email." Needs `Idempotency-Key` (route carries `idempotency` middleware) —
+ * a doubled tap must not queue a second reset email. Also the "Resend code"
+ * call on the OTP-entry screen — the server enforces its own cooldown
+ * silently (same generic response either way); pace UI-side resend taps
+ * with a client-side countdown instead of relying on a distinct error here.
  */
 export async function forgotPassword(client: ApiClient, email: string): Promise<void> {
   await client.post<{ message: string }>("/auth/password/forgot", { email }, { idempotent: true });
+}
+
+/**
+ * Unauthenticated. Checks the 6-digit code emailed by forgotPassword() and,
+ * on success, returns a short-lived reset_token for resetPassword() — the
+ * OTP-entry screen never re-collects the code on the password screen after
+ * this. Throws (ApiError, field-level `code` message) on a wrong/expired
+ * code; the message is deliberately generic ("invalid or expired") and
+ * never distinguishes "no such request" from "wrong code" from "too many
+ * attempts," same no-enumeration reasoning as forgotPassword().
+ */
+export async function verifyPasswordResetOtp(
+  client: ApiClient,
+  input: { email: string; code: string },
+): Promise<{ resetToken: string }> {
+  const result = await client.post<{ reset_token: string; message: string }>(
+    "/auth/password/verify-otp",
+    { email: input.email, code: input.code },
+  );
+  return { resetToken: result.reset_token };
 }
 
 export interface RegisterInput {
@@ -283,15 +316,16 @@ export async function resendRegistrationVerification(client: ApiClient, email: s
 }
 
 export interface ResetPasswordInput {
-  token: string;
+  /** From verifyPasswordResetOtp() — not the emailed code itself. */
+  resetToken: string;
   email: string;
   password: string;
 }
 
-/** Unauthenticated. Consumes the reset token from the emailed link. */
+/** Unauthenticated. Consumes the reset_token verifyPasswordResetOtp() returned. */
 export async function resetPassword(client: ApiClient, input: ResetPasswordInput): Promise<void> {
   await client.post<{ message: string }>("/auth/password/reset", {
-    token: input.token,
+    reset_token: input.resetToken,
     email: input.email,
     password: input.password,
     password_confirmation: input.password,

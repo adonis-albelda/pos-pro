@@ -98,7 +98,10 @@ export function VariantAddonPicker({
   const keyboardHeight = useKeyboardHeight();
   const centered = !compact && landscape;
   const usableHeight = screenHeight - keyboardHeight - insets.top - insets.bottom;
-  const dialogWidth = Math.min(screenWidth * 0.92, dialogMaxWidth ?? 560);
+  // Bottom-sheet mode (phone, or tablet portrait) sits flush against the
+  // screen edges — paddingHorizontal:0 above already assumes that; the
+  // 92%/560 cap is only for the centered tablet-landscape floating dialog.
+  const dialogWidth = centered ? Math.min(screenWidth * 0.92, dialogMaxWidth ?? 560) : screenWidth;
   const dialogHeight = Math.min(screenHeight * 0.88, usableHeight * 0.95);
 
   useEffect(() => {

@@ -9,7 +9,9 @@ import {
   login,
   registerDemoAccount,
   resendRegistrationVerification,
+  resetPassword,
   updateCompanyBusinessType,
+  verifyPasswordResetOtp,
 } from "@double-a/api-client/queries";
 import { getSyncMeta, markFirstPullSkipped } from "@/db/meta";
 import { countLocalProducts } from "@/db/products";
@@ -29,6 +31,7 @@ import {
   CloudDownload,
   Check,
   CheckCircle2,
+  KeyRound,
   LogIn,
   RefreshCw,
   Play,
@@ -75,6 +78,12 @@ const PRIVACY_POLICY_URL = "https://www.doubleadigitalsolutions.store/pospro/pri
 type SetupFlowStep = "first-pull" | "business-type" | "done";
 type Step = "sign-in" | "feature-onboarding" | SetupFlowStep;
 
+/** The "Forgot password?" mini-flow's own 3-screen sub-state, independent of `Step`. */
+type ForgotStage = "closed" | "email" | "otp" | "reset" | "done";
+
+/** Matches auth.passwords.users.throttle server-side (routes/api/v1/public.php) — client-side pacing only, the server enforces its own cooldown silently regardless. */
+const RESEND_COOLDOWN_SECONDS = 60;
+
 /**
  * One-time terminal setup — enrollment always requires connectivity.
  *
@@ -110,11 +119,19 @@ export default function SetupScreen() {
   const [error, setError] = useState<string | null>(null);
   const [pulled, setPulled] = useState<number | null>(null);
   const [headerHeight, setHeaderHeight] = useState(0);
-  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotStage, setForgotStage] = useState<ForgotStage>("closed");
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotBusy, setForgotBusy] = useState(false);
-  const [forgotSent, setForgotSent] = useState(false);
   const [forgotError, setForgotError] = useState<string | null>(null);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [otpCode, setOtpCode] = useState("");
+  const [otpBusy, setOtpBusy] = useState(false);
+  const [otpError, setOtpError] = useState<string | null>(null);
+  const [resetToken, setResetToken] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [registerEmail, setRegisterEmail] = useState("");
   const [registerPassword, setRegisterPassword] = useState("");
@@ -304,7 +321,11 @@ export default function SetupScreen() {
     }
   }
 
-  async function sendResetLink() {
+  // Same call for the initial send and "Resend code" — the server's own
+  // cooldown (PasswordResetOtpCooldown) silently no-ops a too-soon resend
+  // without saying so (see forgotPassword()'s doc comment), so this timer is
+  // purely to pace the UI, not a source of truth.
+  async function sendResetCode() {
     if (!forgotEmail.trim()) {
       setForgotError("Enter the admin account's email.");
       return;
@@ -314,7 +335,8 @@ export default function SetupScreen() {
     setForgotError(null);
     try {
       await forgotPassword(createBareClient(), forgotEmail.trim());
-      setForgotSent(true);
+      setForgotStage("otp");
+      setResendCooldown(RESEND_COOLDOWN_SECONDS);
     } catch (cause) {
       setForgotError(
         cause instanceof Error
@@ -326,11 +348,87 @@ export default function SetupScreen() {
     }
   }
 
+  async function resendResetCode() {
+    setOtpError(null);
+    setOtpCode("");
+    setForgotError(null);
+    try {
+      await forgotPassword(createBareClient(), forgotEmail.trim());
+      setResendCooldown(RESEND_COOLDOWN_SECONDS);
+    } catch (cause) {
+      setOtpError(
+        cause instanceof Error
+          ? cause.message
+          : "Could not reach the server — check the connection and try again",
+      );
+    }
+  }
+
+  async function verifyResetCode() {
+    if (otpCode.trim().length !== 6) {
+      setOtpError("Enter the 6-digit code from your email.");
+      return;
+    }
+
+    setOtpBusy(true);
+    setOtpError(null);
+    try {
+      const { resetToken: token } = await verifyPasswordResetOtp(createBareClient(), {
+        email: forgotEmail.trim(),
+        code: otpCode.trim(),
+      });
+      setResetToken(token);
+      setForgotStage("reset");
+    } catch (cause) {
+      setOtpError(cause instanceof Error ? cause.message : "That code didn't work — try again.");
+    } finally {
+      setOtpBusy(false);
+    }
+  }
+
+  async function submitNewPassword() {
+    if (newPassword.length < 8) {
+      setResetError("Password must be at least 8 characters.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setResetError("Those two passwords don't match.");
+      return;
+    }
+    if (!resetToken) {
+      setResetError("This reset session expired — start again.");
+      return;
+    }
+
+    setResetBusy(true);
+    setResetError(null);
+    try {
+      await resetPassword(createBareClient(), {
+        resetToken,
+        email: forgotEmail.trim(),
+        password: newPassword,
+      });
+      setForgotStage("done");
+    } catch (cause) {
+      setResetError(
+        cause instanceof Error ? cause.message : "Could not reset the password — try again.",
+      );
+    } finally {
+      setResetBusy(false);
+    }
+  }
+
   function closeForgotPassword() {
-    setForgotOpen(false);
-    setForgotSent(false);
+    setForgotStage("closed");
     setForgotError(null);
     setForgotEmail("");
+    setResendCooldown(0);
+    setOtpCode("");
+    setOtpError(null);
+    setResetToken(null);
+    setNewPassword("");
+    setConfirmPassword("");
+    setResetError(null);
   }
 
   async function submitRegistration() {
@@ -494,6 +592,22 @@ export default function SetupScreen() {
     return () => clearTimeout(timer);
   }, [registerSent, verificationSentAt]);
 
+  // "Resend code" cooldown on the OTP-entry screen — client-side pacing only.
+  useEffect(() => {
+    if (forgotStage !== "otp" || resendCooldown <= 0) return;
+    const timer = setInterval(() => setResendCooldown((value) => Math.max(0, value - 1)), 1000);
+    return () => clearInterval(timer);
+  }, [forgotStage, resendCooldown]);
+
+  // Success screen after a reset — same "wait, then land somewhere normal"
+  // shape as the app's other post-action confirmations, not a dead end the
+  // cashier has to tap out of themselves.
+  useEffect(() => {
+    if (forgotStage !== "done") return;
+    const timer = setTimeout(() => closeForgotPassword(), 2500);
+    return () => clearTimeout(timer);
+  }, [forgotStage]);
+
   async function firstPull() {
     setBusy(true);
     setError(null);
@@ -600,13 +714,31 @@ export default function SetupScreen() {
           subtitle: "Name your shop and create an admin account",
           Icon: Store,
         }
-      : step === "sign-in" && forgotOpen
+      : step === "sign-in" && "email" === forgotStage
         ? {
             title: "Reset Password",
-            subtitle: "We'll email a link to your admin account",
+            subtitle: "We'll email a 6-digit code to your admin account",
             Icon: Mail,
           }
-        : stepMeta;
+        : step === "sign-in" && "otp" === forgotStage
+          ? {
+              title: "Check your email",
+              subtitle: `Enter the code sent to ${forgotEmail.trim()}`,
+              Icon: KeyRound,
+            }
+          : step === "sign-in" && "reset" === forgotStage
+            ? {
+                title: "Create a New Password",
+                subtitle: "Make sure it's strong and unique",
+                Icon: Lock,
+              }
+            : step === "sign-in" && "done" === forgotStage
+              ? {
+                  title: "Password Reset",
+                  subtitle: "Sign in with your new password",
+                  Icon: CheckCircle2,
+                }
+              : stepMeta;
 
   return (
     <View style={{ flex: 1, backgroundColor: "transparent" }}>
@@ -743,7 +875,7 @@ export default function SetupScreen() {
               </View>
             </View>
 
-            {step === "sign-in" && !forgotOpen && !registerOpen ? (
+            {step === "sign-in" && "closed" === forgotStage && !registerOpen ? (
               <>
                 {error ? (
                   <Text style={{ fontSize: fontSize.body, color: color.danger }}>{error}</Text>
@@ -784,7 +916,7 @@ export default function SetupScreen() {
                     gap: space.md,
                   }}
                 >
-                  <TextLink label="Forgot password?" onPress={() => setForgotOpen(true)} disabled={busy} />
+                  <TextLink label="Forgot password?" onPress={() => setForgotStage("email")} disabled={busy} />
                   <TextLink label="New to POSPro One?" onPress={() => setRegisterOpen(true)} disabled={busy} />
                 </View>
               </>
@@ -927,50 +1059,130 @@ export default function SetupScreen() {
               </>
             ) : null}
 
-            {step === "sign-in" && forgotOpen ? (
+            {step === "sign-in" && "email" === forgotStage ? (
               <>
-                {forgotSent ? (
-                  <View
-                    style={{
-                      backgroundColor: color.successSoft,
-                      borderRadius: radius.md,
-                      paddingHorizontal: space.md,
-                      paddingVertical: space.md,
-                      alignItems: "center",
-                      gap: space.xs,
-                    }}
-                  >
-                    <CheckCircle2 size={22} color={color.success} strokeWidth={2} />
-                    <Text style={{ fontSize: fontSize.body, fontWeight: "600", color: color.ink, textAlign: "center" }}>
-                      If that's an admin account, a reset link is on its way.
-                    </Text>
-                  </View>
-                ) : (
-                  <>
-                    <FilledInput
-                      label="Admin Email Address"
-                      icon={<Mail size={16} color={color.inkMuted} strokeWidth={2} />}
-                      value={forgotEmail}
-                      onChangeText={setForgotEmail}
-                      autoCapitalize="none"
-                      keyboardType="email-address"
-                      autoComplete="email"
-                      placeholder="admin@yourshop.com"
-                    />
-                    {forgotError ? <ErrorNote>{forgotError}</ErrorNote> : null}
-                    <Button
-                      label={forgotBusy ? "Sending..." : "Send Reset Link"}
-                      large
-                      style={largeButtonStyle}
-                      busy={forgotBusy}
-                      onPress={() => void sendResetLink()}
-                     
-                      icon={Send}
-                    />
-                    <InfoLine text="Password resets are for admin accounts only." />
-                  </>
-                )}
+                <FilledInput
+                  label="Admin Email Address"
+                  icon={<Mail size={16} color={color.inkMuted} strokeWidth={2} />}
+                  value={forgotEmail}
+                  onChangeText={setForgotEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  autoComplete="email"
+                  placeholder="admin@yourshop.com"
+                />
+                {forgotError ? <ErrorNote>{forgotError}</ErrorNote> : null}
+                <Button
+                  label={forgotBusy ? "Sending..." : "Send Reset Code"}
+                  large
+                  style={largeButtonStyle}
+                  busy={forgotBusy}
+                  onPress={() => void sendResetCode()}
+                  icon={Send}
+                />
+                <InfoLine text="Password resets are for admin accounts only." />
                 <TextLink label="Back to sign in" onPress={closeForgotPassword} disabled={forgotBusy} />
+              </>
+            ) : null}
+
+            {step === "sign-in" && "otp" === forgotStage ? (
+              <>
+                <FilledInput
+                  label="6-Digit Code"
+                  icon={<KeyRound size={16} color={color.inkMuted} strokeWidth={2} />}
+                  value={otpCode}
+                  onChangeText={(next) => setOtpCode(next.replace(/[^0-9]/g, "").slice(0, 6))}
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  placeholder="000000"
+                  autoFocus
+                />
+                {otpError ? <ErrorNote>{otpError}</ErrorNote> : null}
+                <Button
+                  label={otpBusy ? "Verifying..." : "Verify Code"}
+                  large
+                  style={largeButtonStyle}
+                  busy={otpBusy}
+                  disabled={otpCode.length !== 6}
+                  onPress={() => void verifyResetCode()}
+                  icon={Check}
+                />
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: space.md,
+                  }}
+                >
+                  <TextLink
+                    label="Change email"
+                    onPress={() => {
+                      setForgotStage("email");
+                      setOtpCode("");
+                      setOtpError(null);
+                    }}
+                    disabled={otpBusy}
+                  />
+                  <TextLink
+                    label={resendCooldown > 0 ? `Resend code (${resendCooldown}s)` : "Resend code"}
+                    onPress={() => void resendResetCode()}
+                    disabled={otpBusy || resendCooldown > 0}
+                  />
+                </View>
+              </>
+            ) : null}
+
+            {step === "sign-in" && "reset" === forgotStage ? (
+              <>
+                <FilledInput
+                  label="New Password"
+                  icon={<Lock size={16} color={color.inkMuted} strokeWidth={2} />}
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  secureTextEntry
+                  autoComplete="password-new"
+                  placeholder="At least 8 characters"
+                />
+                <FilledInput
+                  label="Confirm Password"
+                  icon={<Lock size={16} color={color.inkMuted} strokeWidth={2} />}
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  secureTextEntry
+                  autoComplete="password-new"
+                  placeholder="Type it again"
+                />
+                {resetError ? <ErrorNote>{resetError}</ErrorNote> : null}
+                <Button
+                  label={resetBusy ? "Resetting..." : "Reset Password"}
+                  large
+                  style={largeButtonStyle}
+                  busy={resetBusy}
+                  onPress={() => void submitNewPassword()}
+                  icon={Check}
+                />
+              </>
+            ) : null}
+
+            {step === "sign-in" && "done" === forgotStage ? (
+              <>
+                <View
+                  style={{
+                    backgroundColor: color.successSoft,
+                    borderRadius: radius.md,
+                    paddingHorizontal: space.md,
+                    paddingVertical: space.md,
+                    alignItems: "center",
+                    gap: space.xs,
+                  }}
+                >
+                  <CheckCircle2 size={22} color={color.success} strokeWidth={2} />
+                  <Text style={{ fontSize: fontSize.body, fontWeight: "600", color: color.ink, textAlign: "center" }}>
+                    Password reset successful. Sign in with your new password.
+                  </Text>
+                </View>
+                <TextLink label="Back to sign in" onPress={closeForgotPassword} />
               </>
             ) : null}
 

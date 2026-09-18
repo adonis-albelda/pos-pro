@@ -227,8 +227,8 @@ export class ApiClient {
     return this.request<T>(path, { method: "PUT", body });
   }
 
-  delete<T = void>(path: string): Promise<T> {
-    return this.request<T>(path, { method: "DELETE" });
+  delete<T = void>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>(path, { method: "DELETE", body });
   }
 
   /** Binary download — CSV exports, database backups, etc. */
