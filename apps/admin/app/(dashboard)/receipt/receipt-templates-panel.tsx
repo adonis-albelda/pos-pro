@@ -12,7 +12,6 @@ import type { ReceiptTemplateInput } from "@double-a/api-client/queries";
 import {
   Badge,
   Button,
-  Card,
   EmptyState,
   ErrorNote,
   Field,
@@ -85,78 +84,76 @@ export function ReceiptTemplatesPanel({ store }: { store: StoreSettings }) {
 
   return (
     <>
-      <Card className="relative z-0 overflow-visible">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-4 sm:px-6">
-          <div>
-            <h3 className="text-heading-sm font-semibold">Custom receipts</h3>
-            <p className="mt-0.5 text-caption text-ink-muted">
-              Define a receipt for a purpose other than the customer's own — a Kitchen Order
-              slip, a delivery note, whatever this shop needs. Nothing prints one automatically
-              yet; this is where you design it.
-            </p>
-          </div>
-          <Button type="button" icon={Plus} size="sm" onClick={() => setEditing("new")}>
-            New template
-          </Button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-heading-sm font-semibold">Custom receipts</h3>
+          <p className="mt-0.5 text-caption text-ink-muted">
+            Define a receipt for a purpose other than the customer's own — a Kitchen Order
+            slip, a delivery note, whatever this shop needs. Nothing prints one automatically
+            yet; this is where you design it.
+          </p>
         </div>
+        <Button type="button" icon={Plus} size="sm" onClick={() => setEditing("new")}>
+          New template
+        </Button>
+      </div>
 
-        <div className="px-4 py-5 sm:px-6">
-          {templatesQuery.isPending ? (
-            <p className="py-8 text-center text-body text-ink-muted">Loading…</p>
-          ) : templatesQuery.isError ? (
-            <p className="py-8 text-center text-body text-danger">
-              {templatesQuery.error instanceof Error
-                ? templatesQuery.error.message
-                : "Could not load custom receipts."}
-            </p>
-          ) : templates.length === 0 ? (
-            <EmptyState
-              icon={Printer}
-              title="No custom receipts yet"
-              instruction='Add one for a purpose the customer receipt doesn’t cover, like a Kitchen Order slip.'
-            />
-          ) : (
-            <Table>
-              <thead>
-                <tr>
-                  <Th>Name</Th>
-                  <Th>Title</Th>
-                  <Th>Status</Th>
-                  <Th aria-label="Actions" />
+      <div className="pt-5">
+        {templatesQuery.isPending ? (
+          <p className="py-8 text-center text-body text-ink-muted">Loading…</p>
+        ) : templatesQuery.isError ? (
+          <p className="py-8 text-center text-body text-danger">
+            {templatesQuery.error instanceof Error
+              ? templatesQuery.error.message
+              : "Could not load custom receipts."}
+          </p>
+        ) : templates.length === 0 ? (
+          <EmptyState
+            icon={Printer}
+            title="No custom receipts yet"
+            instruction='Add one for a purpose the customer receipt doesn’t cover, like a Kitchen Order slip.'
+          />
+        ) : (
+          <Table>
+            <thead>
+              <tr>
+                <Th>Name</Th>
+                <Th>Title</Th>
+                <Th>Status</Th>
+                <Th aria-label="Actions" />
+              </tr>
+            </thead>
+            <tbody>
+              {templates.map((template) => (
+                <tr key={template.id}>
+                  <Td className="font-medium text-ink">{template.name}</Td>
+                  <Td className="text-ink-muted">{template.title || "—"}</Td>
+                  <Td>
+                    <Badge tone={template.isActive ? "success" : "neutral"}>
+                      {template.isActive ? "Active" : "Inactive"}
+                    </Badge>
+                  </Td>
+                  <Td>
+                    <div className="flex justify-end gap-1">
+                      <IconButton
+                        icon={Pencil}
+                        label={`Edit ${template.name}`}
+                        onClick={() => setEditing(template)}
+                      />
+                      <IconButton
+                        icon={Trash2}
+                        label={`Delete ${template.name}`}
+                        tone="danger"
+                        onClick={() => setDeleting(template)}
+                      />
+                    </div>
+                  </Td>
                 </tr>
-              </thead>
-              <tbody>
-                {templates.map((template) => (
-                  <tr key={template.id}>
-                    <Td className="font-medium text-ink">{template.name}</Td>
-                    <Td className="text-ink-muted">{template.title || "—"}</Td>
-                    <Td>
-                      <Badge tone={template.isActive ? "success" : "neutral"}>
-                        {template.isActive ? "Active" : "Inactive"}
-                      </Badge>
-                    </Td>
-                    <Td>
-                      <div className="flex justify-end gap-1">
-                        <IconButton
-                          icon={Pencil}
-                          label={`Edit ${template.name}`}
-                          onClick={() => setEditing(template)}
-                        />
-                        <IconButton
-                          icon={Trash2}
-                          label={`Delete ${template.name}`}
-                          tone="danger"
-                          onClick={() => setDeleting(template)}
-                        />
-                      </div>
-                    </Td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
-          )}
-        </div>
-      </Card>
+              ))}
+            </tbody>
+          </Table>
+        )}
+      </div>
 
       <Sheet
         open={editing !== null}

@@ -266,9 +266,10 @@ export function Badge({
 }: {
   tone?: BadgeTone;
   label: string;
-  icon?: LucideIcon;
+  /** Pass `null` to render label-only, with no icon — undefined keeps the tone's default. */
+  icon?: LucideIcon | null;
 }) {
-  const Icon = icon ?? BADGE_ICON[tone];
+  const Icon = icon === null ? null : (icon ?? BADGE_ICON[tone]);
 
   return (
     <View
@@ -283,7 +284,7 @@ export function Badge({
         backgroundColor: badgeFill(tone),
       }}
     >
-      <Icon size={13} color={badgeInk(tone)} strokeWidth={2.5} />
+      {Icon ? <Icon size={13} color={badgeInk(tone)} strokeWidth={2.5} /> : null}
       <Text
         style={{ color: badgeInk(tone), fontSize: fontSize.caption, fontWeight: "600" }}
       >

@@ -162,11 +162,11 @@ export default function AccountScreen() {
                 {cashier.name.slice(0, 1).toUpperCase()}
               </Text>
             </View>
-            <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+            <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
               <Text numberOfLines={1} style={{ fontSize: fontSize.headingSm, fontWeight: "700", color: color.ink }}>
                 {cashier.name}
               </Text>
-              <Badge tone="neutral" label={roleLabel(cashier.role)} />
+              <Badge tone="neutral" label={roleLabel(cashier.role)} icon={null} />
             </View>
           </View>
 
@@ -305,9 +305,18 @@ function Labelled({ label, children }: { label: string; children: React.ReactNod
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-      <Text style={styles.muted}>{label}</Text>
-      <Text numberOfLines={1} style={[styles.numeric, { fontSize: fontSize.body, flexShrink: 1, marginLeft: space.md }]}>
+    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+      <Text style={[styles.muted, { fontWeight: "500" }]}>{label}</Text>
+      <Text
+        numberOfLines={1}
+        style={{
+          fontSize: fontSize.body,
+          fontWeight: "600",
+          color: color.ink,
+          flexShrink: 1,
+          marginLeft: space.md,
+        }}
+      >
         {value}
       </Text>
     </View>
