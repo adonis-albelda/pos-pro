@@ -1,9 +1,9 @@
 import { memo, useId, useRef, useState } from "react";
-import { ImageBackground, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, ImageBackground, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { Image } from "expo-image";
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
-import { Minus, Package, Trash2, Truck, X } from "lucide-react-native";
+import { Package, ShoppingCart, Truck, X } from "lucide-react-native";
 import { formatMoney, stockLevel, type ProductWithEstimatedStock } from "@double-a/shared-types";
 import { type FlyRect } from "@/lib/fly-to-cart";
 import { useThemePreferences } from "@/lib/theme-preferences";
@@ -24,6 +24,8 @@ function ProductTileImpl({
   onHoldView,
   /** Flagged by sync/sync-provider.tsx's justCreatedProductIds — a tile for a product that just arrived over realtime (as opposed to one loaded normally on mount/scroll) slides/fades in instead of just appearing. */
   justCreated = false,
+  /** True from the moment this tile is tapped until its own add-to-cart tap resolves (line updated, picker/alert opened) — see app/pos/(tabs)/index.tsx's pendingTileIds. Shows a centered spinner so a fast cashier can see a specific tap land, separate from the flight animation, which flies toward the cart rather than staying on the card. */
+  adding = false,
 }: {
   product: ProductWithEstimatedStock;
   inCart: number;
@@ -38,6 +40,7 @@ function ProductTileImpl({
   /** Holding a tile not yet in the cart opens the full name/description/supplier detail sheet. */
   onHoldView: () => void;
   justCreated?: boolean;
+  adding?: boolean;
 }) {
   // Per product, not one shop-wide number: a box of screws and a length of GI
   // pipe run out at very different counts.
@@ -45,8 +48,6 @@ function ProductTileImpl({
   const outOfStock = product.estimatedStock <= 0;
   const inCartNow = inCart > 0;
   const unitSuffix = product.unit === "pc" ? "" : ` ${product.unit}`;
-  // At one, taking one off drops the line entirely, so the control says so.
-  const RemoveIcon = inCart === 1 ? Trash2 : Minus;
   // Theme menu (app/pos/theme.tsx) — "text" drops the thumbnail below,
   // "image-dominant" replaces this component's whole body with a full-bleed
   // photo, "image-text" is this file's original layout, untouched.
@@ -106,7 +107,7 @@ function ProductTileImpl({
           ? `${product.name}, hold to remove from cart`
           : `${product.name}, hold for details`
       }
-      style={[
+      style={({ pressed }) => [
         styles.card,
         {
           flex: 1,
@@ -125,7 +126,12 @@ function ProductTileImpl({
           borderWidth: inCartNow ? 2 : 1,
           // Gradient paints the fill; keep transparent so it shows through.
           backgroundColor: "transparent",
-          opacity: outOfStock ? 0.7 : 1,
+          // Dim on press — a cashier tapping fast needs to feel the tap land
+          // before the add-to-cart flight animation even starts. The inner
+          // gradient's own pressed-tint (CardThemeGradient below) was too
+          // subtle, and image-dominant tiles skip that gradient entirely, so
+          // this is the only feedback a photo tile gave at all.
+          opacity: outOfStock ? 0.7 : pressed ? 0.85 : 1,
         },
       ]}
     >
@@ -139,6 +145,17 @@ function ProductTileImpl({
               pressed={pressed}
             />
           )}
+      {adding ? (
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            { alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.12)" },
+          ]}
+        >
+          <ActivityIndicator color={imageDominant ? "#FFFFFF" : color.primary} />
+        </View>
+      ) : null}
       {rowLayout ? (
         <RowLayoutBody
           product={product}
@@ -149,7 +166,7 @@ function ProductTileImpl({
           imageSize={Math.max(64, tileMinHeight - padding * 2)}
           inCart={inCart}
           inCartNow={inCartNow}
-          RemoveIcon={RemoveIcon}
+          RemoveIcon={ShoppingCart}
           onRemove={onRemove}
         />
       ) : imageDominant ? (
@@ -157,7 +174,7 @@ function ProductTileImpl({
           product={product}
           inCartNow={inCartNow}
           inCart={inCart}
-          RemoveIcon={RemoveIcon}
+          RemoveIcon={ShoppingCart}
           onRemove={onRemove}
         />
       ) : (
@@ -337,7 +354,7 @@ function ProductTileImpl({
             paddingVertical: space.xs,
           })}
         >
-          <RemoveIcon size={14} color={color.onPrimary} strokeWidth={2.5} />
+          <ShoppingCart size={14} color={color.onPrimary} strokeWidth={2.5} />
           <Text
             style={{
               color: color.onPrimary,
@@ -345,7 +362,7 @@ function ProductTileImpl({
               fontWeight: "700",
             }}
           >
-            {compact ? inCart : `${inCart} in cart`}
+            {inCart}
           </Text>
         </Pressable>
       ) : null}
@@ -407,7 +424,8 @@ function productTilePropsEqual(
     prev.compact === next.compact &&
     prev.minHeight === next.minHeight &&
     prev.padding === next.padding &&
-    prev.justCreated === next.justCreated
+    prev.justCreated === next.justCreated &&
+    prev.adding === next.adding
   );
 }
 
@@ -519,7 +537,7 @@ function RowLayoutBody({
   imageSize: number;
   inCart: number;
   inCartNow: boolean;
-  RemoveIcon: typeof Minus;
+  RemoveIcon: typeof ShoppingCart;
   onRemove: () => void;
 }) {
   return (
@@ -634,7 +652,7 @@ function RowLayoutBody({
               fontWeight: "700",
             }}
           >
-            {compact ? inCart : `${inCart} in cart`}
+            {inCart}
           </Text>
         </Pressable>
       ) : null}
@@ -718,7 +736,7 @@ function ImageDominantBody({
   product: ProductWithEstimatedStock;
   inCartNow: boolean;
   inCart: number;
-  RemoveIcon: typeof Minus;
+  RemoveIcon: typeof ShoppingCart;
   onRemove: () => void;
 }) {
   const overlay = (

@@ -122,6 +122,7 @@ import {
   getVariantPendingQuantity,
   listLocalVariantsForProduct,
   listLocalVariantsForProducts,
+  listProductIdsWithMultipleVariants,
   variantAttributeLabel,
   type VariantWithEstimatedStock,
 } from "@/db/product-variants";
@@ -355,6 +356,13 @@ export default function SellScreen() {
   const [variantsByProduct, setVariantsByProduct] = useState<
     Map<string, VariantWithEstimatedStock[]>
   >(new Map());
+  // Cheap COUNT-based flag, populated for whatever page is currently loaded
+  // (see withVariants below) regardless of productViewMode — addToCart reads
+  // this synchronously at tap time to decide whether the flight animation
+  // should fire immediately (a plain/single-variant product resolves the tap
+  // straight to a cart line) or wait (2+ variants opens the picker first;
+  // nothing's added yet, so nothing should fly toward the cart yet either).
+  const [multiVariantProductIds, setMultiVariantProductIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (productViewMode !== "variant") {
@@ -461,7 +469,13 @@ export default function SellScreen() {
   const [loadingPage, setLoadingPage] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [ready, setReady] = useState(false);
-  const [focusEpoch, setFocusEpoch] = useState(0);
+  // Bumped only right after a sale completes on this screen — that changes
+  // estimated stock (pending-sales sum) for the sold products, so the
+  // product-list effect below needs to re-read it. Deliberately NOT tied to
+  // tab focus: none of the other bottom-nav tabs ever write anything that
+  // moves stock, so refetching on a plain tab revisit was pure waste (see
+  // the focus effect's own comment) — that was what made switching tabs feel slow.
+  const [saleTick, setSaleTick] = useState(0);
   const [heldTick, setHeldTick] = useState(0);
   const requestId = useRef(0);
   const loadingMoreRef = useRef(false);
@@ -535,6 +549,14 @@ export default function SellScreen() {
   const [floatingScannerOpen, setFloatingScannerOpen] = useState(false);
   const [aiSearchOpen, setAiSearchOpen] = useState(false);
   const [viewingProduct, setViewingProduct] = useState<ProductWithEstimatedStock | null>(null);
+  // Tile ids (display.id — variant id for a variant tile, product id
+  // otherwise) currently mid-tap: handleTilePress adds one on entry, clears
+  // it in a finally once that tap's own async work settles (line updated,
+  // picker/alert opened, or an early return). The flight animation is
+  // instant already, but it flies *toward the cart*, not on the card
+  // itself — a cashier tapping fast still couldn't tell a specific tap
+  // landed from the tile's own face until this.
+  const [pendingTileIds, setPendingTileIds] = useState<Set<string>>(new Set());
   // Set only for a product with >1 variant and/or attached add-on groups —
   // addToCart decides whether this ever opens; a plain product never does.
   const [pickerState, setPickerState] = useState<{
@@ -609,12 +631,19 @@ export default function SellScreen() {
     );
   }, []);
 
-  // Reload on focus so a sync or a finished sale is reflected in estimated stock.
+  // Categories/drafts are cheap and can genuinely go stale while this tab
+  // isn't focused (a category added elsewhere, a draft saved then resumed).
+  // Product stock itself doesn't need a focus-driven refetch on top of this:
+  // none of the other bottom-nav tabs (Delivery, Sales, Account) ever write
+  // anything that moves estimated stock, and a real sync/realtime change
+  // already bumps `dataVersion`, which the product-list effect below already
+  // depends on — a plain tab revisit used to also force that same expensive
+  // full-window refetch + merge + gridTiles rebuild for no actual data
+  // change, which is what made switching tabs feel slow.
   useFocusEffect(
     useCallback(() => {
       void loadCategories();
       void refreshDrafts();
-      setFocusEpoch((epoch) => epoch + 1);
     }, [loadCategories, refreshDrafts]),
   );
 
@@ -694,8 +723,17 @@ export default function SellScreen() {
     // that gap is exactly what showed a plain product-level tile right
     // after a create/update, in "By variant" mode, until the next render.
     async function withVariants<T extends { id: string }>(rows: T[]): Promise<void> {
+      // Cheap regardless of view mode — a COUNT/GROUP BY, not a row fetch —
+      // so this runs unconditionally to keep multiVariantProductIds current
+      // for addToCart's flight-timing decision. The full variant-row map
+      // below stays gated to "By variant" mode; that one is a real fetch.
+      const productIds = rows.map((row) => row.id);
+      void listProductIdsWithMultipleVariants(productIds).then((set) => {
+        if (id === requestId.current) setMultiVariantProductIds(set);
+      });
+
       if (productViewMode !== "variant") return;
-      const map = await listLocalVariantsForProducts(rows.map((row) => row.id));
+      const map = await listLocalVariantsForProducts(productIds);
       if (id === requestId.current) setVariantsByProduct(map);
     }
 
@@ -727,8 +765,8 @@ export default function SellScreen() {
     setHasMore(true);
 
     // At least PRODUCT_PAGE_SIZE, but never fewer than whatever's already
-    // on screen. This effect also reruns on a bare realtime/focus signal
-    // (dataVersion, focusEpoch) with the same query/category — not just on
+    // on screen. This effect also reruns on a bare realtime/sale signal
+    // (dataVersion, saleTick) with the same query/category — not just on
     // an actual new search or category pick. Refetching only page one every
     // time would silently drop every page a scrolled-down cashier had
     // already loaded via loadMore, snapping the FlatList's data back under
@@ -773,7 +811,7 @@ export default function SellScreen() {
     // a full product-list reload on every Theme menu toggle instead of the
     // separate effect below's much cheaper variants-only refetch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, categoryIds, dataVersion, focusEpoch, aiResultIds]);
+  }, [query, categoryIds, dataVersion, saleTick, aiResultIds]);
 
   useEffect(() => {
     const ids = [...heldById.current.keys()];
@@ -782,7 +820,7 @@ export default function SellScreen() {
       heldById.current = new Map(rows.map((row) => [row.id, row]));
       setHeldTick((tick) => tick + 1);
     });
-  }, [dataVersion, focusEpoch]);
+  }, [dataVersion]);
 
   const loadMore = useCallback(() => {
     if (loadingMoreRef.current || loadingPage || !hasMore) return;
@@ -904,13 +942,33 @@ export default function SellScreen() {
    */
   async function addToCart(product: ProductWithEstimatedStock, sourceRect?: FlyRect) {
     rememberProducts([product]);
+    // Fired immediately, before any of the async work below — the flight is
+    // purely cosmetic tap feedback and shouldn't wait on the variant/addon
+    // lookup a brand-new line still has to make. That lookup used to gate
+    // this: a first tap on a product (no existing line yet) fell through to
+    // the `await Promise.all` below before flying at all, so the animation
+    // only ever looked instant on a *second* tap (the existing-line fast
+    // path right below, which already flew immediately). requestAddToCart()
+    // no longer flies on its own — this is the one place that does now, for
+    // every path through this function.
+    //
+    // Skipped for a product flagged in multiVariantProductIds (populated
+    // synchronously from a page-wide COUNT, not the per-tap variant fetch
+    // below) — the docstring above says a 2+ variant product opens the
+    // picker on *every* tap, not just the first, so nothing has actually
+    // been added to the cart yet on any of those taps. Flying the tile
+    // toward the cart before the picker even opens was the bug: it looked
+    // like qty-0 taps "didn't animate" once the qty>0 fast-path bump (which
+    // never hits a picker) was compared against them, when really both were
+    // firing — one just shouldn't have been.
+    const isMultiVariant = multiVariantProductIds.has(product.id);
+    if (sourceRect && !isMultiVariant) flyToCart(sourceRect, product.photoUrl);
 
     const existing = lines.find((line) => line.productId === product.id);
     // A plain line (no variant ever resolved) never needed a choice and
     // never will — same fast path as before, skipping the variant fetch.
     if (existing && !existing.variantId) {
       changeQuantity(product.id, 1, null);
-      if (sourceRect) flyToCart(sourceRect, product.photoUrl);
       return;
     }
 
@@ -928,7 +986,6 @@ export default function SellScreen() {
 
     if (existing) {
       changeQuantity(product.id, 1, existing.variantId);
-      if (sourceRect) flyToCart(sourceRect, product.photoUrl);
       return;
     }
 
@@ -1029,28 +1086,42 @@ export default function SellScreen() {
    * component, just pre-scoped to this one variant instead of every one.
    */
   async function handleTilePress(tile: GridTile, sourceRect?: FlyRect) {
-    if (!tile.variant) {
-      await addToCart(tile.realProduct, sourceRect);
-      return;
-    }
+    const tileId = tile.display.id;
+    setPendingTileIds((prev) => new Set(prev).add(tileId));
+    try {
+      if (!tile.variant) {
+        await addToCart(tile.realProduct, sourceRect);
+        return;
+      }
 
-    rememberProducts([tile.realProduct]);
-    const existing = lines.find(
-      (line) => line.productId === tile.realProduct.id && line.variantId === tile.variant?.id,
-    );
-    if (existing) {
-      changeQuantity(tile.realProduct.id, 1, tile.variant.id);
+      rememberProducts([tile.realProduct]);
+      // Same reasoning as addToCart() above — fire before the async addon
+      // lookup below, not after.
       if (sourceRect) flyToCart(sourceRect, tile.display.photoUrl);
-      return;
-    }
 
-    const addonGroups = await listLocalAddonGroups(tile.realProduct.addonGroupIds);
-    if (addonGroups.length > 0) {
-      setPickerState({ product: tile.realProduct, variants: [tile.variant], addonGroups });
-      return;
-    }
+      const existing = lines.find(
+        (line) => line.productId === tile.realProduct.id && line.variantId === tile.variant?.id,
+      );
+      if (existing) {
+        changeQuantity(tile.realProduct.id, 1, tile.variant.id);
+        return;
+      }
 
-    await commitVariantSelection(tile.realProduct, tile.variant, [], sourceRect);
+      const addonGroups = await listLocalAddonGroups(tile.realProduct.addonGroupIds);
+      if (addonGroups.length > 0) {
+        setPickerState({ product: tile.realProduct, variants: [tile.variant], addonGroups });
+        return;
+      }
+
+      await commitVariantSelection(tile.realProduct, tile.variant, [], sourceRect);
+    } finally {
+      setPendingTileIds((prev) => {
+        if (!prev.has(tileId)) return prev;
+        const next = new Set(prev);
+        next.delete(tileId);
+        return next;
+      });
+    }
   }
 
   /**
@@ -1092,7 +1163,10 @@ export default function SellScreen() {
 
   /**
    * Zero shelf price (ready-catalog imports) → ask cashier before commit.
-   * Otherwise same as commitAddToCart + optional fly animation.
+   * Otherwise just commitAddToCart — every caller here (addToCart,
+   * commitVariantSelection) already fired the fly animation eagerly at tap
+   * time, before any of this async/prompt logic ran, so this doesn't fly on
+   * its own anymore.
    */
   function requestAddToCart(
     product: ProductWithEstimatedStock,
@@ -1115,7 +1189,6 @@ export default function SellScreen() {
     }
 
     commitAddToCart(product, selection);
-    if (sourceRect) flyToCart(sourceRect, product.photoUrl);
   }
 
   function commitAddToCart(
@@ -1553,7 +1626,7 @@ export default function SellScreen() {
       // dialog with it. Print / Skip close both; print is opt-in (never auto).
       setCompletedSale(sale);
       setConfirmSucceeded(true);
-      setFocusEpoch((epoch) => epoch + 1);
+      setSaleTick((tick) => tick + 1);
       void refresh();
 
       // Deliberately not awaited: if this device happens to be online it
@@ -1967,6 +2040,7 @@ export default function SellScreen() {
                       minHeight={layout.tileMinHeight}
                       padding={space.md}
                       justCreated={justCreatedProductIds.has(item.display.id)}
+                      adding={pendingTileIds.has(item.display.id)}
                       onPress={(sourceRect) => void handleTilePress(item, sourceRect)}
                       onRemove={() => void handleTileDecrement(item, "decrement")}
                       onHoldRemove={() => void handleTileDecrement(item, "hold-remove")}

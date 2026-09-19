@@ -22,8 +22,10 @@ const CENTER_BUTTON_SIZE = 52;
  * whatever screen a cashier was on). Shown at every width and orientation
  * (phone and tablet, portrait or landscape) — a tablet's own chrome
  * (CartShell's side panel, StoreHeader's sales stat) sits above this, not in
- * place of it. Mounted in both app/pos/_layout.tsx and app/admin/_layout.tsx
- * so it stays visible switching between the two, not just within one. Admin
+ * place of it. Mounted as the `tabBar` for app/pos/(tabs)/_layout.tsx's real
+ * Tabs navigator (keeps each tab's screen mounted, so switching is instant
+ * and doesn't wipe state), and directly in app/admin/_layout.tsx too, so it
+ * stays visible switching between the two, not just within one. Admin
  * dashboard moved back to being drawer-only (AccountDrawer) — this bar's 4
  * slots go to the screens a shift actually rotates through, not an
  * occasional destination.
@@ -60,7 +62,7 @@ export function BottomTabBar() {
           icon={tab.icon}
           label={tab.label}
           active={pathname === tab.href}
-          onPress={() => router.replace(tab.href)}
+          onPress={() => router.navigate(tab.href)}
         />
       ))}
       {priceInquiry ? (
@@ -100,7 +102,7 @@ export function BottomTabBar() {
           icon={tab.icon}
           label={tab.label}
           active={pathname === tab.href}
-          onPress={() => router.replace(tab.href)}
+          onPress={() => router.navigate(tab.href)}
         />
       ))}
     </View>

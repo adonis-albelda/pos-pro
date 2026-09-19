@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Image, Modal, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Check, Circle, CircleCheck, Minus, Plus, Square, SquareCheck, X } from "lucide-react-native";
@@ -12,6 +12,7 @@ import { variantAttributeLabel } from "@/db/product-variants";
 import { useKeyboardHeight } from "@/components/bottom-sheet";
 import { CartQtyButton } from "@/components/cart-qty-button";
 import { Badge, Button, Money } from "@/components/ui";
+import { useFlyToCart } from "@/lib/fly-to-cart";
 import { useLayout } from "@/lib/layout";
 import { color, fontSize, radius, space } from "@/theme";
 
@@ -83,6 +84,15 @@ export function VariantAddonPicker({
   // cart) immediately, which read as "just looking" silently adding items.
   const [pendingDeltas, setPendingDeltas] = useState<Record<string, number>>({});
   const [committing, setCommitting] = useState(false);
+  const { flyToCart } = useFlyToCart();
+  // A tile tap that opens this sheet correctly never flies (nothing's
+  // added to the cart until a row's "+" or the add-on "Add to cart" button
+  // below is actually pressed here) — these refs are what let *those*
+  // presses fly instead, measured the same way product-tile.tsx measures
+  // its own tile: at press time, off the pressed control's own on-screen
+  // rect, not the original grid tile (this sheet covers it anyway).
+  const addToCartBtnRef = useRef<View>(null);
+  const plusButtonRefs = useRef(new Map<string, View>()).current;
   const { compact, landscape } = useLayout();
   const dialogMaxWidth = !compact && landscape ? TABLET_LANDSCAPE_MAX_WIDTH : undefined;
   const hasAddons = addonGroups.length > 0;
@@ -195,6 +205,11 @@ export function VariantAddonPicker({
         if (item) addons.push({ addonGroupItemId: item.id, name: item.name, price: item.price });
       }
     }
+
+    const photoUrl = selectedVariant.photoUrl ?? productPhotoUrl ?? null;
+    addToCartBtnRef.current?.measureInWindow((x, y, width, height) => {
+      flyToCart({ x, y, width, height }, photoUrl);
+    });
 
     onConfirm({ variant: selectedVariant, addons });
     // Ready for another add in the same sheet — the caller decides whether
@@ -371,16 +386,25 @@ export function VariantAddonPicker({
                       >
                         {qty}
                       </Text>
-                      <CartQtyButton
-                        icon={Plus}
-                        label={`One more ${label}`}
-                        onPress={() =>
-                          setPendingDeltas((current) => ({
-                            ...current,
-                            [variant.id]: (current[variant.id] ?? 0) + 1,
-                          }))
-                        }
-                      />
+                      <View
+                        ref={(node) => {
+                          if (node) plusButtonRefs.set(variant.id, node);
+                        }}
+                      >
+                        <CartQtyButton
+                          icon={Plus}
+                          label={`One more ${label}`}
+                          onPress={() => {
+                            plusButtonRefs.get(variant.id)?.measureInWindow((x, y, width, height) => {
+                              flyToCart({ x, y, width, height }, photoUrl);
+                            });
+                            setPendingDeltas((current) => ({
+                              ...current,
+                              [variant.id]: (current[variant.id] ?? 0) + 1,
+                            }));
+                          }}
+                        />
+                      </View>
                     </View>
                   )}
                 </View>
@@ -477,13 +501,15 @@ export function VariantAddonPicker({
 
             <View style={{ flexDirection: "row", gap: space.sm }}>
               <Button label="Done" variant="secondary" style={{ flex: 1 }} onPress={onCancel} />
-              <Button
-                label="Add to cart"
-                icon={Check}
-                style={{ flex: 1 }}
-                disabled={!selectedVariant || missingRequired.length > 0}
-                onPress={confirm}
-              />
+              <View ref={addToCartBtnRef} style={{ flex: 1 }}>
+                <Button
+                  label="Add to cart"
+                  icon={Check}
+                  style={{ flex: 1 }}
+                  disabled={!selectedVariant || missingRequired.length > 0}
+                  onPress={confirm}
+                />
+              </View>
             </View>
           </>
         ) : (

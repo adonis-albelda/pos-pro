@@ -27,12 +27,22 @@ import { color, fontSize, radius, space } from "@/theme";
 /** Shared minimum height for every pressable header pill (Synced, Draft sales, Cart) so they line up regardless of one-line vs two-line content. */
 const HEADER_BUTTON_MIN_HEIGHT = 36;
 
-export function StoreHeader() {
+export function StoreHeader({ pathname: pathnameProp }: { pathname?: string } = {}) {
   const state = useSync();
   const cart = useCartSummary();
   const draft = useDraftSummary();
   const router = useRouter();
-  const pathname = usePathname();
+  // Prefer the pathname prop when the caller already subscribes to it
+  // (app/pos/_layout.tsx) over this component's own usePathname() call —
+  // two independent subscriptions to the same router state can commit on
+  // different render passes during a fast tab switch (router.replace),
+  // which showed up as the Sell-only pills (Hold sales, Cart) briefly
+  // surviving into Delivery/Sales/Account before catching up. Still called
+  // unconditionally so callers that don't have it handy already
+  // (app/admin/_layout.tsx, app/pos/index.tsx's tablet-embedded instance)
+  // fall back to it.
+  const pathnameFromHook = usePathname();
+  const pathname = pathnameProp ?? pathnameFromHook;
   const { compact } = useLayout();
   const { open: drawerOpen, openDrawer, closeDrawer } = useAccountDrawer();
   // Effective online, not raw connectivity — a device with a signal but
@@ -70,14 +80,18 @@ export function StoreHeader() {
   // persistent "you're synced" indicator — the header's own sync chip
   // already covers that. Fires only on the idle/pulling/pushing → done
   // transition, not on every render while phase happens to already be
-  // "done" (it stays "done" until the next action or a reload).
+  // "done" (it stays "done" until the next action or a reload). Gated to the
+  // Sell screen — this header stays mounted across every tab, so a sale's
+  // silent auto-push landing right as the cashier switches to Delivery/Sales
+  // used to pop a stale "Synced" banner there instead, unrelated to whatever
+  // they're now looking at.
   const [banner, setBanner] = useState<string | null>(null);
   const previousPhase = useRef<SyncPhase>(state.phase);
   useEffect(() => {
     const justFinished = state.phase === "done" && previousPhase.current !== "done";
     previousPhase.current = state.phase;
-    if (justFinished) setBanner(state.message || "Synced");
-  }, [state.phase, state.message]);
+    if (justFinished && onSellScreen) setBanner(state.message || "Synced");
+  }, [state.phase, state.message, onSellScreen]);
   useEffect(() => {
     if (!banner) return;
     const timer = setTimeout(() => setBanner(null), 3000);
@@ -370,11 +384,13 @@ export function StoreHeader() {
               pendingSales={state.pendingSales}
               onPress={() => router.replace("/pos/sync")}
             />
-            {/* Sell-screen-only, same as the cart chip below — draft.open is
-                only ever published while app/pos/index.tsx (the only screen
-                with parked carts) is actually mounted. Both are their own
-                pill now (headerButtonStyle), so no divider needed between them. */}
-            {onSellScreen && draft.open ? (
+            {/* Shown on every tablet tab, not just Sell — the (tabs)
+                navigator (app/pos/(tabs)/_layout.tsx) keeps Sell mounted in
+                the background always, so draft.open is published
+                regardless of which tab is currently visible; opening it
+                from Delivery/Sales/Account pops the same picker over
+                whatever's on screen. */}
+            {draft.open ? (
               <DraftStat count={draft.count} onPress={draft.open} />
             ) : null}
           </View>
@@ -382,20 +398,24 @@ export function StoreHeader() {
 
         {/* Tablet: today's sales (CartShell already shows the cart, so a
             chip here would be redundant). Admin dashboard: nothing — the
-            label above already took the flex slot. */}
+            label above already took the flex slot. Divider marks the real
+            boundary between the shift-local pills (time/sync/drafts) and
+            this shop-wide totals section. */}
         {onAdminScreen ? null : (
-          <View
-            accessibilityLabel={`Today ${daySummary?.salesCount ?? 0} sales, ${formatMoney(daySummary?.revenue ?? 0)}. Discounts ${formatMoney(daySummary?.discountTotal ?? 0)} on ${daySummary?.discountedSalesCount ?? 0} sales. Refunds ${formatMoney(daySummary?.refundTotal ?? 0)}, ${daySummary?.refundCount ?? 0}.`}
-            style={{
-              flex: 1,
-              minWidth: 0,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: space.sm,
-              paddingHorizontal: space.sm,
-              paddingVertical: 4,
-            }}
-          >
+          <>
+            <HeaderStatDivider />
+            <View
+              accessibilityLabel={`Today ${daySummary?.salesCount ?? 0} sales, ${formatMoney(daySummary?.revenue ?? 0)}. Discounts ${formatMoney(daySummary?.discountTotal ?? 0)} on ${daySummary?.discountedSalesCount ?? 0} sales. Refunds ${formatMoney(daySummary?.refundTotal ?? 0)}, ${daySummary?.refundCount ?? 0}.`}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: space.sm,
+                paddingHorizontal: space.sm,
+                paddingVertical: 4,
+              }}
+            >
             <AnimatedHeaderStat
               value={daySummary?.revenue ?? 0}
               format={formatMoney}
@@ -413,7 +433,8 @@ export function StoreHeader() {
               format={formatMoney}
               label={`${daySummary?.refundCount ?? 0} refund${(daySummary?.refundCount ?? 0) === 1 ? "" : "s"}`}
             />
-          </View>
+            </View>
+          </>
         )}
 
         {/* Right of the cart/sales section — so a cashier can tell at a
@@ -516,7 +537,10 @@ function DraftStat({ count, onPress }: { count: number; onPress: () => void }) {
       }
       disabled={count === 0}
       style={({ pressed }) => [
-        headerButtonStyle(pressed, count === 0),
+        // Not dimmed at count===0 — same full-strength white/rgba(255,255,255,0.75)
+        // text every other header section uses (HeaderStat, SyncStat,
+        // AnimatedHeaderStat), whether there's anything to open or not.
+        headerButtonStyle(pressed, false),
         { minWidth: 0, flexShrink: 1 },
       ]}
     >

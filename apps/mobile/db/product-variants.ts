@@ -165,6 +165,33 @@ export async function getVariantPendingQuantity(variantId: string): Promise<numb
   return row?.pending ?? 0;
 }
 
+/**
+ * Product ids (within the given list) that have 2+ active variants — a
+ * COUNT/GROUP BY, not a row fetch, so it's cheap enough to run for a whole
+ * loaded page up front instead of per-tap. The Sell screen uses this to
+ * decide, synchronously at tap time, whether a first-time add-to-cart tap
+ * will resolve straight to a cart line or open the variant picker — only
+ * the former should fly its tile toward the cart immediately, since the
+ * picker means nothing has actually been added yet.
+ */
+export async function listProductIdsWithMultipleVariants(productIds: string[]): Promise<Set<string>> {
+  const ids = [...new Set(productIds)];
+  const result = new Set<string>();
+  if (ids.length === 0) return result;
+
+  const placeholders = ids.map(() => "?").join(", ");
+  const rows = await getDb().getAllAsync<{ product_id: string }>(
+    `SELECT product_id
+       FROM product_variants
+      WHERE product_id IN (${placeholders}) AND is_active = 1
+      GROUP BY product_id
+     HAVING COUNT(*) > 1`,
+    ...ids,
+  );
+  for (const row of rows) result.add(row.product_id);
+  return result;
+}
+
 /** How many distinct products currently have more than one variant — cheap check for "does the picker ever fire." */
 export async function countLocalVariants(): Promise<number> {
   const row = await getDb().getFirstAsync<{ count: number }>(

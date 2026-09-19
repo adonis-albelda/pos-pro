@@ -114,6 +114,12 @@ export default function AdminLayout() {
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: "transparent" },
+          // Every route here is a real push from the Backoffice tab's own
+          // native subpages — slide in from the right; back (button or
+          // gesture) automatically reverses it, same as app/pos/_layout.tsx's
+          // drawer sub-pages.
+          animation: "slide_from_right",
+          animationDuration: 220,
         }}
       />
     );
