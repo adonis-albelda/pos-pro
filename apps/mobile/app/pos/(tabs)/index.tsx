@@ -1191,25 +1191,82 @@ export default function SellScreen() {
     commitAddToCart(product, selection);
   }
 
+  /**
+   * A cart line's stock cap is fixed at add time (ResolvedSelection /
+   * product.estimatedStock snapshotted into availableStock), not re-derived
+   * live on every tap. Hitting it used to just silently refuse the next +1
+   * — indistinguishable from a tap doing nothing at all, and the one case
+   * (exactly 1 in stock, already 1 in cart) where a cashier could never add
+   * a 2nd unit at all, unlike a product that started at 0 (addToCart's own
+   * out-of-stock Alert already lets that one through). Mirrors that same
+   * "Sell anyway?" prompt: ask once, then lift this one line's cap to
+   * BACKORDER_CAP so every later +1 on it goes straight through.
+   */
+  function promptSellBeyondStock(promptKey: string, productName: string, matches: (line: CartLine) => boolean) {
+    if (pendingPromptKeys.current.has(promptKey)) return;
+    pendingPromptKeys.current.add(promptKey);
+    Alert.alert(
+      "Out of stock",
+      `${productName} is already at its last synced count in the cart. Add one more anyway? New stock added later settles this automatically.`,
+      [
+        { text: "Cancel", style: "cancel", onPress: () => pendingPromptKeys.current.delete(promptKey) },
+        {
+          text: "Add anyway",
+          onPress: () => {
+            pendingPromptKeys.current.delete(promptKey);
+            setLines((current) =>
+              current.map((line) =>
+                matches(line)
+                  ? repricedFor({ ...line, availableStock: BACKORDER_CAP }, line.quantity + 1)
+                  : line,
+              ),
+            );
+          },
+        },
+      ],
+    );
+  }
+
   function commitAddToCart(
     product: ProductWithEstimatedStock,
     selection?: ResolvedSelection,
     priceOverride?: number,
   ) {
+    // Matches on variantId too, not just productId — two variants of the
+    // same product (picked twice, or two "By variant" grid tiles) are
+    // separate lines, and re-tapping one must only ever bump that one.
+    const targetVariantId = selection?.variant.id ?? null;
+    const isTarget = (line: CartLine) =>
+      line.productId === product.id && (line.variantId ?? null) === targetVariantId;
+
+    // Outer `lines` snapshot decides only whether to show the cap-exceeded
+    // alert — a plain read, not a mutation, so it's fine if it's a render
+    // behind. The actual append/bump below always re-finds `existing` from
+    // `current` inside the updater instead of trusting this snapshot: two
+    // taps landing before React re-renders both used to read this same
+    // stale "no existing line yet," and each queued its own unconditional
+    // append — two separate lines for one product. Only setLines' own
+    // `current` is guaranteed current for every queued call in order.
+    const snapshot = lines.find(isTarget);
+    if (snapshot) {
+      const stockCap = snapshot.variantId
+        ? stockCapFor(snapshot.availableStock)
+        : stockCapFor(product.estimatedStock);
+      if (snapshot.quantity >= stockCap && stockCap !== BACKORDER_CAP) {
+        promptSellBeyondStock(`cap:${product.id}:${targetVariantId ?? ""}`, product.name, isTarget);
+        return;
+      }
+    }
+
     setLines((current) => {
-      // Matches on variantId too, not just productId — two variants of the
-      // same product (picked twice, or two "By variant" grid tiles) are
-      // separate lines, and re-tapping one must only ever bump that one.
-      const targetVariantId = selection?.variant.id ?? null;
-      const isTarget = (line: CartLine) =>
-        line.productId === product.id && (line.variantId ?? null) === targetVariantId;
       const existing = current.find(isTarget);
       if (existing) {
-        // A variant/add-on line's cap was fixed at add time rather than
-        // re-derived from live stock on every tap — see ResolvedSelection.
         const stockCap = existing.variantId
           ? stockCapFor(existing.availableStock)
           : stockCapFor(product.estimatedStock);
+        // Cap alert already handled above off the snapshot; if it turns out
+        // stale (cap actually hit right as this queued), just no-op this
+        // one instead of a mid-updater Alert — the next tap will prompt.
         if (existing.quantity >= stockCap) return current;
         return current.map((line) =>
           isTarget(line) ? repricedFor(line, Math.min(line.quantity + 1, stockCap)) : line,
@@ -1301,19 +1358,30 @@ export default function SellScreen() {
     const matches = (line: CartLine) =>
       line.productId === productId && (line.variantId ?? null) === (variantId ?? null);
 
+    // Same silent-cap gap as commitAddToCart's own existing-line branch —
+    // the cart stepper's "+" hit it too, and is in fact where the reported
+    // "1 in stock, already 1 in cart, can't go to 2" case actually showed up.
+    const line = lines.find(matches);
+    if (line && delta > 0) {
+      const stockCap = stockCapFor(line.availableStock);
+      if (line.quantity + delta > stockCap && stockCap !== BACKORDER_CAP) {
+        promptSellBeyondStock(`cap:${productId}:${variantId ?? ""}`, line.productName, matches);
+        return;
+      }
+    }
+
     setLines((current) =>
       current
-        .map((line) => {
-          if (!matches(line)) return line;
-          const stockCap = stockCapFor(line.availableStock);
-          const next = line.quantity + delta;
-          if (delta > 0 && next > stockCap) return line;
-          return repricedFor(line, next);
+        .map((cur) => {
+          if (!matches(cur)) return cur;
+          const stockCap = stockCapFor(cur.availableStock);
+          const next = cur.quantity + delta;
+          if (delta > 0 && next > stockCap) return cur;
+          return repricedFor(cur, next);
         })
-        .filter((line) => line.quantity > 0),
+        .filter((cur) => cur.quantity > 0),
     );
 
-    const line = lines.find(matches);
     if (line && line.quantity + delta <= 0) forgetOverride(productId);
   }
 
@@ -2889,10 +2957,14 @@ function CartRow({
             icon={Plus}
             label={
               atMax
-                ? `${line.productName} is at stock limit`
+                ? `${line.productName} is at stock limit, add one more anyway`
                 : `One more ${line.productName}`
             }
-            disabled={atMax}
+            // Not disabled at atMax anymore — onChange(1) still fires and
+            // changeQuantity's own promptSellBeyondStock takes over from
+            // there (same "Sell anyway?" ask as a brand-new line at 0
+            // stock). Disabling this button was the bug: it silently
+            // refused the very tap that's supposed to trigger that prompt.
             onPress={() => onChange(1)}
           />
         </View>

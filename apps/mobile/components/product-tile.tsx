@@ -299,7 +299,7 @@ function ProductTileImpl({
         {level === "out" ? (
           <Badge tone="danger" label="Out of stock" />
         ) : level === "low" ? (
-          <Badge tone="warning" label={`${product.estimatedStock}${unitSuffix} left`} />
+          <Badge tone="warning" label={`${product.estimatedStock} left`} />
         ) : (
           <View style={{ flexDirection: "row", alignItems: "center", gap: space.xs }}>
             <View
@@ -681,8 +681,7 @@ function RowLayoutBody({
               },
             ]}
           >
-            {product.estimatedStock}
-            {unitSuffix} left
+            {product.estimatedStock} left
           </Text>
         ) : (
           <View style={{ flexDirection: "row", alignItems: "center", gap: space.xs }}>
